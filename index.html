@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MR 书法 360° 全景交互演示</title>
+  <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="viewer-shell" aria-label="MR 书法 360 全景场景">
+      <div id="cubeViewport" class="cube-viewport" aria-label="3D 立方体书法教室">
+        <canvas id="roomCanvas" class="room-canvas" aria-hidden="true"></canvas>
+        <div id="cubeScene" class="cube-scene" aria-hidden="true">
+          <div class="room-face wall wall-front"></div>
+          <div class="room-face wall wall-back"></div>
+          <div class="room-face wall wall-left"></div>
+          <div class="room-face wall wall-right"></div>
+          <div class="room-face ceiling"></div>
+          <div class="room-face floor"></div>
+
+          <div class="room-object door door-center"></div>
+          <div class="room-object shelf shelf-left">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="room-object shelf shelf-right">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="room-object table main-table">
+            <span class="table-top"></span>
+            <span class="leg l1"></span>
+            <span class="leg l2"></span>
+            <span class="leg l3"></span>
+            <span class="leg l4"></span>
+          </div>
+          <div class="room-object paper practice-paper">永</div>
+          <div class="room-object inkstone"></div>
+          <div class="room-object brush brush-one"></div>
+          <div class="room-object brush brush-two"></div>
+          <div class="room-object chair chair-left"></div>
+          <div class="room-object chair chair-right"></div>
+          <div class="room-object scroll scroll-left">静心致远</div>
+          <div class="room-object scroll scroll-right">书法雅逸</div>
+          <div id="cssRoleLayer" class="css-role-layer"></div>
+        </div>
+      </div>
+
+      <header class="scene-heading" aria-label="当前步骤">
+        <span id="stepLabel" class="step-label">步骤 01</span>
+        <h1 id="sceneTitle">进入系统 / 沉浸准备</h1>
+      </header>
+
+      <aside class="path-panel" aria-label="学习路径">
+        <div class="path-panel-head">
+          <span>学习路径</span>
+          <strong id="pathProgress">1 / 10</strong>
+        </div>
+        <div class="path-progress-track" aria-hidden="true">
+          <div id="pathProgressBar"></div>
+        </div>
+        <div id="pathList" class="path-list"></div>
+      </aside>
+
+      <section id="infoPanel" class="scene-copy mr-main-panel" aria-label="AI 书法教练主面板">
+        <div id="infoPanelHandle" class="panel-dragbar">
+          <div>
+            <div class="panel-eyebrow">AI 书法教练</div>
+            <strong id="contentTitle">AI 书法教练</strong>
+          </div>
+          <span class="drag-grip" aria-hidden="true"></span>
+        </div>
+
+        <div class="mode-tabs" aria-label="学习模式">
+          <button class="is-active" type="button">单字学习</button>
+          <button type="button">集字练习</button>
+          <button type="button">创作</button>
+        </div>
+
+        <div class="coach-workspace">
+          <div class="glyph-board" aria-label="当前练习字">
+            <span>永</span>
+            <i class="corner lt"></i>
+            <i class="corner rt"></i>
+            <i class="corner lb"></i>
+            <i class="corner rb"></i>
+          </div>
+
+          <section class="score-board" aria-label="关键指标">
+            <div class="score-total">
+              <span>综合评分</span>
+              <strong id="coachScore">86分</strong>
+            </div>
+            <div class="metric-grid" id="metricGrid"></div>
+          </section>
+        </div>
+
+        <section class="content-card" aria-label="当前热点内容">
+          <p id="contentBody">中心面板显示当前单字“永”的结构评分，并拆出结构、笔画、笔法、力度、流畅度等维度。</p>
+          <div id="contentTags" class="tag-row" aria-label="关键词"></div>
+        </section>
+
+        <section class="point-list" aria-label="内容热点列表">
+          <div class="panel-eyebrow">可点击热点</div>
+          <div id="pointList" class="chip-list"></div>
+        </section>
+
+        <section class="action-zone" aria-label="模拟操作">
+          <div id="actionList" class="action-list"></div>
+          <p id="actionFeedback" class="action-feedback">点击场景热点或下方按钮，可查看该模块的交互反馈。</p>
+        </section>
+      </section>
+
+      <aside class="insight-stack" aria-label="实时反馈">
+        <section class="insight-card">
+          <div class="panel-eyebrow">场景识别</div>
+          <p id="sceneDescription">进入 MR 书法教练主界面，确认学习路径、当前任务和实时反馈。</p>
+        </section>
+        <section class="insight-card">
+          <div class="panel-eyebrow">实时反馈</div>
+          <p id="sceneFocus">系统首页把学习路径、单字练习、实时反馈和历史记录集中在同一空间。</p>
+        </section>
+        <section class="insight-card mini-chart">
+          <div class="panel-eyebrow">历史记录</div>
+          <div class="chart-line" aria-hidden="true"></div>
+          <strong id="insightScore">86</strong>
+        </section>
+      </aside>
+
+      <details class="scene-api-panel" open>
+        <summary>场景编辑</summary>
+        <div class="api-content">
+          <div class="api-toolbar" aria-label="配置操作">
+            <button id="saveRoomConfig" type="button">保存到本机</button>
+            <button id="resetRoomConfig" type="button">恢复默认</button>
+          </div>
+          <section class="api-section" aria-label="六面贴图接口">
+            <div class="api-section-title">
+              <span>六面贴图</span>
+              <small id="textureModeLabel">config</small>
+            </div>
+            <div id="textureControls" class="texture-controls"></div>
+          </section>
+          <section class="api-section" aria-label="场景角色接口">
+            <div class="api-section-title">
+              <span>场景角色</span>
+              <small id="roleCountLabel">0</small>
+            </div>
+            <form id="roleEditor" class="role-editor" aria-label="角色编辑表单">
+              <div class="editor-grid">
+                <label>名称<input id="roleNameInput" type="text" autocomplete="off"></label>
+                <label>类型<input id="roleTypeInput" type="text" autocomplete="off"></label>
+                <label>颜色<input id="roleColorInput" type="color"></label>
+                <label>缩放<input id="roleScaleInput" type="number" step="0.05"></label>
+                <label>X<input id="roleXInput" type="number" step="0.1"></label>
+                <label>Y<input id="roleYInput" type="number" step="0.1"></label>
+                <label>Z<input id="roleZInput" type="number" step="0.1"></label>
+                <label>视角 yaw<input id="roleYawInput" type="number" step="1"></label>
+                <label>视角 pitch<input id="rolePitchInput" type="number" step="1"></label>
+                <label>视角缩放<input id="roleViewScaleInput" type="number" step="0.05"></label>
+              </div>
+              <label class="editor-wide">说明<textarea id="roleDescriptionInput" rows="2"></textarea></label>
+              <div class="editor-actions">
+                <button id="newRoleButton" type="button">新增角色</button>
+                <button id="saveRoleButton" type="submit">保存角色</button>
+                <button id="deleteRoleButton" type="button">删除角色</button>
+              </div>
+            </form>
+            <div id="roleControls" class="role-controls"></div>
+          </section>
+        </div>
+      </details>
+
+      <div id="loadingState" class="status-panel" hidden>场景加载中...</div>
+      <div id="errorState" class="status-panel error-panel" hidden></div>
+      <div id="noticeState" class="notice-panel" hidden></div>
+    </section>
+
+    <div class="quick-controls" aria-label="快速切换">
+      <button id="quickPrev" type="button" aria-label="上一步">‹</button>
+      <button id="quickHome" type="button" aria-label="返回首页">⌂</button>
+      <button id="quickNext" type="button" aria-label="下一步">›</button>
+    </div>
+
+    <nav id="stepNav" class="step-nav" aria-label="步骤导航"></nav>
+  </main>
+
+  <script src="assets/vendor/pannellum/pannellum.js"></script>
+  <script src="room-config.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
