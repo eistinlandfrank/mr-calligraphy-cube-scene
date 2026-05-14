@@ -1,0 +1,94 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MR 书法场景管理页</title>
+  <link rel="stylesheet" href="realistic-demo.css?v=split-admin-20260514">
+</head>
+<body class="admin-page">
+  <main class="realistic-shell">
+    <canvas id="realisticCanvas" aria-label="写实 3D 书法场景管理画布"></canvas>
+
+    <header class="demo-header">
+      <a href="realistic-demo.html" class="back-link">返回演示</a>
+      <div>
+        <span>Scene Editor</span>
+        <h1>场景管理页</h1>
+      </div>
+    </header>
+
+    <aside class="design-panel" aria-label="场景设计接口">
+      <div class="design-title">
+        <span>Scene Editor</span>
+        <strong>物体坐标</strong>
+      </div>
+      <label>
+        <span>选择物体</span>
+        <select id="designObjectSelect"></select>
+      </label>
+      <div class="mode-actions" aria-label="编辑模式">
+        <button id="translateMode" class="is-active" type="button">移动</button>
+        <button id="rotateMode" type="button">旋转</button>
+        <button id="undoAction" type="button">撤回</button>
+      </div>
+      <div class="axis-grid">
+        <label>
+          <span>X</span>
+          <input id="designX" type="number" step="0.01">
+        </label>
+        <label>
+          <span>Y</span>
+          <input id="designY" type="number" step="0.01">
+        </label>
+        <label>
+          <span>Z</span>
+          <input id="designZ" type="number" step="0.01">
+        </label>
+      </div>
+      <div class="axis-grid rotation-grid">
+        <label>
+          <span>RX</span>
+          <input id="designRotX" type="number" step="1">
+        </label>
+        <label>
+          <span>RY</span>
+          <input id="designRotY" type="number" step="1">
+        </label>
+        <label>
+          <span>RZ</span>
+          <input id="designRotZ" type="number" step="1">
+        </label>
+      </div>
+      <div class="design-actions">
+        <button id="focusObject" type="button">聚焦</button>
+        <button id="resetObject" type="button">复位</button>
+      </div>
+      <div class="design-actions object-actions">
+        <button id="deleteObject" class="danger-action" type="button">删除物体</button>
+        <button id="restoreObject" type="button">恢复物体</button>
+      </div>
+      <label class="import-control">
+        <span>导入 GLB / OBJ</span>
+        <input id="importModelInput" type="file" accept=".glb,.obj,model/gltf-binary,text/plain">
+      </label>
+      <p id="importStatus" class="import-status">导入后的模型会保存到本机浏览器，并同步到演示页。</p>
+      <div class="demo-actions editor-camera-actions">
+        <button id="resetCamera" type="button">重置视角</button>
+        <button id="toggleMotion" type="button">暂停旋转</button>
+      </div>
+      <p>点选物体或使用下拉框后，切换移动/旋转并拖动坐标轴。删除、恢复、移动和旋转都支持 Ctrl+Z 撤回 256 步。</p>
+    </aside>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./assets/vendor/three/three.module.js",
+        "three/addons/": "./assets/vendor/three/addons/"
+      }
+    }
+  </script>
+  <script type="module" src="realistic-scene.js?v=import-models-20260514"></script>
+</body>
+</html>

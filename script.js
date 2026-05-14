@@ -410,7 +410,7 @@ const SCENES = [
 
 const WRAP_STEPS = false;
 const IS_FILE_MODE = window.location.protocol === "file:";
-const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v2";
+const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v3-wood";
 const FACE_LABELS = {
   front: "前墙",
   back: "后墙",
@@ -421,15 +421,175 @@ const FACE_LABELS = {
 };
 const DEFAULT_ROOM_CONFIG = {
   textures: {
-    front: "assets/cube/wall-front.png",
-    back: "assets/cube/wall-back.png",
-    left: "assets/cube/wall-left.png",
-    right: "assets/cube/wall-right.png",
+    front: "assets/cube/wall-wood-front.png",
+    back: "assets/cube/wall-wood-back.png",
+    left: "assets/cube/wall-wood-left.png",
+    right: "assets/cube/wall-wood-right.png",
     ceiling: "assets/cube/ceiling.png",
     floor: "assets/cube/floor.png"
   },
   roles: []
 };
+const LEGACY_WALL_TEXTURES = {
+  front: "assets/cube/wall-front.png",
+  back: "assets/cube/wall-back.png",
+  left: "assets/cube/wall-left.png",
+  right: "assets/cube/wall-right.png"
+};
+const EXTERNAL_ROOM_MODELS = [
+  {
+    id: "front-doorway",
+    src: "assets/models/poly-pizza-cc0/japanese-door-quaternius.glb",
+    position: [0, -3.1, -7.92],
+    rotationY: 0,
+    scale: 118,
+    tint: [0.62, 0.38, 0.2]
+  },
+  {
+    id: "left-window",
+    src: "assets/models/kenney-furniture-kit/wallWindow.glb",
+    position: [-5.15, -1.75, -7.9],
+    rotationY: 0,
+    scale: 2.45,
+    tint: [0.62, 0.42, 0.26]
+  },
+  {
+    id: "right-window",
+    src: "assets/models/kenney-furniture-kit/wallWindow.glb",
+    position: [5.15, -1.75, -7.9],
+    rotationY: 0,
+    scale: 2.45,
+    tint: [0.62, 0.42, 0.26]
+  },
+  {
+    id: "left-bookcase",
+    src: "assets/models/poly-pizza-cc0/bookshelf-creative-trio.glb",
+    position: [-7.25, -3.12, -4.4],
+    rotationY: 90,
+    scale: 380,
+    tint: [0.58, 0.36, 0.2]
+  },
+  {
+    id: "right-bookcase",
+    src: "assets/models/poly-pizza-cc0/bookshelf-creative-trio.glb",
+    position: [7.25, -3.12, -3.05],
+    rotationY: -90,
+    scale: 380,
+    tint: [0.56, 0.34, 0.19]
+  },
+  {
+    id: "main-writing-table",
+    src: "assets/models/poly-pizza-cc0/table-creative-trio.glb",
+    position: [0, -3.12, -3.45],
+    rotationY: 0,
+    scale: 410,
+    tint: [0.58, 0.35, 0.18]
+  },
+  {
+    id: "left-chair",
+    src: "assets/models/kenney-furniture-kit/chair.glb",
+    position: [-3.25, -3.12, -2.4],
+    rotationY: 24,
+    scale: 3.3,
+    tint: [0.48, 0.28, 0.15]
+  },
+  {
+    id: "right-chair",
+    src: "assets/models/kenney-furniture-kit/chair.glb",
+    position: [3.25, -3.12, -2.4],
+    rotationY: -24,
+    scale: 3.3,
+    tint: [0.48, 0.28, 0.15]
+  },
+  {
+    id: "woven-rug",
+    src: "assets/models/kenney-furniture-kit/rugRectangle.glb",
+    position: [0, -3.09, -3.2],
+    rotationY: 0,
+    scale: 4.15,
+    tint: [0.46, 0.34, 0.24]
+  },
+  {
+    id: "side-cabinet",
+    src: "assets/models/kenney-furniture-kit/sideTableDrawers.glb",
+    position: [6.15, -3.12, 0.6],
+    rotationY: -90,
+    scale: 3.15,
+    tint: [0.52, 0.31, 0.17]
+  },
+  {
+    id: "desk-books",
+    src: "assets/models/kenney-furniture-kit/books.glb",
+    position: [-1.4, -1.4, -3.0],
+    rotationY: 12,
+    scale: 4.1,
+    tint: [0.74, 0.56, 0.38]
+  },
+  {
+    id: "front-left-potted-plant",
+    src: "assets/models/poly-pizza-kenney-decor/potted-plant-kenney.glb",
+    position: [-6.65, -3.12, -7.3],
+    rotationY: 18,
+    scale: 2.6,
+    tint: [0.88, 1.05, 0.82]
+  },
+  {
+    id: "right-corner-potted-plant",
+    src: "assets/models/poly-pizza-kenney-decor/potted-plant-kenney.glb",
+    position: [7.15, -3.12, 5.4],
+    rotationY: -58,
+    scale: 2.35,
+    tint: [0.84, 1.02, 0.78]
+  },
+  {
+    id: "desk-small-plant",
+    src: "assets/models/poly-pizza-kenney-decor/plant-small-kenney.glb",
+    position: [1.74, -1.38, -3.74],
+    rotationY: -24,
+    scale: 1.36,
+    tint: [0.78, 1.1, 0.7]
+  },
+  {
+    id: "front-left-wall-lamp",
+    src: "assets/models/poly-pizza-kenney-decor/lamp-wall-kenney.glb",
+    position: [-6.9, -0.25, -7.88],
+    rotationY: 0,
+    scale: 2.1,
+    tint: [1.08, 0.84, 0.54]
+  },
+  {
+    id: "front-right-wall-lamp",
+    src: "assets/models/poly-pizza-kenney-decor/lamp-wall-kenney.glb",
+    position: [6.9, -0.25, -7.88],
+    rotationY: 0,
+    scale: 2.1,
+    tint: [1.08, 0.84, 0.54]
+  },
+  {
+    id: "side-table-lamp",
+    src: "assets/models/poly-pizza-kenney-decor/lamp-square-table-kenney.glb",
+    position: [6.1, -1.75, 0.64],
+    rotationY: -90,
+    scale: 2.45,
+    tint: [1.0, 0.82, 0.58]
+  },
+  {
+    id: "left-coat-rack",
+    src: "assets/models/poly-pizza-kenney-decor/coat-rack-standing-kenney.glb",
+    position: [-7.35, -3.12, 4.7],
+    rotationY: 88,
+    scale: 2.4,
+    tint: [0.58, 0.36, 0.2]
+  },
+  {
+    id: "tea-corner-round-rug",
+    src: "assets/models/poly-pizza-kenney-decor/rug-round-kenney.glb",
+    position: [4.75, -3.08, 5.1],
+    rotationY: -12,
+    scale: 3.35,
+    tint: [0.52, 0.34, 0.24]
+  }
+];
 let roomConfig = normalizeRoomConfig(loadStoredRoomConfig() || window.MR_ROOM_CONFIG);
 const textureSourceNames = {};
 
@@ -483,6 +643,7 @@ const els = {
   pathList: document.getElementById("pathList"),
   quickPrev: document.getElementById("quickPrev"),
   quickHome: document.getElementById("quickHome"),
+  quickModels: document.getElementById("quickModels"),
   quickNext: document.getElementById("quickNext")
 };
 
@@ -500,11 +661,30 @@ function loadStoredRoomConfig() {
   try {
     const stored = window.localStorage.getItem(ROOM_STORAGE_KEY);
 
-    return stored ? JSON.parse(stored) : null;
+    return stored ? migrateStoredRoomConfig(JSON.parse(stored)) : null;
   } catch (error) {
     console.warn("无法读取本地场景配置", error);
     return null;
   }
+}
+
+function migrateStoredRoomConfig(config) {
+  if (!config || typeof config !== "object") {
+    return null;
+  }
+
+  const migrated = cloneConfig(config);
+  migrated.textures = migrated.textures || {};
+
+  Object.entries(LEGACY_WALL_TEXTURES).forEach(([face, legacySrc]) => {
+    const currentSrc = String(migrated.textures[face] || "");
+
+    if (!currentSrc || currentSrc === legacySrc) {
+      migrated.textures[face] = DEFAULT_ROOM_CONFIG.textures[face];
+    }
+  });
+
+  return migrated;
 }
 
 function saveRoomConfigToStorage() {
@@ -607,6 +787,9 @@ function init() {
   initCubeControls();
 
   loadScene(0);
+  if (new URLSearchParams(window.location.search).has("modelView")) {
+    window.setTimeout(focusModelView, 900);
+  }
   window.addEventListener("keydown", handleKeyboardSceneChange, true);
 }
 
@@ -1065,11 +1248,25 @@ function createRoomRenderer(canvas) {
     useTexture: gl.getUniformLocation(program, "uUseTexture")
   };
   const roomMeshes = createRoomTextureMeshes(gl);
-  let furnitureMesh = createFurnitureMesh(gl, roomConfig.roles);
+  let modelVertices = [];
+  let furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices);
   const fallbackTexture = createSolidTexture(gl, [255, 255, 255, 255]);
   const textures = {};
 
   loadTextures(roomConfig.textures);
+  loadRoomModels(EXTERNAL_ROOM_MODELS)
+    .then((result) => {
+      modelVertices = result.vertices;
+      furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices);
+      window.MR_LOADED_MODEL_COUNT = result.loaded;
+      window.MR_LOADED_MODEL_VERTICES = modelVertices.length / 11;
+      showNotice(`已加载 ${result.loaded} 个开源 GLB 模型。`);
+      updateCubeTransform();
+    })
+    .catch((error) => {
+      console.error(error);
+      showNotice("开源 3D 模型加载失败，已保留基础几何家具。");
+    });
 
   function loadTextures(nextTextures) {
     Object.entries(nextTextures).forEach(([name, src]) => {
@@ -1080,7 +1277,7 @@ function createRoomRenderer(canvas) {
   }
 
   function setRoles(roles) {
-    furnitureMesh = createFurnitureMesh(gl, roles);
+    furnitureMesh = createFurnitureMesh(gl, roles, modelVertices);
   }
 
   function setTextures(nextTextures) {
@@ -1296,30 +1493,278 @@ function createRoomTextureMeshes(gl) {
   ];
 }
 
-function createFurnitureMesh(gl, roles = []) {
+async function loadRoomModels(modelSpecs) {
+  const chunks = await Promise.all(modelSpecs.map(async (spec) => {
+    try {
+      const response = await fetch(spec.src);
+
+      if (!response.ok) {
+        throw new Error(`Model load failed: ${spec.src}`);
+      }
+
+      return {
+        id: spec.id,
+        vertices: parseGlbModel(await response.arrayBuffer(), spec)
+      };
+    } catch (error) {
+      console.warn(error);
+      return {
+        id: spec.id,
+        vertices: [],
+        error
+      };
+    }
+  }));
+  const loadedChunks = chunks.filter((chunk) => chunk.vertices.length > 0);
+  const vertices = loadedChunks.flatMap((chunk) => chunk.vertices);
+
+  if (!vertices.length) {
+    throw new Error("No GLB models could be loaded.");
+  }
+
+  return {
+    vertices,
+    loaded: loadedChunks.length
+  };
+}
+
+function parseGlbModel(arrayBuffer, spec) {
+  const dataView = new DataView(arrayBuffer);
+  const magic = dataView.getUint32(0, true);
+
+  if (magic !== 0x46546c67) {
+    throw new Error(`Invalid GLB file: ${spec.src}`);
+  }
+
+  let offset = 12;
+  let gltf = null;
+  let binaryChunk = null;
+
+  while (offset < arrayBuffer.byteLength) {
+    const chunkLength = dataView.getUint32(offset, true);
+    const chunkType = dataView.getUint32(offset + 4, true);
+    const chunkStart = offset + 8;
+    const chunk = arrayBuffer.slice(chunkStart, chunkStart + chunkLength);
+
+    if (chunkType === 0x4e4f534a) {
+      gltf = JSON.parse(new TextDecoder("utf-8").decode(chunk));
+    } else if (chunkType === 0x004e4942) {
+      binaryChunk = chunk;
+    }
+
+    offset = chunkStart + chunkLength;
+  }
+
+  if (!gltf || !binaryChunk) {
+    throw new Error(`Missing GLB chunks: ${spec.src}`);
+  }
+
+  const bounds = getGlbPositionBounds(gltf);
   const vertices = [];
 
-  addBox(vertices, 0, -1.58, -3.42, 4.75, 0.18, 2.05, [0.52, 0.27, 0.1]);
-  addBox(vertices, -2.1, -2.36, -4.18, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
-  addBox(vertices, 2.1, -2.36, -4.18, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
-  addBox(vertices, -2.1, -2.36, -2.66, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
-  addBox(vertices, 2.1, -2.36, -2.66, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
+  (gltf.meshes || []).forEach((mesh) => {
+    (mesh.primitives || []).forEach((primitive) => {
+      if (primitive.mode !== undefined && primitive.mode !== 4) {
+        return;
+      }
+
+      const positionIndex = primitive.attributes && primitive.attributes.POSITION;
+      if (positionIndex === undefined) {
+        return;
+      }
+
+      const positions = readGlbAccessor(gltf, binaryChunk, positionIndex);
+      const normals = primitive.attributes.NORMAL !== undefined
+        ? readGlbAccessor(gltf, binaryChunk, primitive.attributes.NORMAL)
+        : null;
+      const indices = primitive.indices !== undefined
+        ? readGlbAccessor(gltf, binaryChunk, primitive.indices)
+        : positions.map((_, index) => index);
+      const color = getGlbMaterialColor(gltf, primitive.material, spec);
+
+      for (let i = 0; i < indices.length; i += 3) {
+        pushGlbModelVertex(vertices, positions[indices[i]], normals && normals[indices[i]], color, bounds, spec);
+        pushGlbModelVertex(vertices, positions[indices[i + 1]], normals && normals[indices[i + 1]], color, bounds, spec);
+        pushGlbModelVertex(vertices, positions[indices[i + 2]], normals && normals[indices[i + 2]], color, bounds, spec);
+      }
+    });
+  });
+
+  return vertices;
+}
+
+function getGlbPositionBounds(gltf) {
+  const mins = [];
+  const maxs = [];
+
+  (gltf.meshes || []).forEach((mesh) => {
+    (mesh.primitives || []).forEach((primitive) => {
+      const positionIndex = primitive.attributes && primitive.attributes.POSITION;
+      const accessor = gltf.accessors && gltf.accessors[positionIndex];
+
+      if (accessor && accessor.min && accessor.max) {
+        mins.push(accessor.min);
+        maxs.push(accessor.max);
+      }
+    });
+  });
+
+  if (!mins.length) {
+    return { centerX: 0, centerZ: 0, minY: 0 };
+  }
+
+  const min = [0, 1, 2].map((axis) => Math.min(...mins.map((value) => value[axis])));
+  const max = [0, 1, 2].map((axis) => Math.max(...maxs.map((value) => value[axis])));
+
+  return {
+    centerX: (min[0] + max[0]) / 2,
+    centerZ: (min[2] + max[2]) / 2,
+    minY: min[1]
+  };
+}
+
+function readGlbAccessor(gltf, binaryChunk, accessorIndex) {
+  const accessor = gltf.accessors[accessorIndex];
+  const bufferView = gltf.bufferViews[accessor.bufferView];
+  const component = getGlbComponentInfo(accessor.componentType);
+  const itemSize = getGlbAccessorItemSize(accessor.type);
+  const stride = bufferView.byteStride || component.bytes * itemSize;
+  const offset = (bufferView.byteOffset || 0) + (accessor.byteOffset || 0);
+  const view = new DataView(binaryChunk);
+  const values = [];
+
+  for (let i = 0; i < accessor.count; i += 1) {
+    const item = [];
+
+    for (let j = 0; j < itemSize; j += 1) {
+      const byteOffset = offset + i * stride + j * component.bytes;
+      let value = component.read(view, byteOffset);
+
+      if (accessor.normalized) {
+        value = normalizeGlbComponent(value, accessor.componentType);
+      }
+
+      item.push(value);
+    }
+
+    values.push(itemSize === 1 ? item[0] : item);
+  }
+
+  return values;
+}
+
+function getGlbComponentInfo(componentType) {
+  const readers = {
+    5120: { bytes: 1, read: (view, offset) => view.getInt8(offset) },
+    5121: { bytes: 1, read: (view, offset) => view.getUint8(offset) },
+    5122: { bytes: 2, read: (view, offset) => view.getInt16(offset, true) },
+    5123: { bytes: 2, read: (view, offset) => view.getUint16(offset, true) },
+    5125: { bytes: 4, read: (view, offset) => view.getUint32(offset, true) },
+    5126: { bytes: 4, read: (view, offset) => view.getFloat32(offset, true) }
+  };
+
+  return readers[componentType] || readers[5126];
+}
+
+function getGlbAccessorItemSize(type) {
+  return {
+    SCALAR: 1,
+    VEC2: 2,
+    VEC3: 3,
+    VEC4: 4,
+    MAT2: 4,
+    MAT3: 9,
+    MAT4: 16
+  }[type] || 1;
+}
+
+function normalizeGlbComponent(value, componentType) {
+  if (componentType === 5120) {
+    return Math.max(value / 127, -1);
+  }
+  if (componentType === 5121) {
+    return value / 255;
+  }
+  if (componentType === 5122) {
+    return Math.max(value / 32767, -1);
+  }
+  if (componentType === 5123) {
+    return value / 65535;
+  }
+
+  return value;
+}
+
+function getGlbMaterialColor(gltf, materialIndex, spec) {
+  const material = (gltf.materials || [])[materialIndex] || {};
+  const pbr = material.pbrMetallicRoughness || {};
+  const base = pbr.baseColorFactor || [0.72, 0.5, 0.32, 1];
+  const tint = spec.tint || [1, 1, 1];
+
+  return [0, 1, 2].map((channel) => clamp(base[channel] * (tint[channel] || 1), 0.04, 1));
+}
+
+function pushGlbModelVertex(vertices, position, normal, color, bounds, spec) {
+  if (!position) {
+    return;
+  }
+
+  const scale = spec.scale || 1;
+  const rotation = degToRad(spec.rotationY || 0);
+  const cos = Math.cos(rotation);
+  const sin = Math.sin(rotation);
+  const localX = (position[0] - bounds.centerX) * scale;
+  const localY = (position[1] - bounds.minY) * scale;
+  const localZ = (position[2] - bounds.centerZ) * scale;
+  const rotatedX = localX * cos - localZ * sin;
+  const rotatedZ = localX * sin + localZ * cos;
+  const finalPosition = [
+    spec.position[0] + rotatedX,
+    spec.position[1] + localY,
+    spec.position[2] + rotatedZ
+  ];
+  const sourceNormal = normal || [0, 1, 0];
+  const finalNormal = normalizeVector([
+    sourceNormal[0] * cos - sourceNormal[2] * sin,
+    sourceNormal[1],
+    sourceNormal[0] * sin + sourceNormal[2] * cos
+  ]);
+
+  pushVertex(vertices, finalPosition, [0, 0], color, finalNormal);
+}
+
+function createFurnitureMesh(gl, roles = [], modelVertices = []) {
+  const vertices = [];
+  const hasExternalModels = modelVertices.length > 0;
+
+  if (hasExternalModels) {
+    appendVertices(vertices, modelVertices);
+  } else {
+    addBox(vertices, 0, -1.58, -3.42, 4.75, 0.18, 2.05, [0.52, 0.27, 0.1]);
+    addBox(vertices, -2.1, -2.36, -4.18, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
+    addBox(vertices, 2.1, -2.36, -4.18, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
+    addBox(vertices, -2.1, -2.36, -2.66, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
+    addBox(vertices, 2.1, -2.36, -2.66, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
+  }
+
   addBox(vertices, 0, -1.44, -3.42, 1.95, 0.04, 1.32, [0.84, 0.78, 0.64]);
   addBox(vertices, -1.38, -1.38, -3.25, 0.52, 0.14, 0.38, [0.03, 0.025, 0.02]);
   addBox(vertices, 1.18, -1.36, -3.25, 1.12, 0.055, 0.07, [0.86, 0.6, 0.22]);
   addBox(vertices, 1.02, -1.34, -3.62, 1, 0.05, 0.065, [0.68, 0.22, 0.1]);
 
-  addBox(vertices, -3.55, -2.12, -2.05, 0.95, 0.35, 0.92, [0.45, 0.24, 0.1]);
-  addBox(vertices, -3.55, -1.46, -2.42, 0.95, 0.92, 0.18, [0.38, 0.2, 0.09]);
-  addBox(vertices, 3.55, -2.12, -2.05, 0.95, 0.35, 0.92, [0.45, 0.24, 0.1]);
-  addBox(vertices, 3.55, -1.46, -2.42, 0.95, 0.92, 0.18, [0.38, 0.2, 0.09]);
+  if (!hasExternalModels) {
+    addBox(vertices, -3.55, -2.12, -2.05, 0.95, 0.35, 0.92, [0.45, 0.24, 0.1]);
+    addBox(vertices, -3.55, -1.46, -2.42, 0.95, 0.92, 0.18, [0.38, 0.2, 0.09]);
+    addBox(vertices, 3.55, -2.12, -2.05, 0.95, 0.35, 0.92, [0.45, 0.24, 0.1]);
+    addBox(vertices, 3.55, -1.46, -2.42, 0.95, 0.92, 0.18, [0.38, 0.2, 0.09]);
 
-  addBox(vertices, -7.55, -0.15, -1.1, 0.24, 2.55, 3.2, [0.42, 0.24, 0.11]);
-  addBox(vertices, -7.3, 0.75, -1.1, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
-  addBox(vertices, -7.3, -0.15, -1.1, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
-  addBox(vertices, 7.55, -0.15, -1.6, 0.24, 2.55, 3.2, [0.42, 0.24, 0.11]);
-  addBox(vertices, 7.3, 0.75, -1.6, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
-  addBox(vertices, 7.3, -0.15, -1.6, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
+    addBox(vertices, -7.55, -0.15, -1.1, 0.24, 2.55, 3.2, [0.42, 0.24, 0.11]);
+    addBox(vertices, -7.3, 0.75, -1.1, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
+    addBox(vertices, -7.3, -0.15, -1.1, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
+    addBox(vertices, 7.55, -0.15, -1.6, 0.24, 2.55, 3.2, [0.42, 0.24, 0.11]);
+    addBox(vertices, 7.3, 0.75, -1.6, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
+    addBox(vertices, 7.3, -0.15, -1.6, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
+  }
 
   addBox(vertices, -4.85, 1.05, -7.74, 0.52, 2.05, 0.06, [0.68, 0.58, 0.4]);
   addBox(vertices, 4.85, 1.05, -7.74, 0.52, 2.05, 0.06, [0.68, 0.58, 0.4]);
@@ -1328,11 +1773,103 @@ function createFurnitureMesh(gl, roles = []) {
   addBox(vertices, 0, 5.02, -0.8, 16, 0.18, 0.24, [0.38, 0.18, 0.07]);
   addBox(vertices, 0, 5.02, 3.2, 16, 0.18, 0.24, [0.38, 0.18, 0.07]);
 
+  addCalligraphyDecor(vertices);
+
   roles
     .filter((role) => role.visible)
     .forEach((role) => addRoleFigure(vertices, role));
 
   return createMesh(gl, vertices, null);
+}
+
+function appendVertices(target, source) {
+  for (let i = 0; i < source.length; i += 1) {
+    target.push(source[i]);
+  }
+}
+
+function addCalligraphyDecor(vertices) {
+  addWallScroll(vertices, "front", -4.55, 1.08, -7.72, 0.84, 2.08, [0.82, 0.74, 0.56]);
+  addWallScroll(vertices, "front", 4.55, 1.08, -7.72, 0.84, 2.08, [0.82, 0.74, 0.56]);
+  addWallScroll(vertices, "back", -4.2, 0.84, 7.72, 0.82, 1.86, [0.78, 0.69, 0.52]);
+  addWallScroll(vertices, "back", 4.2, 0.84, 7.72, 0.82, 1.86, [0.78, 0.69, 0.52]);
+  addWallScroll(vertices, "left", -7.72, 0.82, 2.45, 0.78, 1.74, [0.8, 0.72, 0.55]);
+  addWallScroll(vertices, "right", 7.72, 0.82, 2.2, 0.78, 1.74, [0.8, 0.72, 0.55]);
+
+  addBrushRack(vertices, -2.72, -1.08, -3.05);
+  addInkSet(vertices, -1.42, -1.28, -3.1);
+  addCeramicJar(vertices, 2.52, -1.18, -3.82, 0.28, [0.23, 0.37, 0.34]);
+  addCeramicJar(vertices, -6.92, -2.38, 5.72, 0.34, [0.34, 0.27, 0.2]);
+  addLowDisplayStand(vertices, -6.9, -2.72, 5.72);
+}
+
+function addWallScroll(vertices, face, x, y, z, width, height, paperColor) {
+  const rod = [0.33, 0.17, 0.07];
+  const ink = [0.08, 0.07, 0.055];
+  const seal = [0.72, 0.17, 0.12];
+  const thin = 0.045;
+  const isSide = face === "left" || face === "right";
+  const isBack = face === "back";
+  const wallOffset = face === "right" ? -thin / 2 : thin / 2;
+  const panelX = isSide ? x + wallOffset : x;
+  const panelZ = isSide ? z : z + (isBack ? -thin / 2 : thin / 2);
+
+  if (isSide) {
+    addBox(vertices, panelX, y, panelZ, thin, height, width, paperColor);
+    addBox(vertices, panelX, y + height / 2 + 0.08, panelZ, thin * 1.6, 0.07, width + 0.18, rod);
+    addBox(vertices, panelX, y - height / 2 - 0.08, panelZ, thin * 1.6, 0.07, width + 0.18, rod);
+    addBox(vertices, panelX, y + 0.34, panelZ, thin * 1.9, height * 0.48, 0.08, ink);
+    addBox(vertices, panelX, y - 0.26, panelZ + width * 0.13, thin * 1.9, height * 0.38, 0.07, ink);
+    addBox(vertices, panelX, y - height * 0.28, panelZ - width * 0.22, thin * 2.1, 0.18, 0.18, seal);
+    return;
+  }
+
+  addBox(vertices, panelX, y, panelZ, width, height, thin, paperColor);
+  addBox(vertices, panelX, y + height / 2 + 0.08, panelZ, width + 0.18, 0.07, thin * 1.6, rod);
+  addBox(vertices, panelX, y - height / 2 - 0.08, panelZ, width + 0.18, 0.07, thin * 1.6, rod);
+  addBox(vertices, panelX - width * 0.12, y + 0.34, panelZ, 0.08, height * 0.48, thin * 1.9, ink);
+  addBox(vertices, panelX + width * 0.1, y - 0.2, panelZ, 0.07, height * 0.34, thin * 1.9, ink);
+  addBox(vertices, panelX + width * 0.22, y - height * 0.28, panelZ, 0.18, 0.18, thin * 2.1, seal);
+}
+
+function addBrushRack(vertices, x, y, z) {
+  const wood = [0.34, 0.18, 0.07];
+  const handle = [0.62, 0.38, 0.16];
+  const bristle = [0.08, 0.06, 0.045];
+
+  addBox(vertices, x, y + 0.48, z, 1.12, 0.06, 0.08, wood);
+  addBox(vertices, x - 0.48, y + 0.18, z, 0.07, 0.66, 0.07, wood);
+  addBox(vertices, x + 0.48, y + 0.18, z, 0.07, 0.66, 0.07, wood);
+  addBox(vertices, x, y - 0.16, z, 1.08, 0.07, 0.22, wood);
+
+  [-0.34, -0.12, 0.12, 0.34].forEach((offset, index) => {
+    const length = 0.42 + index * 0.04;
+    addBox(vertices, x + offset, y + 0.18, z + 0.04, 0.045, length, 0.045, handle);
+    addBox(vertices, x + offset, y - length / 2 - 0.06, z + 0.04, 0.08, 0.13, 0.08, bristle);
+  });
+}
+
+function addInkSet(vertices, x, y, z) {
+  addCylinder(vertices, x, y + 0.05, z, 0.28, 0.1, [0.04, 0.035, 0.03], 24);
+  addCylinder(vertices, x, y + 0.12, z, 0.19, 0.04, [0.015, 0.014, 0.013], 24);
+  addBox(vertices, x + 0.55, y + 0.06, z - 0.06, 0.62, 0.055, 0.09, [0.12, 0.11, 0.09]);
+  addBox(vertices, x + 0.55, y + 0.13, z - 0.06, 0.48, 0.045, 0.065, [0.82, 0.72, 0.54]);
+}
+
+function addCeramicJar(vertices, x, y, z, radius, color) {
+  const dark = color.map((value) => value * 0.66);
+
+  addCylinder(vertices, x, y + radius * 0.68, z, radius, radius * 1.35, color, 28);
+  addCylinder(vertices, x, y + radius * 1.45, z, radius * 0.58, radius * 0.32, dark, 28);
+  addCylinder(vertices, x, y + radius * 0.04, z, radius * 0.74, radius * 0.16, dark, 28);
+}
+
+function addLowDisplayStand(vertices, x, y, z) {
+  addBox(vertices, x, y, z, 1.24, 0.12, 0.72, [0.28, 0.15, 0.07]);
+  addBox(vertices, x - 0.48, y - 0.22, z - 0.24, 0.12, 0.34, 0.12, [0.2, 0.1, 0.045]);
+  addBox(vertices, x + 0.48, y - 0.22, z - 0.24, 0.12, 0.34, 0.12, [0.2, 0.1, 0.045]);
+  addBox(vertices, x - 0.48, y - 0.22, z + 0.24, 0.12, 0.34, 0.12, [0.2, 0.1, 0.045]);
+  addBox(vertices, x + 0.48, y - 0.22, z + 0.24, 0.12, 0.34, 0.12, [0.2, 0.1, 0.045]);
 }
 
 function addRoleFigure(vertices, role) {
@@ -1394,6 +1931,37 @@ function addBox(vertices, centerX, centerY, centerZ, width, height, depth, color
   vertices.push(...buildQuad([x2, y2, z1], [x2, y2, z2], [x2, y1, z2], [x2, y1, z1], color, [-1, 0, 0]));
   vertices.push(...buildQuad([x1, y2, z2], [x2, y2, z2], [x2, y2, z1], [x1, y2, z1], color, [0, 1, 0]));
   vertices.push(...buildQuad([x1, y1, z1], [x2, y1, z1], [x2, y1, z2], [x1, y1, z2], color, [0, -1, 0]));
+}
+
+function addCylinder(vertices, centerX, centerY, centerZ, radius, height, color, segments = 18) {
+  const topY = centerY + height / 2;
+  const bottomY = centerY - height / 2;
+
+  for (let i = 0; i < segments; i += 1) {
+    const a1 = (i / segments) * Math.PI * 2;
+    const a2 = ((i + 1) / segments) * Math.PI * 2;
+    const x1 = centerX + Math.cos(a1) * radius;
+    const z1 = centerZ + Math.sin(a1) * radius;
+    const x2 = centerX + Math.cos(a2) * radius;
+    const z2 = centerZ + Math.sin(a2) * radius;
+    const normal1 = normalizeVector([Math.cos(a1), 0, Math.sin(a1)]);
+    const normal2 = normalizeVector([Math.cos(a2), 0, Math.sin(a2)]);
+
+    pushVertex(vertices, [x1, topY, z1], [0, 1], color, normal1);
+    pushVertex(vertices, [x1, bottomY, z1], [0, 0], color, normal1);
+    pushVertex(vertices, [x2, bottomY, z2], [1, 0], color, normal2);
+    pushVertex(vertices, [x1, topY, z1], [0, 1], color, normal1);
+    pushVertex(vertices, [x2, bottomY, z2], [1, 0], color, normal2);
+    pushVertex(vertices, [x2, topY, z2], [1, 1], color, normal2);
+
+    pushVertex(vertices, [centerX, topY, centerZ], [0.5, 0.5], color, [0, 1, 0]);
+    pushVertex(vertices, [x2, topY, z2], [1, 1], color, [0, 1, 0]);
+    pushVertex(vertices, [x1, topY, z1], [0, 1], color, [0, 1, 0]);
+
+    pushVertex(vertices, [centerX, bottomY, centerZ], [0.5, 0.5], color, [0, -1, 0]);
+    pushVertex(vertices, [x1, bottomY, z1], [0, 0], color, [0, -1, 0]);
+    pushVertex(vertices, [x2, bottomY, z2], [1, 0], color, [0, -1, 0]);
+  }
 }
 
 function pushVertex(vertices, position, uv, color, normal) {
@@ -1613,7 +2181,21 @@ function buildStepNavigation() {
 function bindQuickControls() {
   els.quickPrev.addEventListener("click", goPrevious);
   els.quickHome.addEventListener("click", () => loadScene(0));
+  els.quickModels.addEventListener("click", focusModelView);
   els.quickNext.addEventListener("click", goNext);
+}
+
+function focusModelView() {
+  cubeYaw = 0;
+  cubePitch = 2;
+  cubeScale = 0.78;
+  updateCubeTransform();
+  document.body.classList.add("is-model-view");
+  window.clearTimeout(focusModelView.hideTimer);
+  focusModelView.hideTimer = window.setTimeout(() => {
+    document.body.classList.remove("is-model-view");
+  }, 60000);
+  showNotice("模型展示模式：已临时淡出教学面板，前方可查看木墙、门窗、书架、桌椅、盆栽、灯具和书法装饰。");
 }
 
 function buildPathList() {

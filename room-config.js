@@ -1,9 +1,9 @@
 window.MR_ROOM_CONFIG = {
   textures: {
-    front: "assets/cube/wall-front.png",
-    back: "assets/cube/wall-back.png",
-    left: "assets/cube/wall-left.png",
-    right: "assets/cube/wall-right.png",
+    front: "assets/cube/wall-wood-front.png",
+    back: "assets/cube/wall-wood-back.png",
+    left: "assets/cube/wall-wood-left.png",
+    right: "assets/cube/wall-wood-right.png",
     ceiling: "assets/cube/ceiling.png",
     floor: "assets/cube/floor.png"
   },

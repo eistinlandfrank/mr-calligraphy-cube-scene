@@ -116,22 +116,22 @@ button {
 }
 
 .wall-front {
-  background-image: url("assets/cube/wall-front.png");
+  background-image: url("assets/cube/wall-wood-front.png");
   transform: translateZ(calc(var(--half-room) * -1));
 }
 
 .wall-back {
-  background-image: url("assets/cube/wall-back.png");
+  background-image: url("assets/cube/wall-wood-back.png");
   transform: rotateY(180deg) translateZ(calc(var(--half-room) * -1));
 }
 
 .wall-left {
-  background-image: url("assets/cube/wall-left.png");
+  background-image: url("assets/cube/wall-wood-left.png");
   transform: rotateY(90deg) translateZ(calc(var(--half-room) * -1));
 }
 
 .wall-right {
-  background-image: url("assets/cube/wall-right.png");
+  background-image: url("assets/cube/wall-wood-right.png");
   transform: rotateY(-90deg) translateZ(calc(var(--half-room) * -1));
 }
 
@@ -863,6 +863,15 @@ button {
   line-height: 1;
 }
 
+.quick-controls .quick-models {
+  width: auto;
+  min-width: 52px;
+  padding: 0 12px;
+  color: #cffff3;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .quick-controls button:hover,
 .quick-controls button:focus-visible {
   border-color: rgba(116, 255, 219, 0.55);
@@ -873,6 +882,22 @@ button {
 .quick-controls button:disabled {
   opacity: 0.28;
   cursor: default;
+}
+
+body.is-model-view .scene-heading,
+body.is-model-view .path-panel,
+body.is-model-view .scene-copy,
+body.is-model-view .insight-stack,
+body.is-model-view .scene-api-panel,
+body.is-model-view .step-nav {
+  opacity: 0.08;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
+body.is-model-view .quick-controls,
+body.is-model-view .notice-panel {
+  opacity: 1;
 }
 
 .scene-api-panel {
@@ -1397,6 +1422,41 @@ button {
 
   .notice-panel {
     bottom: 70px;
+    font-size: 13px;
+  }
+}
+
+.realistic-link {
+  position: absolute;
+  z-index: 9;
+  right: 24px;
+  top: 24px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 14px;
+  border: 1px solid rgba(116, 255, 219, 0.24);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(12, 14, 14, 0.52);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
+  text-decoration: none;
+  backdrop-filter: blur(16px) saturate(1.18);
+}
+
+.realistic-link:hover,
+.realistic-link:focus-visible {
+  border-color: rgba(116, 255, 219, 0.55);
+  background: rgba(47, 111, 104, 0.72);
+  outline: none;
+}
+
+@media (max-width: 860px) {
+  .realistic-link {
+    top: 16px;
+    right: 16px;
+    min-height: 36px;
+    padding: 0 10px;
     font-size: 13px;
   }
 }

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法 360° 全景交互演示</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=20260512-wood3">
 </head>
 <body>
   <main class="app-shell">
@@ -127,7 +127,7 @@
         </section>
       </aside>
 
-      <details class="scene-api-panel" open>
+      <details class="scene-api-panel">
         <summary>场景编辑</summary>
         <div class="api-content">
           <div class="api-toolbar" aria-label="配置操作">
@@ -171,6 +171,8 @@
         </div>
       </details>
 
+      <a class="realistic-link" href="realistic-demo.html">写实 3D 样张</a>
+
       <div id="loadingState" class="status-panel" hidden>场景加载中...</div>
       <div id="errorState" class="status-panel error-panel" hidden></div>
       <div id="noticeState" class="notice-panel" hidden></div>
@@ -179,6 +181,7 @@
     <div class="quick-controls" aria-label="快速切换">
       <button id="quickPrev" type="button" aria-label="上一步">‹</button>
       <button id="quickHome" type="button" aria-label="返回首页">⌂</button>
+      <button id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型">模型</button>
       <button id="quickNext" type="button" aria-label="下一步">›</button>
     </div>
 
@@ -186,7 +189,7 @@
   </main>
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
-  <script src="room-config.js"></script>
-  <script src="script.js"></script>
+  <script src="room-config.js?v=20260512-wood3"></script>
+  <script src="script.js?v=20260512-wood3"></script>
 </body>
 </html>

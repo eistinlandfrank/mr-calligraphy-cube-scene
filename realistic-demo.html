@@ -1,0 +1,41 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MR 书法写实 3D 样张</title>
+  <link rel="stylesheet" href="realistic-demo.css?v=split-admin-20260514">
+</head>
+<body>
+  <main class="realistic-shell">
+    <canvas id="realisticCanvas" aria-label="写实 3D 书法桌面场景"></canvas>
+
+    <header class="demo-header">
+      <a href="index.html" class="back-link">返回全景</a>
+      <div>
+        <span>MR Calligraphy</span>
+        <h1>写实 3D 样张</h1>
+      </div>
+    </header>
+
+    <aside class="demo-panel">
+      <span>PBR Scene</span>
+      <p>木桌、宣纸、墨迹、砚台与真实 GLB 毛笔使用实时光照、环境反射和柔和阴影渲染。</p>
+      <div class="demo-actions">
+        <button id="resetCamera" type="button">重置视角</button>
+        <button id="toggleMotion" type="button">暂停旋转</button>
+      </div>
+    </aside>
+  </main>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./assets/vendor/three/three.module.js",
+        "three/addons/": "./assets/vendor/three/addons/"
+      }
+    }
+  </script>
+  <script type="module" src="realistic-scene.js?v=import-models-20260514"></script>
+</body>
+</html>

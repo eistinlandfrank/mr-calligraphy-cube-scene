@@ -46,15 +46,45 @@ http://localhost:8000
 当前六面贴图读取：
 
 ```text
-assets/cube/wall-front.png
-assets/cube/wall-back.png
-assets/cube/wall-left.png
-assets/cube/wall-right.png
+assets/cube/wall-wood-front.png
+assets/cube/wall-wood-back.png
+assets/cube/wall-wood-left.png
+assets/cube/wall-wood-right.png
 assets/cube/ceiling.png
 assets/cube/floor.png
 ```
 
 你可以直接替换这六张图。建议每张保持正方形，例如 `2048x2048` 或 `4096x4096`，并尽量使用同一套 cubemap 渲染出的六面图，空间衔接会更自然。
+
+## 开源 3D 模型
+
+项目内置了一组可再分发的 `.glb` 模型，用来替换原先比较粗糙的几何桌椅和书架：
+
+```text
+assets/models/kenney-furniture-kit/
+```
+
+资源来自 Kenney Furniture Kit 2.0，许可为 Creative Commons Zero, CC0：
+
+```text
+https://kenney.nl/assets/furniture-kit
+```
+
+当前加载了 Poly Pizza / Quaternius / CreativeTrio / Kenney 的模型，包括书架、桌子、门、窗户、椅子、地毯、边柜和书本。模型摆放配置位于 `script.js` 的 `EXTERNAL_ROOM_MODELS`，可以调整 `src`、`position`、`rotationY`、`scale` 和 `tint` 来替换模型或改变摆放位置。
+
+装饰模型额外放在：
+
+```text
+assets/models/poly-pizza-kenney-decor/
+```
+
+来源为 Poly Pizza 上的 Kenney CC0 Furniture Kit bundle：
+
+```text
+https://poly.pizza/bundle/Furniture-Kit-NoG1sEUD1z
+```
+
+当前新增了盆栽、小植物、壁灯、桌灯、圆形地毯和衣帽架；书法卷轴、毛笔架、砚台、陶罐等则由 `script.js` 里的 WebGL 几何生成，避免额外依赖不明来源的模型。
 
 ## 自定义接口
 
@@ -69,10 +99,10 @@ room-config.js
 ```js
 window.MR_ROOM_CONFIG = {
   textures: {
-    front: "assets/cube/wall-front.png",
-    back: "assets/cube/wall-back.png",
-    left: "assets/cube/wall-left.png",
-    right: "assets/cube/wall-right.png",
+    front: "assets/cube/wall-wood-front.png",
+    back: "assets/cube/wall-wood-back.png",
+    left: "assets/cube/wall-wood-left.png",
+    right: "assets/cube/wall-wood-right.png",
     ceiling: "assets/cube/ceiling.png",
     floor: "assets/cube/floor.png"
   }
