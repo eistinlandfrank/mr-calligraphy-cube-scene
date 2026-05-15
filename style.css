@@ -81,6 +81,16 @@ button {
   background: #11100e;
 }
 
+.main-admin-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: #11100e;
+}
+
 .cube-scene {
   --room-size: 1280px;
   --half-room: 640px;
@@ -301,6 +311,356 @@ button {
 
 .scroll-right {
   transform: translate3d(444px, -242px, -604px);
+}
+
+.main-admin-page .admin-hidden-support {
+  display: none !important;
+}
+
+.main-admin-header,
+.main-object-panel {
+  position: absolute;
+  z-index: 12;
+}
+
+.main-admin-header {
+  top: 24px;
+  left: 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: min(520px, calc(100vw - 48px));
+  color: #ffffff;
+}
+
+.main-admin-header a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(16, 16, 16, 0.62);
+  text-decoration: none;
+  backdrop-filter: blur(14px);
+}
+
+.main-admin-header span,
+.main-object-title span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.main-admin-header h1 {
+  margin: 3px 0 0;
+  font-size: 24px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.main-object-panel {
+  right: 24px;
+  top: 24px;
+  display: grid;
+  gap: 12px;
+  width: min(390px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 16px;
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 8px;
+  color: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(30, 34, 32, 0.88), rgba(14, 15, 14, 0.9)),
+    rgba(16, 16, 16, 0.86);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px);
+}
+
+.main-object-title {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.main-object-title strong {
+  font-size: 20px;
+}
+
+.main-object-field,
+.main-axis-grid label,
+.main-scale-row label {
+  display: grid;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.main-object-field select,
+.main-axis-grid input,
+.main-scale-row input {
+  width: 100%;
+  min-width: 0;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.main-object-field select {
+  padding: 0 10px;
+}
+
+.main-axis-grid input,
+.main-scale-row input {
+  padding: 0 8px;
+}
+
+.main-object-field select:focus,
+.main-axis-grid input:focus,
+.main-scale-row input:focus {
+  border-color: rgba(116, 255, 219, 0.5);
+  outline: none;
+}
+
+.main-object-meta {
+  display: grid;
+  gap: 4px;
+  min-height: 48px;
+  padding: 10px;
+  border: 1px solid rgba(116, 255, 219, 0.16);
+  border-radius: 8px;
+  background: rgba(116, 255, 219, 0.06);
+}
+
+.main-object-mode {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-object-mode button {
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.main-object-mode button:hover,
+.main-object-mode button.is-active {
+  border-color: rgba(116, 255, 219, 0.46);
+  background: rgba(47, 111, 104, 0.55);
+}
+
+.main-light-panel,
+.main-add-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.main-add-panel label {
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.main-add-grid {
+  display: grid;
+  grid-template-columns: 1fr 82px;
+  gap: 8px;
+}
+
+.main-add-panel input,
+.main-add-panel select {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.main-add-panel input[type="color"] {
+  padding: 3px;
+}
+
+.main-add-panel input[type="file"] {
+  height: auto;
+  min-height: 34px;
+  padding: 6px;
+}
+
+.main-import-status {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.main-add-panel button {
+  min-height: 34px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.36);
+  cursor: pointer;
+}
+
+.main-add-panel button:hover {
+  border-color: rgba(116, 255, 219, 0.56);
+  background: rgba(47, 111, 104, 0.58);
+}
+
+.main-light-title {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.main-light-title span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.main-light-title strong {
+  font-size: 15px;
+}
+
+.main-light-panel label {
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.main-light-panel label span {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.main-light-panel output {
+  color: #bcf5d9;
+  font-variant-numeric: tabular-nums;
+}
+
+.main-light-panel input[type="range"] {
+  width: 100%;
+  accent-color: #2f8f82;
+}
+
+.main-light-panel button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+}
+
+.main-light-panel button:hover {
+  border-color: rgba(116, 255, 219, 0.4);
+  background: rgba(47, 111, 104, 0.34);
+}
+
+.main-object-meta span {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.main-object-meta small {
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.main-axis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-scale-row {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.main-nudge-grid,
+.main-object-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-object-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.main-object-actions:first-of-type {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.main-nudge-grid button,
+.main-object-actions button,
+.main-reset-all {
+  min-height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.main-nudge-grid button:hover,
+.main-object-actions button:hover,
+.main-reset-all:hover,
+.main-admin-header a:hover {
+  border-color: rgba(255, 255, 255, 0.36);
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.main-object-actions .danger-action {
+  border-color: rgba(255, 120, 94, 0.38);
+  color: #ffd5cb;
+  background: rgba(201, 63, 47, 0.16);
+}
+
+.main-reset-all {
+  width: 100%;
+}
+
+.main-axis-grid input:disabled,
+.main-scale-row input:disabled,
+.main-object-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.main-admin-api-panel {
+  left: 24px;
+  right: auto;
+  bottom: 24px;
 }
 
 .css-role-layer {
@@ -1760,6 +2120,24 @@ body.is-model-view .notice-panel {
 }
 
 @media (max-width: 860px) {
+  .main-admin-header {
+    top: 12px;
+    left: 12px;
+  }
+
+  .main-object-panel {
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: 12px;
+    width: auto;
+    max-height: 56vh;
+  }
+
+  .main-admin-api-panel {
+    display: none;
+  }
+
   .mr-main-panel {
     left: 50%;
     width: min(460px, calc(100vw - 32px));

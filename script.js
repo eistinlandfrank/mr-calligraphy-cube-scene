@@ -411,6 +411,11 @@ const SCENES = [
 const WRAP_STEPS = false;
 const IS_FILE_MODE = window.location.protocol === "file:";
 const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v3-wood";
+const MAIN_SCENE_STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
+const MAIN_IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
+const MAIN_IMPORT_DB_STORE = "models";
+const MAIN_SCENE_MAX_UNDO = 256;
+const IS_MAIN_SCENE_ADMIN = document.body.classList.contains("main-admin-page");
 const FACE_LABELS = {
   front: "前墙",
   back: "后墙",
@@ -590,6 +595,140 @@ const EXTERNAL_ROOM_MODELS = [
     tint: [0.52, 0.34, 0.24]
   }
 ];
+const MAIN_MODEL_LABELS = {
+  "front-doorway": "正面门廊",
+  "left-window": "左侧窗户",
+  "right-window": "右侧窗户",
+  "left-bookcase": "左侧书架",
+  "right-bookcase": "右侧书架",
+  "main-writing-table": "主写字桌",
+  "left-chair": "左侧椅子",
+  "right-chair": "右侧椅子",
+  "woven-rug": "地面织毯",
+  "side-cabinet": "右侧边柜",
+  "desk-books": "桌面书本",
+  "front-left-potted-plant": "前左盆栽",
+  "right-corner-potted-plant": "右后盆栽",
+  "desk-small-plant": "桌面小植物",
+  "front-left-wall-lamp": "前左壁灯",
+  "front-right-wall-lamp": "前右壁灯",
+  "side-table-lamp": "边桌台灯",
+  "left-coat-rack": "左侧衣帽架",
+  "tea-corner-round-rug": "茶席圆毯"
+};
+const MAIN_DECOR_OBJECTS = [
+  {
+    id: "desktop-paper",
+    label: "桌面宣纸",
+    position: [0, -1.44, -3.42],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 1.95, 0.04, 1.32, [0.84, 0.78, 0.64])
+  },
+  {
+    id: "desktop-inkstone",
+    label: "桌面砚台",
+    position: [-1.38, -1.38, -3.25],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 0.52, 0.14, 0.38, [0.03, 0.025, 0.02])
+  },
+  {
+    id: "desktop-gold-brush",
+    label: "桌面金色毛笔",
+    position: [1.18, -1.36, -3.25],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 1.12, 0.055, 0.07, [0.86, 0.6, 0.22])
+  },
+  {
+    id: "desktop-red-brush",
+    label: "桌面红色毛笔",
+    position: [1.02, -1.34, -3.62],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 1, 0.05, 0.065, [0.68, 0.22, 0.1])
+  },
+  {
+    id: "front-left-scroll",
+    label: "前墙左卷轴",
+    position: [-4.85, 1.05, -7.74],
+    draw: (vertices) => addWallScroll(vertices, "front", 0, 0, 0, 0.52, 2.05, [0.68, 0.58, 0.4])
+  },
+  {
+    id: "front-right-scroll",
+    label: "前墙右卷轴",
+    position: [4.85, 1.05, -7.74],
+    draw: (vertices) => addWallScroll(vertices, "front", 0, 0, 0, 0.52, 2.05, [0.68, 0.58, 0.4])
+  },
+  {
+    id: "back-left-scroll",
+    label: "后墙左卷轴",
+    position: [-4.2, 0.84, 7.72],
+    rotation: [0, 180, 0],
+    draw: (vertices) => addWallScroll(vertices, "front", 0, 0, 0, 0.82, 1.86, [0.78, 0.69, 0.52])
+  },
+  {
+    id: "back-right-scroll",
+    label: "后墙右卷轴",
+    position: [4.2, 0.84, 7.72],
+    rotation: [0, 180, 0],
+    draw: (vertices) => addWallScroll(vertices, "front", 0, 0, 0, 0.82, 1.86, [0.78, 0.69, 0.52])
+  },
+  {
+    id: "left-wall-scroll",
+    label: "左墙卷轴",
+    position: [-7.72, 0.82, 2.45],
+    draw: (vertices) => addWallScroll(vertices, "left", 0, 0, 0, 0.78, 1.74, [0.8, 0.72, 0.55])
+  },
+  {
+    id: "right-wall-scroll",
+    label: "右墙卷轴",
+    position: [7.72, 0.82, 2.2],
+    draw: (vertices) => addWallScroll(vertices, "right", 0, 0, 0, 0.78, 1.74, [0.8, 0.72, 0.55])
+  },
+  {
+    id: "brush-rack",
+    label: "笔架",
+    position: [-2.72, -1.08, -3.05],
+    draw: (vertices) => addBrushRack(vertices, 0, 0, 0)
+  },
+  {
+    id: "ink-set",
+    label: "墨具",
+    position: [-1.42, -1.28, -3.1],
+    draw: (vertices) => addInkSet(vertices, 0, 0, 0)
+  },
+  {
+    id: "desktop-ceramic-jar",
+    label: "桌面瓷罐",
+    position: [2.52, -1.18, -3.82],
+    draw: (vertices) => addCeramicJar(vertices, 0, 0, 0, 0.28, [0.23, 0.37, 0.34])
+  },
+  {
+    id: "floor-ceramic-jar",
+    label: "地面陶罐",
+    position: [-6.92, -2.38, 5.72],
+    draw: (vertices) => addCeramicJar(vertices, 0, 0, 0, 0.34, [0.34, 0.27, 0.2])
+  },
+  {
+    id: "low-display-stand",
+    label: "低展示架",
+    position: [-6.9, -2.72, 5.72],
+    draw: (vertices) => addLowDisplayStand(vertices, 0, 0, 0)
+  },
+  {
+    id: "ceiling-beam-front",
+    label: "前侧横梁",
+    position: [0, 5.02, -4.8],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 16, 0.18, 0.24, [0.38, 0.18, 0.07])
+  },
+  {
+    id: "ceiling-beam-middle",
+    label: "中部横梁",
+    position: [0, 5.02, -0.8],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 16, 0.18, 0.24, [0.38, 0.18, 0.07])
+  },
+  {
+    id: "ceiling-beam-back",
+    label: "后侧横梁",
+    position: [0, 5.02, 3.2],
+    draw: (vertices) => addBox(vertices, 0, 0, 0, 16, 0.18, 0.24, [0.38, 0.18, 0.07])
+  }
+];
+let mainSceneLayout = loadMainSceneLayout();
 let roomConfig = normalizeRoomConfig(loadStoredRoomConfig() || window.MR_ROOM_CONFIG);
 const textureSourceNames = {};
 
@@ -644,7 +783,23 @@ const els = {
   quickPrev: document.getElementById("quickPrev"),
   quickHome: document.getElementById("quickHome"),
   quickModels: document.getElementById("quickModels"),
-  quickNext: document.getElementById("quickNext")
+  quickNext: document.getElementById("quickNext"),
+  mainObjectSelect: document.getElementById("mainObjectSelect"),
+  mainObjectType: document.getElementById("mainObjectType"),
+  mainObjectStatus: document.getElementById("mainObjectStatus"),
+  mainObjectX: document.getElementById("mainObjectX"),
+  mainObjectY: document.getElementById("mainObjectY"),
+  mainObjectZ: document.getElementById("mainObjectZ"),
+  mainObjectRotX: document.getElementById("mainObjectRotX"),
+  mainObjectRotY: document.getElementById("mainObjectRotY"),
+  mainObjectRotZ: document.getElementById("mainObjectRotZ"),
+  mainObjectScale: document.getElementById("mainObjectScale"),
+  mainObjectUndo: document.getElementById("mainObjectUndo"),
+  mainObjectReset: document.getElementById("mainObjectReset"),
+  mainObjectDelete: document.getElementById("mainObjectDelete"),
+  mainObjectRestore: document.getElementById("mainObjectRestore"),
+  mainObjectSave: document.getElementById("mainObjectSave"),
+  mainObjectResetAll: document.getElementById("mainObjectResetAll")
 };
 
 let currentIndex = 0;
@@ -654,8 +809,353 @@ let cubePitch = -7;
 let cubeScale = 1;
 let roomRenderer = null;
 let activeRoleId = null;
+let activeMainObjectId = null;
+let mainImportDbPromise = null;
+const mainSceneUndoStack = [];
 
 document.addEventListener("DOMContentLoaded", init);
+
+function loadMainSceneLayout() {
+  try {
+    const stored = window.localStorage.getItem(MAIN_SCENE_STORAGE_KEY);
+    return normalizeMainSceneLayout(stored ? JSON.parse(stored) : null);
+  } catch (error) {
+    console.warn("无法读取主场景物体布局", error);
+    return normalizeMainSceneLayout(null);
+  }
+}
+
+function normalizeMainSceneLayout(layout) {
+  return {
+    objects: layout && typeof layout.objects === "object" && layout.objects
+      ? { ...layout.objects }
+      : {},
+    customObjects: layout && Array.isArray(layout.customObjects)
+      ? layout.customObjects.map(normalizeMainCustomObject)
+      : [],
+    importedModels: layout && Array.isArray(layout.importedModels)
+      ? layout.importedModels.map(normalizeMainImportedModel)
+      : [],
+    lighting: layout && typeof layout.lighting === "object" && layout.lighting
+      ? { ...layout.lighting }
+      : undefined
+  };
+}
+
+function normalizeMainCustomObject(record = {}, index = 0) {
+  const type = ["box", "cylinder", "plane"].includes(record.type) ? record.type : "box";
+  const fallbackSize = type === "cylinder"
+    ? { radius: 0.38, height: 0.9 }
+    : type === "plane"
+      ? { width: 1.4, height: 0.08, depth: 0.9 }
+      : { width: 0.8, height: 0.8, depth: 0.8 };
+  const position = Array.isArray(record.position) ? record.position : [0, -1.05, -3.2];
+  const rotation = Array.isArray(record.rotation) ? record.rotation : [0, 0, 0];
+
+  return {
+    id: String(record.id || `custom-${index + 1}`),
+    label: String(record.label || `新增物体 ${index + 1}`),
+    type,
+    color: /^#[0-9a-f]{6}$/i.test(String(record.color || "")) ? record.color : "#8b5a2b",
+    size: {
+      ...fallbackSize,
+      ...(record.size || {})
+    },
+    position: [
+      readMainNumber(position[0], 0),
+      readMainNumber(position[1], -1.05),
+      readMainNumber(position[2], -3.2)
+    ],
+    rotation: [
+      readMainNumber(rotation[0], 0),
+      readMainNumber(rotation[1], 0),
+      readMainNumber(rotation[2], 0)
+    ],
+    scale: readMainNumber(record.scale, 1)
+  };
+}
+
+function normalizeMainImportedModel(record = {}, index = 0) {
+  const fileName = String(record.fileName || "model.glb");
+  const type = record.type === "obj" || record.type === "glb"
+    ? record.type
+    : getMainImportFileType(fileName) || "glb";
+  const position = Array.isArray(record.position) ? record.position : [0, -1.05, -3.2];
+  const rotation = Array.isArray(record.rotation) ? record.rotation : [0, 0, 0];
+  const baseScale = Number(record.baseScale);
+
+  return {
+    id: String(record.id || `imported-${index + 1}`),
+    dbKey: String(record.dbKey || record.id || `imported-${index + 1}`),
+    label: String(record.label || stripMainModelExtension(fileName) || `Imported model ${index + 1}`),
+    fileName,
+    type,
+    position: [
+      readMainNumber(position[0], 0),
+      readMainNumber(position[1], -1.05),
+      readMainNumber(position[2], -3.2)
+    ],
+    rotation: [
+      readMainNumber(rotation[0], 0),
+      readMainNumber(rotation[1], 0),
+      readMainNumber(rotation[2], 0)
+    ],
+    scale: readMainNumber(record.scale, 1),
+    baseScale: Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1
+  };
+}
+
+function getMainImportFileType(fileName) {
+  const match = String(fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  const extension = match?.[1];
+
+  return extension === "glb" || extension === "obj" ? extension : "";
+}
+
+function stripMainModelExtension(fileName) {
+  return String(fileName || "").replace(/\.(glb|obj)$/i, "");
+}
+
+function saveMainSceneLayoutToStorage() {
+  try {
+    window.localStorage.setItem(MAIN_SCENE_STORAGE_KEY, JSON.stringify(mainSceneLayout));
+  } catch (error) {
+    console.warn("无法保存主场景物体布局", error);
+  }
+}
+
+function getMainSceneObjectDefaults() {
+  return [
+    ...EXTERNAL_ROOM_MODELS.map((spec) => ({
+      id: spec.id,
+      type: "model",
+      label: MAIN_MODEL_LABELS[spec.id] || spec.id,
+      x: spec.position[0],
+      y: spec.position[1],
+      z: spec.position[2],
+      rx: Number(spec.rotationX || 0),
+      ry: Number(spec.rotationY || 0),
+      rz: Number(spec.rotationZ || 0),
+      scale: Number(spec.scale || 1)
+    })),
+    ...MAIN_DECOR_OBJECTS.map((spec) => {
+      const rotation = spec.rotation || [0, 0, 0];
+
+      return {
+        id: spec.id,
+        type: "decor",
+        label: spec.label,
+        x: spec.position[0],
+        y: spec.position[1],
+        z: spec.position[2],
+        rx: Number(rotation[0] || 0),
+        ry: Number(rotation[1] || 0),
+        rz: Number(rotation[2] || 0),
+        scale: Number(spec.scale || 1)
+      };
+    }),
+    ...mainSceneLayout.importedModels.map((spec, index) => {
+      const rotation = spec.rotation || [0, 0, 0];
+
+      return {
+        id: spec.id,
+        type: "imported",
+        label: spec.label || `Imported model ${index + 1}`,
+        x: spec.position[0],
+        y: spec.position[1],
+        z: spec.position[2],
+        rx: Number(rotation[0] || 0),
+        ry: Number(rotation[1] || 0),
+        rz: Number(rotation[2] || 0),
+        scale: Number(spec.scale || 1)
+      };
+    })
+  ];
+}
+
+function getMainSceneObjectDefault(id) {
+  return getMainSceneObjectDefaults().find((item) => item.id === id) || null;
+}
+
+function readMainNumber(value, fallback) {
+  const number = Number(value);
+
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function getMainSceneObjectState(defaultObject) {
+  const saved = mainSceneLayout.objects[defaultObject.id] || {};
+
+  return {
+    ...defaultObject,
+    x: readMainNumber(saved.x, defaultObject.x),
+    y: readMainNumber(saved.y, defaultObject.y),
+    z: readMainNumber(saved.z, defaultObject.z),
+    rx: readMainNumber(saved.rx, defaultObject.rx),
+    ry: readMainNumber(saved.ry, defaultObject.ry),
+    rz: readMainNumber(saved.rz, defaultObject.rz),
+    scale: readMainNumber(saved.scale, defaultObject.scale),
+    deleted: saved.deleted === true
+  };
+}
+
+function getMainSceneObjectStateById(id) {
+  const defaultObject = getMainSceneObjectDefault(id);
+
+  return defaultObject ? getMainSceneObjectState(defaultObject) : null;
+}
+
+function getRenderableMainModelSpecs() {
+  const builtInModels = EXTERNAL_ROOM_MODELS.map((spec) => {
+    const state = getMainSceneObjectStateById(spec.id);
+
+    return {
+      ...spec,
+      position: [state.x, state.y, state.z],
+      rotationX: state.rx,
+      rotationY: state.ry,
+      rotationZ: state.rz,
+      scale: state.scale,
+      deleted: state.deleted
+    };
+  }).filter((spec) => !spec.deleted);
+
+  return [
+    ...builtInModels,
+    ...getRenderableImportedModelSpecs()
+  ];
+}
+
+function getRenderableImportedModelSpecs() {
+  return mainSceneLayout.importedModels.map((record) => {
+    const state = getMainSceneObjectStateById(record.id);
+
+    if (!state || state.deleted) {
+      return null;
+    }
+
+    return {
+      id: record.id,
+      dbKey: record.dbKey,
+      fileName: record.fileName,
+      type: record.type,
+      position: [state.x, state.y, state.z],
+      rotationX: state.rx,
+      rotationY: state.ry,
+      rotationZ: state.rz,
+      scale: state.scale * readMainNumber(record.baseScale, 1),
+      tint: [1, 1, 1],
+      color: record.color || "#c8b08a"
+    };
+  }).filter(Boolean);
+}
+
+function isMainModelObject(id) {
+  return EXTERNAL_ROOM_MODELS.some((spec) => spec.id === id) ||
+    mainSceneLayout.importedModels.some((spec) => spec.id === id);
+}
+
+function getMainLayoutEntry(id) {
+  const entry = mainSceneLayout.objects[id];
+
+  return entry ? { ...entry } : null;
+}
+
+function pushMainSceneUndo(id) {
+  if (!IS_MAIN_SCENE_ADMIN || !id) {
+    return;
+  }
+
+  mainSceneUndoStack.push({
+    id,
+    entry: getMainLayoutEntry(id)
+  });
+
+  if (mainSceneUndoStack.length > MAIN_SCENE_MAX_UNDO) {
+    mainSceneUndoStack.shift();
+  }
+}
+
+function undoMainSceneChange() {
+  const snapshot = mainSceneUndoStack.pop();
+
+  if (!snapshot) {
+    return;
+  }
+
+  if (snapshot.entry) {
+    mainSceneLayout.objects[snapshot.id] = snapshot.entry;
+  } else {
+    delete mainSceneLayout.objects[snapshot.id];
+  }
+
+  saveMainSceneLayoutToStorage();
+  syncMainSceneLayout(snapshot.id);
+  selectMainSceneObject(snapshot.id);
+}
+
+function setMainSceneObjectState(id, patch, options = {}) {
+  const current = getMainSceneObjectStateById(id);
+
+  if (!current) {
+    return null;
+  }
+
+  if (options.recordUndo !== false) {
+    pushMainSceneUndo(id);
+  }
+
+  const next = {
+    x: readMainNumber(patch.x, current.x),
+    y: readMainNumber(patch.y, current.y),
+    z: readMainNumber(patch.z, current.z),
+    rx: readMainNumber(patch.rx, current.rx),
+    ry: readMainNumber(patch.ry, current.ry),
+    rz: readMainNumber(patch.rz, current.rz),
+    scale: readMainNumber(patch.scale, current.scale),
+    deleted: patch.deleted === undefined ? current.deleted : patch.deleted === true
+  };
+
+  mainSceneLayout.objects[id] = next;
+  saveMainSceneLayoutToStorage();
+  syncMainSceneLayout(id);
+
+  return getMainSceneObjectStateById(id);
+}
+
+function resetMainSceneObject(id) {
+  if (!getMainSceneObjectDefault(id)) {
+    return;
+  }
+
+  pushMainSceneUndo(id);
+  delete mainSceneLayout.objects[id];
+  saveMainSceneLayoutToStorage();
+  syncMainSceneLayout(id);
+  selectMainSceneObject(id);
+}
+
+function resetAllMainSceneObjects() {
+  const selectedId = activeMainObjectId;
+
+  mainSceneUndoStack.length = 0;
+  mainSceneLayout = normalizeMainSceneLayout(null);
+  saveMainSceneLayoutToStorage();
+  syncMainSceneLayout();
+  selectMainSceneObject(selectedId || getMainSceneObjectDefaults()[0]?.id);
+  showNotice("主场景物体布局已恢复默认。");
+}
+
+function syncMainSceneLayout(changedId) {
+  renderMainSceneObjectSelect();
+  renderMainSceneObjectEditor();
+
+  if (roomRenderer?.setMainSceneLayout) {
+    roomRenderer.setMainSceneLayout(changedId);
+  } else {
+    updateCubeTransform();
+  }
+}
 
 function loadStoredRoomConfig() {
   try {
@@ -782,6 +1282,7 @@ function init() {
   initInfoPanelDrag();
   installRoomApi();
   bindSceneEditorControls();
+  bindMainSceneAdminControls();
   applyRoomConfigToCssCube();
   buildSceneConfigPanel();
   initCubeControls();
@@ -791,6 +1292,16 @@ function init() {
     window.setTimeout(focusModelView, 900);
   }
   window.addEventListener("keydown", handleKeyboardSceneChange, true);
+  window.addEventListener("storage", handleMainSceneStorageChange);
+}
+
+function handleMainSceneStorageChange(event) {
+  if (event.key !== MAIN_SCENE_STORAGE_KEY) {
+    return;
+  }
+
+  mainSceneLayout = loadMainSceneLayout();
+  syncMainSceneLayout();
 }
 
 function initCubeControls() {
@@ -895,7 +1406,10 @@ function installRoomApi() {
 
       return setRoomRoles([...roomConfig.roles, nextRole]);
     },
-    focusRole
+    focusRole,
+    getMainSceneLayout: () => cloneConfig(mainSceneLayout),
+    setMainSceneObject: (id, patch) => setMainSceneObjectState(id, patch, { recordUndo: false }),
+    resetMainSceneObject
   };
 }
 
@@ -912,6 +1426,205 @@ function bindSceneEditorControls() {
     event.preventDefault();
     saveRoleFromEditor();
   });
+}
+
+function bindMainSceneAdminControls() {
+  if (!els.mainObjectSelect) {
+    return;
+  }
+
+  renderMainSceneObjectSelect();
+  selectMainSceneObject(getMainSceneObjectDefaults()[0]?.id);
+
+  els.mainObjectSelect.addEventListener("change", () => {
+    selectMainSceneObject(els.mainObjectSelect.value);
+  });
+
+  [
+    els.mainObjectX,
+    els.mainObjectY,
+    els.mainObjectZ,
+    els.mainObjectRotX,
+    els.mainObjectRotY,
+    els.mainObjectRotZ,
+    els.mainObjectScale
+  ].forEach((input) => {
+    input?.addEventListener("change", applyMainSceneEditorInputs);
+  });
+
+  document.querySelectorAll("[data-main-nudge]").forEach((button) => {
+    button.addEventListener("click", () => nudgeMainSceneObject(button));
+  });
+
+  els.mainObjectUndo?.addEventListener("click", undoMainSceneChange);
+  els.mainObjectReset?.addEventListener("click", () => resetMainSceneObject(activeMainObjectId));
+  els.mainObjectDelete?.addEventListener("click", () => {
+    const current = getMainSceneObjectStateById(activeMainObjectId);
+    if (current) {
+      setMainSceneObjectState(current.id, { ...current, deleted: true });
+      selectMainSceneObject(current.id);
+    }
+  });
+  els.mainObjectRestore?.addEventListener("click", () => {
+    const current = getMainSceneObjectStateById(activeMainObjectId);
+    if (current) {
+      setMainSceneObjectState(current.id, { ...current, deleted: false });
+      selectMainSceneObject(current.id);
+    }
+  });
+  els.mainObjectSave?.addEventListener("click", () => {
+    saveMainSceneLayoutToStorage();
+    showNotice("主场景物体参数已保存，演示页会自动读取。");
+  });
+  els.mainObjectResetAll?.addEventListener("click", resetAllMainSceneObjects);
+  window.addEventListener("keydown", handleMainSceneAdminKeydown, true);
+}
+
+function renderMainSceneObjectSelect() {
+  if (!els.mainObjectSelect) {
+    return;
+  }
+
+  const selectedId = activeMainObjectId || els.mainObjectSelect.value;
+  els.mainObjectSelect.innerHTML = "";
+
+  getMainSceneObjectDefaults().forEach((object) => {
+    const state = getMainSceneObjectState(object);
+    const option = document.createElement("option");
+    const typeLabel = object.type === "model" ? "模型" : object.type === "imported" ? "导入" : "装饰";
+
+    option.value = object.id;
+    option.textContent = `${typeLabel} / ${object.label}${state.deleted ? "（已隐藏）" : ""}`;
+    els.mainObjectSelect.appendChild(option);
+  });
+
+  if (selectedId && getMainSceneObjectDefault(selectedId)) {
+    els.mainObjectSelect.value = selectedId;
+  }
+}
+
+function selectMainSceneObject(id) {
+  const state = getMainSceneObjectStateById(id);
+
+  if (!state || !els.mainObjectSelect) {
+    return;
+  }
+
+  activeMainObjectId = state.id;
+  els.mainObjectSelect.value = state.id;
+  renderMainSceneObjectEditor();
+}
+
+function renderMainSceneObjectEditor() {
+  if (!els.mainObjectSelect || !activeMainObjectId) {
+    return;
+  }
+
+  const state = getMainSceneObjectStateById(activeMainObjectId);
+
+  if (!state) {
+    return;
+  }
+
+  const deleted = state.deleted === true;
+  const typeText = state.type === "model" ? "WebGL GLB 模型" : "主场景几何装饰";
+
+  if (els.mainObjectType) {
+    els.mainObjectType.textContent = typeText;
+  }
+  if (els.mainObjectStatus) {
+    els.mainObjectStatus.textContent = deleted ? "当前已隐藏，可点击恢复物体。" : "调整后会自动同步到演示页。";
+  }
+
+  setMainInputValue(els.mainObjectX, state.x);
+  setMainInputValue(els.mainObjectY, state.y);
+  setMainInputValue(els.mainObjectZ, state.z);
+  setMainInputValue(els.mainObjectRotX, state.rx);
+  setMainInputValue(els.mainObjectRotY, state.ry);
+  setMainInputValue(els.mainObjectRotZ, state.rz);
+  setMainInputValue(els.mainObjectScale, state.scale);
+
+  [
+    els.mainObjectX,
+    els.mainObjectY,
+    els.mainObjectZ,
+    els.mainObjectRotX,
+    els.mainObjectRotY,
+    els.mainObjectRotZ,
+    els.mainObjectScale
+  ].forEach((input) => {
+    if (input) {
+      input.disabled = deleted;
+    }
+  });
+
+  if (els.mainObjectDelete) {
+    els.mainObjectDelete.disabled = deleted;
+  }
+  if (els.mainObjectRestore) {
+    els.mainObjectRestore.disabled = !deleted;
+  }
+}
+
+function setMainInputValue(input, value) {
+  if (input) {
+    input.value = Number(value).toFixed(input === els.mainObjectScale ? 3 : 2);
+  }
+}
+
+function applyMainSceneEditorInputs() {
+  const current = getMainSceneObjectStateById(activeMainObjectId);
+
+  if (!current || current.deleted) {
+    return;
+  }
+
+  setMainSceneObjectState(current.id, {
+    x: Number(els.mainObjectX.value),
+    y: Number(els.mainObjectY.value),
+    z: Number(els.mainObjectZ.value),
+    rx: Number(els.mainObjectRotX.value),
+    ry: Number(els.mainObjectRotY.value),
+    rz: Number(els.mainObjectRotZ.value),
+    scale: Number(els.mainObjectScale.value),
+    deleted: current.deleted
+  });
+  selectMainSceneObject(current.id);
+}
+
+function nudgeMainSceneObject(button) {
+  const current = getMainSceneObjectStateById(activeMainObjectId);
+
+  if (!current || current.deleted) {
+    return;
+  }
+
+  const axis = button.dataset.mainNudge;
+  const step = Number(button.dataset.step || 0);
+
+  if (!axis || !Number.isFinite(step)) {
+    return;
+  }
+
+  setMainSceneObjectState(current.id, {
+    ...current,
+    [axis]: Number(current[axis]) + step
+  });
+  selectMainSceneObject(current.id);
+}
+
+function handleMainSceneAdminKeydown(event) {
+  if (!IS_MAIN_SCENE_ADMIN) {
+    return;
+  }
+
+  const key = event.key.toLowerCase();
+
+  if ((event.ctrlKey || event.metaKey) && key === "z") {
+    event.preventDefault();
+    event.stopPropagation();
+    undoMainSceneChange();
+  }
 }
 
 function setRoomTextures(textures = {}) {
@@ -1249,24 +1962,43 @@ function createRoomRenderer(canvas) {
   };
   const roomMeshes = createRoomTextureMeshes(gl);
   let modelVertices = [];
-  let furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices);
+  let hasRenderableModels = true;
+  let furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, true);
   const fallbackTexture = createSolidTexture(gl, [255, 255, 255, 255]);
   const textures = {};
 
   loadTextures(roomConfig.textures);
-  loadRoomModels(EXTERNAL_ROOM_MODELS)
-    .then((result) => {
-      modelVertices = result.vertices;
-      furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices);
-      window.MR_LOADED_MODEL_COUNT = result.loaded;
-      window.MR_LOADED_MODEL_VERTICES = modelVertices.length / 11;
-      showNotice(`已加载 ${result.loaded} 个开源 GLB 模型。`);
+  rebuildRoomModelMesh(true);
+
+  function rebuildRoomModelMesh(showLoadingFallback = false) {
+    const modelSpecs = getRenderableMainModelSpecs();
+
+    hasRenderableModels = modelSpecs.length > 0;
+    if (!hasRenderableModels) {
+      modelVertices = [];
+      furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, false);
       updateCubeTransform();
-    })
-    .catch((error) => {
-      console.error(error);
-      showNotice("开源 3D 模型加载失败，已保留基础几何家具。");
-    });
+      return Promise.resolve();
+    }
+
+    if (showLoadingFallback) {
+      furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, true);
+    }
+
+    return loadRoomModels(modelSpecs)
+      .then((result) => {
+        modelVertices = result.vertices;
+        furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, hasRenderableModels);
+        window.MR_LOADED_MODEL_COUNT = result.loaded;
+        window.MR_LOADED_MODEL_VERTICES = modelVertices.length / 11;
+        showNotice(`已加载 ${result.loaded} 个 3D 模型。`);
+        updateCubeTransform();
+      })
+      .catch((error) => {
+        console.error(error);
+        showNotice("开源 3D 模型加载失败，已保留基础几何家具。");
+      });
+  }
 
   function loadTextures(nextTextures) {
     Object.entries(nextTextures).forEach(([name, src]) => {
@@ -1277,7 +2009,7 @@ function createRoomRenderer(canvas) {
   }
 
   function setRoles(roles) {
-    furnitureMesh = createFurnitureMesh(gl, roles, modelVertices);
+    furnitureMesh = createFurnitureMesh(gl, roles, modelVertices, hasRenderableModels);
   }
 
   function setTextures(nextTextures) {
@@ -1285,6 +2017,16 @@ function createRoomRenderer(canvas) {
     Object.keys(nextTextures).forEach((face) => {
       textureSourceNames[face] = textureSourceNames[face] || nextTextures[face];
     });
+  }
+
+  function setMainSceneLayout(changedId) {
+    if (!changedId || isMainModelObject(changedId)) {
+      rebuildRoomModelMesh(false);
+      return;
+    }
+
+    furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, hasRenderableModels);
+    updateCubeTransform();
   }
 
   Object.entries(roomConfig.textures).forEach(([name, src]) => {
@@ -1321,7 +2063,7 @@ function createRoomRenderer(canvas) {
     drawRoomMesh(gl, locations, furnitureMesh, fallbackTexture, false);
   }
 
-  return { render, setTextures, setRoles };
+  return { render, setTextures, setRoles, setMainSceneLayout };
 }
 
 const ROOM_VERTEX_SHADER = `
@@ -1493,18 +2235,98 @@ function createRoomTextureMeshes(gl) {
   ];
 }
 
+const roomModelBufferCache = new Map();
+
+async function fetchRoomModelBuffer(src) {
+  if (roomModelBufferCache.has(src)) {
+    return roomModelBufferCache.get(src).slice(0);
+  }
+
+  const response = await fetch(src);
+
+  if (!response.ok) {
+    throw new Error(`Model load failed: ${src}`);
+  }
+
+  const buffer = await response.arrayBuffer();
+  roomModelBufferCache.set(src, buffer.slice(0));
+
+  return buffer;
+}
+
+function openMainImportDb() {
+  if (mainImportDbPromise) {
+    return mainImportDbPromise;
+  }
+
+  mainImportDbPromise = new Promise((resolve, reject) => {
+    if (!window.indexedDB) {
+      reject(new Error("IndexedDB is not available in this browser."));
+      return;
+    }
+
+    const request = window.indexedDB.open(MAIN_IMPORT_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(MAIN_IMPORT_DB_STORE)) {
+        db.createObjectStore(MAIN_IMPORT_DB_STORE, { keyPath: "key" });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error("Could not open imported model storage."));
+  });
+
+  return mainImportDbPromise;
+}
+
+async function readMainImportedModel(record) {
+  const db = await openMainImportDb();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(MAIN_IMPORT_DB_STORE, "readonly");
+    const store = transaction.objectStore(MAIN_IMPORT_DB_STORE);
+    const request = store.get(record.dbKey);
+
+    request.onsuccess = () => resolve(request.result || null);
+    request.onerror = () => reject(request.error || new Error("Could not read imported model."));
+  });
+}
+
+async function getRoomModelBuffer(spec) {
+  if (!spec.dbKey) {
+    return fetchRoomModelBuffer(spec.src);
+  }
+
+  const cacheKey = `idb:${spec.dbKey}`;
+  if (roomModelBufferCache.has(cacheKey)) {
+    return roomModelBufferCache.get(cacheKey).slice(0);
+  }
+
+  const stored = await readMainImportedModel(spec);
+  if (!stored?.arrayBuffer) {
+    throw new Error(`Imported model data missing: ${spec.label || spec.fileName || spec.id}`);
+  }
+
+  roomModelBufferCache.set(cacheKey, stored.arrayBuffer.slice(0));
+  return stored.arrayBuffer.slice(0);
+}
+
 async function loadRoomModels(modelSpecs) {
+  if (!modelSpecs.length) {
+    return {
+      vertices: [],
+      loaded: 0
+    };
+  }
+
   const chunks = await Promise.all(modelSpecs.map(async (spec) => {
     try {
-      const response = await fetch(spec.src);
-
-      if (!response.ok) {
-        throw new Error(`Model load failed: ${spec.src}`);
-      }
-
+      const buffer = await getRoomModelBuffer(spec);
       return {
         id: spec.id,
-        vertices: parseGlbModel(await response.arrayBuffer(), spec)
+        vertices: spec.type === "obj"
+          ? parseObjModel(buffer, spec)
+          : parseGlbModel(buffer, spec)
       };
     } catch (error) {
       console.warn(error);
@@ -1519,7 +2341,7 @@ async function loadRoomModels(modelSpecs) {
   const vertices = loadedChunks.flatMap((chunk) => chunk.vertices);
 
   if (!vertices.length) {
-    throw new Error("No GLB models could be loaded.");
+    throw new Error("No 3D models could be loaded.");
   }
 
   return {
@@ -1533,7 +2355,7 @@ function parseGlbModel(arrayBuffer, spec) {
   const magic = dataView.getUint32(0, true);
 
   if (magic !== 0x46546c67) {
-    throw new Error(`Invalid GLB file: ${spec.src}`);
+    throw new Error(`Invalid GLB file: ${spec.src || spec.fileName || spec.id}`);
   }
 
   let offset = 12;
@@ -1556,7 +2378,7 @@ function parseGlbModel(arrayBuffer, spec) {
   }
 
   if (!gltf || !binaryChunk) {
-    throw new Error(`Missing GLB chunks: ${spec.src}`);
+    throw new Error(`Missing GLB chunks: ${spec.src || spec.fileName || spec.id}`);
   }
 
   const bounds = getGlbPositionBounds(gltf);
@@ -1591,6 +2413,117 @@ function parseGlbModel(arrayBuffer, spec) {
   });
 
   return vertices;
+}
+
+function parseObjModel(arrayBuffer, spec) {
+  const text = new TextDecoder("utf-8").decode(arrayBuffer);
+  const positions = [];
+  const faces = [];
+
+  text.split(/\r?\n/).forEach((rawLine) => {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) {
+      return;
+    }
+
+    const parts = line.split(/\s+/);
+    const command = parts.shift();
+
+    if (command === "v" && parts.length >= 3) {
+      positions.push([
+        Number(parts[0]),
+        Number(parts[1]),
+        Number(parts[2])
+      ]);
+      return;
+    }
+
+    if (command === "f" && parts.length >= 3) {
+      const indices = parts
+        .map((part) => parseObjFaceIndex(part, positions.length))
+        .filter((index) => index >= 0 && index < positions.length);
+
+      for (let i = 1; i < indices.length - 1; i += 1) {
+        faces.push([indices[0], indices[i], indices[i + 1]]);
+      }
+    }
+  });
+
+  if (!positions.length || !faces.length) {
+    throw new Error(`OBJ has no readable mesh: ${spec.fileName || spec.id}`);
+  }
+
+  const bounds = getObjPositionBounds(positions);
+  const color = spec.color ? hexToRgb(spec.color) : [0.72, 0.5, 0.32];
+  const rx = degToRad(spec.rotationX || 0);
+  const ry = degToRad(spec.rotationY || 0);
+  const rz = degToRad(spec.rotationZ || 0);
+  const vertices = [];
+
+  faces.forEach((face) => {
+    const triangle = face.map((index) => transformObjPosition(positions[index], bounds, spec, rx, ry, rz));
+    const normal = normalizeVector(crossVector(
+      subtractVector(triangle[1], triangle[0]),
+      subtractVector(triangle[2], triangle[0])
+    ));
+
+    pushVertex(vertices, triangle[0], [0, 0], color, normal);
+    pushVertex(vertices, triangle[1], [1, 0], color, normal);
+    pushVertex(vertices, triangle[2], [0, 1], color, normal);
+  });
+
+  return vertices;
+}
+
+function parseObjFaceIndex(token, vertexCount) {
+  const value = Number.parseInt(String(token).split("/")[0], 10);
+
+  if (!Number.isFinite(value) || value === 0) {
+    return -1;
+  }
+
+  return value > 0 ? value - 1 : vertexCount + value;
+}
+
+function getObjPositionBounds(positions) {
+  const min = [Infinity, Infinity, Infinity];
+  const max = [-Infinity, -Infinity, -Infinity];
+
+  positions.forEach((position) => {
+    for (let axis = 0; axis < 3; axis += 1) {
+      min[axis] = Math.min(min[axis], position[axis]);
+      max[axis] = Math.max(max[axis], position[axis]);
+    }
+  });
+
+  return {
+    centerX: (min[0] + max[0]) / 2,
+    centerZ: (min[2] + max[2]) / 2,
+    minY: min[1]
+  };
+}
+
+function transformObjPosition(position, bounds, spec, rx, ry, rz) {
+  const scale = spec.scale || 1;
+  const rotated = rotateVectorWithRadians([
+    (position[0] - bounds.centerX) * scale,
+    (position[1] - bounds.minY) * scale,
+    (position[2] - bounds.centerZ) * scale
+  ], rx, ry, rz);
+
+  return [
+    spec.position[0] + rotated[0],
+    spec.position[1] + rotated[1],
+    spec.position[2] + rotated[2]
+  ];
+}
+
+function subtractVector(a, b) {
+  return [
+    a[0] - b[0],
+    a[1] - b[1],
+    a[2] - b[2]
+  ];
 }
 
 function getGlbPositionBounds(gltf) {
@@ -1710,36 +2643,38 @@ function pushGlbModelVertex(vertices, position, normal, color, bounds, spec) {
   }
 
   const scale = spec.scale || 1;
-  const rotation = degToRad(spec.rotationY || 0);
-  const cos = Math.cos(rotation);
-  const sin = Math.sin(rotation);
   const localX = (position[0] - bounds.centerX) * scale;
   const localY = (position[1] - bounds.minY) * scale;
   const localZ = (position[2] - bounds.centerZ) * scale;
-  const rotatedX = localX * cos - localZ * sin;
-  const rotatedZ = localX * sin + localZ * cos;
+  const rotatedPosition = rotateVectorWithRadians(
+    [localX, localY, localZ],
+    degToRad(spec.rotationX || 0),
+    degToRad(spec.rotationY || 0),
+    degToRad(spec.rotationZ || 0)
+  );
   const finalPosition = [
-    spec.position[0] + rotatedX,
-    spec.position[1] + localY,
-    spec.position[2] + rotatedZ
+    spec.position[0] + rotatedPosition[0],
+    spec.position[1] + rotatedPosition[1],
+    spec.position[2] + rotatedPosition[2]
   ];
   const sourceNormal = normal || [0, 1, 0];
-  const finalNormal = normalizeVector([
-    sourceNormal[0] * cos - sourceNormal[2] * sin,
-    sourceNormal[1],
-    sourceNormal[0] * sin + sourceNormal[2] * cos
-  ]);
+  const finalNormal = normalizeVector(rotateVectorWithRadians(
+    sourceNormal,
+    degToRad(spec.rotationX || 0),
+    degToRad(spec.rotationY || 0),
+    degToRad(spec.rotationZ || 0)
+  ));
 
   pushVertex(vertices, finalPosition, [0, 0], color, finalNormal);
 }
 
-function createFurnitureMesh(gl, roles = [], modelVertices = []) {
+function createFurnitureMesh(gl, roles = [], modelVertices = [], showFallbackFurniture = true) {
   const vertices = [];
   const hasExternalModels = modelVertices.length > 0;
 
   if (hasExternalModels) {
     appendVertices(vertices, modelVertices);
-  } else {
+  } else if (showFallbackFurniture) {
     addBox(vertices, 0, -1.58, -3.42, 4.75, 0.18, 2.05, [0.52, 0.27, 0.1]);
     addBox(vertices, -2.1, -2.36, -4.18, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
     addBox(vertices, 2.1, -2.36, -4.18, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
@@ -1747,12 +2682,7 @@ function createFurnitureMesh(gl, roles = [], modelVertices = []) {
     addBox(vertices, 2.1, -2.36, -2.66, 0.2, 1.42, 0.2, [0.36, 0.18, 0.07]);
   }
 
-  addBox(vertices, 0, -1.44, -3.42, 1.95, 0.04, 1.32, [0.84, 0.78, 0.64]);
-  addBox(vertices, -1.38, -1.38, -3.25, 0.52, 0.14, 0.38, [0.03, 0.025, 0.02]);
-  addBox(vertices, 1.18, -1.36, -3.25, 1.12, 0.055, 0.07, [0.86, 0.6, 0.22]);
-  addBox(vertices, 1.02, -1.34, -3.62, 1, 0.05, 0.065, [0.68, 0.22, 0.1]);
-
-  if (!hasExternalModels) {
+  if (!hasExternalModels && showFallbackFurniture) {
     addBox(vertices, -3.55, -2.12, -2.05, 0.95, 0.35, 0.92, [0.45, 0.24, 0.1]);
     addBox(vertices, -3.55, -1.46, -2.42, 0.95, 0.92, 0.18, [0.38, 0.2, 0.09]);
     addBox(vertices, 3.55, -2.12, -2.05, 0.95, 0.35, 0.92, [0.45, 0.24, 0.1]);
@@ -1766,14 +2696,8 @@ function createFurnitureMesh(gl, roles = [], modelVertices = []) {
     addBox(vertices, 7.3, -0.15, -1.6, 0.28, 0.16, 3.0, [0.31, 0.16, 0.07]);
   }
 
-  addBox(vertices, -4.85, 1.05, -7.74, 0.52, 2.05, 0.06, [0.68, 0.58, 0.4]);
-  addBox(vertices, 4.85, 1.05, -7.74, 0.52, 2.05, 0.06, [0.68, 0.58, 0.4]);
-
-  addBox(vertices, 0, 5.02, -4.8, 16, 0.18, 0.24, [0.38, 0.18, 0.07]);
-  addBox(vertices, 0, 5.02, -0.8, 16, 0.18, 0.24, [0.38, 0.18, 0.07]);
-  addBox(vertices, 0, 5.02, 3.2, 16, 0.18, 0.24, [0.38, 0.18, 0.07]);
-
   addCalligraphyDecor(vertices);
+  addCustomMainSceneObjects(vertices);
 
   roles
     .filter((role) => role.visible)
@@ -1788,19 +2712,118 @@ function appendVertices(target, source) {
   }
 }
 
-function addCalligraphyDecor(vertices) {
-  addWallScroll(vertices, "front", -4.55, 1.08, -7.72, 0.84, 2.08, [0.82, 0.74, 0.56]);
-  addWallScroll(vertices, "front", 4.55, 1.08, -7.72, 0.84, 2.08, [0.82, 0.74, 0.56]);
-  addWallScroll(vertices, "back", -4.2, 0.84, 7.72, 0.82, 1.86, [0.78, 0.69, 0.52]);
-  addWallScroll(vertices, "back", 4.2, 0.84, 7.72, 0.82, 1.86, [0.78, 0.69, 0.52]);
-  addWallScroll(vertices, "left", -7.72, 0.82, 2.45, 0.78, 1.74, [0.8, 0.72, 0.55]);
-  addWallScroll(vertices, "right", 7.72, 0.82, 2.2, 0.78, 1.74, [0.8, 0.72, 0.55]);
+function appendTransformedVertices(target, source, transform) {
+  const scale = Number(transform.scale || 1);
+  const rx = degToRad(transform.rx || 0);
+  const ry = degToRad(transform.ry || 0);
+  const rz = degToRad(transform.rz || 0);
 
-  addBrushRack(vertices, -2.72, -1.08, -3.05);
-  addInkSet(vertices, -1.42, -1.28, -3.1);
-  addCeramicJar(vertices, 2.52, -1.18, -3.82, 0.28, [0.23, 0.37, 0.34]);
-  addCeramicJar(vertices, -6.92, -2.38, 5.72, 0.34, [0.34, 0.27, 0.2]);
-  addLowDisplayStand(vertices, -6.9, -2.72, 5.72);
+  for (let i = 0; i < source.length; i += 11) {
+    const rotatedPosition = rotateVectorWithRadians(
+      [source[i] * scale, source[i + 1] * scale, source[i + 2] * scale],
+      rx,
+      ry,
+      rz
+    );
+    const rotatedNormal = normalizeVector(rotateVectorWithRadians(
+      [source[i + 8], source[i + 9], source[i + 10]],
+      rx,
+      ry,
+      rz
+    ));
+
+    target.push(
+      transform.x + rotatedPosition[0],
+      transform.y + rotatedPosition[1],
+      transform.z + rotatedPosition[2],
+      source[i + 3],
+      source[i + 4],
+      source[i + 5],
+      source[i + 6],
+      source[i + 7],
+      rotatedNormal[0],
+      rotatedNormal[1],
+      rotatedNormal[2]
+    );
+  }
+}
+
+function rotateVectorWithRadians(vector, rx, ry, rz) {
+  const cx = Math.cos(rx);
+  const sx = Math.sin(rx);
+  const cy = Math.cos(ry);
+  const sy = Math.sin(ry);
+  const cz = Math.cos(rz);
+  const sz = Math.sin(rz);
+
+  const x1 = vector[0];
+  const y1 = vector[1] * cx - vector[2] * sx;
+  const z1 = vector[1] * sx + vector[2] * cx;
+  const x2 = x1 * cy - z1 * sy;
+  const y2 = y1;
+  const z2 = x1 * sy + z1 * cy;
+
+  return [
+    x2 * cz - y2 * sz,
+    x2 * sz + y2 * cz,
+    z2
+  ];
+}
+
+function addCalligraphyDecor(vertices) {
+  MAIN_DECOR_OBJECTS.forEach((spec) => {
+    const state = getMainSceneObjectStateById(spec.id);
+    const localVertices = [];
+
+    if (!state || state.deleted) {
+      return;
+    }
+
+    spec.draw(localVertices);
+    appendTransformedVertices(vertices, localVertices, state);
+  });
+}
+
+function addCustomMainSceneObjects(vertices) {
+  mainSceneLayout.customObjects.forEach((spec) => {
+    const saved = mainSceneLayout.objects[spec.id] || {};
+    const color = hexToRgb(spec.color);
+    const localVertices = [];
+    const state = {
+      x: readMainNumber(saved.x, spec.position[0]),
+      y: readMainNumber(saved.y, spec.position[1]),
+      z: readMainNumber(saved.z, spec.position[2]),
+      rx: readMainNumber(saved.rx, spec.rotation[0]),
+      ry: readMainNumber(saved.ry, spec.rotation[1]),
+      rz: readMainNumber(saved.rz, spec.rotation[2]),
+      scale: readMainNumber(saved.scale, spec.scale),
+      deleted: saved.deleted === true
+    };
+
+    if (state.deleted) {
+      return;
+    }
+
+    if (spec.type === "cylinder") {
+      addCylinder(
+        localVertices,
+        0,
+        0,
+        0,
+        readMainNumber(spec.size.radius, 0.38),
+        readMainNumber(spec.size.height, 0.9),
+        color,
+        28
+      );
+    } else {
+      const width = readMainNumber(spec.size.width, spec.type === "plane" ? 1.4 : 0.8);
+      const height = readMainNumber(spec.size.height, spec.type === "plane" ? 0.08 : 0.8);
+      const depth = readMainNumber(spec.size.depth, spec.type === "plane" ? 0.9 : 0.8);
+      addBox(localVertices, 0, 0, 0, width, height, depth, color);
+    }
+
+    appendTransformedVertices(vertices, localVertices, state);
+  });
 }
 
 function addWallScroll(vertices, face, x, y, z, width, height, paperColor) {
@@ -2261,6 +3284,10 @@ function goNext() {
 }
 
 function handleKeyboardSceneChange(event) {
+  if (IS_MAIN_SCENE_ADMIN) {
+    return;
+  }
+
   const tagName = event.target.tagName;
   const isTyping = tagName === "INPUT" || tagName === "TEXTAREA" || event.target.isContentEditable;
 
