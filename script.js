@@ -5,7 +5,7 @@ const SCENES = [
     description: "进入 MR 书法教练主界面，确认学习路径、当前任务和实时反馈。",
     focus: "系统首页把学习路径、单字练习、实时反馈和历史记录集中在同一空间。",
     metrics: [
-      ["综合评分", "86分"],
+      ["综合评分", "未评分"],
       ["结构", "88"],
       ["笔画", "85"],
       ["笔法", "87"],
@@ -126,7 +126,7 @@ const SCENES = [
     description: "在临摹过程中接收笔画方向、长度和力度提醒，并实时查看评分。",
     focus: "这一屏把范字、临摹模式、当前笔画和综合评分组合成训练工作台。",
     metrics: [
-      ["综合评分", "86分"],
+      ["综合评分", "未评分"],
       ["结构", "88"],
       ["笔画", "85"],
       ["笔法", "87"],
@@ -212,7 +212,7 @@ const SCENES = [
       ["风格", "楷书"],
       ["用笔", "中锋为主"],
       ["尺寸", "四尺三开"],
-      ["综合评分", "92分"]
+      ["综合评分", "未评分"]
     ],
     actions: [
       { label: "切换行书", response: "已切换到行书风格，保存作品时会写入本机作品记录。" },
@@ -239,7 +239,7 @@ const SCENES = [
         pitch: 2,
         yaw: 43,
         body: "建议聚焦重心稳定、中锋行笔、章法经营和气韵连贯，形成下一轮练习目标。",
-        tags: ["建议", "92分", "下一步"]
+        tags: ["建议", "未评分", "下一步"]
       }
     ]
   },
@@ -249,11 +249,11 @@ const SCENES = [
     description: "查看练习时长、练习字数、掌握进度和最近学习记录。",
     focus: "这是一张学习仪表盘，用数据说明长期练习如何积累。",
     metrics: [
-      ["学习时长", "24.5小时"],
-      ["练习汉字", "256字"],
-      ["掌握字帖", "12篇"],
-      ["本周进度", "85%"],
-      ["掌握进度", "25.6%"]
+      ["学习时长", "0分钟"],
+      ["真实练习", "0次"],
+      ["保存作品", "0幅"],
+      ["报告数量", "0份"],
+      ["平均评分", "未评分"]
     ],
     actions: [
       { label: "筛选优秀记录", response: "已筛选：永 92、和 88、礼 90 适合作为复盘样本。" },
@@ -265,21 +265,21 @@ const SCENES = [
         label: "数据总览",
         pitch: 4,
         yaw: -32,
-        body: "24.5 小时、256 字、12 篇字帖三项数据共同描述学习投入。",
+        body: "本机练习、作品和报告记录共同描述学习投入；没有真实记录时不显示静态成绩。",
         tags: ["时长", "练习量", "字帖"]
       },
       {
         label: "学习曲线",
         pitch: 6,
         yaw: 0,
-        body: "进度曲线从 05.10 到 06.07 持续上升，本周进度达到 85%。",
+        body: "进度曲线来自本机真实评分和按日聚合记录；没有评分时保持空状态。",
         tags: ["曲线", "进度", "趋势"]
       },
       {
         label: "最近记录",
         pitch: 3,
         yaw: 33,
-        body: "最近练习包括“永、和、中、礼”，每条记录带时间、综合评分和等级。",
+        body: "最近练习会读取本机练习、作品和报告条目，每条记录带时间、综合评分和复盘入口。",
         tags: ["记录", "评分", "复盘入口"]
       }
     ]
@@ -291,9 +291,9 @@ const SCENES = [
     focus: "复盘层把八个笔画逐条总结，同时给出成长曲线和分享入口。",
     metrics: [
       ["作品", "永字小楷练习"],
-      ["创作时间", "2024.05.20"],
-      ["满意度", "4星"],
-      ["综合进步", "+36%"]
+      ["创作时间", "待保存"],
+      ["满意度", "未评分"],
+      ["综合进步", "待对比"]
     ],
     actions: [
       { label: "再写一遍", target: 3, response: "回到临摹场景，带着复盘结论再练一次。" },
@@ -312,8 +312,8 @@ const SCENES = [
         label: "成长轨迹",
         pitch: 2,
         yaw: 25,
-        body: "成长曲线显示综合进步率 +36%，说明练习反馈已经转化为可见提升。",
-        tags: ["曲线", "+36%", "趋势"]
+        body: "成长曲线读取本机真实评分，保存多次作品后才会形成可见提升。",
+        tags: ["曲线", "真实评分", "趋势"]
       },
       {
         label: "分享作品",
@@ -330,11 +330,11 @@ const SCENES = [
     description: "汇总学习数据、能力雷达和综合评分，形成学习报告。",
     focus: "报告层把学习投入、能力结构和排名反馈组合成最终评价。",
     metrics: [
-      ["学习时长", "27.6小时"],
-      ["练习字数", "1286字"],
-      ["掌握汉字", "68个"],
-      ["字帖作品", "12幅"],
-      ["连续学习", "18天"]
+      ["真实练习", "0次"],
+      ["练习字数", "0字"],
+      ["保存作品", "0幅"],
+      ["报告导出", "未导出"],
+      ["平均评分", "未评分"]
     ],
     actions: [
       { label: "继续学习", target: 3, response: "回到临摹训练，继续补齐薄弱项。" },
@@ -346,7 +346,7 @@ const SCENES = [
         label: "学习数据",
         pitch: 4,
         yaw: -34,
-        body: "左侧统计 27.6 小时、1286 字、68 个掌握汉字、12 幅作品和 18 天连续学习。",
+        body: "左侧统计本机真实练习、练习字数、作品数量、报告导出和平均评分。",
         tags: ["投入", "数量", "连续学习"]
       },
       {
@@ -360,8 +360,8 @@ const SCENES = [
         label: "综合评分",
         pitch: 5,
         yaw: 30,
-        body: "当前综合评分 86 分，超过 92% 学习者，建议继续保持并补强章法。",
-        tags: ["86分", "排名", "建议"]
+        body: "综合评分来自本机真实评分记录；没有评分时不会显示静态排名。",
+        tags: ["评分", "本机记录", "建议"]
       }
     ]
   },
@@ -371,11 +371,11 @@ const SCENES = [
     description: "对比学习前后作品，确认进步并进入复习巩固。",
     focus: "这一屏展示学习前后对比、综合评分和返回首页/复习入口。",
     metrics: [
-      ["复习单字", "8个"],
-      ["结构学习", "8项结构"],
-      ["作品创作", "3幅作品"],
-      ["实践练习", "18次"],
-      ["学习时长", "27.6小时"]
+      ["复习单字", "0个"],
+      ["结构学习", "0次"],
+      ["作品创作", "0幅"],
+      ["实践练习", "0次"],
+      ["计划完成", "未制定"]
     ],
     actions: [
       { label: "查看详情", response: "学习前后对比显示笔画更稳、结构更聚、整体完成度更高。" },
@@ -387,7 +387,7 @@ const SCENES = [
         label: "内容回顾",
         pitch: 4,
         yaw: -34,
-        body: "左侧回顾复习单字、结构学习、作品创作、实践练习和总学习时长。",
+        body: "左侧回顾本机复习单字、结构学习、作品创作、真实练习和计划完成度。",
         tags: ["回顾", "学习量", "复习"]
       },
       {
@@ -401,8 +401,8 @@ const SCENES = [
         label: "综合评分",
         pitch: 5,
         yaw: 31,
-        body: "总结评分 92 分，超过 95% 学习者，适合作为本轮学习的收束页。",
-        tags: ["92分", "95%", "总结"]
+        body: "总结评分来自本机记录；没有真实评分时只显示待完成状态。",
+        tags: ["评分", "计划", "总结"]
       }
     ]
   }
@@ -4855,6 +4855,55 @@ function recordLivePracticeIfAvailable(options = {}) {
   return window.MRAppState.recordPracticeResult(result);
 }
 
+function formatAverageScore(stats) {
+  return stats?.scoreCount ? `${stats.averageScore}分` : "未评分";
+}
+
+function formatScoreMetric(value, stats = null) {
+  if (Number.isFinite(value) && value > 0) {
+    return String(value);
+  }
+  return stats?.scoreCount ? "0" : "未评分";
+}
+
+function getMetricInsightValue(value) {
+  const text = String(value ?? "");
+  const number = text.match(/\d+/)?.[0];
+  return number || "—";
+}
+
+function getPracticeScoreSource(stats, latestSession, latestArtwork, livePractice, hasLivePractice) {
+  if (hasLivePractice) {
+    return {
+      score: livePractice.score,
+      metrics: livePractice.metrics || {},
+      hasScore: true
+    };
+  }
+
+  if (latestSession && (latestSession.strokeCount > 0 || latestSession.status === "saved" || latestSession.endedAt)) {
+    return {
+      score: latestSession.score,
+      metrics: latestSession.metrics || {},
+      hasScore: Number.isFinite(latestSession.score) && latestSession.score > 0
+    };
+  }
+
+  if (latestArtwork) {
+    return {
+      score: latestArtwork.score,
+      metrics: latestSession?.metrics || {},
+      hasScore: Number.isFinite(latestArtwork.score) && latestArtwork.score > 0
+    };
+  }
+
+  return {
+    score: stats?.averageScore || 0,
+    metrics: {},
+    hasScore: Boolean(stats?.scoreCount)
+  };
+}
+
 function getLearningSceneMetrics(index) {
   const scene = SCENES[index];
   const stats = window.MRAppState?.getStats?.();
@@ -4869,8 +4918,10 @@ function getLearningSceneMetrics(index) {
   const planProgress = latestPlan?.progress;
   const livePractice = getCurrentPracticeResult({ includeImage: false, requireStrokes: false });
   const hasLivePractice = livePractice && livePractice.strokeCount > 0;
-  const metrics = hasLivePractice ? livePractice.metrics : latestSession?.metrics || {};
-  const score = hasLivePractice ? livePractice.score : latestSession?.score || stats.averageScore;
+  const scoreSource = getPracticeScoreSource(stats, latestSession, latestArtwork, livePractice, hasLivePractice);
+  const metrics = scoreSource.metrics;
+  const score = scoreSource.score;
+  const averageScoreLabel = formatAverageScore(stats);
   const lectureLabel = stats.lectureStatus === "complete"
     ? "已完成"
     : stats.lectureStatus === "playing"
@@ -4882,7 +4933,7 @@ function getLearningSceneMetrics(index) {
   switch (index) {
     case 0:
       return [
-        ["综合评分", `${stats.averageScore}分`],
+        ["综合评分", averageScoreLabel],
         ["当前模式", stats.modeLabel],
         ["当前任务", stats.taskTitle],
         ["练习次数", `${stats.sessionCount}次`],
@@ -4906,10 +4957,10 @@ function getLearningSceneMetrics(index) {
       ];
     case 3:
       return [
-        ["综合评分", `${score}分`],
-        ["结构", String(metrics.structure || 88)],
-        ["笔画", String(metrics.stroke || 85)],
-        ["笔法", String(metrics.technique || 87)],
+        ["综合评分", scoreSource.hasScore ? `${score}分` : "未评分"],
+        ["结构", formatScoreMetric(metrics.structure, stats)],
+        ["笔画", formatScoreMetric(metrics.stroke, stats)],
+        ["笔法", formatScoreMetric(metrics.technique, stats)],
         ["模式", trainingLabel]
       ];
     case 4:
@@ -4926,38 +4977,38 @@ function getLearningSceneMetrics(index) {
         ["风格", latestArtwork?.style || "楷书"],
         ["作品数量", `${stats.artworkCount}幅`],
         ["碑帖", stats.copybook],
-        ["综合评分", `${latestArtwork?.score || score}分`]
+        ["综合评分", latestArtwork?.score ? `${latestArtwork.score}分` : scoreSource.hasScore ? `${score}分` : "未评分"]
       ];
     case 6:
       return [
         ["学习时长", `${stats.learningMinutes}分钟`],
-        ["练习次数", `${stats.sessionCount}次`],
+        ["真实练习", `${stats.practicedSessionCount || 0}/${stats.sessionCount}次`],
         ["保存作品", `${stats.artworkCount}幅`],
         ["报告数量", `${stats.reportCount}份`],
-        ["平均评分", `${stats.averageScore}分`]
+        ["平均评分", averageScoreLabel]
       ];
     case 7:
       return [
         ["作品", latestArtwork?.title || "暂无作品"],
         ["复盘会话", `${stats.savedSessionCount}次`],
         ["最近风格", latestArtwork?.style || "未保存"],
-        ["平均评分", `${stats.averageScore}分`],
+        ["平均评分", averageScoreLabel],
         ["作品数", `${stats.artworkCount}幅`]
       ];
     case 8:
       return [
-        ["练习次数", `${stats.sessionCount}次`],
-        ["练习字数", `${stats.sessionCount}字`],
+        ["真实练习", `${stats.practicedSessionCount || 0}次`],
+        ["练习字数", `${stats.practicedGlyphCount || 0}字`],
         ["保存作品", `${stats.artworkCount}幅`],
         ["报告导出", latestReport ? "已导出" : "未导出"],
-        ["计划进度", planProgress ? `${planProgress.done}/${planProgress.total}` : "未制定"]
+        ["平均评分", averageScoreLabel]
       ];
     case 9:
       return [
-        ["复习单字", `${Math.max(1, stats.sessionCount)}个`],
+        ["复习单字", `${stats.practicedGlyphCount || 0}个`],
         ["结构学习", `${stats.savedSessionCount}次`],
         ["作品创作", `${stats.artworkCount}幅`],
-        ["实践练习", `${stats.sessionCount}次`],
+        ["实践练习", `${stats.practicedSessionCount || 0}次`],
         ["计划完成", planProgress ? `${planProgress.percent}%` : "未制定"]
       ];
     default:
@@ -4972,24 +5023,25 @@ function updateSceneText(index) {
   els.sceneTitle.textContent = scene.title;
   els.sceneDescription.textContent = scene.description;
   els.coachScore.textContent = metrics[0][1];
-  els.insightScore.textContent = String(metrics[0][1]).replace("分", "");
+  els.insightScore.textContent = getMetricInsightValue(metrics[0][1]);
 }
 
 function updateInteractionPanel(sceneIndex, pointIndex) {
   const scene = SCENES[sceneIndex];
   const point = scene.points[pointIndex];
+  const pointView = getLearningPointView(sceneIndex, pointIndex, point);
   const metrics = getLearningSceneMetrics(sceneIndex);
 
   els.sceneFocus.textContent = scene.focus;
-  els.contentTitle.textContent = point.label;
-  els.contentBody.textContent = point.body;
+  els.contentTitle.textContent = pointView.label;
+  els.contentBody.textContent = pointView.body;
   els.contentTags.innerHTML = "";
   els.metricGrid.innerHTML = "";
   els.pointList.innerHTML = "";
   els.actionList.innerHTML = "";
   els.actionFeedback.textContent = getLearningActionHint(sceneIndex);
 
-  point.tags.forEach((tag) => {
+  pointView.tags.forEach((tag) => {
     const tagEl = document.createElement("span");
     tagEl.textContent = tag;
     els.contentTags.appendChild(tagEl);
@@ -5031,6 +5083,122 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     }
     els.actionList.appendChild(button);
   });
+}
+
+function getLearningPointView(sceneIndex, pointIndex, point) {
+  const stats = window.MRAppState?.getStats?.();
+  if (!stats) {
+    return point;
+  }
+
+  const latestTime = stats.latestRecordAt ? formatHistoryTime(stats.latestRecordAt) : "暂无记录";
+  const averageScore = formatAverageScore(stats);
+  const latestArtworkTitle = stats.latestArtwork?.title || "暂无作品";
+  const latestReportLabel = stats.latestReport ? formatHistoryTime(stats.latestReport.createdAt) : "尚未导出";
+  const planProgress = stats.latestPlan?.progress;
+  const planLabel = planProgress ? `${planProgress.done}/${planProgress.total}` : "未制定";
+
+  if (sceneIndex === 0 && pointIndex === 0) {
+    return {
+      ...point,
+      body: stats.scoreCount
+        ? `中心面板显示本机真实评分平均 ${stats.averageScore} 分，并结合当前任务“${stats.taskTitle}”展示练习入口。`
+        : `中心面板等待真实书写评分。当前任务是“${stats.taskTitle}”，先完成一次练习后才会显示平均分。`,
+      tags: ["本机评分", stats.scoreCount ? `${stats.scoreCount}条评分` : "未评分", stats.glyph]
+    };
+  }
+
+  if (sceneIndex === 6) {
+    const views = [
+      {
+        body: `本机档案当前有 ${stats.sessionCount} 次练习会话、${stats.practicedSessionCount || 0} 次真实笔迹练习、${stats.artworkCount} 幅作品和 ${stats.reportCount} 份报告。`,
+        tags: ["本机档案", `${stats.recordCount}条记录`, latestTime]
+      },
+      {
+        body: stats.scoreCount
+          ? `最近分数和按日趋势来自 ${stats.scoreCount} 条真实评分记录，当前平均 ${stats.averageScore} 分。`
+          : "还没有真实评分记录。完成书写并保存作品后，这里会显示最近分数和按日趋势。",
+        tags: ["趋势", averageScore, `${stats.scoreCount}条评分`]
+      },
+      {
+        body: stats.recordCount
+          ? `最近记录会优先展示本机练习、作品和报告；当前最近更新时间为 ${latestTime}。`
+          : "暂无最近记录。开始临摹、保存作品或导出报告后，这里会出现可复盘条目。",
+        tags: ["记录", `${stats.practicedGlyphCount || 0}字`, "复盘入口"]
+      }
+    ];
+    return { ...point, ...views[pointIndex] };
+  }
+
+  if (sceneIndex === 7) {
+    const views = [
+      {
+        body: stats.latestSession
+          ? `最近练习包含 ${stats.latestSession.strokeCount || 0} 笔、${stats.latestSession.pointCount || 0} 个采样点，可用于回放和复盘。`
+          : "还没有可复盘练习。请先在练习格中书写并保存作品。",
+        tags: ["八法复盘", `${stats.practicedSessionCount || 0}次练习`, "改进点"]
+      },
+      {
+        body: stats.scoreCount
+          ? `成长轨迹基于本机真实评分计算，当前平均 ${stats.averageScore} 分，最近记录 ${latestTime}。`
+          : "成长轨迹等待真实评分。保存作品后会开始形成可见趋势。",
+        tags: ["曲线", averageScore, "趋势"]
+      },
+      {
+        body: stats.artworkCount
+          ? `当前最近作品是“${latestArtworkTitle}”，可下载图片、回放笔迹或继续导出报告。`
+          : "当前没有作品可分享。保存作品后，这里才会提供成果预览和导出入口。",
+        tags: ["分享", `${stats.artworkCount}幅作品`, "成果"]
+      }
+    ];
+    return { ...point, ...views[pointIndex] };
+  }
+
+  if (sceneIndex === 8) {
+    const views = [
+      {
+        body: `报告数据来自本机：${stats.practicedSessionCount || 0} 次真实练习、${stats.artworkCount} 幅作品、${stats.reportCount} 份报告，最近报告 ${latestReportLabel}。`,
+        tags: ["投入", `${stats.learningMinutes}分钟`, `${stats.practicedGlyphCount || 0}字`]
+      },
+      {
+        body: stats.scoreCount
+          ? `能力结构会根据真实练习评分生成，当前平均 ${stats.averageScore} 分；后续还需补维度级长期曲线。`
+          : "能力雷达等待真实练习评分。没有笔迹评分时不会显示静态高分。",
+        tags: ["雷达图", "能力维度", averageScore]
+      },
+      {
+        body: stats.scoreCount
+          ? `当前综合评分来自本机 ${stats.scoreCount} 条评分记录，建议围绕最低维度继续制定计划。`
+          : "当前还没有综合评分。完成一次真实书写后再生成报告会更有意义。",
+        tags: [averageScore, planLabel, "建议"]
+      }
+    ];
+    return { ...point, ...views[pointIndex] };
+  }
+
+  if (sceneIndex === 9) {
+    const views = [
+      {
+        body: `本轮回顾基于 ${stats.practicedGlyphCount || 0} 个练习字、${stats.savedSessionCount} 次已保存会话、${stats.artworkCount} 幅作品和 ${stats.learningMinutes} 分钟本机学习时长。`,
+        tags: ["回顾", `${stats.recordCount}条记录`, "复习"]
+      },
+      {
+        body: stats.latestArtwork
+          ? `中心可对比最近作品“${latestArtworkTitle}”和当前练习状态，后续应补多作品对比路由。`
+          : "暂无作品可做前后对比。保存作品后，这里会显示真实成果变化。",
+        tags: ["前后对比", latestArtworkTitle, "保持"]
+      },
+      {
+        body: stats.scoreCount
+          ? `总结评分来自本机记录，当前平均 ${stats.averageScore} 分；计划完成度为 ${planLabel}。`
+          : `总结页等待真实评分；当前计划完成度为 ${planLabel}。`,
+        tags: [averageScore, planLabel, "总结"]
+      }
+    ];
+    return { ...point, ...views[pointIndex] };
+  }
+
+  return point;
 }
 
 function runAction(action) {
@@ -5248,7 +5416,7 @@ function getLearningPathState(index, stats) {
       return { done: stats.lectureStatus === "complete", activeLabel: "讲解中", doneLabel: "已讲解", pendingLabel: "待讲解" };
     case 3:
       return {
-        done: (taskProgress.sessionCount || 0) > 0,
+        done: (taskProgress.practicedSessionCount || 0) > 0,
         activeLabel: (taskProgress.activeSessionCount || 0) > 0 ? "练习中" : "待创建",
         doneLabel: "已练习",
         pendingLabel: "待练习"
@@ -5256,7 +5424,7 @@ function getLearningPathState(index, stats) {
     case 5:
       return { done: (taskProgress.artworkCount || 0) > 0, activeLabel: "创作中", doneLabel: "已保存", pendingLabel: "待创作" };
     case 6:
-      return { done: (taskProgress.sessionCount || 0) > 0, activeLabel: "记录中", doneLabel: "有记录", pendingLabel: "无记录" };
+      return { done: (taskProgress.practicedSessionCount || 0) > 0 || (taskProgress.artworkCount || 0) > 0 || (taskProgress.reportCount || 0) > 0, activeLabel: "记录中", doneLabel: "有记录", pendingLabel: "无记录" };
     case 7:
       return { done: (taskProgress.artworkCount || 0) > 0, activeLabel: "复盘中", doneLabel: "可复盘", pendingLabel: "待作品" };
     case 8:

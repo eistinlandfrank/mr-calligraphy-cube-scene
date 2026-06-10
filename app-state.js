@@ -594,12 +594,13 @@
     }
 
     const sessions = state.sessions.filter((session) => getSessionTaskId(session) === task.id);
+    const practicedSessions = sessions.filter((session) => (session.strokeCount || 0) > 0 || session.status === "saved" || session.endedAt);
     const savedSessions = sessions.filter((session) => session.status === "saved" || session.endedAt);
     const activeSessions = sessions.filter((session) => session.status === "active" && !session.endedAt);
     const artworks = state.artworks.filter((artwork) => getArtworkTaskId(artwork) === task.id);
     const reports = state.reports.filter((report) => getReportTaskId(report) === task.id);
     const scores = [
-      ...savedSessions.map((session) => session.score),
+      ...practicedSessions.map((session) => session.score),
       ...artworks.map((artwork) => artwork.score)
     ].filter((score) => Number.isFinite(score) && score > 0);
     const latestAt = [
@@ -612,7 +613,7 @@
       .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
 
     const milestones = [
-      { id: "practice", label: "完成练习", done: sessions.length > 0 },
+      { id: "practice", label: "完成练习", done: practicedSessions.length > 0 },
       { id: "artwork", label: "保存作品", done: savedSessions.length > 0 || artworks.length > 0 },
       { id: "report", label: "导出报告", done: reports.length > 0 }
     ];
@@ -623,7 +624,7 @@
         ? "artwork"
         : activeSessions.length > 0
           ? "active"
-          : sessions.length > 0
+          : practicedSessions.length > 0
             ? "practiced"
             : "todo";
 
@@ -634,6 +635,7 @@
       percent: Math.round((doneCount / milestones.length) * 100),
       milestones: clone(milestones),
       sessionCount: sessions.length,
+      practicedSessionCount: practicedSessions.length,
       savedSessionCount: savedSessions.length,
       activeSessionCount: activeSessions.length,
       artworkCount: artworks.length,
@@ -792,10 +794,18 @@
     const sessions = state.sessions;
     const currentTask = getCurrentTask();
     const savedSessions = sessions.filter((session) => session.status === "saved" || session.endedAt);
-    const scores = savedSessions.length ? savedSessions.map((session) => session.score) : sessions.map((session) => session.score);
+    const practicedSessions = sessions.filter((session) => (session.strokeCount || 0) > 0 || session.status === "saved" || session.endedAt);
+    const scoredSessions = practicedSessions.filter((session) => Number.isFinite(session.score) && session.score > 0);
+    const scoredArtworks = state.artworks.filter((artwork) => Number.isFinite(artwork.score) && artwork.score > 0);
+    const scoredReports = state.reports.filter((report) => Number.isFinite(report.averageScore) && report.averageScore > 0);
+    const scores = [
+      ...scoredSessions.map((session) => session.score),
+      ...scoredArtworks.map((artwork) => artwork.score),
+      ...scoredReports.map((report) => report.averageScore)
+    ];
     const averageScore = scores.length
       ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length)
-      : 86;
+      : 0;
     const learningMinutes = Math.max(0, sessions.reduce((sum, session) => {
       const start = Date.parse(session.startedAt);
       const end = Date.parse(session.endedAt || session.startedAt);
@@ -808,6 +818,28 @@
     const latestArtwork = state.artworks[state.artworks.length - 1] || null;
     const latestReport = state.reports[state.reports.length - 1] || null;
     const latestPlan = getLatestPlan();
+    const recordCount = sessions.length + state.artworks.length + state.reports.length;
+    const practicedGlyphs = new Set([
+      ...practicedSessions.map((session) => session.glyph),
+      ...state.artworks.map((artwork) => artwork.glyph)
+    ].filter(Boolean));
+    const practicedCopybooks = new Set([
+      ...practicedSessions.map((session) => session.copybook),
+      ...state.artworks.map((artwork) => {
+        const linkedSession = artwork.sessionId
+          ? sessions.find((session) => session.id === artwork.sessionId) || null
+          : null;
+        return linkedSession?.copybook || state.selectedCopybook;
+      })
+    ].filter(Boolean));
+    const latestRecordAt = [
+      ...sessions.map((session) => session.endedAt || session.snapshotAt || session.startedAt),
+      ...state.artworks.map((artwork) => artwork.createdAt),
+      ...state.reports.map((report) => report.createdAt)
+    ]
+      .filter(Boolean)
+      .filter((date) => Number.isFinite(Date.parse(date)))
+      .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
     const latestFeedback = latestSession?.feedback?.length
       ? latestSession.feedback
       : latestArtwork?.feedback?.length
@@ -832,10 +864,16 @@
       lectureStatus: state.lectureStatus,
       lectureProgress,
       sessionCount: sessions.length,
+      practicedSessionCount: practicedSessions.length,
       savedSessionCount: savedSessions.length,
       artworkCount: state.artworks.length,
       reportCount: state.reports.length,
       planCount: state.plans.length,
+      recordCount,
+      scoreCount: scores.length,
+      practicedGlyphCount: practicedGlyphs.size,
+      practicedCopybookCount: practicedCopybooks.size,
+      latestRecordAt,
       averageScore,
       learningMinutes,
       latestSession,
@@ -1669,7 +1707,8 @@
 
   function getReportPreview() {
     const stats = getStats();
-    return `本机记录：${stats.sessionCount} 次练习 / ${stats.artworkCount} 幅作品 / 平均 ${stats.averageScore} 分`;
+    const averageText = stats.scoreCount ? `平均 ${stats.averageScore} 分` : "暂无真实评分";
+    return `本机记录：${stats.sessionCount} 次练习 / ${stats.artworkCount} 幅作品 / ${averageText}`;
   }
 
   function getLatestReview() {
