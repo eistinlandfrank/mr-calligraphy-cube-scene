@@ -1,5 +1,5 @@
 import { LifeBuoy } from "lucide-react";
-import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
+import yongCharacter from "../data/calligraphy/yongCharacter.json";
 import { VirtualCalligraphyGame } from "../scene-core/VirtualCalligraphyGame.jsx";
 
 export function ElderView({ phase, paused = false, onGameProgress, onGameComplete, onStrokeComplete, onHelpRequest }) {

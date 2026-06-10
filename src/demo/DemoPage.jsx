@@ -1,6 +1,6 @@
 import { CircleGauge, FastForward, HeartPulse, Maximize2, Minimize2, Monitor, Pause, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
+import yongCharacter from "../data/calligraphy/yongCharacter.json";
 import { loadDefaultProject } from "../data/configLoader.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { getCurrentFlowState, useFlowStore } from "../store/flowStore.js";

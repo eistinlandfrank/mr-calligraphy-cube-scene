@@ -1,6 +1,6 @@
 import { Check, RotateCcw, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
+import yongCharacter from "../data/calligraphy/yongCharacter.json";
 
 const metricLabels = {
   pathAccuracy: "路径准确",
