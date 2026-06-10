@@ -1,6 +1,6 @@
 import { Check, RotateCcw, SkipForward } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import yongCharacter from "../data/calligraphy/yongCharacter.json" with { type: "json" };
+import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
 
 const metricLabels = {
   structure: "结构",

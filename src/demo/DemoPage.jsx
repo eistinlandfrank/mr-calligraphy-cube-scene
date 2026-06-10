@@ -1,7 +1,6 @@
 import { CircleGauge, HeartPulse, Monitor, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import defaultProject from "../data/defaultProject.json" with { type: "json" };
-import { sceneConfigById } from "../data/scenes/index.js";
+import { loadDefaultProject } from "../data/configLoader.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 import { CaregiverView } from "./CaregiverView.jsx";
@@ -15,6 +14,8 @@ const viewModes = [
   { id: "caregiver", label: "护工视角", icon: Monitor, sceneId: "capsule-caregiver-monitor" }
 ];
 
+const defaultProject = loadDefaultProject();
+
 export function DemoPage() {
   const [mode, setMode] = useState("product");
   const [activeStep, setActiveStep] = useState(0);
@@ -27,7 +28,7 @@ export function DemoPage() {
   const storedScenes = useSceneStore((state) => state.scenes);
   const phase = demoTimelineSteps[activeStep];
   const activeMode = viewModes.find((item) => item.id === mode) ?? viewModes[0];
-  const sceneConfig = selectSceneConfigById(storedScenes, activeMode.sceneId) ?? sceneConfigById[activeMode.sceneId];
+  const sceneConfig = selectSceneConfigById(storedScenes, activeMode.sceneId);
 
   useEffect(() => {
     if (!isPlaying || isFlowPaused) {

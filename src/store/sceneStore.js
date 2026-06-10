@@ -1,8 +1,12 @@
 import { create } from "zustand";
-import { sceneConfigById as baseSceneConfigById, sceneConfigs as baseSceneConfigs } from "../data/scenes/index.js";
+import { getDefaultSceneConfig, loadDefaultScenes } from "../data/configLoader.js";
 import { cloneSceneConfig, createSceneObject, validateSceneConfig } from "../scene-core/sceneSchema.js";
 
 export const SCENE_STORAGE_KEY = "moyin-xinjing-scene-configs";
+const baseSceneConfigs = loadDefaultScenes();
+const baseSceneConfigById = Object.fromEntries(
+  baseSceneConfigs.map((sceneConfig) => [sceneConfig.id, sceneConfig])
+);
 
 export const useSceneStore = create((set, get) => ({
   scenes: loadInitialScenes(),
@@ -161,7 +165,7 @@ export const useSceneStore = create((set, get) => ({
   },
 
   resetScene: (sceneId) => {
-    const baseScene = baseSceneConfigById[sceneId];
+    const baseScene = getDefaultSceneConfig(sceneId);
 
     if (!baseScene) {
       return;
