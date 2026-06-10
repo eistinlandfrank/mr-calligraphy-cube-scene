@@ -183,9 +183,11 @@ WebXR 作为增强能力放到后续阶段，不影响基础 Demo 展示。
 ├── /preview/:sceneId
 │   └── 指定场景预览
 │
-└── /legacy
-    └── 旧版静态 Demo 保留入口
+└── /
+    └── 旧版静态 Demo 保留入口（当前阶段继续保留在根目录）
 ```
+
+旧版 `index.html`、`script.js`、`style.css`、`room-config.js`、`main-admin.html`、`realistic-demo.html` 和 `assets/` 当前继续作为根目录静态原型维护。等新版 `/demo`、`/admin` 和配置系统可以完整替代旧版展示后，再单独规划 `legacy/static-demo/` 迁移任务。
 
 ---
 
