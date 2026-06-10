@@ -1,5 +1,6 @@
 import { Download, Eye, RotateCcw, Save, Upload } from "lucide-react";
 import { useRef, useState } from "react";
+import { parseConfigJson } from "../data/configIO.js";
 import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
@@ -44,15 +45,26 @@ export function SceneEditor() {
 
     try {
       const sceneConfigText = await file.text();
-      const importedScene = JSON.parse(sceneConfigText);
-      const result = importScene(importedScene);
+      const parsed = parseConfigJson(sceneConfigText);
+
+      if (!parsed.valid) {
+        setImportStatus(`导入失败：${parsed.errors[0]}`);
+        return;
+      }
+
+      if (parsed.type !== "scene") {
+        setImportStatus(`导入失败：后台场景编辑器当前仅支持 SceneConfig，检测到 ${parsed.type}。`);
+        return;
+      }
+
+      const result = importScene(parsed.config);
 
       if (!result.valid) {
         setImportStatus(`导入失败：${result.errors[0]}`);
         return;
       }
 
-      setImportStatus(`已导入：${importedScene.name}`);
+      setImportStatus(`已导入：${parsed.config.name}`);
     } catch (error) {
       setImportStatus(`导入失败：${error.message}`);
     } finally {

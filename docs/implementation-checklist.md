@@ -146,8 +146,10 @@
 
   验收记录：2026-06-10 新增 `src/data/configLoader.js`，统一加载默认 Project、Flow、Scene 配置；`sceneStore` 与前台 Demo 均改为通过加载器读取默认配置，加载器校验脚本和 `npm run build` 通过。
 
-- [ ] **P2-11：建立配置导入方法**  
+- [x] **P2-11：建立配置导入方法**  
   验收：用户可以导入 JSON 配置，并进行校验。
+
+  验收记录：2026-06-10 新增 `src/data/configIO.js`，支持识别并校验 ProjectConfig、FlowConfig、SceneConfig JSON；后台 SceneConfig 导入改用统一解析校验方法，导入方法脚本和 `npm run build` 通过。
 
 - [ ] **P2-12：建立配置导出方法**  
   验收：用户可以导出当前项目配置为 JSON 文件。

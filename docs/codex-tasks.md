@@ -30,3 +30,4 @@
 - 2026-06-10：完成 P2-06。新增标准默认项目配置 `src/data/defaultProject.json`，保留旧 `project-config.json` 兼容后续迁移。
 - 2026-06-10：完成 P2-07。新增默认主演示流程 `src/data/defaultFlow.json`，覆盖 idle 到 finished 的 10 个标准状态。
 - 2026-06-10：完成 P2-10。新增统一配置加载器，前台 Demo 与后台 sceneStore 共用默认 Project、Flow、Scene 加载入口。
+- 2026-06-10：完成 P2-11。新增统一 JSON 配置导入校验方法，后台 SceneConfig 导入改为先识别类型再校验。
