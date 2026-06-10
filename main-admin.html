@@ -41,6 +41,19 @@
           <small id="mainObjectStatus">点击模型或下拉选择后，拖动红绿蓝操作轴调整。</small>
         </div>
 
+        <section class="main-layer-panel" aria-label="对象图层">
+          <div class="main-light-title">
+            <span>Object Layers</span>
+            <strong>对象图层</strong>
+          </div>
+          <label class="main-layer-search">
+            <span>搜索对象</span>
+            <input id="mainLayerSearch" type="search" placeholder="名称 / 类型">
+          </label>
+          <p id="mainLayerSummary" class="main-layer-summary">正在读取场景对象。</p>
+          <div id="mainLayerList" class="main-layer-list" aria-live="polite"></div>
+        </section>
+
         <section class="main-add-panel" aria-label="新增物体">
           <div class="main-light-title">
             <span>Import Model</span>

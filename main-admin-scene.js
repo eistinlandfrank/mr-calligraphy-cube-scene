@@ -40,6 +40,9 @@ const rimLightValue = document.getElementById("mainRimLightValue");
 const exposureValue = document.getElementById("mainExposureValue");
 const lightResetButton = document.getElementById("mainLightReset");
 const noticeState = document.getElementById("noticeState");
+const layerSearchInput = document.getElementById("mainLayerSearch");
+const layerSummary = document.getElementById("mainLayerSummary");
+const layerList = document.getElementById("mainLayerList");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
@@ -685,7 +688,9 @@ function makeDefaultState(spec) {
     ry: rotation[1],
     rz: rotation[2],
     scale: spec.scale || 1,
-    deleted: false
+    deleted: false,
+    hidden: false,
+    locked: false
   };
 }
 
@@ -790,7 +795,9 @@ function getState(spec) {
     ry: readNumber(saved.ry, fallback.ry),
     rz: readNumber(saved.rz, fallback.rz),
     scale: readNumber(saved.scale, fallback.scale),
-    deleted: saved.deleted === true
+    deleted: saved.deleted === true,
+    hidden: saved.hidden === true,
+    locked: saved.locked === true
   };
 }
 
@@ -806,7 +813,25 @@ function applyState(object, state) {
   object.rotation.set(toRadians(state.rx), toRadians(state.ry), toRadians(state.rz));
   object.scale.setScalar(state.scale * scaleFactor);
   object.userData.deleted = state.deleted === true;
-  object.visible = !object.userData.deleted;
+  object.userData.hidden = state.hidden === true;
+  object.userData.locked = state.locked === true;
+  applyObjectVisibility(object);
+}
+
+function applyObjectVisibility(object) {
+  object.visible = object.userData.deleted !== true && object.userData.hidden !== true;
+}
+
+function isEntryHidden(entry) {
+  return entry?.object.userData.deleted === true || entry?.object.userData.hidden === true;
+}
+
+function isEntryLocked(entry) {
+  return entry?.object.userData.locked === true;
+}
+
+function canTransformEntry(entry) {
+  return entry && !isEntryHidden(entry) && !isEntryLocked(entry);
 }
 
 function loadLayout() {
@@ -901,16 +926,227 @@ function populateObjectSelect() {
   objects.forEach((entry) => {
     const option = document.createElement("option");
     option.value = entry.id;
-    option.textContent = `${entry.type} / ${entry.label}${entry.object.userData.deleted ? "（已隐藏）" : ""}`;
+    option.textContent = `${entry.type} / ${entry.label}${getEntryStatusSuffix(entry)}`;
     objectSelect.appendChild(option);
   });
+  renderLayerPanel();
 }
 
 function updateObjectOption(entry) {
   const option = objectSelect.querySelector(`option[value="${entry.id}"]`);
   if (option) {
-    option.textContent = `${entry.type} / ${entry.label}${entry.object.userData.deleted ? "（已隐藏）" : ""}`;
+    option.textContent = `${entry.type} / ${entry.label}${getEntryStatusSuffix(entry)}`;
   }
+}
+
+function getEntryStatusSuffix(entry) {
+  const states = [];
+
+  if (isEntryHidden(entry)) {
+    states.push("已隐藏");
+  }
+  if (isEntryLocked(entry)) {
+    states.push("已锁定");
+  }
+
+  return states.length ? `（${states.join(" / ")}）` : "";
+}
+
+function renderLayerPanel() {
+  if (!layerList) {
+    return;
+  }
+
+  const entries = [...objects.values()];
+  const query = String(layerSearchInput?.value || "").trim().toLowerCase();
+  const visibleCount = entries.filter((entry) => !isEntryHidden(entry)).length;
+  const hiddenCount = entries.length - visibleCount;
+  const lockedCount = entries.filter(isEntryLocked).length;
+  const filteredEntries = entries.filter((entry) => {
+    if (!query) return true;
+    return [
+      entry.id,
+      entry.label,
+      entry.type,
+      getLayerGroupLabel(entry)
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
+
+  if (layerSummary) {
+    layerSummary.textContent = `共 ${entries.length} 个对象 · 显示 ${visibleCount} · 隐藏 ${hiddenCount} · 锁定 ${lockedCount}`;
+  }
+
+  layerList.innerHTML = "";
+
+  if (!filteredEntries.length) {
+    const empty = document.createElement("p");
+    empty.className = "main-layer-empty";
+    empty.textContent = query ? "没有匹配的对象。" : "暂无可管理对象。";
+    layerList.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  const grouped = groupLayerEntries(filteredEntries);
+
+  grouped.forEach(([groupName, groupEntries]) => {
+    const group = document.createElement("section");
+    group.className = "main-layer-group";
+
+    const title = document.createElement("div");
+    title.className = "main-layer-group-title";
+    const titleLabel = document.createElement("span");
+    const titleCount = document.createElement("strong");
+    titleLabel.textContent = groupName;
+    titleCount.textContent = String(groupEntries.length);
+    title.append(titleLabel, titleCount);
+    group.appendChild(title);
+
+    groupEntries.forEach((entry) => {
+      group.appendChild(createLayerRow(entry));
+    });
+
+    fragment.appendChild(group);
+  });
+
+  layerList.appendChild(fragment);
+}
+
+function groupLayerEntries(entries) {
+  const groups = new Map();
+
+  entries.forEach((entry) => {
+    const group = getLayerGroupLabel(entry);
+    if (!groups.has(group)) {
+      groups.set(group, []);
+    }
+    groups.get(group).push(entry);
+  });
+
+  return [...groups.entries()];
+}
+
+function getLayerGroupLabel(entry) {
+  if (entry.object.userData.isImported === true || entry.type === "Imported") {
+    return "导入模型";
+  }
+  if (entry.object.userData.isCustom === true || entry.type === "新增") {
+    return "新增物体";
+  }
+  return entry.type === "模型" ? "基础模型" : "几何装饰";
+}
+
+function createLayerRow(entry) {
+  const row = document.createElement("div");
+  row.className = "main-layer-row";
+  row.classList.toggle("is-active", selectedEntry?.id === entry.id);
+  row.classList.toggle("is-hidden", isEntryHidden(entry));
+  row.classList.toggle("is-locked", isEntryLocked(entry));
+  row.dataset.layerId = entry.id;
+
+  const selectButton = document.createElement("button");
+  selectButton.type = "button";
+  selectButton.className = "main-layer-select";
+  selectButton.dataset.layerSelect = entry.id;
+  const name = document.createElement("span");
+  const kind = document.createElement("span");
+  name.className = "main-layer-name";
+  kind.className = "main-layer-kind";
+  name.textContent = entry.label;
+  kind.textContent = `${entry.type}${getEntryStatusSuffix(entry)}`;
+  selectButton.append(name, kind);
+
+  const visibilityButton = document.createElement("button");
+  visibilityButton.type = "button";
+  visibilityButton.className = "main-layer-icon";
+  visibilityButton.dataset.layerAction = "visibility";
+  visibilityButton.dataset.layerId = entry.id;
+  visibilityButton.textContent = isEntryHidden(entry) ? "显" : "隐";
+  visibilityButton.title = isEntryHidden(entry) ? "显示对象" : "隐藏对象";
+  visibilityButton.setAttribute("aria-label", visibilityButton.title);
+
+  const lockButton = document.createElement("button");
+  lockButton.type = "button";
+  lockButton.className = "main-layer-icon";
+  lockButton.dataset.layerAction = "lock";
+  lockButton.dataset.layerId = entry.id;
+  lockButton.textContent = isEntryLocked(entry) ? "解" : "锁";
+  lockButton.title = isEntryLocked(entry) ? "解锁对象" : "锁定对象";
+  lockButton.setAttribute("aria-label", lockButton.title);
+
+  row.append(selectButton, visibilityButton, lockButton);
+  return row;
+}
+
+function handleLayerClick(event) {
+  const actionButton = event.target.closest("[data-layer-action]");
+  if (actionButton) {
+    const entry = objects.get(actionButton.dataset.layerId);
+    if (!entry) return;
+
+    if (actionButton.dataset.layerAction === "visibility") {
+      toggleLayerVisibility(entry);
+      return;
+    }
+
+    if (actionButton.dataset.layerAction === "lock") {
+      toggleLayerLock(entry);
+    }
+    return;
+  }
+
+  const selectButton = event.target.closest("[data-layer-select]");
+  if (selectButton) {
+    selectObject(selectButton.dataset.layerSelect);
+  }
+}
+
+function toggleLayerVisibility(entry) {
+  const before = snapshot(entry);
+  const willShow = isEntryHidden(entry);
+
+  entry.object.userData.deleted = false;
+  entry.object.userData.hidden = !willShow;
+  applyObjectVisibility(entry.object);
+
+  if (!snapshotsMatch(before, snapshot(entry))) {
+    pushUndo(before);
+  }
+
+  if (selectedEntry?.id === entry.id && !canTransformEntry(entry)) {
+    transformControls.detach();
+  }
+  if (selectedEntry?.id === entry.id && canTransformEntry(entry)) {
+    transformControls.attach(entry.object);
+  }
+
+  saveEntry(entry);
+  updateObjectOption(entry);
+  updateUiState();
+  renderLayerPanel();
+  showNotice(willShow ? `已显示：${entry.label}` : `已隐藏：${entry.label}`);
+}
+
+function toggleLayerLock(entry) {
+  const before = snapshot(entry);
+  entry.object.userData.locked = !entry.object.userData.locked;
+
+  if (!snapshotsMatch(before, snapshot(entry))) {
+    pushUndo(before);
+  }
+
+  if (selectedEntry?.id === entry.id && !canTransformEntry(entry)) {
+    transformControls.detach();
+  }
+  if (selectedEntry?.id === entry.id && canTransformEntry(entry)) {
+    transformControls.attach(entry.object);
+  }
+
+  saveEntry(entry);
+  updateObjectOption(entry);
+  updateUiState();
+  renderLayerPanel();
+  showNotice(entry.object.userData.locked ? `已锁定：${entry.label}` : `已解锁：${entry.label}`);
 }
 
 function selectObject(id) {
@@ -919,14 +1155,15 @@ function selectObject(id) {
 
   selectedEntry = entry;
   objectSelect.value = id;
-  if (entry.object.userData.deleted) {
-    transformControls.detach();
-  } else {
+  if (canTransformEntry(entry)) {
     transformControls.attach(entry.object);
+  } else {
+    transformControls.detach();
   }
   controls.autoRotate = false;
   syncInputs();
   updateUiState();
+  renderLayerPanel();
 }
 
 function syncInputs() {
@@ -944,6 +1181,8 @@ function syncInputs() {
 function updateUiState() {
   if (!selectedEntry) return;
   const deleted = selectedEntry.object.userData.deleted === true;
+  const hidden = selectedEntry.object.userData.hidden === true;
+  const locked = selectedEntry.object.userData.locked === true;
   const isCustom = selectedEntry.object.userData.isCustom === true;
   const isImported = selectedEntry.object.userData.isImported === true;
   objectType.textContent = selectedEntry.type === "模型" ? "Three.js GLB 模型" : "Three.js 几何装饰";
@@ -955,16 +1194,20 @@ function updateUiState() {
   }
   objectStatus.textContent = deleted
     ? "当前已删除，可点击恢复物体。"
+    : hidden
+    ? "当前已在图层中隐藏，可点击恢复或在对象图层中显示。"
+    : locked
+    ? "当前已锁定，无法拖动或输入数值；可在对象图层中解锁。"
     : isImported
       ? "导入模型会保存到本机，并同步到正常主场景。"
       : isCustom
       ? "新增物体会保存到本机，并同步到正常主场景。"
       : "可直接拖动红绿蓝操作轴，也可输入精确数值。";
   [xInput, yInput, zInput, rotXInput, rotYInput, rotZInput, scaleInput].forEach((input) => {
-    input.disabled = deleted;
+    input.disabled = deleted || hidden || locked;
   });
-  deleteButton.disabled = deleted;
-  restoreButton.disabled = !deleted || isCustom || isImported;
+  deleteButton.disabled = deleted || locked;
+  restoreButton.disabled = (!deleted && !hidden) || (deleted && (isCustom || isImported));
 }
 
 function snapshot(entry) {
@@ -978,7 +1221,9 @@ function snapshot(entry) {
     ry: toDegrees(object.rotation.y),
     rz: toDegrees(object.rotation.z),
     scale: getSemanticScale(object),
-    deleted: object.userData.deleted === true
+    deleted: object.userData.deleted === true,
+    hidden: object.userData.hidden === true,
+    locked: object.userData.locked === true
   };
 }
 
@@ -995,7 +1240,9 @@ function snapshotsMatch(a, b) {
     Math.abs(a.ry - b.ry) < 0.0001 &&
     Math.abs(a.rz - b.rz) < 0.0001 &&
     Math.abs(a.scale - b.scale) < 0.0001 &&
-    a.deleted === b.deleted;
+    a.deleted === b.deleted &&
+    a.hidden === b.hidden &&
+    a.locked === b.locked;
 }
 
 function pushUndo(item) {
@@ -1024,10 +1271,13 @@ function applySnapshot(item) {
   entry.object.rotation.set(toRadians(item.rx), toRadians(item.ry), toRadians(item.rz));
   entry.object.scale.setScalar(item.scale * (entry.object.userData.scaleFactor || 1));
   entry.object.userData.deleted = item.deleted;
-  entry.object.visible = !item.deleted;
+  entry.object.userData.hidden = item.hidden === true;
+  entry.object.userData.locked = item.locked === true;
+  applyObjectVisibility(entry.object);
   saveEntry(entry);
   updateObjectOption(entry);
   selectObject(entry.id);
+  renderLayerPanel();
 }
 
 async function undo() {
@@ -1089,7 +1339,9 @@ function saveEntry(entry) {
     ry: Number(state.ry.toFixed(3)),
     rz: Number(state.rz.toFixed(3)),
     scale: Number(state.scale.toFixed(4)),
-    deleted: state.deleted
+    deleted: state.deleted,
+    hidden: state.hidden,
+    locked: state.locked
   };
   saveLayout();
 }
@@ -1151,6 +1403,7 @@ function removeCustomEntry(entry, options = {}) {
   }
 
   populateObjectSelect();
+  renderLayerPanel();
   if (options.select !== false) {
     const nextId = objectSelect.options[0]?.value;
     selectedEntry = null;
@@ -1192,6 +1445,7 @@ function removeImportedEntry(entry, options = {}) {
   }
 
   populateObjectSelect();
+  renderLayerPanel();
   if (options.select !== false) {
     const nextId = objectSelect.options[0]?.value;
     selectedEntry = null;
@@ -1202,7 +1456,7 @@ function removeImportedEntry(entry, options = {}) {
 }
 
 function applyInputValues() {
-  if (!selectedEntry || selectedEntry.object.userData.deleted) return;
+  if (!canTransformEntry(selectedEntry)) return;
   const before = inputStart || snapshot(selectedEntry);
   selectedEntry.object.position.set(Number(xInput.value), Number(yInput.value), Number(zInput.value));
   selectedEntry.object.rotation.set(toRadians(Number(rotXInput.value)), toRadians(Number(rotYInput.value)), toRadians(Number(rotZInput.value)));
@@ -1217,7 +1471,7 @@ function applyInputValues() {
 }
 
 function deleteSelected() {
-  if (!selectedEntry || selectedEntry.object.userData.deleted) return;
+  if (!selectedEntry || selectedEntry.object.userData.deleted || isEntryLocked(selectedEntry)) return;
   if (selectedEntry.object.userData.isImported === true) {
     pushUndo({
       kind: "import-delete",
@@ -1244,22 +1498,28 @@ function deleteSelected() {
 
   pushUndo(snapshot(selectedEntry));
   selectedEntry.object.userData.deleted = true;
+  selectedEntry.object.userData.hidden = false;
   selectedEntry.object.visible = false;
   transformControls.detach();
   saveEntry(selectedEntry);
   updateObjectOption(selectedEntry);
   updateUiState();
+  renderLayerPanel();
 }
 
 function restoreSelected() {
-  if (!selectedEntry || !selectedEntry.object.userData.deleted) return;
+  if (!selectedEntry || (!selectedEntry.object.userData.deleted && !selectedEntry.object.userData.hidden)) return;
   pushUndo(snapshot(selectedEntry));
   selectedEntry.object.userData.deleted = false;
-  selectedEntry.object.visible = true;
-  transformControls.attach(selectedEntry.object);
+  selectedEntry.object.userData.hidden = false;
+  applyObjectVisibility(selectedEntry.object);
+  if (canTransformEntry(selectedEntry)) {
+    transformControls.attach(selectedEntry.object);
+  }
   saveEntry(selectedEntry);
   updateObjectOption(selectedEntry);
   updateUiState();
+  renderLayerPanel();
 }
 
 function resetSelected() {
@@ -1271,6 +1531,7 @@ function resetSelected() {
   saveLayout();
   updateObjectOption(selectedEntry);
   selectObject(selectedEntry.id);
+  renderLayerPanel();
 }
 
 function resetAll() {
@@ -1292,6 +1553,7 @@ function resetAll() {
   });
   saveLayout();
   selectObject(selectedEntry?.id || "main-writing-table");
+  renderLayerPanel();
   showNotice("主场景物体已恢复全部默认。");
 }
 
@@ -1320,7 +1582,7 @@ function pickObject(event) {
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects(selectableMeshes, false).filter((hit) => {
     const root = hit.object.userData.designRoot;
-    return root && root.visible && root.userData.deleted !== true;
+    return root && root.visible && root.userData.deleted !== true && root.userData.hidden !== true && root.userData.locked !== true;
   });
 
   if (hits.length) {
@@ -1347,6 +1609,8 @@ function bindUi() {
     input.addEventListener("input", updateLightingFromInputs);
   });
   lightResetButton.addEventListener("click", resetLighting);
+  layerSearchInput?.addEventListener("input", renderLayerPanel);
+  layerList?.addEventListener("click", handleLayerClick);
 
   [xInput, yInput, zInput, rotXInput, rotYInput, rotZInput, scaleInput].forEach((input) => {
     input.addEventListener("focus", () => {
@@ -1359,10 +1623,10 @@ function bindUi() {
     controls.enabled = !event.value;
   });
   transformControls.addEventListener("mouseDown", () => {
-    dragStart = selectedEntry ? snapshot(selectedEntry) : null;
+    dragStart = canTransformEntry(selectedEntry) ? snapshot(selectedEntry) : null;
   });
   transformControls.addEventListener("mouseUp", () => {
-    if (!selectedEntry || !dragStart) return;
+    if (!canTransformEntry(selectedEntry) || !dragStart) return;
     const after = snapshot(selectedEntry);
     if (!snapshotsMatch(dragStart, after)) {
       pushUndo(dragStart);
@@ -1370,7 +1634,10 @@ function bindUi() {
     dragStart = null;
   });
   transformControls.addEventListener("objectChange", () => {
-    if (!selectedEntry) return;
+    if (!canTransformEntry(selectedEntry)) {
+      transformControls.detach();
+      return;
+    }
     syncInputs();
     saveEntry(selectedEntry);
   });

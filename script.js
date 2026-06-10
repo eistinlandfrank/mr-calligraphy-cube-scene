@@ -1022,7 +1022,9 @@ function getMainSceneObjectState(defaultObject) {
     ry: readMainNumber(saved.ry, defaultObject.ry),
     rz: readMainNumber(saved.rz, defaultObject.rz),
     scale: readMainNumber(saved.scale, defaultObject.scale),
-    deleted: saved.deleted === true
+    deleted: saved.deleted === true,
+    hidden: saved.hidden === true,
+    locked: saved.locked === true
   };
 }
 
@@ -1043,9 +1045,10 @@ function getRenderableMainModelSpecs() {
       rotationY: state.ry,
       rotationZ: state.rz,
       scale: state.scale,
-      deleted: state.deleted
+      deleted: state.deleted,
+      hidden: state.hidden
     };
-  }).filter((spec) => !spec.deleted);
+  }).filter((spec) => !spec.deleted && !spec.hidden);
 
   return [
     ...builtInModels,
@@ -1057,7 +1060,7 @@ function getRenderableImportedModelSpecs() {
   return mainSceneLayout.importedModels.map((record) => {
     const state = getMainSceneObjectStateById(record.id);
 
-    if (!state || state.deleted) {
+    if (!state || state.deleted || state.hidden) {
       return null;
     }
 
@@ -1140,7 +1143,9 @@ function setMainSceneObjectState(id, patch, options = {}) {
     ry: readMainNumber(patch.ry, current.ry),
     rz: readMainNumber(patch.rz, current.rz),
     scale: readMainNumber(patch.scale, current.scale),
-    deleted: patch.deleted === undefined ? current.deleted : patch.deleted === true
+    deleted: patch.deleted === undefined ? current.deleted : patch.deleted === true,
+    hidden: patch.hidden === undefined ? current.hidden : patch.hidden === true,
+    locked: patch.locked === undefined ? current.locked : patch.locked === true
   };
 
   mainSceneLayout.objects[id] = next;
@@ -2808,7 +2813,7 @@ function addCalligraphyDecor(vertices) {
     const state = getMainSceneObjectStateById(spec.id);
     const localVertices = [];
 
-    if (!state || state.deleted) {
+    if (!state || state.deleted || state.hidden) {
       return;
     }
 
@@ -2830,10 +2835,11 @@ function addCustomMainSceneObjects(vertices) {
       ry: readMainNumber(saved.ry, spec.rotation[1]),
       rz: readMainNumber(saved.rz, spec.rotation[2]),
       scale: readMainNumber(saved.scale, spec.scale),
-      deleted: saved.deleted === true
+      deleted: saved.deleted === true,
+      hidden: saved.hidden === true
     };
 
-    if (state.deleted) {
+    if (state.deleted || state.hidden) {
       return;
     }
 
