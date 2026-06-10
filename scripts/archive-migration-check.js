@@ -238,6 +238,10 @@ async function main() {
       conflictingModelSelection?.conflictSummary.includes("本机旧模型"),
     "主场景模型仓库同名不同 key 模型应显示命名冲突提示。"
   );
+  assert(
+    conflictingModelSelection?.suggestedLabel === "本机旧模型（档案）",
+    "主场景模型仓库命名冲突预览应提供自定义名称建议。"
+  );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
     storageKeys: ["mr-calligraphy-learning-state-v1"],
@@ -297,6 +301,23 @@ async function main() {
   assert(
     conflictModelRecords.some((record) => record.key === "model-1" && record.label === "本机旧模型"),
     "命名冲突模型单独恢复时不应覆盖本机旧模型。"
+  );
+
+  await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
+    storageKeys: [],
+    dbIds: ["mainModels"],
+    dbRecords: {
+      mainModels: [{ key: "model-3", action: "add", conflictMode: "custom", customLabel: "手动命名档案模型" }]
+    }
+  });
+  const customNamedConflictRecords = indexedDbMock.dump("mr-calligraphy-main-model-store", "models");
+  assert(
+    customNamedConflictRecords.some((record) => record.key === "model-3" && record.label === "手动命名档案模型"),
+    "选择自定义冲突名称时应按用户输入恢复档案模型名称。"
+  );
+  assert(
+    customNamedConflictRecords.some((record) => record.key === "model-1" && record.label === "本机旧模型"),
+    "选择自定义冲突名称时不应覆盖本机同名旧模型。"
   );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {

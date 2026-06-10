@@ -577,6 +577,9 @@
         detail: formatDbModelSelectionDetail(model),
         conflictSummary,
         conflictCount: conflicts.length,
+        suggestedLabel: conflicts.length
+          ? createConflictResolvedDbModelLabel(model.label, collectUsedDbModelLabels(currentMap, new Set(), model.key, new Map()))
+          : "",
         currentPreview: createDbModelPreview(currentModel, "本机中无此模型"),
         incomingPreview: createDbModelPreview(incomingModel, "档案中无此模型")
       };
@@ -660,7 +663,7 @@
     const first = conflicts[0];
     const reasonText = [...new Set(first.reasons)].join("和");
     const extra = conflicts.length > 1 ? `等 ${conflicts.length} 个模型` : "";
-    return `命名冲突：与本机“${first.label || first.fileName || first.key}”${extra}${reasonText}相同，单独恢复时会自动改名。`;
+    return `命名冲突：与本机“${first.label || first.fileName || first.key}”${extra}${reasonText}相同，可选择改名、替换或自定义名称。`;
   }
 
   function normalizeDbModelCompareToken(value) {
@@ -759,7 +762,8 @@
       }).map((record) => ({
         action: record.action,
         key: String(record.key).trim(),
-        conflictMode: normalizeDbModelConflictMode(record.conflictMode)
+        conflictMode: normalizeDbModelConflictMode(record.conflictMode),
+        customLabel: normalizeDbModelCustomLabel(record.customLabel)
       }));
       if (records.length) {
         result[id] = records;
@@ -769,7 +773,14 @@
   }
 
   function normalizeDbModelConflictMode(value) {
-    return value === "replace" ? "replace" : "rename";
+    if (value === "replace" || value === "custom") {
+      return value;
+    }
+    return "rename";
+  }
+
+  function normalizeDbModelCustomLabel(value) {
+    return String(value || "").trim().slice(0, 80);
   }
 
   function normalizeSelectedStorageFields(storageFields, storageKeys) {
@@ -1045,6 +1056,9 @@
         throw new Error(`${item.label} 中缺少要恢复的模型：${selection.key}。`);
       }
       const restoredRecord = await deserializeDbRecord(archiveRecord, item.label);
+      if (selection.conflictMode === "custom" && selection.customLabel) {
+        restoredRecord.label = selection.customLabel;
+      }
       const restoredModel = normalizeDbModelRecord(item, restoredRecord, 0, false);
       if (selection.conflictMode === "replace") {
         findDbModelNameConflicts(restoredModel, currentModelMap, new Set([restoredModel.key])).forEach((conflict) => {
@@ -1671,12 +1685,14 @@
     const getFieldInputs = () => Array.from(previewList?.querySelectorAll("[data-storage-field-key][data-storage-field-path]") || []);
     const getModelInputs = () => Array.from(previewList?.querySelectorAll("[data-db-model-id][data-db-model-key]") || []);
     const getModelConflictInputs = () => Array.from(previewList?.querySelectorAll("[data-db-model-id][data-db-model-conflict-for]") || []);
+    const getModelCustomLabelInputs = () => Array.from(previewList?.querySelectorAll("[data-db-model-id][data-db-model-custom-label-for]") || []);
 
     const getSelectedRestoreOptions = () => {
       const selected = getRestoreInputs().filter((input) => input.checked);
       const fieldInputs = getFieldInputs();
       const modelInputs = getModelInputs();
       const modelConflictInputs = getModelConflictInputs();
+      const modelCustomLabelInputs = getModelCustomLabelInputs();
       const storageFields = {};
       const storageKeys = [];
       const dbRecords = {};
@@ -1721,10 +1737,15 @@
               candidate.dataset.dbModelId === id &&
               candidate.dataset.dbModelConflictFor === input.dataset.dbModelKey
             ));
+            const customLabelInput = modelCustomLabelInputs.find((candidate) => (
+              candidate.dataset.dbModelId === id &&
+              candidate.dataset.dbModelCustomLabelFor === input.dataset.dbModelKey
+            ));
             return {
               key: input.dataset.dbModelKey,
               action: input.dataset.dbModelAction,
-              conflictMode: conflictModeInput?.value || "rename"
+              conflictMode: conflictModeInput?.value || "rename",
+              customLabel: customLabelInput?.value || ""
             };
           });
         if (selectedModels.length) {
@@ -1746,6 +1767,7 @@
       const fieldInputs = getFieldInputs();
       const modelInputs = getModelInputs();
       const modelConflictInputs = getModelConflictInputs();
+      const modelCustomLabelInputs = getModelCustomLabelInputs();
       const restoreOptions = getSelectedRestoreOptions();
       const selectedCount = restoreOptions.storageKeys.length + restoreOptions.dbIds.length;
       const selectedControlCount = inputs.filter((input) => input.checked).length +
@@ -1775,6 +1797,19 @@
           candidate.dataset.dbModelKey === input.dataset.dbModelConflictFor
         ));
         input.disabled = isBusy || !checkedDbIds.has(input.dataset.dbModelId) || !modelInput?.checked;
+      });
+      modelCustomLabelInputs.forEach((input) => {
+        const modelInput = modelInputs.find((candidate) => (
+          candidate.dataset.dbModelId === input.dataset.dbModelId &&
+          candidate.dataset.dbModelKey === input.dataset.dbModelCustomLabelFor
+        ));
+        const conflictModeInput = modelConflictInputs.find((candidate) => (
+          candidate.dataset.dbModelId === input.dataset.dbModelId &&
+          candidate.dataset.dbModelConflictFor === input.dataset.dbModelCustomLabelFor
+        ));
+        const isCustomMode = conflictModeInput?.value === "custom";
+        input.hidden = !isCustomMode;
+        input.disabled = isBusy || !checkedDbIds.has(input.dataset.dbModelId) || !modelInput?.checked || !isCustomMode;
       });
 
       if (selectAllInput) {
@@ -1952,14 +1987,24 @@
             conflictSelect.dataset.dbModelConflictFor = model.key;
             [
               ["rename", "保留本机，档案模型自动改名"],
-              ["replace", "替换本机同名模型"]
+              ["replace", "替换本机同名模型"],
+              ["custom", "自定义档案模型名称"]
             ].forEach(([value, textValue]) => {
               const option = document.createElement("option");
               option.value = value;
               option.textContent = textValue;
               conflictSelect.appendChild(option);
             });
-            conflictControl.append(conflictLabel, conflictSelect);
+            const customLabelInput = document.createElement("input");
+            customLabelInput.type = "text";
+            customLabelInput.maxLength = 80;
+            customLabelInput.value = model.suggestedLabel || "";
+            customLabelInput.placeholder = "输入恢复后的模型名称";
+            customLabelInput.dataset.dbModelId = id;
+            customLabelInput.dataset.dbModelCustomLabelFor = model.key;
+            customLabelInput.setAttribute("aria-label", `自定义${model.label}恢复后的模型名称`);
+            customLabelInput.hidden = true;
+            conflictControl.append(conflictLabel, conflictSelect, customLabelInput);
             modelItem.appendChild(conflictControl);
           }
           if (model.currentPreview || model.incomingPreview) {
@@ -2136,7 +2181,7 @@
     });
 
     previewList?.addEventListener("change", (event) => {
-      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path], [data-db-model-id][data-db-model-key], [data-db-model-id][data-db-model-conflict-for]")) {
+      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path], [data-db-model-id][data-db-model-key], [data-db-model-id][data-db-model-conflict-for], [data-db-model-id][data-db-model-custom-label-for]")) {
         updateRestoreSelectionState();
       }
     });
