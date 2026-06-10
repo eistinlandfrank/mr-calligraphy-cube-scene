@@ -1,4 +1,5 @@
 import { Download, Eye, RotateCcw, Save } from "lucide-react";
+import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 import { InspectorPanel } from "./InspectorPanel.jsx";
@@ -17,6 +18,7 @@ export function SceneEditor() {
   const sceneConfig = selectSceneConfigById(scenes, activeSceneId);
   const selectedObject = sceneConfig.objects.find((object) => object.id === selectedObjectId) ?? sceneConfig.objects[0];
   const mode = getSceneMode(sceneConfig.type);
+  const isCaregiverPreview = ["caregiver-view", "calligraphy-game", "gallery-report"].includes(sceneConfig.type);
 
   function exportScene() {
     const payload = JSON.stringify(sceneConfig, null, 2);
@@ -74,6 +76,18 @@ export function SceneEditor() {
             <span>{sceneConfig.type}</span>
             <strong>{sceneConfig.name}</strong>
           </div>
+          {isCaregiverPreview ? (
+            <div className="admin-caregiver-preview">
+              <CaregiverDashboard
+                compact
+                data={sceneConfig.caregiverData}
+                phase={{ id: "admin-preview", label: sceneConfig.caregiverData?.stage ?? sceneConfig.name }}
+                progress={sceneConfig.type === "calligraphy-game" ? 56 : 32}
+                currentStroke="努"
+                remainingSeconds={sceneConfig.type === "gallery-report" ? 0 : 520}
+              />
+            </div>
+          ) : null}
         </section>
 
         <InspectorPanel sceneId={sceneConfig.id} object={selectedObject} />

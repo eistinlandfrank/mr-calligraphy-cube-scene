@@ -18,6 +18,8 @@ export function DemoPage() {
   const [mode, setMode] = useState("product");
   const [activeStep, setActiveStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isFlowPaused, setIsFlowPaused] = useState(false);
+  const [caregiverNotice, setCaregiverNotice] = useState("");
   const [selectedObjectId, setSelectedObjectId] = useState("capsule-shell");
   const storedScenes = useSceneStore((state) => state.scenes);
   const phase = demoTimelineSteps[activeStep];
@@ -25,7 +27,7 @@ export function DemoPage() {
   const sceneConfig = selectSceneConfigById(storedScenes, activeMode.sceneId) ?? sceneConfigById[activeMode.sceneId];
 
   useEffect(() => {
-    if (!isPlaying) {
+    if (!isPlaying || isFlowPaused) {
       return undefined;
     }
 
@@ -44,7 +46,11 @@ export function DemoPage() {
     }, 2200);
 
     return () => window.clearInterval(timer);
-  }, [isPlaying]);
+  }, [isPlaying, isFlowPaused]);
+
+  const practiceProgress = Math.min(100, Math.round((activeStep / (demoTimelineSteps.length - 1)) * 100));
+  const remainingSeconds = Math.max(0, 900 - activeStep * 118);
+  const currentStroke = ["侧", "勒", "努", "趯", "策", "掠"][Math.min(activeStep, 5)];
 
   const modePanel = useMemo(() => {
     if (mode === "elder") {
@@ -52,14 +58,25 @@ export function DemoPage() {
     }
 
     if (mode === "caregiver") {
-      return <CaregiverView phase={phase} />;
+      return (
+        <CaregiverView
+          phase={phase}
+          sceneConfig={sceneConfig}
+          progress={practiceProgress}
+          currentStroke={currentStroke}
+          remainingSeconds={remainingSeconds}
+          isPaused={isFlowPaused}
+          onAction={handleCaregiverAction}
+        />
+      );
     }
 
     return <ProductView phase={phase} />;
-  }, [mode, phase]);
+  }, [mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
 
   function resetPlayback() {
     setIsPlaying(false);
+    setIsFlowPaused(false);
     setActiveStep(0);
     setMode("product");
   }
@@ -67,6 +84,36 @@ export function DemoPage() {
   function selectStep(index) {
     setActiveStep(index);
     setMode(demoTimelineSteps[index].mode);
+  }
+
+  function handleCaregiverAction(actionId) {
+    if (actionId === "pause") {
+      setIsFlowPaused((value) => !value);
+      setIsPlaying(false);
+      setCaregiverNotice(isFlowPaused ? "护工已恢复流程。" : "护工已暂停流程。");
+      return;
+    }
+
+    if (actionId === "end") {
+      setIsPlaying(false);
+      setActiveStep(demoTimelineSteps.length - 1);
+      setMode("caregiver");
+      setCaregiverNotice("护工已结束体验并进入报告确认。");
+      return;
+    }
+
+    if (actionId === "openDoor") {
+      setIsPlaying(false);
+      setIsFlowPaused(false);
+      setActiveStep(1);
+      setMode("product");
+      setCaregiverNotice("护工已请求开舱，外部视角已切回舱门。");
+      return;
+    }
+
+    if (actionId === "callElder") {
+      setCaregiverNotice("老人端收到温和呼叫提示。");
+    }
   }
 
   return (
@@ -102,6 +149,7 @@ export function DemoPage() {
             <span>Demo / Experience</span>
             <strong>{phase.label}</strong>
           </div>
+          {caregiverNotice ? <p className="caregiver-notice">{caregiverNotice}</p> : null}
 
           <div className="segmented-control" aria-label="视角切换">
             {viewModes.map((item) => {

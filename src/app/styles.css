@@ -542,6 +542,298 @@ textarea {
   background: #b64a3a;
 }
 
+.caregiver-notice {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(47, 111, 104, 0.2);
+  border-radius: 8px;
+  color: #24534e;
+  background: rgba(47, 111, 104, 0.08);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.caregiver-panel .caregiver-dashboard {
+  grid-column: 1 / -1;
+}
+
+.caregiver-dashboard {
+  display: grid;
+  grid-template-columns: 245px minmax(0, 1fr) 250px;
+  gap: 14px;
+  width: 100%;
+}
+
+.caregiver-dashboard-head,
+.caregiver-session-grid,
+.caregiver-vitals-grid,
+.caregiver-progress,
+.caregiver-action-row,
+.caregiver-action-feedback {
+  border: 1px solid rgba(38, 34, 28, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.caregiver-dashboard-head {
+  display: grid;
+  align-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.caregiver-dashboard-head div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.caregiver-dashboard-head span,
+.caregiver-session-grid span,
+.caregiver-progress span {
+  color: #766c5d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.caregiver-dashboard-head strong {
+  color: #211f1b;
+  font-size: 22px;
+}
+
+.safety-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+  font-weight: 900;
+}
+
+.safety-pill.warning {
+  background: #b64a3a;
+}
+
+.safety-pill.paused,
+.safety-pill.review {
+  background: #8f6a45;
+}
+
+.caregiver-session-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.caregiver-session-grid article {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 58px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.caregiver-session-grid strong {
+  min-width: 0;
+  color: #211f1b;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+.caregiver-vitals-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.vital-card {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  min-height: 92px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.vital-card span {
+  color: #766c5d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.vital-card strong {
+  color: #211f1b;
+  font-size: 25px;
+  line-height: 1.05;
+}
+
+.vital-card small {
+  min-height: 14px;
+  color: #62594c;
+  font-size: 12px;
+}
+
+.vital-sparkline {
+  height: 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(38, 34, 28, 0.08);
+}
+
+.vital-sparkline i,
+.caregiver-progress-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2f6f68;
+}
+
+.vital-card.heart .vital-sparkline i {
+  background: #b64a3a;
+}
+
+.vital-card.breath .vital-sparkline i {
+  background: #4c7d91;
+}
+
+.vital-card.focus .vital-sparkline i {
+  background: #8f6a45;
+}
+
+.caregiver-progress {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.caregiver-progress div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.caregiver-progress strong {
+  color: #211f1b;
+}
+
+.caregiver-progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(38, 34, 28, 0.08);
+}
+
+.caregiver-action-feedback {
+  grid-column: 1 / -1;
+  min-height: 38px;
+  margin: 0;
+  padding: 10px 12px;
+  color: #4f463b;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.caregiver-dashboard .caregiver-action-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px;
+}
+
+.caregiver-dashboard .caregiver-action-row button {
+  display: grid;
+  place-items: center;
+  gap: 5px;
+  min-height: 74px;
+  border: 1px solid rgba(38, 34, 28, 0.12);
+  border-radius: 8px;
+  color: #ffffff;
+  background: #3c3933;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.caregiver-dashboard .caregiver-action-row button:nth-child(2) {
+  background: #8f6a45;
+}
+
+.caregiver-dashboard .caregiver-action-row button:nth-child(3) {
+  background: #2f6f68;
+}
+
+.caregiver-dashboard .caregiver-action-row button:nth-child(4) {
+  background: #b64a3a;
+}
+
+.admin-caregiver-preview {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 3;
+  width: min(520px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  overflow: auto;
+}
+
+.caregiver-dashboard.is-compact {
+  grid-template-columns: 1fr;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(27, 30, 27, 0.76);
+  backdrop-filter: blur(18px);
+}
+
+.caregiver-dashboard.is-compact .caregiver-dashboard-head,
+.caregiver-dashboard.is-compact .caregiver-session-grid,
+.caregiver-dashboard.is-compact .caregiver-vitals-grid,
+.caregiver-dashboard.is-compact .caregiver-progress,
+.caregiver-dashboard.is-compact .caregiver-action-row,
+.caregiver-dashboard.is-compact .caregiver-action-feedback {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.caregiver-dashboard.is-compact .caregiver-dashboard-head strong,
+.caregiver-dashboard.is-compact .caregiver-session-grid strong,
+.caregiver-dashboard.is-compact .caregiver-progress strong,
+.caregiver-dashboard.is-compact .vital-card strong {
+  color: #ffffff;
+}
+
+.caregiver-dashboard.is-compact .caregiver-dashboard-head span,
+.caregiver-dashboard.is-compact .caregiver-session-grid span,
+.caregiver-dashboard.is-compact .caregiver-progress span,
+.caregiver-dashboard.is-compact .vital-card span,
+.caregiver-dashboard.is-compact .vital-card small,
+.caregiver-dashboard.is-compact .caregiver-action-feedback {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.caregiver-dashboard.is-compact .caregiver-session-grid,
+.caregiver-dashboard.is-compact .caregiver-vitals-grid,
+.caregiver-dashboard.is-compact .caregiver-action-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.caregiver-dashboard.is-compact .caregiver-action-row button {
+  min-height: 54px;
+}
+
 .preview-stage {
   height: calc(100vh - 104px);
   margin: 18px 28px;
@@ -613,8 +905,14 @@ textarea {
   .signal-grid,
   .care-stat-grid,
   .care-action-row,
+  .caregiver-vitals-grid,
+  .caregiver-dashboard .caregiver-action-row,
   .stroke-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .caregiver-dashboard {
+    grid-template-columns: 1fr;
   }
 
   .elder-workbench {
