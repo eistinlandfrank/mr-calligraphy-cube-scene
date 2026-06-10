@@ -232,12 +232,21 @@
       version: 1,
       importedModelCount: assets.length,
       missingBinaryCount: assets.filter((asset) => !asset.stored).length,
+      missingHashCount: assets.filter((asset) => asset.stored && !asset.sha256).length,
       assets
     };
   }
 
   function getStorageImportedRecords(indexedDb, dbId) {
-    return getDbRecords(indexedDb?.[dbId]).map((record) => record?.data || {});
+    return getDbRecords(indexedDb?.[dbId]).map((record) => {
+      const data = record?.data || {};
+      return {
+        ...data,
+        sha256: normalizeSha256(record?.sha256 || data.sha256),
+        archiveBytes: normalizeCount(record?.bytes || 0),
+        hasArchiveBinary: Boolean(record?.arrayBufferBase64)
+      };
+    });
   }
 
   function getDbRecords(pack) {
@@ -249,6 +258,8 @@
     return layoutIds.map((id) => {
       const record = byId.get(id) || byId.get(String(id).replace(/^imported-/, "import-")) || {};
       const dbKey = String(record.dbKey || record.key || record.id || id);
+      const stored = dbKeys.has(dbKey) || dbKeys.has(String(id));
+      const sha256 = normalizeSha256(record.sha256);
       return {
         scene,
         id: String(id),
@@ -256,8 +267,10 @@
         label: String(record.label || record.fileName || id),
         fileName: String(record.fileName || ""),
         type: String(record.type || ""),
-        stored: dbKeys.has(dbKey) || dbKeys.has(String(id)),
-        bytes: normalizeCount(record.metrics?.fileSize || record.size || 0)
+        stored,
+        sha256,
+        hashStatus: !stored ? "missing-binary" : sha256 ? "sha256" : "missing-hash",
+        bytes: normalizeCount(record.metrics?.fileSize || record.size || record.archiveBytes || 0)
       };
     });
   }
@@ -271,7 +284,8 @@
       realisticSnapshots: sections.realisticScene.history.snapshotCount || 0,
       roomRoles: sections.room.roleCount || 0,
       importedModels: assetManifest.importedModelCount || 0,
-      missingModelBinaries: assetManifest.missingBinaryCount || 0
+      missingModelBinaries: assetManifest.missingBinaryCount || 0,
+      missingModelHashes: assetManifest.missingHashCount || 0
     };
   }
 
@@ -283,6 +297,11 @@
   function normalizeCount(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+  }
+
+  function normalizeSha256(value) {
+    const hash = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
   }
 
   function normalizeMigrationRecords(records) {

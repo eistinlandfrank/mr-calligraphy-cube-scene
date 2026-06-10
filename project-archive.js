@@ -65,6 +65,7 @@
       throw new Error("请至少选择一项要恢复的项目档案内容。");
     }
 
+    await validateArchiveAssetHashes(migratedArchive, restoreOptions.dbIds);
     importLocalStorage(migratedArchive.storage || {}, restoreOptions.storageKeys);
 
     for (const item of DB_ITEMS) {
@@ -150,12 +151,16 @@
     const records = Array.isArray(pack?.records) ? pack.records : [];
     const currentRecords = await readDbStoreRecords(item);
     const migratedMissing = pack?.migratedMissing === true;
+    const hashSummary = await summarizeDbPackHashes(records, item.label);
 
     return {
       id: item.id,
       label: item.label,
       currentCount: currentRecords.length,
       incomingCount: records.length,
+      incomingBinaryCount: hashSummary.binaryCount,
+      incomingHashCount: hashSummary.hashCount,
+      missingHashCount: hashSummary.missingHashCount,
       change: currentRecords.length === records.length ? "same-count" : "replace",
       defaultSelected: !migratedMissing,
       migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机模型库。` : ""
@@ -184,6 +189,8 @@
     }, {});
     const dbReplaceCount = indexedDb.filter((item) => item.change === "replace").length;
     const incomingModelCount = indexedDb.reduce((sum, item) => sum + item.incomingCount, 0);
+    const assetHashCount = indexedDb.reduce((sum, item) => sum + (item.incomingHashCount || 0), 0);
+    const missingAssetHashCount = indexedDb.reduce((sum, item) => sum + (item.missingHashCount || 0), 0);
 
     return {
       storageAdded: storageSummary.add || 0,
@@ -192,7 +199,9 @@
       storageSame: storageSummary.same || 0,
       storageEmpty: storageSummary.empty || 0,
       dbReplaceCount,
-      incomingModelCount
+      incomingModelCount,
+      assetHashCount,
+      missingAssetHashCount
     };
   }
 
@@ -254,6 +263,7 @@
       realisticSnapshots: Number(summary.realisticSnapshots) || 0,
       importedModels: Number(summary.importedModels) || 0,
       missingModelBinaries: Number(summary.missingModelBinaries) || 0,
+      missingModelHashes: Number(summary.missingModelHashes) || 0,
       migrationCount: Array.isArray(schema?.migrations) ? schema.migrations.length : 0
     };
   }
@@ -292,13 +302,14 @@
   async function importDbStore(item, pack) {
     const db = await openDb(item);
     const records = Array.isArray(pack?.records) ? pack.records : [];
+    const restoredRecords = await Promise.all(records.map((record) => deserializeDbRecord(record, item.label)));
 
     await new Promise((resolve, reject) => {
       const transaction = db.transaction(item.storeName, "readwrite");
       const store = transaction.objectStore(item.storeName);
       store.clear();
-      records.forEach((record) => {
-        store.put(deserializeDbRecord(record));
+      restoredRecords.forEach((record) => {
+        store.put(record);
       });
       transaction.oncomplete = resolve;
       transaction.onerror = () => reject(transaction.error || new Error(`无法恢复 ${item.label}。`));
@@ -344,20 +355,137 @@
 
   async function serializeDbRecord(record) {
     const copy = { ...record };
-    const arrayBuffer = copy.arrayBuffer;
+    const arrayBuffer = normalizeArrayBuffer(copy.arrayBuffer);
     delete copy.arrayBuffer;
+    const sha256 = arrayBuffer ? await createArrayBufferSha256(arrayBuffer) : "";
+    if (sha256) {
+      copy.sha256 = sha256;
+    }
     return {
       data: copy,
-      arrayBufferBase64: arrayBuffer ? await arrayBufferToBase64(arrayBuffer) : null
+      arrayBufferBase64: arrayBuffer ? await arrayBufferToBase64(arrayBuffer) : null,
+      bytes: arrayBuffer ? arrayBuffer.byteLength : 0,
+      sha256: sha256 || null
     };
   }
 
-  function deserializeDbRecord(record) {
+  async function deserializeDbRecord(record, label = "导入模型") {
     const data = record && typeof record.data === "object" ? { ...record.data } : {};
     if (record?.arrayBufferBase64) {
-      data.arrayBuffer = base64ToArrayBuffer(record.arrayBufferBase64);
+      const arrayBuffer = base64ToArrayBuffer(record.arrayBufferBase64);
+      const expectedHash = normalizeSha256(record.sha256 || data.sha256);
+      if (expectedHash) {
+        await assertArrayBufferSha256(arrayBuffer, expectedHash, data.label || data.fileName || label);
+        data.sha256 = expectedHash;
+      }
+      data.arrayBuffer = arrayBuffer;
     }
     return data;
+  }
+
+  async function validateArchiveAssetHashes(archive, selectedDbIds = DB_ITEMS.map((item) => item.id)) {
+    const migratedArchive = migrateProjectArchive(archive);
+    const selected = new Set(Array.isArray(selectedDbIds) ? selectedDbIds : []);
+    const summaries = [];
+
+    for (const item of DB_ITEMS) {
+      if (!selected.has(item.id)) {
+        continue;
+      }
+      const records = Array.isArray(migratedArchive.indexedDb?.[item.id]?.records)
+        ? migratedArchive.indexedDb[item.id].records
+        : [];
+      summaries.push({
+        id: item.id,
+        label: item.label,
+        ...await summarizeDbPackHashes(records, item.label)
+      });
+    }
+
+    return {
+      ok: true,
+      checkedCount: summaries.reduce((sum, item) => sum + item.hashCount, 0),
+      binaryCount: summaries.reduce((sum, item) => sum + item.binaryCount, 0),
+      missingHashCount: summaries.reduce((sum, item) => sum + item.missingHashCount, 0),
+      summaries
+    };
+  }
+
+  async function summarizeDbPackHashes(records, label) {
+    const summary = {
+      binaryCount: 0,
+      hashCount: 0,
+      missingHashCount: 0
+    };
+
+    for (const record of records) {
+      if (!record?.arrayBufferBase64) {
+        continue;
+      }
+      summary.binaryCount += 1;
+      const expectedHash = normalizeSha256(record.sha256 || record.data?.sha256);
+      if (!expectedHash) {
+        summary.missingHashCount += 1;
+        continue;
+      }
+
+      let arrayBuffer;
+      try {
+        arrayBuffer = base64ToArrayBuffer(record.arrayBufferBase64);
+      } catch (error) {
+        throw new Error(`${label} 中有模型文件无法解码，已阻止恢复。`);
+      }
+      await assertArrayBufferSha256(arrayBuffer, expectedHash, record.data?.label || record.data?.fileName || label);
+      summary.hashCount += 1;
+    }
+
+    return summary;
+  }
+
+  async function assertArrayBufferSha256(arrayBuffer, expectedHash, label) {
+    const actualHash = await createArrayBufferSha256(arrayBuffer);
+    if (actualHash !== expectedHash) {
+      throw new Error(`模型文件哈希校验失败：${label}。`);
+    }
+  }
+
+  async function createArrayBufferSha256(value) {
+    const arrayBuffer = normalizeArrayBuffer(value);
+    if (!arrayBuffer || !arrayBuffer.byteLength) {
+      return "";
+    }
+
+    const cryptoApi = window.crypto || globalThis.crypto;
+    if (!cryptoApi?.subtle?.digest) {
+      throw new Error("当前浏览器不支持 SHA-256 哈希校验，无法安全处理项目档案模型文件。");
+    }
+
+    const digest = await cryptoApi.subtle.digest("SHA-256", arrayBuffer);
+    return arrayBufferToHex(digest);
+  }
+
+  function normalizeArrayBuffer(value) {
+    if (!value) {
+      return null;
+    }
+    if (value instanceof ArrayBuffer) {
+      return value;
+    }
+    if (ArrayBuffer.isView(value)) {
+      return value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength);
+    }
+    return null;
+  }
+
+  function arrayBufferToHex(buffer) {
+    return Array.from(new Uint8Array(buffer))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+  }
+
+  function normalizeSha256(value) {
+    const hash = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
   }
 
   function arrayBufferToBase64(buffer) {
@@ -374,12 +502,22 @@
   }
 
   function base64ToArrayBuffer(base64) {
-    const binary = window.atob(base64);
+    const binary = getBase64Binary(base64);
     const bytes = new Uint8Array(binary.length);
     for (let index = 0; index < binary.length; index += 1) {
       bytes[index] = binary.charCodeAt(index);
     }
     return bytes.buffer;
+  }
+
+  function getBase64Binary(base64) {
+    if (typeof window.atob === "function") {
+      return window.atob(base64);
+    }
+    if (typeof Buffer !== "undefined") {
+      return Buffer.from(base64, "base64").toString("binary");
+    }
+    throw new Error("当前环境无法解码模型文件。");
   }
 
   function migrateProjectArchive(archive) {
@@ -566,13 +704,19 @@
       const pack = archive.indexedDb?.[item.id];
       return sum + (Array.isArray(pack?.records) ? pack.records.length : 0);
     }, 0);
+    const modelHashCount = DB_ITEMS.filter((item) => selectedDbIds.has(item.id)).reduce((sum, item) => {
+      const records = archive.indexedDb?.[item.id]?.records;
+      return sum + (Array.isArray(records) ? records.filter((record) => normalizeSha256(record?.sha256 || record?.data?.sha256)).length : 0);
+    }, 0);
     const migrationCount = Array.isArray(archive.migrations) ? archive.migrations.length : 0;
     const migrationText = migrationCount ? `，${migrationCount} 条迁移记录` : "";
+    const hashText = modelHashCount ? `、${modelHashCount} 个模型哈希` : "";
     return {
       ok: true,
-      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型${migrationText}，并写入统一项目 schema。`,
+      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型${hashText}${migrationText}，并写入统一项目 schema。`,
       storageCount,
       modelCount,
+      modelHashCount,
       migrationCount
     };
   }
@@ -634,7 +778,10 @@
 
   function describeDbChange(item) {
     const label = item.change === "replace" ? "替换" : "数量相同";
-    return `${label} · 当前 ${item.currentCount} 个 → 档案 ${item.incomingCount} 个`;
+    const hashDetail = item.incomingBinaryCount
+      ? ` · 哈希 ${item.incomingHashCount}/${item.incomingBinaryCount}${item.missingHashCount ? `，${item.missingHashCount} 个旧模型缺少哈希` : ""}`
+      : "";
+    return `${label} · 当前 ${item.currentCount} 个 → 档案 ${item.incomingCount} 个${hashDetail}`;
   }
 
   function bindProjectArchiveControls() {
@@ -777,7 +924,10 @@
         const summary = preview.summary;
         const schema = preview.schemaSummary;
         const migrationText = preview.migrations?.length ? ` · ${preview.migrations.length} 条迁移` : "";
-        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型`;
+        const hashText = summary.incomingModelCount
+          ? ` / ${summary.assetHashCount} 哈希${summary.missingAssetHashCount ? ` / ${summary.missingAssetHashCount} 缺哈希` : ""}`
+          : "";
+        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型${hashText}`;
       }
 
       const fragment = document.createDocumentFragment();
@@ -892,6 +1042,8 @@
     prepareImportProject,
     restoreProjectArchive,
     migrateProjectArchive,
+    validateArchiveAssetHashes,
+    createArrayBufferSha256,
     storageItems: STORAGE_ITEMS.map((item) => ({ ...item })),
     dbItems: DB_ITEMS.map((item) => ({ ...item }))
   };

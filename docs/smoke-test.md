@@ -2,9 +2,10 @@
 
 本项目是静态网页项目。基础 smoke test 使用无依赖 Node 脚本完成三类检查；浏览器级真实交互使用 Playwright 覆盖高风险闭环。
 
-- 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、前台状态层、书写画布、项目 schema、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
+- 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、前台状态层、书写画布、项目 schema、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
 - 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效。
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态。
+- 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
 - 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记。
 
 ## 直接运行
@@ -45,6 +46,14 @@ node scripts/archive-migration-check.js
 
 该命令会模拟 5.16 线旧档案只包含早期 storage / IndexedDB 项的情况，验证迁移层会补齐当前项目档案结构、生成迁移说明，并把缺失的新条目设为默认不恢复。
 
+## 单独检查资产哈希
+
+```bash
+node scripts/archive-asset-hash-check.js
+```
+
+该命令会模拟带模型二进制的项目档案，验证正确 SHA-256 能通过、错误 SHA-256 会阻止恢复，并确认失败时不会先写入本机状态。
+
 ## 浏览器级验收
 
 首次运行前安装依赖：
@@ -76,7 +85,7 @@ PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e
 命令应输出：
 
 ```text
-Smoke test 通过：12 个脚本，4 个页面。
+Smoke test 通过：13 个脚本，4 个页面。
 ```
 
 如果任一脚本语法失败、页面无法访问、HTTP 状态不是 2xx，或页面缺少关键标记，命令会以非 0 状态退出。
