@@ -834,6 +834,9 @@ const els = {
   historySelectionStatus: document.getElementById("historySelectionStatus"),
   historyExportSelected: document.getElementById("historyExportSelected"),
   historyDeleteSelected: document.getElementById("historyDeleteSelected"),
+  historyRestoreTrash: document.getElementById("historyRestoreTrash"),
+  historyClearTrash: document.getElementById("historyClearTrash"),
+  historyTrashStatus: document.getElementById("historyTrashStatus"),
   historyTrend: document.getElementById("historyTrend"),
   historyList: document.getElementById("historyList"),
   historyLoadMore: document.getElementById("historyLoadMore"),
@@ -3469,6 +3472,8 @@ function bindHistoryControls() {
   els.historySelectVisible?.addEventListener("change", handleHistorySelectVisible);
   els.historyExportSelected?.addEventListener("click", exportSelectedHistoryRecords);
   els.historyDeleteSelected?.addEventListener("click", deleteSelectedHistoryRecords);
+  els.historyRestoreTrash?.addEventListener("click", restoreLatestHistoryTrash);
+  els.historyClearTrash?.addEventListener("click", clearHistoryTrash);
   els.historyLoadMore?.addEventListener("click", () => {
     activeHistoryLimit += HISTORY_PAGE_SIZE;
     renderHistoryPanel(currentIndex);
@@ -3985,6 +3990,21 @@ function renderHistoryBatchControls(history) {
   if (els.historyDeleteSelected) {
     els.historyDeleteSelected.disabled = selectedCount === 0;
   }
+  const trash = window.MRAppState?.getHistoryTrash?.() || { total: 0, recordCount: 0, latest: null };
+  if (els.historyRestoreTrash) {
+    els.historyRestoreTrash.disabled = trash.total === 0;
+    els.historyRestoreTrash.title = trash.latest
+      ? `恢复：${trash.latest.title}`
+      : "回收站为空";
+  }
+  if (els.historyClearTrash) {
+    els.historyClearTrash.disabled = trash.total === 0;
+  }
+  if (els.historyTrashStatus) {
+    els.historyTrashStatus.textContent = trash.recordCount
+      ? `回收站 ${trash.recordCount} 条`
+      : "回收站 0 条";
+  }
   if (els.historyLoadMore) {
     els.historyLoadMore.hidden = !history.hasMore;
     els.historyLoadMore.textContent = history.hasMore
@@ -4308,7 +4328,7 @@ function deleteSelectedHistoryRecords() {
     return;
   }
 
-  const confirmed = window.confirm(`确定删除已选择的 ${count} 条学习档案吗？此操作会更新本机记录。`);
+  const confirmed = window.confirm(`确定将已选择的 ${count} 条学习档案移入回收站吗？之后可恢复最近删除。`);
   if (!confirmed) {
     return;
   }
@@ -4320,15 +4340,45 @@ function deleteSelectedHistoryRecords() {
     if (activeHistoryDetailId && ids.includes(activeHistoryDetailId)) {
       activeHistoryDetailId = null;
     }
-    renderLearningStateSummary();
-    renderReviewPanel(currentIndex);
-    renderHistoryPanel(currentIndex);
-    updatePathPanel(currentIndex);
-    updateSceneText(currentIndex);
+    refreshAfterHistoryMutation();
     showNotice(result.message);
     return;
   }
   showNotice(result?.message || "批量删除失败。");
+}
+
+function restoreLatestHistoryTrash() {
+  const result = window.MRAppState?.restoreHistoryTrash?.();
+  if (result?.ok) {
+    activeHistoryLimit = Math.max(activeHistoryLimit, HISTORY_PAGE_SIZE);
+    refreshAfterHistoryMutation();
+    showNotice(result.message);
+    return;
+  }
+  showNotice(result?.message || "恢复失败。");
+}
+
+function clearHistoryTrash() {
+  const trash = window.MRAppState?.getHistoryTrash?.();
+  if (!trash?.total) {
+    showNotice("回收站已经是空的。");
+    return;
+  }
+  if (!window.confirm(`确定清空回收站中的 ${trash.recordCount} 条学习档案吗？清空后将不能恢复。`)) {
+    return;
+  }
+
+  const result = window.MRAppState?.clearHistoryTrash?.();
+  refreshAfterHistoryMutation();
+  showNotice(result?.message || "已清空回收站。");
+}
+
+function refreshAfterHistoryMutation() {
+  renderLearningStateSummary();
+  renderReviewPanel(currentIndex);
+  renderHistoryPanel(currentIndex);
+  updatePathPanel(currentIndex);
+  updateSceneText(currentIndex);
 }
 
 function renderHistoryDetail() {
@@ -4480,7 +4530,7 @@ function deleteHistoryDetail() {
     return;
   }
 
-  const confirmed = window.confirm(`确定删除“${detail.title}”吗？此操作会写入本机学习档案。`);
+  const confirmed = window.confirm(`确定将“${detail.title}”移入回收站吗？之后可恢复最近删除。`);
   if (!confirmed) {
     return;
   }
@@ -4489,11 +4539,7 @@ function deleteHistoryDetail() {
   if (result?.ok) {
     selectedHistoryIds.delete(detail.id);
     activeHistoryDetailId = null;
-    renderLearningStateSummary();
-    renderReviewPanel(currentIndex);
-    renderHistoryPanel(currentIndex);
-    updatePathPanel(currentIndex);
-    updateSceneText(currentIndex);
+    refreshAfterHistoryMutation();
     showNotice(result.message);
     return;
   }

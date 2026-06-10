@@ -2,6 +2,7 @@
   const STORAGE_KEY = "mr-calligraphy-learning-state-v1";
   const VERSION = 1;
   const MAX_EVENTS = 120;
+  const MAX_HISTORY_TRASH = 12;
 
   const MODE_CONFIG = {
     single: {
@@ -186,6 +187,7 @@
       artworks: Array.isArray(source?.artworks) ? source.artworks.map(normalizeArtwork).filter(Boolean) : [],
       reports: Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [],
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
+      historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
       updatedAt: typeof source?.updatedAt === "string" ? source.updatedAt : new Date().toISOString()
     };
@@ -324,6 +326,44 @@
       done: item.done === true,
       completedAt: item.completedAt ? String(item.completedAt) : null
     };
+  }
+
+  function normalizeHistoryTrashEntry(record) {
+    if (!record || typeof record !== "object") return null;
+    const records = record.records && typeof record.records === "object" ? record.records : record;
+    const sessions = Array.isArray(records.sessions) ? records.sessions.map(normalizeSession).filter(Boolean) : [];
+    const artworks = Array.isArray(records.artworks) ? records.artworks.map(normalizeArtwork).filter(Boolean) : [];
+    const reports = Array.isArray(records.reports) ? records.reports.map(normalizeReport).filter(Boolean) : [];
+    const deletedCount = sessions.length + artworks.length + reports.length;
+    if (!deletedCount) return null;
+
+    return {
+      id: String(record.id || makeId("trash")),
+      title: String(record.title || `已删除 ${deletedCount} 条学习档案`).slice(0, 72),
+      deletedAt: Number.isFinite(Date.parse(record.deletedAt)) ? String(record.deletedAt) : new Date().toISOString(),
+      records: { sessions, artworks, reports },
+      references: normalizeHistoryTrashReferences(record.references)
+    };
+  }
+
+  function normalizeHistoryTrashReferences(value = {}) {
+    const source = value && typeof value === "object" ? value : {};
+    return {
+      currentSessionId: source.currentSessionId ? String(source.currentSessionId) : null,
+      artworkSessionLinks: normalizeHistoryTrashLinks(source.artworkSessionLinks, "artworkId", "sessionId"),
+      reportSessionLinks: normalizeHistoryTrashLinks(source.reportSessionLinks, "reportId", "sessionId"),
+      reportArtworkLinks: normalizeHistoryTrashLinks(source.reportArtworkLinks, "reportId", "artworkId")
+    };
+  }
+
+  function normalizeHistoryTrashLinks(value, leftKey, rightKey) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((item) => ({
+        [leftKey]: String(item?.[leftKey] || "").trim(),
+        [rightKey]: String(item?.[rightKey] || "").trim()
+      }))
+      .filter((item) => item[leftKey] && item[rightKey]);
   }
 
   function normalizeEvent(record) {
@@ -1866,61 +1906,129 @@
     return { ok: false, message: "未找到要重命名的记录。" };
   }
 
+  function normalizeHistoryIds(ids) {
+    return [...new Set((Array.isArray(ids) ? ids : [ids])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean))];
+  }
+
+  function collectHistoryRecords(ids) {
+    const selected = new Set(normalizeHistoryIds(ids));
+    return {
+      practice: state.sessions.filter((session) => selected.has(session.id)),
+      artwork: state.artworks.filter((artwork) => selected.has(artwork.id)),
+      report: state.reports.filter((report) => selected.has(report.id))
+    };
+  }
+
+  function getDeletedHistoryCount(deleted) {
+    return (deleted.practice?.length || 0) + (deleted.artwork?.length || 0) + (deleted.report?.length || 0);
+  }
+
+  function collectHistoryDeleteReferences(deleted) {
+    const deletedSessionIds = new Set((deleted.practice || []).map((session) => session.id));
+    const deletedArtworkIds = new Set((deleted.artwork || []).map((artwork) => artwork.id));
+    return {
+      currentSessionId: deletedSessionIds.has(state.currentSessionId) ? state.currentSessionId : null,
+      artworkSessionLinks: state.artworks
+        .filter((artwork) => deletedSessionIds.has(artwork.sessionId))
+        .map((artwork) => ({ artworkId: artwork.id, sessionId: artwork.sessionId })),
+      reportSessionLinks: state.reports
+        .filter((report) => deletedSessionIds.has(report.latestSessionId))
+        .map((report) => ({ reportId: report.id, sessionId: report.latestSessionId })),
+      reportArtworkLinks: state.reports
+        .filter((report) => deletedArtworkIds.has(report.latestArtworkId))
+        .map((report) => ({ reportId: report.id, artworkId: report.latestArtworkId }))
+    };
+  }
+
+  function pushHistoryTrash(deleted, references, title = "") {
+    const deletedCount = getDeletedHistoryCount(deleted);
+    const entry = normalizeHistoryTrashEntry({
+      id: makeId("trash"),
+      title: title || summarizeHistoryTrash(deleted, deletedCount),
+      deletedAt: new Date().toISOString(),
+      records: {
+        sessions: (deleted.practice || []).map(clone),
+        artworks: (deleted.artwork || []).map(clone),
+        reports: (deleted.report || []).map(clone)
+      },
+      references
+    });
+    if (!entry) return null;
+
+    state.historyTrash = [
+      entry,
+      ...state.historyTrash.filter((item) => item.id !== entry.id)
+    ].slice(0, MAX_HISTORY_TRASH);
+    return entry;
+  }
+
+  function summarizeHistoryTrash(deleted, deletedCount) {
+    if (deletedCount === 1) {
+      const record = deleted.practice?.[0] || deleted.artwork?.[0] || deleted.report?.[0];
+      return `已删除：${record?.title || record?.glyph || "学习档案"}`;
+    }
+    return `批量删除 ${deletedCount} 条学习档案`;
+  }
+
+  function applyHistoryDeletion(deleted) {
+    const deletedSessionIds = new Set((deleted.practice || []).map((session) => session.id));
+    const deletedArtworkIds = new Set((deleted.artwork || []).map((artwork) => artwork.id));
+    const selectedIds = new Set([
+      ...deletedSessionIds,
+      ...deletedArtworkIds,
+      ...(deleted.report || []).map((report) => report.id)
+    ]);
+
+    state.sessions = state.sessions.filter((session) => !selectedIds.has(session.id));
+    state.artworks = state.artworks.filter((artwork) => !selectedIds.has(artwork.id));
+    state.reports = state.reports.filter((report) => !selectedIds.has(report.id));
+
+    if (deletedSessionIds.has(state.currentSessionId)) {
+      state.currentSessionId = null;
+    }
+
+    state.artworks.forEach((artwork) => {
+      if (deletedSessionIds.has(artwork.sessionId)) {
+        artwork.sessionId = null;
+      }
+    });
+    state.reports.forEach((report) => {
+      if (deletedSessionIds.has(report.latestSessionId)) {
+        report.latestSessionId = null;
+      }
+      if (deletedArtworkIds.has(report.latestArtworkId)) {
+        report.latestArtworkId = null;
+      }
+    });
+  }
+
   function deleteHistoryRecord(id) {
     const recordId = String(id || "");
     if (!recordId) {
       return { ok: false, message: "请选择一条记录。" };
     }
 
-    const sessionIndex = state.sessions.findIndex((item) => item.id === recordId);
-    if (sessionIndex >= 0) {
-      const [session] = state.sessions.splice(sessionIndex, 1);
-      if (state.currentSessionId === recordId) {
-        state.currentSessionId = null;
-      }
-      state.artworks.forEach((artwork) => {
-        if (artwork.sessionId === recordId) {
-          artwork.sessionId = null;
-        }
-      });
-      state.reports.forEach((report) => {
-        if (report.latestSessionId === recordId) {
-          report.latestSessionId = null;
-        }
-      });
-      addEvent("history-delete", `删除练习：${session.title || session.glyph}`);
-      saveState();
-      return { ok: true, deletedType: "practice", message: "已删除所选练习记录，并解除相关作品引用。" };
+    const deleted = collectHistoryRecords([recordId]);
+    const deletedCount = getDeletedHistoryCount(deleted);
+    if (!deletedCount) {
+      return { ok: false, message: "未找到要删除的记录。" };
     }
 
-    const artworkIndex = state.artworks.findIndex((item) => item.id === recordId);
-    if (artworkIndex >= 0) {
-      const [artwork] = state.artworks.splice(artworkIndex, 1);
-      state.reports.forEach((report) => {
-        if (report.latestArtworkId === recordId) {
-          report.latestArtworkId = null;
-        }
-      });
-      addEvent("history-delete", `删除作品：${artwork.title}`);
-      saveState();
-      return { ok: true, deletedType: "artwork", message: `已删除作品记录：${artwork.title}。` };
-    }
-
-    const reportIndex = state.reports.findIndex((item) => item.id === recordId);
-    if (reportIndex >= 0) {
-      const [report] = state.reports.splice(reportIndex, 1);
-      addEvent("history-delete", `删除报告：${report.title || "学习报告"}`);
-      saveState();
-      return { ok: true, deletedType: "report", message: `已删除报告记录：${report.title || "学习报告"}。` };
-    }
-
-    return { ok: false, message: "未找到要删除的记录。" };
-  }
-
-  function normalizeHistoryIds(ids) {
-    return [...new Set((Array.isArray(ids) ? ids : [ids])
-      .map((id) => String(id || "").trim())
-      .filter(Boolean))];
+    const references = collectHistoryDeleteReferences(deleted);
+    const trash = pushHistoryTrash(deleted, references);
+    applyHistoryDeletion(deleted);
+    const deletedType = deleted.practice.length ? "practice" : deleted.artwork.length ? "artwork" : "report";
+    const record = deleted.practice[0] || deleted.artwork[0] || deleted.report[0];
+    addEvent("history-delete", `移入回收站：${record.title || record.glyph || "学习档案"}`);
+    saveState();
+    return {
+      ok: true,
+      deletedType,
+      trash: decorateHistoryTrashEntry(trash),
+      message: `已移入回收站：${record.title || record.glyph || "学习档案"}。可用“恢复最近删除”找回。`
+    };
   }
 
   function getHistoryExportPayload(ids) {
@@ -1965,54 +2073,137 @@
       return { ok: false, message: "请选择要删除的学习档案记录。" };
     }
 
-    const selected = new Set(selectedIds);
-    const deleted = {
-      practice: state.sessions.filter((session) => selected.has(session.id)),
-      artwork: state.artworks.filter((artwork) => selected.has(artwork.id)),
-      report: state.reports.filter((report) => selected.has(report.id))
-    };
-    const deletedCount = deleted.practice.length + deleted.artwork.length + deleted.report.length;
-
+    const deleted = collectHistoryRecords(selectedIds);
+    const deletedCount = getDeletedHistoryCount(deleted);
     if (!deletedCount) {
       return { ok: false, message: "未找到要删除的学习档案记录。" };
     }
 
-    const deletedSessionIds = new Set(deleted.practice.map((session) => session.id));
-    const deletedArtworkIds = new Set(deleted.artwork.map((artwork) => artwork.id));
-    state.sessions = state.sessions.filter((session) => !selected.has(session.id));
-    state.artworks = state.artworks.filter((artwork) => !selected.has(artwork.id));
-    state.reports = state.reports.filter((report) => !selected.has(report.id));
-
-    if (deletedSessionIds.has(state.currentSessionId)) {
-      state.currentSessionId = null;
-    }
-
-    state.artworks.forEach((artwork) => {
-      if (deletedSessionIds.has(artwork.sessionId)) {
-        artwork.sessionId = null;
-      }
-    });
-    state.reports.forEach((report) => {
-      if (deletedSessionIds.has(report.latestSessionId)) {
-        report.latestSessionId = null;
-      }
-      if (deletedArtworkIds.has(report.latestArtworkId)) {
-        report.latestArtworkId = null;
-      }
-    });
-
-    addEvent("history-batch-delete", `批量删除学习档案：${deletedCount} 条`);
+    const references = collectHistoryDeleteReferences(deleted);
+    const trash = pushHistoryTrash(deleted, references, `批量删除 ${deletedCount} 条学习档案`);
+    applyHistoryDeletion(deleted);
+    addEvent("history-batch-delete", `移入回收站：${deletedCount} 条学习档案`);
     saveState();
     return {
       ok: true,
       deletedCount,
+      trash: decorateHistoryTrashEntry(trash),
       deleted: {
         practice: deleted.practice.length,
         artwork: deleted.artwork.length,
         report: deleted.report.length
       },
-      message: `已删除 ${deletedCount} 条学习档案记录。`
+      message: `已将 ${deletedCount} 条学习档案移入回收站，可用“恢复最近删除”找回。`
     };
+  }
+
+  function getHistoryTrash() {
+    const entries = state.historyTrash.map(decorateHistoryTrashEntry).filter(Boolean);
+    return {
+      entries,
+      total: entries.length,
+      recordCount: entries.reduce((sum, entry) => sum + entry.recordCount, 0),
+      latest: entries[0] || null
+    };
+  }
+
+  function decorateHistoryTrashEntry(entry) {
+    if (!entry) return null;
+    const sessions = entry.records?.sessions || [];
+    const artworks = entry.records?.artworks || [];
+    const reports = entry.records?.reports || [];
+    const recordCount = sessions.length + artworks.length + reports.length;
+    return {
+      id: entry.id,
+      title: entry.title,
+      deletedAt: entry.deletedAt,
+      recordCount,
+      counts: {
+        practice: sessions.length,
+        artwork: artworks.length,
+        report: reports.length
+      }
+    };
+  }
+
+  function restoreHistoryTrash(trashId = null) {
+    const targetId = trashId ? String(trashId) : state.historyTrash[0]?.id;
+    const trash = state.historyTrash.find((entry) => entry.id === targetId);
+    if (!trash) {
+      return { ok: false, message: "回收站里没有可恢复的学习档案。" };
+    }
+
+    const restored = {
+      practice: restoreRecords(state.sessions, trash.records.sessions, normalizeSession),
+      artwork: restoreRecords(state.artworks, trash.records.artworks, normalizeArtwork),
+      report: restoreRecords(state.reports, trash.records.reports, normalizeReport)
+    };
+    restoreHistoryReferences(trash.references);
+    state.historyTrash = state.historyTrash.filter((entry) => entry.id !== trash.id);
+    const restoredCount = restored.practice + restored.artwork + restored.report;
+    addEvent("history-restore", `恢复学习档案：${trash.title}`);
+    saveState();
+    return {
+      ok: true,
+      restored,
+      restoredCount,
+      message: restoredCount
+        ? `已恢复 ${restoredCount} 条学习档案：${trash.title}。`
+        : `回收站条目“${trash.title}”已清理；原记录当前已存在，无需重复恢复。`
+    };
+  }
+
+  function restoreRecords(target, records, normalize) {
+    let restored = 0;
+    (records || []).forEach((record) => {
+      const normalized = normalize(record);
+      if (!normalized || target.some((item) => item.id === normalized.id)) {
+        return;
+      }
+      target.push(normalized);
+      restored += 1;
+    });
+    return restored;
+  }
+
+  function restoreHistoryReferences(references = {}) {
+    const sessionIds = new Set(state.sessions.map((session) => session.id));
+    const artworkIds = new Set(state.artworks.map((artwork) => artwork.id));
+    const reportIds = new Set(state.reports.map((report) => report.id));
+
+    if (references.currentSessionId && sessionIds.has(references.currentSessionId)) {
+      state.currentSessionId = references.currentSessionId;
+    }
+    (references.artworkSessionLinks || []).forEach((link) => {
+      const artwork = state.artworks.find((item) => item.id === link.artworkId);
+      if (artwork && sessionIds.has(link.sessionId)) {
+        artwork.sessionId = link.sessionId;
+      }
+    });
+    (references.reportSessionLinks || []).forEach((link) => {
+      const report = state.reports.find((item) => item.id === link.reportId);
+      if (report && sessionIds.has(link.sessionId)) {
+        report.latestSessionId = link.sessionId;
+      }
+    });
+    (references.reportArtworkLinks || []).forEach((link) => {
+      const report = state.reports.find((item) => item.id === link.reportId);
+      if (report && reportIds.has(link.reportId) && artworkIds.has(link.artworkId)) {
+        report.latestArtworkId = link.artworkId;
+      }
+    });
+  }
+
+  function clearHistoryTrash() {
+    const count = state.historyTrash.length;
+    const recordCount = getHistoryTrash().recordCount;
+    if (!count) {
+      return { ok: false, message: "回收站已经是空的。" };
+    }
+    state.historyTrash = [];
+    addEvent("history-trash-clear", `清空回收站：${recordCount} 条记录`);
+    saveState();
+    return { ok: true, count, recordCount, message: `已清空回收站：${recordCount} 条学习档案。` };
   }
 
   function downloadArchive() {
@@ -2045,9 +2236,12 @@
     getLatestReview,
     getHistory,
     getHistoryDetail,
+    getHistoryTrash,
     renameHistoryRecord,
     deleteHistoryRecord,
     deleteHistoryRecords,
+    restoreHistoryTrash,
+    clearHistoryTrash,
     downloadHistoryRecords,
     setMode,
     selectDailyGlyph,
