@@ -250,7 +250,9 @@
       path,
       label: `${prefix}：${path}`,
       detail: createFieldSelectionDetail(action, currentField, incomingField),
-      impact: getFieldSelectionImpact(action)
+      impact: getFieldSelectionImpact(action),
+      currentPreview: currentField ? createJsonPreview(currentField.value, "本机中无此字段") : "本机中无此字段",
+      incomingPreview: incomingField ? createJsonPreview(incomingField.value, "档案中无此字段") : "档案中无此字段"
     };
   }
 
@@ -305,6 +307,17 @@
       return "空";
     }
     return String(value);
+  }
+
+  function createJsonPreview(value, missingLabel) {
+    if (typeof value === "undefined") {
+      return missingLabel;
+    }
+    const text = JSON.stringify(value, null, 2);
+    if (typeof text !== "string") {
+      return missingLabel;
+    }
+    return text.length > 720 ? `${text.slice(0, 720)}\n...` : text;
   }
 
   function parseJsonForDiff(value) {
@@ -1342,6 +1355,28 @@
           fieldText.append(fieldLabel, fieldImpact);
           fieldChoice.append(fieldInput, fieldText);
           fieldItem.appendChild(fieldChoice);
+          if (field.currentPreview || field.incomingPreview) {
+            const fieldDetails = document.createElement("details");
+            fieldDetails.className = "main-project-field-details";
+            const summary = document.createElement("summary");
+            summary.textContent = "查看字段片段";
+            const previewGrid = document.createElement("div");
+            previewGrid.className = "main-project-field-preview-grid";
+            [
+              ["当前本机", field.currentPreview],
+              ["导入档案", field.incomingPreview]
+            ].forEach(([previewLabel, previewValue]) => {
+              const previewBlock = document.createElement("span");
+              const previewTitle = document.createElement("strong");
+              previewTitle.textContent = previewLabel;
+              const previewCode = document.createElement("pre");
+              previewCode.textContent = previewValue || "无";
+              previewBlock.append(previewTitle, previewCode);
+              previewGrid.appendChild(previewBlock);
+            });
+            fieldDetails.append(summary, previewGrid);
+            fieldItem.appendChild(fieldDetails);
+          }
           fieldList.appendChild(fieldItem);
         });
         body.append(fieldList);

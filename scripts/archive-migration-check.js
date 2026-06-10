@@ -119,6 +119,14 @@ async function main() {
     "学习状态预览应显示 sessions 字段当前值与档案值摘要。"
   );
   assert(
+    sessionSelection.currentPreview.includes('"score": 70'),
+    "学习状态预览应包含 sessions 字段当前本机 JSON 片段。"
+  );
+  assert(
+    sessionSelection.incomingPreview.includes('"score": 88'),
+    "学习状态预览应包含 sessions 字段导入档案 JSON 片段。"
+  );
+  assert(
     learningPreview.fieldSelections.some((item) => item.path === "artworks" && item.action === "add"),
     "学习状态预览应允许选择性恢复 artworks 字段。"
   );

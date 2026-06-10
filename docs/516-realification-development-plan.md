@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 字段级差异预览、字段级选择性恢复和字段恢复影响提示已补第一版，仍缺对象 schema 统一、三方字段合并和远端发布适配。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 字段级差异预览、字段级选择性恢复、字段恢复影响提示和字段 JSON 片段展开预览已补第一版，仍缺对象 schema 统一、三方字段合并和远端发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -842,7 +842,7 @@
 已知限制：
 
 - 差异预览已补 localStorage JSON 字段级 diff 第一版，会展示字段新增、修改、删除路径。
-- 已支持条目级选择性恢复、localStorage JSON 顶层字段级选择性恢复和字段恢复影响提示；还不能做深层字段冲突解决。
+- 已支持条目级选择性恢复、localStorage JSON 顶层字段级选择性恢复、字段恢复影响提示和字段 JSON 片段展开预览；还不能做深层字段冲突解决。
 - 项目档案仍是浏览器本机文件流转，不是远端多人协作或云端恢复。
 
 ### 2026-06-11：补齐项目档案选择性恢复
@@ -876,7 +876,7 @@
 
 已知限制：
 
-- 选择性恢复已从条目级推进到 localStorage JSON 顶层字段级，并已补当前/档案值摘要和覆盖/新增/删除提示；深层字段合并和可展开 JSON 树仍待补。
+- 选择性恢复已从条目级推进到 localStorage JSON 顶层字段级，并已补当前/档案值摘要、覆盖/新增/删除提示和字段片段展开预览；深层字段合并和完整 JSON 树仍待补。
 - IndexedDB 模型仓库仍按仓库整体替换，不能只勾选单个模型恢复。
 - 项目档案仍是浏览器本机 JSON 文件流转，不是远端协作或云端版本库。
 
@@ -2432,6 +2432,59 @@
 
 已知限制：
 
-- 当前值摘要是紧凑文本，不是可展开 JSON 树或逐字段详情面板。
+- 当前值摘要已可展开查看字段片段，但还不是完整深层 JSON 树或逐字段详情面板。
 - 字段冲突仍按用户勾选合并，没有三方 base、冲突自动分类和批量解决策略。
 - IndexedDB 模型仓库仍按仓库整体恢复，未做单模型字段级提示。
+
+### 2026-06-11：新增项目档案字段片段展开预览
+
+功能名：主后台项目档案字段级恢复的当前/档案 JSON 片段对照。
+
+涉及文件：
+
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `MRProjectArchive.prepareImportProject()` 的字段选择项新增 `currentPreview` 和 `incomingPreview`，分别记录当前本机字段片段和导入档案字段片段。
+- 字段级恢复列表新增“查看字段片段”折叠区，可直接对照当前本机 JSON 与导入档案 JSON。
+- 字段片段预览做了长度限制，避免大型数组或对象撑爆主后台预览面板。
+- 折叠区放在复选框标签之外，展开查看不会误触字段勾选。
+- `scripts/archive-migration-check.js` 已断言 `sessions` 字段片段包含本机分数 `70` 和档案分数 `88`。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，选择一个与当前本机状态不同的项目档案。
+- 在字段级恢复列表中点击“查看字段片段”，应能看到“当前本机”和“导入档案”两段 JSON。
+- 展开或收起字段片段不应改变字段复选框勾选状态。
+- 运行 `node scripts/archive-migration-check.js`，应输出项目档案迁移检查通过，并覆盖字段片段断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 第一版展示的是顶层字段 JSON 片段，不是完整可递归展开的 JSON 树。
+- 预览片段只用于导入前人工判断，不提供三方 base 对比和自动冲突分类。
+- IndexedDB 模型仓库仍按仓库级摘要展示，不展示单模型 JSON 片段。
