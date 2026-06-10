@@ -74,6 +74,14 @@ export function validateImportedConfig(config) {
     };
   }
 
+  if (type === "project-export") {
+    return {
+      type,
+      config,
+      ...validateProjectExportConfig(config)
+    };
+  }
+
   return {
     valid: false,
     type: "unknown",
@@ -100,7 +108,40 @@ export function detectConfigType(config) {
     return "project";
   }
 
+  if (config.type === "project-config-export") {
+    return "project-export";
+  }
+
   return "unknown";
+}
+
+function validateProjectExportConfig(config) {
+  const errors = [];
+  const warnings = [];
+
+  const projectResult = validateProjectConfig(config.project);
+  const flowResult = validateFlowConfig(config.flow);
+
+  errors.push(...projectResult.errors.map((error) => `project.${error}`));
+  warnings.push(...projectResult.warnings.map((warning) => `project.${warning}`));
+  errors.push(...flowResult.errors.map((error) => `flow.${error}`));
+  warnings.push(...flowResult.warnings.map((warning) => `flow.${warning}`));
+
+  if (!Array.isArray(config.scenes) || config.scenes.length === 0) {
+    errors.push("scenes 必须是非空 SceneConfig 数组。");
+  } else {
+    config.scenes.forEach((scene, index) => {
+      const result = validateSceneConfig(scene);
+      errors.push(...result.errors.map((error) => `scenes[${index}].${error}`));
+      warnings.push(...result.warnings.map((warning) => `scenes[${index}].${warning}`));
+    });
+  }
+
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings
+  };
 }
 
 function validateProjectConfig(config) {

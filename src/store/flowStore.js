@@ -324,6 +324,29 @@ export const useFlowStore = create((set, get) => ({
       return true;
     }
 
+    if (["callCaregiver", "saveReport"].includes(actionId)) {
+      const triggeredAt = new Date().toISOString();
+
+      set((storeState) => ({
+        session: storeState.session
+          ? {
+              ...storeState.session,
+              events: [
+                ...storeState.session.events,
+                createSessionEvent({
+                  type: "action_triggered",
+                  stateId: storeState.currentStateId,
+                  at: triggeredAt,
+                  payload: { actionId }
+                })
+              ]
+            }
+          : storeState.session
+      }));
+
+      return true;
+    }
+
     if (actionId === "finish" && state.id !== "practice_game" && state.id !== "scoring") {
       const targetStateId = get().session?.report ? "caregiver_confirm" : "finished";
       return get().transitionTo(targetStateId, actionId);
