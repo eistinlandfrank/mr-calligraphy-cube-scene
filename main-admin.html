@@ -56,9 +56,40 @@
 
         <section class="main-add-panel" aria-label="新增物体">
           <div class="main-light-title">
-            <span>Import Model</span>
-            <strong>导入模型</strong>
+            <span>Add Object</span>
+            <strong>新增物体</strong>
           </div>
+          <div class="main-add-subtitle">基础几何体</div>
+          <div class="main-custom-row">
+            <label>
+              <span>名称</span>
+              <input id="mainNewObjectName" type="text" placeholder="留空自动命名">
+            </label>
+            <label>
+              <span>类型</span>
+              <select id="mainNewObjectType">
+                <option value="box">方块</option>
+                <option value="cylinder">圆柱</option>
+                <option value="plane">薄板</option>
+              </select>
+            </label>
+          </div>
+          <div class="main-custom-row main-custom-color-row">
+            <label>
+              <span>颜色</span>
+              <input id="mainNewObjectColor" type="color" value="#8b5a2b">
+            </label>
+            <button id="mainNewObjectAdd" type="button">新增基础物体</button>
+          </div>
+          <div class="main-custom-size-grid">
+            <label data-custom-size="width"><span>宽</span><input id="mainNewObjectWidth" type="number" min="0.05" max="8" step="0.05" value="0.8"></label>
+            <label data-custom-size="height"><span>高 / 厚</span><input id="mainNewObjectHeight" type="number" min="0.02" max="8" step="0.05" value="0.8"></label>
+            <label data-custom-size="depth"><span>深</span><input id="mainNewObjectDepth" type="number" min="0.05" max="8" step="0.05" value="0.8"></label>
+            <label data-custom-size="radius" hidden><span>半径</span><input id="mainNewObjectRadius" type="number" min="0.03" max="4" step="0.05" value="0.38"></label>
+          </div>
+          <p id="mainCustomStatus" class="main-import-status">新增后会自动保存到本机布局，并同步到正常主场景。</p>
+          <div class="main-add-divider"></div>
+          <div class="main-add-subtitle">导入模型</div>
           <label>
             <span>名称</span>
             <input id="mainImportModelName" type="text" placeholder="留空则使用文件名">

@@ -25,6 +25,15 @@ const deleteButton = document.getElementById("mainObjectDelete");
 const restoreButton = document.getElementById("mainObjectRestore");
 const saveButton = document.getElementById("mainObjectSave");
 const resetAllButton = document.getElementById("mainObjectResetAll");
+const newObjectNameInput = document.getElementById("mainNewObjectName");
+const newObjectTypeSelect = document.getElementById("mainNewObjectType");
+const newObjectColorInput = document.getElementById("mainNewObjectColor");
+const newObjectWidthInput = document.getElementById("mainNewObjectWidth");
+const newObjectHeightInput = document.getElementById("mainNewObjectHeight");
+const newObjectDepthInput = document.getElementById("mainNewObjectDepth");
+const newObjectRadiusInput = document.getElementById("mainNewObjectRadius");
+const newObjectAddButton = document.getElementById("mainNewObjectAdd");
+const customStatus = document.getElementById("mainCustomStatus");
 const importModelNameInput = document.getElementById("mainImportModelName");
 const importModelInput = document.getElementById("mainImportModel");
 const importStatus = document.getElementById("mainImportStatus");
@@ -1347,18 +1356,22 @@ function saveEntry(entry) {
 }
 
 function addCustomObject() {
-  const type = newObjectTypeSelect.value;
+  if (!newObjectTypeSelect) {
+    return;
+  }
+
+  const type = CUSTOM_TYPE_LABELS[newObjectTypeSelect.value] ? newObjectTypeSelect.value : "box";
   const index = layout.customObjects.length + 1;
-  const label = newObjectNameInput.value.trim() || `${CUSTOM_TYPE_LABELS[type] || "物体"} ${index}`;
+  const label = newObjectNameInput?.value.trim() || `${CUSTOM_TYPE_LABELS[type] || "物体"} ${index}`;
   const spec = normalizeCustomObject({
     id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
     label,
     type,
-    color: newObjectColorInput.value,
+    color: newObjectColorInput?.value || "#8b5a2b",
     position: [0, -1.05, -3.2],
     rotation: [0, 0, 0],
     scale: 1,
-    size: CUSTOM_TYPE_SIZES[type] || CUSTOM_TYPE_SIZES.box
+    size: readCustomObjectSize(type)
   }, index - 1);
 
   layout.customObjects.push(spec);
@@ -1367,8 +1380,72 @@ function addCustomObject() {
   populateObjectSelect();
   selectObject(entry.id);
   pushUndo({ kind: "custom-add", id: entry.id });
-  newObjectNameInput.value = "";
+  if (newObjectNameInput) {
+    newObjectNameInput.value = "";
+  }
+  showCustomStatus(`已新增：${entry.label}。可在对象图层中搜索、隐藏或锁定。`);
   showNotice(`已新增：${entry.label}`);
+}
+
+function readCustomObjectSize(type) {
+  const fallback = CUSTOM_TYPE_SIZES[type] || CUSTOM_TYPE_SIZES.box;
+
+  if (type === "cylinder") {
+    return {
+      radius: readSizeInput(newObjectRadiusInput, fallback.radius, 0.03, 4),
+      height: readSizeInput(newObjectHeightInput, fallback.height, 0.02, 8)
+    };
+  }
+
+  return {
+    width: readSizeInput(newObjectWidthInput, fallback.width, 0.05, 8),
+    height: readSizeInput(newObjectHeightInput, fallback.height, 0.02, 8),
+    depth: readSizeInput(newObjectDepthInput, fallback.depth, 0.05, 8)
+  };
+}
+
+function readSizeInput(input, fallback, min, max) {
+  return Number(clampNumber(input?.value, min, max, fallback).toFixed(3));
+}
+
+function syncCustomSizeInputs(resetValues = false) {
+  if (!newObjectTypeSelect) {
+    return;
+  }
+
+  const type = CUSTOM_TYPE_LABELS[newObjectTypeSelect.value] ? newObjectTypeSelect.value : "box";
+  const size = CUSTOM_TYPE_SIZES[type] || CUSTOM_TYPE_SIZES.box;
+  const isCylinder = type === "cylinder";
+
+  toggleCustomSizeField("width", !isCylinder);
+  toggleCustomSizeField("depth", !isCylinder);
+  toggleCustomSizeField("radius", isCylinder);
+
+  if (resetValues || !newObjectWidthInput?.value) setInputNumber(newObjectWidthInput, size.width);
+  if (resetValues || !newObjectHeightInput?.value) setInputNumber(newObjectHeightInput, size.height);
+  if (resetValues || !newObjectDepthInput?.value) setInputNumber(newObjectDepthInput, size.depth);
+  if (resetValues || !newObjectRadiusInput?.value) setInputNumber(newObjectRadiusInput, size.radius);
+
+  showCustomStatus(`${CUSTOM_TYPE_LABELS[type]} 会以当前尺寸新增到主写字桌前方。`);
+}
+
+function toggleCustomSizeField(name, isVisible) {
+  const field = document.querySelector(`[data-custom-size="${name}"]`);
+  if (field) {
+    field.hidden = !isVisible;
+  }
+}
+
+function setInputNumber(input, value) {
+  if (input && Number.isFinite(Number(value))) {
+    input.value = String(value);
+  }
+}
+
+function showCustomStatus(message) {
+  if (customStatus) {
+    customStatus.textContent = message;
+  }
 }
 
 function removeCustomEntry(entry, options = {}) {
@@ -1604,6 +1681,9 @@ function bindUi() {
     showNotice("已保存，正常主场景页面会读取这些参数。");
   });
   resetAllButton.addEventListener("click", resetAll);
+  newObjectAddButton?.addEventListener("click", addCustomObject);
+  newObjectTypeSelect?.addEventListener("change", () => syncCustomSizeInputs(true));
+  syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
   [ambientLightInput, envLightInput, keyLightInput, rimLightInput, exposureInput].forEach((input) => {
     input.addEventListener("input", updateLightingFromInputs);

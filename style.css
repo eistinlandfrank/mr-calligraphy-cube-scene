@@ -531,6 +531,40 @@ button {
   background: rgba(47, 111, 104, 0.58);
 }
 
+.main-add-subtitle {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.main-custom-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-custom-color-row {
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: end;
+}
+
+.main-custom-size-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-custom-size-grid label[hidden] {
+  display: none;
+}
+
+.main-add-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .main-layer-search {
   display: grid;
   gap: 5px;
