@@ -399,8 +399,10 @@
 - [x] **P6-14：复制对象**  
   验收：复制对象生成新的唯一 ID。
 
-- [ ] **P6-15：保存场景配置**  
+- [x] **P6-15：保存场景配置**  
   验收：编辑结果保存到 IndexedDB。
+
+  验收记录：2026-06-10 sceneStore 新增 IndexedDB `moyin-xinjing-scene-editor/sceneSnapshots` 最新快照保存与恢复；后台“保存到本机”会同步写入 localStorage 兼容数据和 IndexedDB 快照，SceneEditor 启动时异步恢复最新 IndexedDB 场景配置；`npm run build` 通过。
 
 - [x] **P6-16：导出 SceneConfig JSON**  
   验收：可下载当前场景 JSON。

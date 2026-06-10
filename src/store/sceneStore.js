@@ -3,6 +3,10 @@ import { getDefaultSceneConfig, loadDefaultScenes } from "../data/configLoader.j
 import { cloneSceneConfig, createSceneObject, validateSceneConfig } from "../scene-core/sceneSchema.js";
 
 export const SCENE_STORAGE_KEY = "moyin-xinjing-scene-configs";
+export const SCENE_DB_NAME = "moyin-xinjing-scene-editor";
+export const SCENE_DB_STORE = "sceneSnapshots";
+export const SCENE_DB_SNAPSHOT_ID = "latest";
+const SCENE_DB_VERSION = 1;
 const baseSceneConfigs = loadDefaultScenes();
 const baseSceneConfigById = Object.fromEntries(
   baseSceneConfigs.map((sceneConfig) => [sceneConfig.id, sceneConfig])
@@ -158,10 +162,24 @@ export const useSceneStore = create((set, get) => ({
     return result;
   },
 
-  saveScenes: () => {
+  saveScenes: async () => {
     const scenes = get().scenes;
-    persistScenes(scenes);
-    set({ lastSavedAt: new Date().toISOString() });
+    const savedAt = new Date().toISOString();
+    await persistScenes(scenes, savedAt);
+    set({ lastSavedAt: savedAt });
+  },
+
+  hydrateScenesFromIndexedDb: async () => {
+    const snapshot = await loadScenesFromIndexedDb();
+
+    if (!snapshot?.scenes?.length) {
+      return;
+    }
+
+    set({
+      scenes: mergeStoredScenes(snapshot.scenes),
+      lastSavedAt: snapshot.savedAt ?? null
+    });
   },
 
   resetScene: (sceneId) => {
@@ -205,20 +223,94 @@ function loadInitialScenes() {
       return cloneSceneList(baseSceneConfigs);
     }
 
-    const storedById = Object.fromEntries(stored.map((scene) => [scene.id, scene]));
-
-    return baseSceneConfigs.map((scene) => cloneSceneConfig(storedById[scene.id] ?? scene));
+    return mergeStoredScenes(stored);
   } catch {
     return cloneSceneList(baseSceneConfigs);
   }
 }
 
-function persistScenes(scenes) {
+async function persistScenes(scenes, savedAt) {
   if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(scenes));
+
+  try {
+    await persistScenesToIndexedDb({ id: SCENE_DB_SNAPSHOT_ID, savedAt, scenes });
+  } catch (error) {
+    console.warn("保存 SceneConfig 到 IndexedDB 失败", error);
+  }
+}
+
+function mergeStoredScenes(stored) {
+  const storedById = Object.fromEntries(stored.map((scene) => [scene.id, scene]));
+  const baseMerged = baseSceneConfigs.map((scene) => cloneSceneConfig(storedById[scene.id] ?? scene));
+  const extraScenes = stored.filter((scene) => !baseSceneConfigById[scene.id]).map((scene) => cloneSceneConfig(scene));
+
+  return [...baseMerged, ...extraScenes];
+}
+
+function loadScenesFromIndexedDb() {
+  if (typeof indexedDB === "undefined") {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve) => {
+    const request = indexedDB.open(SCENE_DB_NAME, SCENE_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      createSceneSnapshotStore(request.result);
+    };
+    request.onerror = () => resolve(null);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction(SCENE_DB_STORE, "readonly");
+      const store = transaction.objectStore(SCENE_DB_STORE);
+      const getRequest = store.get(SCENE_DB_SNAPSHOT_ID);
+
+      getRequest.onerror = () => resolve(null);
+      getRequest.onsuccess = () => resolve(getRequest.result ?? null);
+      transaction.oncomplete = () => database.close();
+      transaction.onerror = () => database.close();
+    };
+  });
+}
+
+function persistScenesToIndexedDb(snapshot) {
+  if (typeof indexedDB === "undefined") {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(SCENE_DB_NAME, SCENE_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      createSceneSnapshotStore(request.result);
+    };
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction(SCENE_DB_STORE, "readwrite");
+      const store = transaction.objectStore(SCENE_DB_STORE);
+
+      store.put(snapshot);
+      transaction.oncomplete = () => {
+        database.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        database.close();
+        reject(transaction.error);
+      };
+    };
+  });
+}
+
+function createSceneSnapshotStore(database) {
+  if (!database.objectStoreNames.contains(SCENE_DB_STORE)) {
+    database.createObjectStore(SCENE_DB_STORE, { keyPath: "id" });
+  }
 }
 
 function cloneSceneList(scenes) {

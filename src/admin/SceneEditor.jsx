@@ -1,5 +1,5 @@
 import { Download, Eye, RotateCcw, Save, Upload } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createProjectExportPayload, downloadConfigJson, parseConfigJson } from "../data/configIO.js";
 import { loadDefaultFlow, loadDefaultProject } from "../data/configLoader.js";
 import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
@@ -17,6 +17,7 @@ export function SceneEditor() {
   const lastSavedAt = useSceneStore((state) => state.lastSavedAt);
   const setSelectedObjectId = useSceneStore((state) => state.setSelectedObjectId);
   const saveScenes = useSceneStore((state) => state.saveScenes);
+  const hydrateScenesFromIndexedDb = useSceneStore((state) => state.hydrateScenesFromIndexedDb);
   const resetScene = useSceneStore((state) => state.resetScene);
   const importScene = useSceneStore((state) => state.importScene);
   const fileInputRef = useRef(null);
@@ -25,6 +26,10 @@ export function SceneEditor() {
   const selectedObject = sceneConfig.objects.find((object) => object.id === selectedObjectId) ?? sceneConfig.objects[0];
   const mode = getSceneMode(sceneConfig.type);
   const isCaregiverPreview = ["caregiver-view", "calligraphy-game", "gallery-report"].includes(sceneConfig.type);
+
+  useEffect(() => {
+    hydrateScenesFromIndexedDb();
+  }, [hydrateScenesFromIndexedDb]);
 
   function exportScene() {
     downloadConfigJson(sceneConfig, `${sceneConfig.id}.json`);
