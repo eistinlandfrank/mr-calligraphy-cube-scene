@@ -3955,7 +3955,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
   els.historyDownloadArchive.disabled = history.total === 0;
   pruneHistorySelection(history.allIds || []);
 
-  renderHistoryTrend(history.trend);
+  renderHistoryTrend(history.trend, history.dailyTrend);
   renderHistoryList(history.entries, history.filteredTotal);
   renderHistoryBatchControls(history);
   renderHistoryDetail();
@@ -4257,26 +4257,68 @@ function addCustomPlanItem() {
   }
 }
 
-function renderHistoryTrend(trend) {
+function renderHistoryTrend(trend = [], dailyTrend = []) {
   if (!els.historyTrend) return;
   els.historyTrend.innerHTML = "";
 
-  if (!trend.length) {
+  if (!trend.length && !dailyTrend.length) {
     const empty = document.createElement("p");
     empty.textContent = "保存作品后会显示分数趋势。";
     els.historyTrend.appendChild(empty);
     return;
   }
 
-  trend.forEach((item) => {
-    const bar = document.createElement("span");
-    const height = clamp(Number(item.score) || 0, 8, 100);
-    bar.className = `history-trend-bar is-${item.type}`;
-    bar.style.height = `${height}%`;
-    bar.title = `${item.label} ${item.score}分`;
-    bar.setAttribute("aria-label", `${item.label} ${item.score}分`);
-    els.historyTrend.appendChild(bar);
-  });
+  if (trend.length) {
+    const section = document.createElement("div");
+    section.className = "history-trend-section";
+    const title = document.createElement("strong");
+    title.textContent = "最近分数";
+    const bars = document.createElement("div");
+    bars.className = "history-score-bars";
+
+    trend.forEach((item) => {
+      const bar = document.createElement("span");
+      const height = clamp(Number(item.score) || 0, 8, 100);
+      bar.className = `history-trend-bar is-${item.type}`;
+      bar.style.height = `${height}%`;
+      bar.title = `${item.label} ${item.score}分`;
+      bar.setAttribute("aria-label", `${item.label} ${item.score}分`);
+      bars.appendChild(bar);
+    });
+
+    section.append(title, bars);
+    els.historyTrend.appendChild(section);
+  }
+
+  if (dailyTrend.length) {
+    const section = document.createElement("div");
+    section.className = "history-trend-section history-daily-section";
+    const title = document.createElement("strong");
+    title.textContent = "按日趋势";
+    const bars = document.createElement("div");
+    bars.className = "history-daily-bars";
+
+    dailyTrend.forEach((item) => {
+      const bar = document.createElement("span");
+      const scoreHeight = item.averageScore ? clamp(Number(item.averageScore), 8, 100) : 6;
+      bar.className = "history-daily-bar";
+      bar.style.setProperty("--score-height", `${scoreHeight}%`);
+      bar.title = `${item.date} 平均 ${item.averageScore || "-"} 分 / ${item.totalCount} 条记录`;
+      bar.setAttribute("aria-label", bar.title);
+
+      const score = document.createElement("em");
+      score.textContent = item.averageScore || "-";
+      const label = document.createElement("small");
+      label.textContent = item.label;
+      const count = document.createElement("b");
+      count.textContent = String(item.totalCount);
+      bar.append(score, label, count);
+      bars.appendChild(bar);
+    });
+
+    section.append(title, bars);
+    els.historyTrend.appendChild(section);
+  }
 }
 
 function renderHistoryList(entries, filteredTotal) {

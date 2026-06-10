@@ -1718,6 +1718,7 @@
       .filter((entry) => Number.isFinite(entry.score) && entry.score > 0)
       .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
       .slice(-8);
+    const dailyTrend = getHistoryDailyTrend(entries);
     return {
       filter,
       entries: filteredEntries.slice(0, limit).map(clone),
@@ -1734,8 +1735,55 @@
         label: entry.shortLabel,
         score: entry.score,
         createdAt: entry.createdAt
-      }))
+      })),
+      dailyTrend
     };
+  }
+
+  function getHistoryDailyTrend(entries) {
+    const groups = new Map();
+    entries.forEach((entry) => {
+      const date = new Date(entry.createdAt);
+      if (!Number.isFinite(date.getTime())) {
+        return;
+      }
+      const key = date.toISOString().slice(0, 10);
+      if (!groups.has(key)) {
+        groups.set(key, {
+          date: key,
+          label: key.slice(5),
+          scores: [],
+          practiceCount: 0,
+          artworkCount: 0,
+          reportCount: 0,
+          totalCount: 0
+        });
+      }
+      const group = groups.get(key);
+      group.totalCount += 1;
+      if (entry.type === "practice") group.practiceCount += 1;
+      if (entry.type === "artwork") group.artworkCount += 1;
+      if (entry.type === "report") group.reportCount += 1;
+      if (Number.isFinite(entry.score) && entry.score > 0) {
+        group.scores.push(entry.score);
+      }
+    });
+
+    return [...groups.values()]
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-14)
+      .map((group) => ({
+        date: group.date,
+        label: group.label,
+        averageScore: group.scores.length
+          ? Math.round(group.scores.reduce((sum, score) => sum + score, 0) / group.scores.length)
+          : 0,
+        scoreCount: group.scores.length,
+        practiceCount: group.practiceCount,
+        artworkCount: group.artworkCount,
+        reportCount: group.reportCount,
+        totalCount: group.totalCount
+      }));
   }
 
   function sessionToHistoryEntry(session) {
