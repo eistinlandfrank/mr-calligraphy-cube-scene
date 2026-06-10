@@ -12,7 +12,7 @@
       <canvas id="mainAdminCanvas" class="main-admin-canvas" aria-label="主场景 3D 管理画布"></canvas>
 
       <header class="main-admin-header">
-        <a data-feature-state="real" href="index.html">返回主场景</a>
+        <a data-feature-state="real-local" href="index.html">返回主场景</a>
         <div>
           <span>Main Scene Editor</span>
           <h1>主场景管理页</h1>
@@ -31,9 +31,9 @@
         </label>
 
         <div class="main-object-mode" aria-label="操作轴模式">
-          <button data-feature-state="real" id="mainTranslateMode" class="is-active" type="button">移动轴</button>
-          <button data-feature-state="real" id="mainRotateMode" type="button">旋转轴</button>
-          <button data-feature-state="real" id="mainFocusObject" type="button">聚焦</button>
+          <button data-feature-state="real-local" id="mainTranslateMode" class="is-active" type="button">移动轴</button>
+          <button data-feature-state="real-local" id="mainRotateMode" type="button">旋转轴</button>
+          <button data-feature-state="real-local" id="mainFocusObject" type="button">聚焦</button>
         </div>
 
         <div class="main-object-meta">
@@ -53,11 +53,11 @@
           <div class="main-layer-batch" aria-label="图层批量操作">
             <label><input id="mainLayerSelectVisible" type="checkbox">选择当前结果</label>
             <span id="mainLayerSelectionStatus">已选 0 个</span>
-            <button data-feature-state="real" id="mainLayerBatchHide" type="button">隐藏</button>
-            <button data-feature-state="real" id="mainLayerBatchShow" type="button">显示</button>
-            <button data-feature-state="real" id="mainLayerBatchLock" type="button">锁定</button>
-            <button data-feature-state="real" id="mainLayerBatchUnlock" type="button">解锁</button>
-            <button data-feature-state="real" id="mainLayerBatchClear" type="button">清除</button>
+            <button data-feature-state="real-local" id="mainLayerBatchHide" type="button">隐藏</button>
+            <button data-feature-state="real-local" id="mainLayerBatchShow" type="button">显示</button>
+            <button data-feature-state="real-local" id="mainLayerBatchLock" type="button">锁定</button>
+            <button data-feature-state="real-local" id="mainLayerBatchUnlock" type="button">解锁</button>
+            <button data-feature-state="real-local" id="mainLayerBatchClear" type="button">清除</button>
           </div>
           <p id="mainLayerSummary" class="main-layer-summary">正在读取场景对象。</p>
           <div id="mainLayerList" class="main-layer-list" aria-live="polite"></div>
@@ -88,8 +88,8 @@
               <span>颜色</span>
               <input id="mainNewObjectColor" type="color" value="#8b5a2b">
             </label>
-            <button data-feature-state="real" id="mainNewObjectAdd" type="button">新增基础物体</button>
-            <button data-feature-state="real" id="mainNewObjectUpdate" type="button" disabled>更新所选</button>
+            <button data-feature-state="real-local" id="mainNewObjectAdd" type="button">新增基础物体</button>
+            <button data-feature-state="real-local" id="mainNewObjectUpdate" type="button" disabled>更新所选</button>
           </div>
           <div class="main-custom-size-grid">
             <label data-custom-size="width"><span>宽</span><input id="mainNewObjectWidth" type="number" min="0.05" max="8" step="0.05" value="0.8"></label>
@@ -136,7 +136,7 @@
             <span>曝光 <output id="mainExposureValue">0.82</output></span>
             <input id="mainExposure" type="range" min="0.25" max="1.6" step="0.01">
           </label>
-          <button data-feature-state="real" id="mainLightReset" type="button">恢复默认灯光</button>
+          <button data-feature-state="real-local" id="mainLightReset" type="button">恢复默认灯光</button>
         </section>
 
         <section class="main-project-panel" aria-label="项目档案">
@@ -145,7 +145,7 @@
             <strong>项目备份</strong>
           </div>
           <div class="main-project-actions">
-            <button data-feature-state="real" id="projectExportButton" type="button">导出项目档案</button>
+            <button data-feature-state="real-export" id="projectExportButton" type="button">导出项目档案</button>
             <label class="main-project-import">
               <span>导入项目档案</span>
               <input id="projectImportFile" type="file" accept="application/json,.json">
@@ -164,8 +164,8 @@
             <ul id="projectImportPreviewList" class="main-project-preview-list"></ul>
             <p id="projectImportSelectionStatus" class="main-project-selection-status">尚未选择恢复内容。</p>
             <div class="main-project-confirm">
-              <button data-feature-state="real" id="projectImportConfirm" type="button">恢复所选</button>
-              <button data-feature-state="real" id="projectImportCancel" type="button">取消</button>
+              <button data-feature-state="real-local" id="projectImportConfirm" type="button">恢复所选</button>
+              <button data-feature-state="real-local" id="projectImportCancel" type="button">取消</button>
             </div>
           </div>
         </section>
@@ -176,9 +176,9 @@
             <strong>预览发布</strong>
           </div>
           <div class="main-publish-actions">
-            <button data-feature-state="real" id="mainPreviewDraft" type="button">预览草稿</button>
-            <button data-feature-state="real" id="mainOpenLive" type="button">打开前台</button>
-            <button data-feature-state="real" id="mainPublishLayout" type="button">发布到前台</button>
+            <button data-feature-state="real-local" id="mainPreviewDraft" type="button">预览草稿</button>
+            <button data-feature-state="real-local" id="mainOpenLive" type="button">打开前台</button>
+            <button data-feature-state="real-published-local" id="mainPublishLayout" type="button">发布到前台</button>
           </div>
           <p id="mainPublishStatus" class="main-publish-status">尚未读取发布状态。</p>
         </section>
@@ -189,8 +189,8 @@
             <strong>保存历史</strong>
           </div>
           <div class="main-history-actions">
-            <button data-feature-state="real" id="mainSnapshotCreate" type="button">保存快照</button>
-            <button data-feature-state="real" id="mainSnapshotRefresh" type="button">刷新列表</button>
+            <button data-feature-state="real-local" id="mainSnapshotCreate" type="button">保存快照</button>
+            <button data-feature-state="real-local" id="mainSnapshotRefresh" type="button">刷新列表</button>
           </div>
           <p id="mainHistoryStatus" class="main-history-status">最多保留最近 10 次主场景布局快照。</p>
           <div id="mainSnapshotList" class="main-snapshot-list" aria-live="polite"></div>
@@ -213,15 +213,15 @@
         </div>
 
         <div class="main-object-actions">
-          <button data-feature-state="real" id="mainObjectUndo" type="button">撤回</button>
-          <button data-feature-state="real" id="mainObjectReset" type="button">复位</button>
-          <button data-feature-state="real" id="mainObjectSave" type="button">保存</button>
+          <button data-feature-state="real-local" id="mainObjectUndo" type="button">撤回</button>
+          <button data-feature-state="real-local" id="mainObjectReset" type="button">复位</button>
+          <button data-feature-state="real-local" id="mainObjectSave" type="button">保存</button>
         </div>
         <div class="main-object-actions">
-          <button data-feature-state="real" id="mainObjectDelete" class="danger-action" type="button">删除物体</button>
-          <button data-feature-state="real" id="mainObjectRestore" type="button">恢复物体</button>
+          <button data-feature-state="real-local" id="mainObjectDelete" class="danger-action" type="button">删除物体</button>
+          <button data-feature-state="real-local" id="mainObjectRestore" type="button">恢复物体</button>
         </div>
-        <button data-feature-state="real" id="mainObjectResetAll" class="main-reset-all" type="button">恢复全部默认</button>
+        <button data-feature-state="real-local" id="mainObjectResetAll" class="main-reset-all" type="button">恢复全部默认</button>
       </aside>
 
       <div id="noticeState" class="notice-panel" hidden></div>

@@ -11,7 +11,7 @@
     <canvas id="realisticCanvas" aria-label="写实 3D 书法场景管理画布"></canvas>
 
     <header class="demo-header">
-      <a data-feature-state="real" href="realistic-demo.html" class="back-link">返回演示</a>
+      <a data-feature-state="demo-content" href="realistic-demo.html" class="back-link">返回演示</a>
       <div>
         <span>Scene Editor</span>
         <h1>场景管理页</h1>
@@ -28,9 +28,9 @@
         <select id="designObjectSelect"></select>
       </label>
       <div class="mode-actions" aria-label="编辑模式">
-        <button data-feature-state="real" id="translateMode" class="is-active" type="button">移动</button>
-        <button data-feature-state="real" id="rotateMode" type="button">旋转</button>
-        <button data-feature-state="real" id="undoAction" type="button">撤回</button>
+        <button data-feature-state="real-local" id="translateMode" class="is-active" type="button">移动</button>
+        <button data-feature-state="real-local" id="rotateMode" type="button">旋转</button>
+        <button data-feature-state="real-local" id="undoAction" type="button">撤回</button>
       </div>
       <div class="axis-grid">
         <label>
@@ -61,12 +61,12 @@
         </label>
       </div>
       <div class="design-actions">
-        <button data-feature-state="real" id="focusObject" type="button">聚焦</button>
-        <button data-feature-state="real" id="resetObject" type="button">复位</button>
+        <button data-feature-state="real-local" id="focusObject" type="button">聚焦</button>
+        <button data-feature-state="real-local" id="resetObject" type="button">复位</button>
       </div>
       <div class="design-actions object-actions">
-        <button data-feature-state="real" id="deleteObject" class="danger-action" type="button">删除物体</button>
-        <button data-feature-state="real" id="restoreObject" type="button">恢复物体</button>
+        <button data-feature-state="real-local" id="deleteObject" class="danger-action" type="button">删除物体</button>
+        <button data-feature-state="real-local" id="restoreObject" type="button">恢复物体</button>
       </div>
       <label class="import-control">
         <span>导入 GLB / OBJ</span>
@@ -74,8 +74,8 @@
       </label>
       <p id="importStatus" class="import-status">导入后的模型会保存到本机浏览器，并同步到演示页。</p>
       <div class="demo-actions editor-camera-actions">
-        <button data-feature-state="real" id="resetCamera" type="button">重置视角</button>
-        <button data-feature-state="real" id="toggleMotion" type="button">暂停旋转</button>
+        <button data-feature-state="real-local" id="resetCamera" type="button">重置视角</button>
+        <button data-feature-state="real-local" id="toggleMotion" type="button">暂停旋转</button>
       </div>
       <p>点选物体或使用下拉框后，切换移动/旋转并拖动坐标轴。删除、恢复、移动和旋转都支持 Ctrl+Z 撤回 256 步。</p>
     </aside>

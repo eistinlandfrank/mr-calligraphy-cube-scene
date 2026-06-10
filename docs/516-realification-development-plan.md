@@ -147,7 +147,7 @@
 任务：
 
 - 建立控件清单，覆盖 `index.html`、`main-admin.html`、`realistic-demo.html`、`realistic-admin.html`。第一版已完成。
-- 给每个按钮标记 `data-feature-state="real|demo|disabled"`。第一版已完成。
+- 给每个按钮标记功能状态，并从 `real|demo|disabled` 细化为 `real-local`、`real-export`、`real-published-local`、`demo-content`、`disabled`。第一版已完成。
 - 对未实现按钮加禁用态或演示态标识。
 - 模式 tabs 接入真实 active state，至少能切换“单字学习 / 集字练习 / 创作”的内容范围。
 - 将 `SCENES.actions.response` 里的“已保存、已导出、已生成”等假结果改成真实执行或明确演示。第一版已完成，后续继续审计新增动作。
@@ -1510,12 +1510,12 @@
 
 已完成：
 
-- 四个入口 HTML 的静态按钮和导航链接均添加 `data-feature-state="real"`。
+- 四个入口 HTML 的静态按钮和导航链接第一版均添加 `data-feature-state="real"`，后续已升级为 `real-local`、`real-export`、`real-published-local` 和 `demo-content` 细分状态。
 - 前台动态生成的步骤导航、学习路径、热点、任务、历史、贴图和角色按钮会带有功能状态。
 - 主后台动态生成的图层按钮和快照恢复/删除按钮会带有功能状态。
 - 前台学习动作新增显式白名单 `LEARNING_ACTION_FEATURES`，未知动作默认禁用，不再显示静态成功文案。
 - 操作反馈不再默认回退到 `action.response`，避免未接入动作伪装成功。
-- 前台操作按钮显示“真实可用 / 演示能力 / 暂不可用”状态标签。
+- 前台操作按钮显示“本机真实 / 文件导出 / 本机发布 / 演示内容 / 暂不可用”等状态标签。
 - 新增 `scripts/control-inventory.js --check`，静态检查四个入口页面的按钮和链接状态标注。
 - `scripts/smoke-test.js` 纳入控件状态清单，提交前 smoke test 会同时检查脚本语法、控件状态和四个入口页面。
 
@@ -1528,7 +1528,7 @@
 
 已知限制：
 
-- 第一版状态标注以 `real` 为主，当前没有保留演示态按钮；后续新增云端、分享、TTS 等未完成能力时应标记为 `demo` 或 `disabled`。
+- 第一版状态标注以 `real` 为主，现已拆分第一批细分状态；后续新增云端、分享、TTS 等未完成能力时仍应标记为 `demo-content` 或 `disabled`。
 - 控件清单是静态 HTML 检查加运行时兜底，不等同于浏览器级交互测试。
 - 动态生成控件仍需开发者在创建时显式标注，MutationObserver 只作为兜底。
 
@@ -1558,6 +1558,51 @@
 
 已知限制：
 
-- 这次是开发文档补充，还没有立即改造控件状态值。
-- 当前代码仍使用 `real|demo|disabled` 粗粒度状态，后续应按专项文档分阶段迁移。
+- 这次是开发文档补充；后续已完成第一批控件状态细分迁移。
+- 早期代码曾使用 `real|demo|disabled` 粗粒度状态，当前已兼容并优先使用细分状态。
 - Playwright 浏览器级验收仍未接入。
+
+### 2026-06-11：补齐控件真实化状态分级
+
+功能名：控件功能状态从粗粒度真实标注升级为本机真实、文件导出、本机发布和演示内容。
+
+涉及文件：
+
+- `index.html`
+- `main-admin.html`
+- `realistic-demo.html`
+- `realistic-admin.html`
+- `script.js`
+- `main-admin-scene.js`
+- `style.css`
+- `realistic-demo.css`
+- `scripts/control-inventory.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `README.md`
+
+已完成：
+
+- `scripts/control-inventory.js` 支持 `real-local`、`real-export`、`real-published-local`、`demo-content` 和 `disabled`，并继续兼容旧 `real`、`demo`。
+- 四个入口 HTML 静态按钮从粗粒度 `real` 迁移为更明确的状态。
+- 前台下载图片、下载报告、导出档案、导出所选、生成视频和导出报告等能力标记为 `real-export`。
+- 主后台“发布到前台”标记为 `real-published-local`，明确这是本机发布快照，不是线上部署。
+- 写实样张和静态步骤导航等内容标记为 `demo-content`，避免把演示内容伪装成完整生产能力。
+- 前台动态生成的学习动作、热点、任务、历史、计划按钮，以及主后台动态图层/快照按钮同步使用细分状态。
+- MutationObserver 对未显式标注的动态控件不再默认补成 `real`，而是标记为 `disabled` 并留下缺失状态，避免新增控件伪装成功。
+- 样式增加本机真实、文件导出、本机发布、演示内容和禁用态的轻量区分。
+- Smoke test 文档、前端真实化文档和 README 同步更新状态分级说明。
+
+验收方式：
+
+- 运行 `node scripts/control-inventory.js --check`，四个入口页面应显示 missing 0、invalid 0，并能看到 `real-local`、`real-export`、`real-published-local` 和 `demo-content` 统计。
+- 打开前台，学习动作按钮的小标签应显示“本机真实”“文件导出”或“演示内容”，而不是全部显示“真实可用”。
+- 打开主后台，项目导出应归类为文件导出，“发布到前台”应归类为本机发布。
+- 打开写实样张页，重置视角和暂停旋转应归类为演示内容。
+
+已知限制：
+
+- 这是第一批状态迁移，仍需要后续浏览器级测试验证动态标签是否覆盖所有运行时控件。
+- 旧 `real` 和 `demo` 仍被脚本兼容，方便迁移历史页面；新增控件不应继续使用粗粒度状态。
+- 状态标签说明了功能边界，但还没有引入账号权限、云端发布、TTS、社交分享和多人协作。

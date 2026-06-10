@@ -275,8 +275,25 @@ body.model-error #brushModel::part(default-progress-bar) {
   cursor: pointer;
 }
 
+button[data-feature-state="real-local"],
+a[data-feature-state="real-local"] {
+  border-color: rgba(141, 201, 166, 0.42);
+}
+
+button[data-feature-state="real-export"],
+a[data-feature-state="real-export"] {
+  border-color: rgba(111, 201, 179, 0.62);
+}
+
+button[data-feature-state="real-published-local"],
+a[data-feature-state="real-published-local"] {
+  border-color: rgba(106, 186, 216, 0.62);
+}
+
 button[data-feature-state="demo"],
-a[data-feature-state="demo"] {
+a[data-feature-state="demo"],
+button[data-feature-state="demo-content"],
+a[data-feature-state="demo-content"] {
   border-color: rgba(217, 184, 132, 0.58);
 }
 

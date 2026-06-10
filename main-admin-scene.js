@@ -1250,14 +1250,14 @@ function createSnapshotRow(snapshot) {
 
   const restoreButton = document.createElement("button");
   restoreButton.type = "button";
-  restoreButton.dataset.featureState = "real";
+  restoreButton.dataset.featureState = "real-local";
   restoreButton.dataset.snapshotAction = "restore";
   restoreButton.dataset.snapshotId = snapshot.id;
   restoreButton.textContent = "恢复";
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
-  deleteButton.dataset.featureState = "real";
+  deleteButton.dataset.featureState = "real-local";
   deleteButton.dataset.snapshotAction = "delete";
   deleteButton.dataset.snapshotId = snapshot.id;
   deleteButton.textContent = "删除";
@@ -1648,7 +1648,7 @@ function createLayerRow(entry) {
   const dragHandle = document.createElement("button");
   dragHandle.type = "button";
   dragHandle.className = "main-layer-drag";
-  dragHandle.dataset.featureState = "real";
+  dragHandle.dataset.featureState = "real-local";
   dragHandle.dataset.layerDragHandle = entry.id;
   dragHandle.draggable = true;
   dragHandle.textContent = "≡";
@@ -1665,7 +1665,7 @@ function createLayerRow(entry) {
   const selectButton = document.createElement("button");
   selectButton.type = "button";
   selectButton.className = "main-layer-select";
-  selectButton.dataset.featureState = "real";
+  selectButton.dataset.featureState = "real-local";
   selectButton.dataset.layerSelect = entry.id;
   const name = document.createElement("span");
   const kind = document.createElement("span");
@@ -1678,7 +1678,7 @@ function createLayerRow(entry) {
   const visibilityButton = document.createElement("button");
   visibilityButton.type = "button";
   visibilityButton.className = "main-layer-icon";
-  visibilityButton.dataset.featureState = "real";
+  visibilityButton.dataset.featureState = "real-local";
   visibilityButton.dataset.layerAction = "visibility";
   visibilityButton.dataset.layerId = entry.id;
   visibilityButton.textContent = isEntryHidden(entry) ? "显" : "隐";
@@ -1688,7 +1688,7 @@ function createLayerRow(entry) {
   const lockButton = document.createElement("button");
   lockButton.type = "button";
   lockButton.className = "main-layer-icon";
-  lockButton.dataset.featureState = "real";
+  lockButton.dataset.featureState = "real-local";
   lockButton.dataset.layerAction = "lock";
   lockButton.dataset.layerId = entry.id;
   lockButton.textContent = isEntryLocked(entry) ? "解" : "锁";

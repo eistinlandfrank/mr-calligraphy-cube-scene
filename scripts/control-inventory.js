@@ -4,7 +4,16 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const VALID_STATES = new Set(["real", "demo", "disabled"]);
+const VALID_STATES = [
+  "real",
+  "real-local",
+  "real-export",
+  "real-published-local",
+  "demo",
+  "demo-content",
+  "disabled"
+];
+const VALID_STATE_SET = new Set(VALID_STATES);
 const PAGES = [
   "index.html",
   "main-admin.html",
@@ -26,7 +35,9 @@ PAGES.forEach((page) => {
     source: match[0],
     line: getLineNumber(html, match.index || 0)
   }));
-  const counts = { real: 0, demo: 0, disabled: 0, missing: 0, invalid: 0 };
+  const counts = Object.fromEntries(VALID_STATES.map((state) => [state, 0]));
+  counts.missing = 0;
+  counts.invalid = 0;
 
   controls.forEach((control) => {
     if (control.tag === "a" && !/\shref=/.test(control.source)) {
@@ -41,7 +52,7 @@ PAGES.forEach((page) => {
     }
 
     const state = stateMatch[1];
-    if (!VALID_STATES.has(state)) {
+    if (!VALID_STATE_SET.has(state)) {
       counts.invalid += 1;
       failures.push(`${page}:${control.line} 状态值无效 “${state}”：${compactTag(control.source)}`);
       return;
@@ -54,7 +65,10 @@ PAGES.forEach((page) => {
 });
 
 summary.forEach(({ page, counts }) => {
-  console.log(`${page}: real ${counts.real}, demo ${counts.demo}, disabled ${counts.disabled}, missing ${counts.missing}, invalid ${counts.invalid}`);
+  const stateSummary = VALID_STATES
+    .map((state) => `${state} ${counts[state]}`)
+    .join(", ");
+  console.log(`${page}: ${stateSummary}, missing ${counts.missing}, invalid ${counts.invalid}`);
 });
 
 if (failures.length) {

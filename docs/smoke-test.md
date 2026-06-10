@@ -34,7 +34,7 @@ SMOKE_BASE_URL=http://localhost:41496/ node scripts/smoke-test.js
 node scripts/control-inventory.js --check
 ```
 
-该命令会列出四个入口页面中 `real`、`demo`、`disabled`、缺失和非法状态的数量。
+该命令会列出四个入口页面中 `real-local`、`real-export`、`real-published-local`、`demo-content`、`disabled`、缺失和非法状态的数量；旧 `real` 和 `demo` 仍兼容，但新增控件应优先使用细分状态。
 
 ## 通过标准
 

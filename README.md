@@ -61,6 +61,8 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 node scripts/control-inventory.js --check
 ```
 
+控件状态已细分为本机真实、文件导出、本机发布、演示内容和暂不可用，便于区分“能在本机完成”和“真正线上产品能力”。
+
 更多说明见 [docs/smoke-test.md](docs/smoke-test.md)。
 
 ## 立方体贴图

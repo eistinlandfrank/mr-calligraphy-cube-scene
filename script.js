@@ -411,35 +411,35 @@ const SCENES = [
 const WRAP_STEPS = false;
 const IS_FILE_MODE = window.location.protocol === "file:";
 const LEARNING_ACTION_FEATURES = {
-  查看笔画分析: ["real", "读取当前书写画布笔迹并写入本机练习记录。"],
-  进入临摹训练: ["real", "创建或继续本机 PracticeSession。"],
-  打开历史记录: ["real", "打开本机学习档案面板。"],
-  选择日课字: ["real", "在本机任务库中切换当前学习任务。"],
-  "进入 AI 讲解": ["real", "创建本机讲解进度并进入讲解阶段。"],
-  查看成就: ["real", "按本机练习、作品和报告记录计算成就概览。"],
-  播放讲解: ["real", "推进本机 AI 讲解进度。"],
-  切换碑帖: ["real", "切换当前任务对应碑帖并重置讲解上下文。"],
-  开始临摹: ["real", "创建或继续本机 PracticeSession。"],
-  示范模式: ["real", "切换当前练习会话的训练模式。"],
-  对比模式: ["real", "切换当前练习会话的训练模式。"],
-  进入笔画拆解: ["real", "进入笔画拆解步骤并保留当前学习状态。"],
-  上一个笔画: ["real", "切换本机当前笔画索引。"],
-  下一个笔画: ["real", "切换本机当前笔画索引。"],
-  进入创作: ["real", "进入创作步骤并保留当前学习状态。"],
-  切换行书: ["real", "切换作品风格，保存作品时会写入本机记录。"],
-  保存作品: ["real", "保存真实书写轨迹和截图到本机作品记录。"],
-  查看学习记录: ["real", "打开本机学习档案面板。"],
-  筛选优秀记录: ["real", "按本机作品评分筛选优秀记录。"],
-  导出学习报告: ["real", "用本机练习和作品记录生成 HTML 报告。"],
-  查看作品: ["real", "打开最近保存作品的复盘区域。"],
-  再写一遍: ["real", "回到临摹训练并继续当前任务。"],
-  生成视频: ["real", "用真实笔迹导出 WebM 回放视频。"],
-  继续学习: ["real", "回到临摹训练并继续当前任务。"],
-  制定计划: ["real", "按当前任务和本机评分生成可勾选计划。"],
-  导出报告: ["real", "用本机练习和作品记录生成 HTML 报告。"],
-  查看详情: ["real", "读取本机记录摘要。"],
-  复习巩固: ["real", "进入笔画拆解步骤进行复习。"],
-  返回首页: ["real", "回到 MR 书法教练首页。"]
+  查看笔画分析: ["real-local", "读取当前书写画布笔迹并写入本机练习记录。"],
+  进入临摹训练: ["real-local", "创建或继续本机 PracticeSession。"],
+  打开历史记录: ["real-local", "打开本机学习档案面板。"],
+  选择日课字: ["real-local", "在本机任务库中切换当前学习任务。"],
+  "进入 AI 讲解": ["demo-content", "进入本机文本讲解流程；内容仍是预置讲解，不是云端 AI 音视频。"],
+  查看成就: ["real-local", "按本机练习、作品和报告记录计算成就概览。"],
+  播放讲解: ["demo-content", "推进本机文本讲解进度；当前没有真实音频、TTS 或视频流。"],
+  切换碑帖: ["real-local", "切换当前任务对应碑帖并重置讲解上下文。"],
+  开始临摹: ["real-local", "创建或继续本机 PracticeSession。"],
+  示范模式: ["real-local", "切换当前练习会话的训练模式。"],
+  对比模式: ["real-local", "切换当前练习会话的训练模式。"],
+  进入笔画拆解: ["demo-content", "进入静态笔画拆解场景，并保留当前本机学习状态。"],
+  上一个笔画: ["real-local", "切换本机当前笔画索引。"],
+  下一个笔画: ["real-local", "切换本机当前笔画索引。"],
+  进入创作: ["demo-content", "进入预置创作场景；保存作品时仍会写入本机记录。"],
+  切换行书: ["real-local", "切换作品风格，保存作品时会写入本机记录。"],
+  保存作品: ["real-local", "保存真实书写轨迹和截图到本机作品记录。"],
+  查看学习记录: ["real-local", "打开本机学习档案面板。"],
+  筛选优秀记录: ["real-local", "按本机作品评分筛选优秀记录。"],
+  导出学习报告: ["real-export", "用本机练习和作品记录生成 HTML 报告文件。"],
+  查看作品: ["real-local", "打开最近保存作品的复盘区域。"],
+  再写一遍: ["real-local", "回到临摹训练并继续当前任务。"],
+  生成视频: ["real-export", "用真实笔迹导出 WebM 回放视频文件。"],
+  继续学习: ["real-local", "回到临摹训练并继续当前任务。"],
+  制定计划: ["real-local", "按当前任务和本机评分生成可勾选计划。"],
+  导出报告: ["real-export", "用本机练习和作品记录生成 HTML 报告文件。"],
+  查看详情: ["real-local", "读取本机记录摘要。"],
+  复习巩固: ["demo-content", "进入预置笔画拆解场景进行复习。"],
+  返回首页: ["real-local", "回到 MR 书法教练首页。"]
 };
 const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v3-wood";
 const MAIN_SCENE_STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
@@ -1469,12 +1469,13 @@ function annotateFeatureControls(root) {
 
   controls.forEach((control) => {
     if (!control.dataset.featureState) {
-      control.dataset.featureState = "real";
+      control.dataset.featureState = "disabled";
+      control.dataset.featureStateMissing = "true";
     }
     if (!control.dataset.featureLabel) {
       control.dataset.featureLabel = getFeatureStateLabel(control.dataset.featureState);
     }
-    if (!control.title && control.dataset.featureState !== "real") {
+    if (!control.title && !["real", "real-local"].includes(control.dataset.featureState)) {
       control.title = control.dataset.featureLabel;
     }
   });
@@ -1483,10 +1484,14 @@ function annotateFeatureControls(root) {
 function getFeatureStateLabel(state) {
   const labels = {
     real: "真实可用",
+    "real-local": "本机真实",
+    "real-export": "文件导出",
+    "real-published-local": "本机发布",
     demo: "演示能力",
+    "demo-content": "演示内容",
     disabled: "暂不可用"
   };
-  return labels[state] || labels.real;
+  return labels[state] || labels.disabled;
 }
 
 function handleMainSceneStorageChange(event) {
@@ -1896,7 +1901,7 @@ function renderTextureControls() {
 
     applyButton.className = "texture-apply";
     applyButton.type = "button";
-    applyButton.dataset.featureState = "real";
+    applyButton.dataset.featureState = "real-local";
     applyButton.textContent = "应用";
     applyButton.addEventListener("click", () => applyTexturePath(face, pathInput.value));
 
@@ -1957,7 +1962,7 @@ function renderRoleControls() {
 
     button.type = "button";
     button.className = "role-button";
-    button.dataset.featureState = "real";
+    button.dataset.featureState = "real-local";
     button.classList.toggle("is-active", role.id === activeRoleId);
     button.style.setProperty("--role-color", role.color);
     button.innerHTML = `
@@ -3389,7 +3394,7 @@ function buildStepNavigation() {
   SCENES.forEach((scene, index) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.dataset.featureState = "real";
+    button.dataset.featureState = "demo-content";
     button.textContent = String(index + 1);
     button.setAttribute("aria-label", `切换到步骤 ${index + 1}: ${scene.title}`);
     button.addEventListener("click", () => loadScene(index));
@@ -3408,7 +3413,7 @@ function bindQuickControls() {
 
 function bindLearningControls() {
   els.modeButtons.forEach((button) => {
-    button.dataset.featureState = "real";
+    button.dataset.featureState = "real-local";
     button.addEventListener("click", () => {
       const mode = button.dataset.learningMode;
       stopLecturePlayback();
@@ -3614,7 +3619,7 @@ function renderTaskPanel() {
     button.type = "button";
     button.className = "task-option";
     button.dataset.taskId = item.id;
-    button.dataset.featureState = "real";
+    button.dataset.featureState = "real-local";
     button.classList.toggle("is-active", Boolean(item.active));
 
     const title = document.createElement("strong");
@@ -4048,7 +4053,7 @@ function renderHistoryTrashList(trash = { entries: [] }) {
     ].forEach(([action, text]) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.dataset.featureState = "real";
+      button.dataset.featureState = "real-local";
       button.dataset.trashAction = action;
       button.dataset.trashId = entry.id;
       button.textContent = text;
@@ -4133,7 +4138,7 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     ].forEach(([action, text, disabled]) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.dataset.featureState = "real";
+      button.dataset.featureState = "real-local";
       button.dataset.planAction = action;
       button.dataset.planId = plan.id;
       button.dataset.planItemId = item.id;
@@ -4348,7 +4353,7 @@ function renderHistoryList(entries, filteredTotal) {
     const item = document.createElement("button");
     item.type = "button";
     item.className = `history-item is-${entry.type}`;
-    item.dataset.featureState = "real";
+    item.dataset.featureState = "real-local";
     item.dataset.historyId = entry.id;
     item.classList.toggle("is-active", activeHistoryDetailId === entry.id);
     item.setAttribute("aria-pressed", activeHistoryDetailId === entry.id ? "true" : "false");
@@ -4733,7 +4738,7 @@ function buildPathList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "path-item";
-    button.dataset.featureState = "real";
+    button.dataset.featureState = "demo-content";
     button.setAttribute("aria-label", `跳转到步骤 ${index + 1}: ${scene.title}`);
     button.innerHTML = `
       <span class="path-item-index">${index + 1}</span>
@@ -5001,7 +5006,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "point-button";
-    button.dataset.featureState = "real";
+    button.dataset.featureState = "demo-content";
     button.textContent = item.label;
     button.classList.toggle("is-active", index === pointIndex);
     button.addEventListener("click", () => selectPoint(index));
