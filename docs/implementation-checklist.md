@@ -120,8 +120,10 @@
 
   验收记录：2026-06-10 新增 `src/session-core/sessionSchema.js`、`src/utils/validatePracticeSession.js` 和 `docs/session-schema.md`，定义 session、events、practiceData 与 caregiverActions；示例 PracticeSession 校验通过。
 
-- [ ] **P2-05：定义 Report 数据结构**  
+- [x] **P2-05：定义 Report 数据结构**  
   验收：报告包含综合分、分项指标、建议和对应 sessionId。
+
+  验收记录：2026-06-10 新增 `src/report-core/reportSchema.js`、`src/utils/validateReport.js` 和 `docs/report-schema.md`，定义综合分、分项指标、建议与 sessionId；示例 Report 校验通过。
 
 - [ ] **P2-06：建立默认项目配置**  
   验收：`src/data/defaultProject.json` 存在，可被前台读取。
