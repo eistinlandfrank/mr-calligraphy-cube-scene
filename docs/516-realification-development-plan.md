@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 没有统一配置层：主场景、写实场景、前台学习流程各自保存，缺少统一 schema 和版本迁移。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；仍缺完整版本迁移和跨后台发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -164,7 +164,7 @@
 
 任务：
 
-- 新增统一 storage 模块，集中管理 localStorage、IndexedDB、schema version 和迁移。
+- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成，后续继续补迁移执行层。
 - 把主场景 `mr-calligraphy-main-scene-layout-v1`、写实场景 `mr-calligraphy-realistic-layout-v1`、房间配置 `mr-calligraphy-room-config-v3-wood` 纳入统一读写。
 - 新增项目导出 JSON：导出场景配置、学习记录、作品索引和本机导入模型二进制。
 - 新增项目导入 JSON：校验版本，展示差异预览，确认后覆盖同名本机项目状态。
@@ -1859,7 +1859,7 @@
 当前验证结果：
 
 - Playwright 配置和测试用例语法检查通过。
-- 现有 smoke test 通过：10 个脚本，4 个页面。
+- 现有 smoke test 通过：11 个脚本，4 个页面。
 - 当前 Codex 环境执行 `npm install` 时，npm registry 和备用镜像均返回 `407 Proxy Authentication Required`，因此本轮无法在本机实际下载 `@playwright/test` 并跑浏览器 E2E。
 
 已知限制：
@@ -1912,3 +1912,51 @@
 - PDF 仍由浏览器打印保存生成，不是前端直接写出二进制 PDF，也不是服务端 PDF 渲染。
 - 字段级图表已有点击筛选和趋势联动，但还没有悬浮 tooltip、缩放、字段多选和跨报告对比。
 - 字段评分仍来自本机启发式评分与报告拆解，不代表专业书法识别模型。
+
+### 2026-06-11：新增统一项目 Schema 摘要
+
+功能名：项目档案导出写入 `projectSchema`，统一描述学习、房间、主后台、写实后台和导入资产。
+
+涉及文件：
+
+- `project-schema-utils.js`
+- `project-archive.js`
+- `main-admin.html`
+- `scripts/smoke-test.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 新增 `project-schema-utils.js`，暴露 `window.MRProjectSchema.createProjectSchema()` 和 `validateProjectSchema()`。
+- 项目 schema 固定 `kind: "mr-calligraphy-project-schema"`、`version: 1`，作为后续迁移和项目化的统一入口。
+- schema 将 `mr-calligraphy-learning-state-v1` 归一化为学习 section，统计练习、真实笔迹练习、作品、报告、计划和最近记录时间。
+- schema 将 `mr-calligraphy-room-config-v3-wood` 归一化为房间 section，统计贴图和角色。
+- schema 将主后台草稿、保存历史和本机发布版本归一化为 `mainScene` section，区分 draft、history 和 published。
+- schema 将写实后台布局归一化为 `realisticScene` section，并明确当前写实后台历史和发布能力仍未支持。
+- schema 生成 `assetManifest`，列出主后台与写实后台导入模型，并标记 IndexedDB 二进制是否存在。
+- `project-archive.js` 导出项目档案时会写入 `projectSchema`；导入旧档案时也会临时合成 schema 用于预览。
+- 导入预览顶部显示 schema 版本和导入模型数量，方便确认档案不是单纯 raw localStorage 包。
+- `scripts/smoke-test.js` 将 `project-schema-utils.js` 加入语法检查，并要求主后台 HTML 包含该脚本。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，点击“导出项目档案”，下载 JSON 应包含 `projectSchema`。
+- `projectSchema.summary` 应包含 `learningRecords`、`mainDraftObjects`、`realisticObjects`、`importedModels` 等统一摘要。
+- 导入项目档案预览时，顶部应显示 `schema v1` 和模型数量。
+- 旧项目档案没有 `projectSchema` 时，仍可导入预览，并由当前工具临时合成 schema 摘要。
+
+当前验证结果：
+
+- `node --check project-schema-utils.js`
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- Node 模拟 `window.MRProjectSchema.createProjectSchema()` 通过，能统计学习记录、主场景、写实场景和导入模型。
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/` 通过：11 个脚本，4 个页面。
+
+已知限制：
+
+- schema 第一版仍是导出摘要层，不会自动迁移旧 storage；后续要补 migration 执行器。
+- 写实后台已被 schema 标记为无历史、无发布能力；后续仍需补写实后台历史记录和发布适配。
+- 资产清单会检查 IndexedDB 是否存在对应模型二进制，但还没有做哈希校验和尺寸/文件名冲突修复。

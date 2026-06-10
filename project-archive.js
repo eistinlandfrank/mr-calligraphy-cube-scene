@@ -31,6 +31,7 @@
     for (const item of DB_ITEMS) {
       archive.indexedDb[item.id] = await exportDbStore(item);
     }
+    archive.projectSchema = createProjectSchema(archive);
 
     downloadJson(archive, `mr-calligraphy-project-${formatTimestamp(new Date())}.json`);
     return summarizeArchive(archive, "已导出项目档案。");
@@ -105,9 +106,13 @@
       indexedDb.push(await compareDbItem(item, archive.indexedDb?.[item.id]));
     }
 
+    const projectSchema = getArchiveProjectSchema(archive);
+
     return {
       exportedAt: archive.exportedAt || "",
       source: archive.source || "",
+      projectSchema,
+      schemaSummary: summarizeProjectSchema(projectSchema),
       storage,
       indexedDb,
       summary: summarizeImportPreview(storage, indexedDb)
@@ -203,6 +208,38 @@
     return {
       storageKeys: [...new Set(storageKeys)],
       dbIds: [...new Set(dbIds)]
+    };
+  }
+
+  function createProjectSchema(archive) {
+    if (window.MRProjectSchema?.createProjectSchema) {
+      return window.MRProjectSchema.createProjectSchema(archive);
+    }
+    return {
+      kind: "mr-calligraphy-project-schema",
+      version: 1,
+      createdAt: archive.exportedAt || new Date().toISOString(),
+      source: archive.source || "",
+      sections: {},
+      assetManifest: { importedModelCount: 0, missingBinaryCount: 0, assets: [] },
+      summary: {}
+    };
+  }
+
+  function getArchiveProjectSchema(archive) {
+    return archive.projectSchema || createProjectSchema(archive);
+  }
+
+  function summarizeProjectSchema(schema) {
+    const summary = schema?.summary || {};
+    return {
+      version: Number(schema?.version) || 0,
+      learningRecords: Number(summary.learningRecords) || 0,
+      mainDraftObjects: Number(summary.mainDraftObjects) || 0,
+      mainSnapshots: Number(summary.mainSnapshots) || 0,
+      realisticObjects: Number(summary.realisticObjects) || 0,
+      importedModels: Number(summary.importedModels) || 0,
+      missingModelBinaries: Number(summary.missingModelBinaries) || 0
     };
   }
 
@@ -337,6 +374,9 @@
     if (Number(archive.version) !== ARCHIVE_VERSION) {
       throw new Error(`不支持的项目档案版本：${archive.version}`);
     }
+    if (archive.projectSchema && window.MRProjectSchema?.validateProjectSchema) {
+      window.MRProjectSchema.validateProjectSchema(archive.projectSchema);
+    }
   }
 
   function summarizeArchive(archive, prefix, options = null) {
@@ -353,7 +393,7 @@
     }, 0);
     return {
       ok: true,
-      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型。`,
+      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型，并写入统一项目 schema。`,
       storageCount,
       modelCount
     };
@@ -533,7 +573,8 @@
       if (previewTitle) previewTitle.textContent = "待导入项目档案";
       if (previewMeta) {
         const summary = preview.summary;
-        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${summary.incomingModelCount} 模型`;
+        const schema = preview.schemaSummary;
+        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型`;
       }
 
       const fragment = document.createDocumentFragment();

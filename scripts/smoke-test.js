@@ -14,6 +14,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
   { file: "practice-canvas.js", parser: "script" },
+  { file: "project-schema-utils.js", parser: "script" },
   { file: "project-archive.js", parser: "script" },
   { file: "room-config.js", parser: "script" },
   { file: "model-import-utils.js", parser: "module" },
@@ -38,7 +39,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "project-schema-utils.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",
