@@ -1,5 +1,3 @@
-import { createAdminLikeRoomRenderer } from "./main-three-viewer.js?v=front-admin-render-20260610";
-
 const SCENES = [
   {
     title: "进入系统 / 沉浸准备",
@@ -1935,21 +1933,6 @@ function cloneConfig(value) {
 }
 
 function createRoomRenderer(canvas) {
-  try {
-    return createAdminLikeRoomRenderer({
-      canvas,
-      getLayout: () => mainSceneLayout,
-      getTextures: () => roomConfig.textures,
-      getRoles: () => roomConfig.roles,
-      showNotice
-    });
-  } catch (error) {
-    console.warn("Three.js frontend renderer failed; falling back to legacy WebGL renderer.", error);
-    return createLegacyRoomRenderer(canvas);
-  }
-}
-
-function createLegacyRoomRenderer(canvas) {
   if (!canvas) {
     return null;
   }
