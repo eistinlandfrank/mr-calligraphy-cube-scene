@@ -29,6 +29,7 @@ const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
 const IMPORTED_MODEL_LIST_KEY = "importedModels";
 const IMPORT_DB_NAME = "mr-calligraphy-model-store";
 const IMPORT_DB_STORE = "models";
+const MAX_IMPORT_MODEL_BYTES = 50 * 1024 * 1024;
 const MAX_UNDO_STEPS = 256;
 
 const scene = new THREE.Scene();
@@ -521,7 +522,47 @@ function getImportedModelRecords() {
   if (!Array.isArray(savedSceneLayout[IMPORTED_MODEL_LIST_KEY])) {
     savedSceneLayout[IMPORTED_MODEL_LIST_KEY] = [];
   }
+  savedSceneLayout[IMPORTED_MODEL_LIST_KEY] = savedSceneLayout[IMPORTED_MODEL_LIST_KEY].map(normalizeImportedRecord);
   return savedSceneLayout[IMPORTED_MODEL_LIST_KEY];
+}
+
+function normalizeImportedRecord(record = {}, index = 0) {
+  const fileName = String(record.fileName || "model.glb");
+  const extension = getFileExtension(fileName);
+  const type = record.type === "glb" || record.type === "obj"
+    ? record.type
+    : extension === "glb" || extension === "obj" ? extension : "glb";
+  const id = String(record.id || makeImportedModelId(fileName || `model-${index + 1}`));
+
+  return {
+    id,
+    dbKey: String(record.dbKey || id),
+    type,
+    fileName,
+    label: String(record.label || normalizeImportLabel(fileName)),
+    metrics: normalizeImportMetrics(record.metrics)
+  };
+}
+
+function normalizeImportMetrics(metrics = {}) {
+  const source = metrics && typeof metrics === "object" ? metrics : {};
+  const dimensions = source.dimensions && typeof source.dimensions === "object" ? source.dimensions : {};
+
+  return {
+    fileBytes: Math.max(0, Math.round(readFiniteNumber(source.fileBytes, 0))),
+    meshCount: Math.max(0, Math.round(readFiniteNumber(source.meshCount, 0))),
+    vertexCount: Math.max(0, Math.round(readFiniteNumber(source.vertexCount, 0))),
+    dimensions: {
+      width: readFiniteNumber(dimensions.width, 0),
+      height: readFiniteNumber(dimensions.height, 0),
+      depth: readFiniteNumber(dimensions.depth, 0)
+    }
+  };
+}
+
+function readFiniteNumber(value, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function openImportDb() {
@@ -546,6 +587,7 @@ async function storeImportedModel(record, arrayBuffer) {
       id: record.dbKey,
       fileName: record.fileName,
       type: record.type,
+      metrics: record.metrics,
       arrayBuffer
     });
     transaction.addEventListener("complete", resolve);
@@ -585,6 +627,128 @@ function getFileExtension(fileName) {
 
 function setImportStatus(message) {
   if (importStatus) importStatus.textContent = message;
+}
+
+function normalizeImportLabel(fileName) {
+  return String(fileName || "导入模型").replace(/\.[^.]+$/, "").trim().slice(0, 48) || "导入模型";
+}
+
+function validateImportFile(file, type, label) {
+  if (!["glb", "obj"].includes(type)) {
+    throw new Error("只支持 .glb 和 .obj 文件。");
+  }
+  if (!file.size) {
+    throw new Error("模型文件为空。");
+  }
+  if (file.size > MAX_IMPORT_MODEL_BYTES) {
+    throw new Error(`模型文件不能超过 ${formatBytes(MAX_IMPORT_MODEL_BYTES)}。`);
+  }
+
+  const duplicate = getImportedModelRecords().find((record) => {
+    return String(record.fileName || "").toLowerCase() === file.name.toLowerCase() ||
+      String(record.label || "").toLowerCase() === label.toLowerCase();
+  });
+
+  if (duplicate) {
+    throw new Error(`已存在导入模型“${duplicate.label || duplicate.fileName}”，请先改名或恢复已有模型。`);
+  }
+}
+
+function validateImportBuffer(type, arrayBuffer, fileName) {
+  if (!arrayBuffer?.byteLength) {
+    throw new Error("模型文件没有可读取内容。");
+  }
+
+  if (type === "glb") {
+    if (arrayBuffer.byteLength < 12) {
+      throw new Error("GLB 文件头不完整。");
+    }
+    const magic = new DataView(arrayBuffer).getUint32(0, true);
+    if (magic !== 0x46546c67) {
+      throw new Error(`${fileName} 不是有效的 GLB 文件。`);
+    }
+    return;
+  }
+
+  const preview = new TextDecoder("utf-8").decode(arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, 512 * 1024)));
+  if (!/^\s*v\s+[-+0-9.]/m.test(preview)) {
+    throw new Error(`${fileName} 没有可读取的 OBJ 顶点数据。`);
+  }
+}
+
+function measureImportedModel(root) {
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  const size = new THREE.Vector3();
+  let meshCount = 0;
+  let vertexCount = 0;
+
+  root.traverse((child) => {
+    if (!child.isMesh) return;
+    const count = Number(child.geometry?.attributes?.position?.count || 0);
+    if (count > 0) {
+      meshCount += 1;
+      vertexCount += count;
+    }
+  });
+
+  if (!box.isEmpty()) {
+    box.getSize(size);
+  }
+
+  return {
+    box,
+    meshCount,
+    vertexCount,
+    width: size.x,
+    height: size.y,
+    depth: size.z,
+    longestSide: Math.max(size.x, size.y, size.z)
+  };
+}
+
+function validateImportedModelMetrics(metrics) {
+  if (!metrics.meshCount || !metrics.vertexCount || metrics.box.isEmpty()) {
+    throw new Error("模型没有可读取的网格，请检查文件是否包含实体几何。");
+  }
+  if (!Number.isFinite(metrics.longestSide) || metrics.longestSide <= 0) {
+    throw new Error("模型尺寸无效，无法自动摆放。");
+  }
+}
+
+function createImportMetrics(metrics, fileBytes) {
+  return {
+    fileBytes: Number(fileBytes || 0),
+    meshCount: metrics.meshCount,
+    vertexCount: metrics.vertexCount,
+    dimensions: {
+      width: Number(metrics.width.toFixed(4)),
+      height: Number(metrics.height.toFixed(4)),
+      depth: Number(metrics.depth.toFixed(4))
+    }
+  };
+}
+
+function formatImportMetrics(metrics = {}) {
+  const dimensions = metrics.dimensions
+    ? `${formatMetricNumber(metrics.dimensions.width)}×${formatMetricNumber(metrics.dimensions.height)}×${formatMetricNumber(metrics.dimensions.depth)}`
+    : "尺寸未知";
+  return `${metrics.meshCount || 0} 个网格，${dimensions}，${formatBytes(metrics.fileBytes || 0)}`;
+}
+
+function formatMetricNumber(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  }
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${value} B`;
 }
 
 function normalizeImportedObject(root) {
@@ -633,12 +797,22 @@ function parseImportedModel(record, arrayBuffer) {
   return Promise.reject(new Error(`Unsupported model type: ${record.type}`));
 }
 
-async function addImportedModelToScene(record, arrayBuffer, selectAfterLoad = false) {
+async function createImportedModelObject(record, arrayBuffer) {
   const importedObject = await parseImportedModel(record, arrayBuffer);
   const root = new THREE.Group();
   root.add(importedObject);
+  const metrics = measureImportedModel(root);
+
+  validateImportedModelMetrics(metrics);
   normalizeImportedObject(root);
   prepareImportedObject(root);
+  return {
+    root,
+    metrics: createImportMetrics(metrics, arrayBuffer.byteLength)
+  };
+}
+
+function addPreparedImportedModelToScene(record, root, selectAfterLoad = false) {
   scene.add(root);
   registerDesignObject(record.id, record.label, root);
 
@@ -647,16 +821,27 @@ async function addImportedModelToScene(record, arrayBuffer, selectAfterLoad = fa
   }
 }
 
+async function addImportedModelToScene(record, arrayBuffer, selectAfterLoad = false) {
+  const importPack = await createImportedModelObject(record, arrayBuffer);
+  record.metrics = importPack.metrics;
+  addPreparedImportedModelToScene(record, importPack.root, selectAfterLoad);
+}
+
 async function loadImportedModels() {
   const records = getImportedModelRecords();
+  let didUpdateRecords = false;
   for (const record of records) {
     try {
       const stored = await readImportedModel(record);
       if (!stored?.arrayBuffer) continue;
       await addImportedModelToScene(record, stored.arrayBuffer);
+      didUpdateRecords = true;
     } catch (error) {
       console.warn("Imported model could not be loaded.", record?.fileName, error);
     }
+  }
+  if (didUpdateRecords) {
+    saveSceneLayout();
   }
 }
 
@@ -665,28 +850,29 @@ async function handleImportModel(event) {
   if (!file) return;
 
   const type = getFileExtension(file.name);
-  if (!["glb", "obj"].includes(type)) {
-    setImportStatus("只支持 .glb 和 .obj 文件。");
-    event.target.value = "";
-    return;
-  }
+  const label = normalizeImportLabel(file.name);
 
   try {
-    setImportStatus(`正在导入 ${file.name}...`);
+    validateImportFile(file, type, label);
+    setImportStatus(`正在校验 ${file.name}...`);
     const id = makeImportedModelId(file.name);
     const record = {
       id,
       dbKey: id,
       type,
       fileName: file.name,
-      label: file.name.replace(/\.[^.]+$/, "")
+      label
     };
     const arrayBuffer = await file.arrayBuffer();
+    validateImportBuffer(type, arrayBuffer, file.name);
+    setImportStatus(`正在解析 ${file.name}...`);
+    const importPack = await createImportedModelObject(record, arrayBuffer);
+    record.metrics = importPack.metrics;
     await storeImportedModel(record, arrayBuffer);
     getImportedModelRecords().push(record);
     saveSceneLayout();
-    await addImportedModelToScene(record, arrayBuffer, true);
-    setImportStatus(`已导入 ${file.name}。`);
+    addPreparedImportedModelToScene(record, importPack.root, true);
+    setImportStatus(`已导入 ${file.name}：${formatImportMetrics(record.metrics)}。`);
   } catch (error) {
     console.warn("Model import failed.", error);
     setImportStatus(`导入失败：${error?.message || "模型文件无法解析"}`);
@@ -1090,6 +1276,3 @@ function animate() {
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
 }
-
-
-
