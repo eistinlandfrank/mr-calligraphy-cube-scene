@@ -798,9 +798,11 @@ const els = {
   historyDetailTitle: document.getElementById("historyDetailTitle"),
   historyDetailBody: document.getElementById("historyDetailBody"),
   historyDetailClose: document.getElementById("historyDetailClose"),
+  historyDetailRename: document.getElementById("historyDetailRename"),
   historyDetailReplay: document.getElementById("historyDetailReplay"),
   historyDetailDownloadImage: document.getElementById("historyDetailDownloadImage"),
   historyDetailDownloadReport: document.getElementById("historyDetailDownloadReport"),
+  historyDetailDelete: document.getElementById("historyDetailDelete"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -3342,9 +3344,11 @@ function bindHistoryControls() {
     renderHistoryDetail();
     renderHistoryPanel(currentIndex);
   });
+  els.historyDetailRename?.addEventListener("click", renameHistoryDetail);
   els.historyDetailReplay?.addEventListener("click", replayHistoryDetail);
   els.historyDetailDownloadImage?.addEventListener("click", downloadHistoryDetailImage);
   els.historyDetailDownloadReport?.addEventListener("click", downloadHistoryDetailReport);
+  els.historyDetailDelete?.addEventListener("click", deleteHistoryDetail);
   els.historyDownloadArchive?.addEventListener("click", () => {
     const result = window.MRAppState?.downloadArchive?.();
     if (result?.message) {
@@ -3844,9 +3848,12 @@ function setHistoryDetailActions(detail) {
   const hasStrokes = Boolean(detail?.strokes?.length);
   const hasImage = Boolean(detail?.imageData);
   const hasReport = detail?.type === "report";
+  const hasDetail = Boolean(detail);
+  if (els.historyDetailRename) els.historyDetailRename.disabled = !hasDetail;
   if (els.historyDetailReplay) els.historyDetailReplay.disabled = !hasStrokes;
   if (els.historyDetailDownloadImage) els.historyDetailDownloadImage.disabled = !hasImage;
   if (els.historyDetailDownloadReport) els.historyDetailDownloadReport.disabled = !hasReport;
+  if (els.historyDetailDelete) els.historyDetailDelete.disabled = !hasDetail;
 }
 
 function getActiveHistoryDetail() {
@@ -3854,6 +3861,55 @@ function getActiveHistoryDetail() {
     return null;
   }
   return window.MRAppState.getHistoryDetail(activeHistoryDetailId);
+}
+
+function renameHistoryDetail() {
+  const detail = getActiveHistoryDetail();
+  if (!detail) {
+    showNotice("请选择一条记录。");
+    return;
+  }
+
+  const title = window.prompt("输入新的记录标题", detail.title);
+  if (title === null) {
+    return;
+  }
+
+  const result = window.MRAppState?.renameHistoryRecord?.(detail.id, title);
+  if (result?.ok) {
+    activeHistoryDetailId = result.detail?.id || detail.id;
+    renderHistoryPanel(currentIndex);
+    renderReviewPanel(currentIndex);
+    showNotice(result.message);
+    return;
+  }
+  showNotice(result?.message || "重命名失败。");
+}
+
+function deleteHistoryDetail() {
+  const detail = getActiveHistoryDetail();
+  if (!detail) {
+    showNotice("请选择一条记录。");
+    return;
+  }
+
+  const confirmed = window.confirm(`确定删除“${detail.title}”吗？此操作会写入本机学习档案。`);
+  if (!confirmed) {
+    return;
+  }
+
+  const result = window.MRAppState?.deleteHistoryRecord?.(detail.id);
+  if (result?.ok) {
+    activeHistoryDetailId = null;
+    renderLearningStateSummary();
+    renderReviewPanel(currentIndex);
+    renderHistoryPanel(currentIndex);
+    updatePathPanel(currentIndex);
+    updateSceneText(currentIndex);
+    showNotice(result.message);
+    return;
+  }
+  showNotice(result?.message || "删除失败。");
 }
 
 function replayHistoryDetail() {

@@ -3173,7 +3173,7 @@ body.is-model-view .notice-panel {
 
 .history-detail-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 6px;
 }
 
@@ -3181,6 +3181,18 @@ body.is-model-view .notice-panel {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.42);
   background: rgba(255, 255, 255, 0.06);
+}
+
+.history-detail-actions button:last-child {
+  border-color: rgba(255, 123, 123, 0.28);
+  color: #ffe0dc;
+  background: rgba(135, 47, 47, 0.24);
+}
+
+.history-detail-actions button:last-child:hover,
+.history-detail-actions button:last-child:focus-visible {
+  border-color: rgba(255, 123, 123, 0.48);
+  background: rgba(135, 47, 47, 0.46);
 }
 
 .insight-stack {

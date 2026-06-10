@@ -97,6 +97,7 @@
     const feedback = normalizeStringList(record.feedback);
     return {
       id: String(record.id || makeId("session")),
+      title: record.title ? String(record.title) : "",
       taskId: String(record.taskId || "task-default"),
       mode: MODE_CONFIG[record.mode] ? record.mode : "single",
       glyph: String(record.glyph || "永"),
@@ -142,6 +143,7 @@
     if (!record || typeof record !== "object") return null;
     return {
       id: String(record.id || makeId("report")),
+      title: String(record.title || "学习报告"),
       createdAt: String(record.createdAt || new Date().toISOString()),
       range: String(record.range || "all"),
       format: ["json", "html"].includes(record.format) ? record.format : "json",
@@ -562,6 +564,7 @@
     const scoreBase = 84 + Math.min(10, state.sessions.length * 2);
     const session = {
       id: makeId("session"),
+      title: "",
       taskId: `${state.activeMode}-${state.selectedGlyph}`,
       mode: state.activeMode,
       glyph: state.selectedGlyph,
@@ -743,6 +746,7 @@
     const reportTrend = getReportTrend();
     const report = {
       id: makeId("report"),
+      title: "学习报告",
       createdAt: new Date().toISOString(),
       range: "all",
       format: "html",
@@ -1003,8 +1007,10 @@
 
   function getLatestReview() {
     const artwork = state.artworks[state.artworks.length - 1] || null;
-    const session = artwork?.sessionId
-      ? state.sessions.find((item) => item.id === artwork.sessionId) || null
+    const session = artwork
+      ? artwork.sessionId
+        ? state.sessions.find((item) => item.id === artwork.sessionId) || null
+        : null
       : state.sessions[state.sessions.length - 1] || null;
     const report = state.reports[state.reports.length - 1] || null;
     return {
@@ -1065,7 +1071,7 @@
     return {
       id: session.id,
       type: "practice",
-      title: `${session.glyph}字${session.trainingMode === "compare" ? "对比" : "示范"}练习`,
+      title: session.title || `${session.glyph}字${session.trainingMode === "compare" ? "对比" : "示范"}练习`,
       shortLabel: session.glyph,
       createdAt: session.endedAt || session.startedAt,
       score: session.score,
@@ -1093,7 +1099,7 @@
     return {
       id: report.id,
       type: "report",
-      title: "学习报告",
+      title: report.title || "学习报告",
       shortLabel: "报告",
       createdAt: report.createdAt,
       score: report.averageScore,
@@ -1110,7 +1116,7 @@
       return {
         type: "practice",
         id: session.id,
-        title: `${session.glyph}字${session.trainingMode === "compare" ? "对比" : "示范"}练习`,
+        title: session.title || `${session.glyph}字${session.trainingMode === "compare" ? "对比" : "示范"}练习`,
         createdAt: session.endedAt || session.startedAt,
         score: session.score,
         status: session.status === "saved" ? "已保存" : "进行中",
@@ -1155,7 +1161,7 @@
       return {
         type: "report",
         id: report.id,
-        title: "学习报告",
+        title: report.title || "学习报告",
         createdAt: report.createdAt,
         score: report.averageScore,
         status: report.format === "html" ? "HTML" : "可下载",
@@ -1192,6 +1198,94 @@
     };
   }
 
+  function renameHistoryRecord(id, title) {
+    const recordId = String(id || "");
+    const nextTitle = String(title || "").trim().replace(/\s+/g, " ").slice(0, 48);
+    if (!recordId) {
+      return { ok: false, message: "请选择一条记录。" };
+    }
+    if (nextTitle.length < 2) {
+      return { ok: false, message: "标题至少需要 2 个字符。" };
+    }
+
+    const session = state.sessions.find((item) => item.id === recordId);
+    if (session) {
+      session.title = nextTitle;
+      addEvent("history-rename", `重命名练习：${nextTitle}`);
+      saveState();
+      return { ok: true, detail: getHistoryDetail(recordId), message: `已重命名练习记录：${nextTitle}。` };
+    }
+
+    const artwork = state.artworks.find((item) => item.id === recordId);
+    if (artwork) {
+      artwork.title = nextTitle;
+      addEvent("history-rename", `重命名作品：${nextTitle}`);
+      saveState();
+      return { ok: true, detail: getHistoryDetail(recordId), message: `已重命名作品记录：${nextTitle}。` };
+    }
+
+    const report = state.reports.find((item) => item.id === recordId);
+    if (report) {
+      report.title = nextTitle;
+      addEvent("history-rename", `重命名报告：${nextTitle}`);
+      saveState();
+      return { ok: true, detail: getHistoryDetail(recordId), message: `已重命名报告记录：${nextTitle}。` };
+    }
+
+    return { ok: false, message: "未找到要重命名的记录。" };
+  }
+
+  function deleteHistoryRecord(id) {
+    const recordId = String(id || "");
+    if (!recordId) {
+      return { ok: false, message: "请选择一条记录。" };
+    }
+
+    const sessionIndex = state.sessions.findIndex((item) => item.id === recordId);
+    if (sessionIndex >= 0) {
+      const [session] = state.sessions.splice(sessionIndex, 1);
+      if (state.currentSessionId === recordId) {
+        state.currentSessionId = null;
+      }
+      state.artworks.forEach((artwork) => {
+        if (artwork.sessionId === recordId) {
+          artwork.sessionId = null;
+        }
+      });
+      state.reports.forEach((report) => {
+        if (report.latestSessionId === recordId) {
+          report.latestSessionId = null;
+        }
+      });
+      addEvent("history-delete", `删除练习：${session.title || session.glyph}`);
+      saveState();
+      return { ok: true, deletedType: "practice", message: "已删除所选练习记录，并解除相关作品引用。" };
+    }
+
+    const artworkIndex = state.artworks.findIndex((item) => item.id === recordId);
+    if (artworkIndex >= 0) {
+      const [artwork] = state.artworks.splice(artworkIndex, 1);
+      state.reports.forEach((report) => {
+        if (report.latestArtworkId === recordId) {
+          report.latestArtworkId = null;
+        }
+      });
+      addEvent("history-delete", `删除作品：${artwork.title}`);
+      saveState();
+      return { ok: true, deletedType: "artwork", message: `已删除作品记录：${artwork.title}。` };
+    }
+
+    const reportIndex = state.reports.findIndex((item) => item.id === recordId);
+    if (reportIndex >= 0) {
+      const [report] = state.reports.splice(reportIndex, 1);
+      addEvent("history-delete", `删除报告：${report.title || "学习报告"}`);
+      saveState();
+      return { ok: true, deletedType: "report", message: `已删除报告记录：${report.title || "学习报告"}。` };
+    }
+
+    return { ok: false, message: "未找到要删除的记录。" };
+  }
+
   function downloadArchive() {
     const archive = {
       exportedAt: new Date().toISOString(),
@@ -1215,6 +1309,8 @@
     getLatestReview,
     getHistory,
     getHistoryDetail,
+    renameHistoryRecord,
+    deleteHistoryRecord,
     setMode,
     selectDailyGlyph,
     rotateCopybook,
