@@ -756,6 +756,19 @@ textarea {
   line-height: 1.45;
 }
 
+.elder-help-button {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  color: #ffffff;
+  background: #b64a3a;
+  font-size: 13px;
+  font-weight: 900;
+}
+
 .elder-workbench {
   display: grid;
   grid-template-columns: 110px minmax(0, 1fr);

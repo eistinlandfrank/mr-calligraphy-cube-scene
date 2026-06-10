@@ -51,6 +51,7 @@ export function DemoPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFlowPaused, setIsFlowPaused] = useState(false);
   const [caregiverNotice, setCaregiverNotice] = useState("");
+  const [elderHelpRequest, setElderHelpRequest] = useState(null);
   const [calligraphyProgress, setCalligraphyProgress] = useState(0);
   const [calligraphyStroke, setCalligraphyStroke] = useState("侧");
   const [selectedObjectId, setSelectedObjectId] = useState("capsule-shell");
@@ -67,6 +68,7 @@ export function DemoPage() {
   const executeFlowAction = useFlowStore((state) => state.executeAction);
   const recordPracticeStroke = useFlowStore((state) => state.recordPracticeStroke);
   const completePracticeData = useFlowStore((state) => state.completePracticeData);
+  const recordSessionEvent = useFlowStore((state) => state.recordSessionEvent);
   const [flowClock, setFlowClock] = useState(Date.now());
   const phase = useMemo(() => ({
     id: flowState?.id ?? "idle",
@@ -144,6 +146,7 @@ export function DemoPage() {
           onGameProgress={handleGameProgress}
           onGameComplete={handleGameComplete}
           onStrokeComplete={recordPracticeStroke}
+          onHelpRequest={handleElderHelpRequest}
         />
       );
     }
@@ -157,6 +160,7 @@ export function DemoPage() {
           currentStroke={currentStroke}
           remainingSeconds={remainingSeconds}
           isPaused={flowIsPaused || isFlowPaused}
+          elderHelpRequest={elderHelpRequest}
           onAction={handleCaregiverAction}
         />
       );
@@ -171,11 +175,13 @@ export function DemoPage() {
     mode,
     phase,
     recordPracticeStroke,
+    recordSessionEvent,
     sceneConfig,
     practiceProgress,
     currentStroke,
     remainingSeconds,
-    isFlowPaused
+    isFlowPaused,
+    elderHelpRequest
   ]);
 
   function resetPlayback() {
@@ -202,6 +208,20 @@ export function DemoPage() {
       executeFlowAction("finish");
     }
     setCaregiverNotice(result?.total ? `作品已完成，护工端收到 ${result.total} 分评分报告。` : "作品已完成，护工端收到评分报告。");
+  }
+
+  function handleElderHelpRequest() {
+    const requestedAt = new Date().toISOString();
+    setElderHelpRequest((request) => ({
+      count: (request?.count ?? 0) + 1,
+      at: requestedAt
+    }));
+    setCaregiverNotice("老人端发起求助，护工端已收到提醒。");
+    recordSessionEvent({
+      type: "action_triggered",
+      at: requestedAt,
+      payload: { actionId: "elderHelpRequest" }
+    });
   }
 
   function handleCaregiverAction(actionId) {

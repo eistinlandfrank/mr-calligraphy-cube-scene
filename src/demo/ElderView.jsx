@@ -1,7 +1,8 @@
+import { LifeBuoy } from "lucide-react";
 import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
 import { VirtualCalligraphyGame } from "../scene-core/VirtualCalligraphyGame.jsx";
 
-export function ElderView({ phase, paused = false, onGameProgress, onGameComplete, onStrokeComplete }) {
+export function ElderView({ phase, paused = false, onGameProgress, onGameComplete, onStrokeComplete, onHelpRequest }) {
   const showTutorial = phase.id === "calligraphy_tutorial";
 
   return (
@@ -24,6 +25,10 @@ export function ElderView({ phase, paused = false, onGameProgress, onGameComplet
         <span>当前阶段</span>
         <strong>{phase.label}</strong>
         <small>{phase.status}</small>
+        <button className="elder-help-button" type="button" onClick={onHelpRequest}>
+          <LifeBuoy size={16} strokeWidth={2.2} />
+          <span>求助护工</span>
+        </button>
       </div>
     </section>
   );

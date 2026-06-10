@@ -1,6 +1,15 @@
 import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
 
-export function CaregiverView({ phase, sceneConfig, progress, currentStroke, remainingSeconds, isPaused, onAction }) {
+export function CaregiverView({
+  phase,
+  sceneConfig,
+  progress,
+  currentStroke,
+  remainingSeconds,
+  isPaused,
+  elderHelpRequest,
+  onAction
+}) {
   return (
     <div className="mode-panel caregiver-panel" aria-label="护工视角">
       <CaregiverDashboard
@@ -10,6 +19,7 @@ export function CaregiverView({ phase, sceneConfig, progress, currentStroke, rem
         currentStroke={currentStroke}
         remainingSeconds={remainingSeconds}
         isPaused={isPaused}
+        elderHelpRequest={elderHelpRequest}
         onAction={onAction}
       />
     </div>

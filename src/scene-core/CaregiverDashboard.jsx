@@ -24,6 +24,7 @@ export function CaregiverDashboard({
   currentStroke = "侧",
   remainingSeconds = 520,
   isPaused = false,
+  elderHelpRequest = null,
   compact = false,
   onAction
 }) {
@@ -39,6 +40,12 @@ export function CaregiverDashboard({
     return () => window.clearInterval(timer);
   }, [isPaused]);
 
+  useEffect(() => {
+    if (elderHelpRequest?.at) {
+      setLastAction(`老人端发起第 ${elderHelpRequest.count ?? 1} 次求助，请护工确认状态。`);
+    }
+  }, [elderHelpRequest]);
+
   const vitals = useMemo(() => {
     const adjustment = phaseAdjustments[phase?.id] ?? {};
     const wave = Math.sin(tick / 2);
@@ -51,7 +58,7 @@ export function CaregiverDashboard({
     };
   }, [data, phase, tick]);
 
-  const safety = getSafetyState({ vitals, isPaused, phase });
+  const safety = getSafetyState({ vitals, isPaused, phase, elderHelpRequest });
   const remainingTime = formatTime(Math.max(0, remainingSeconds));
 
   function runAction(actionId) {
@@ -148,7 +155,11 @@ function VitalCard({ label, value, unit, tone }) {
   );
 }
 
-function getSafetyState({ vitals, isPaused, phase }) {
+function getSafetyState({ vitals, isPaused, phase, elderHelpRequest }) {
+  if (elderHelpRequest?.at) {
+    return { label: "老人求助", level: "warning" };
+  }
+
   if (isPaused) {
     return { label: "已暂停", level: "paused" };
   }
