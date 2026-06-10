@@ -175,8 +175,10 @@
 
   验收记录：2026-06-10 `flowStore.executeAction("start")` 会从 `idle` 进入 `ready_check` 并创建 PracticeSession；Demo 控制台显示 session 标识，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-04：实现 enter_experience 状态**  
+- [x] **P3-04：实现 enter_experience 状态**  
   验收：系统进入体验启动状态，开始记录 session 事件。
+
+  验收记录：2026-06-10 从 `ready_check` 执行 `next` 会进入 `enter_experience`，并向 PracticeSession 写入 action、state_exited、state_entered 事件；store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-05：实现 immersive_intro 状态**  
   验收：进入沉浸导入阶段，计时器和场景说明同步更新。

@@ -28,9 +28,36 @@ export const useFlowStore = create((set, get) => ({
       return false;
     }
 
+    const enteredAt = new Date().toISOString();
+
     set((state) => ({
       currentStateId: stateId,
       isPaused: false,
+      session: state.session
+        ? {
+            ...state.session,
+            currentState: stateId,
+            events: [
+              ...state.session.events,
+              createSessionEvent({
+                type: "action_triggered",
+                stateId: state.currentStateId,
+                at: enteredAt,
+                payload: { actionId: reason }
+              }),
+              createSessionEvent({
+                type: "state_exited",
+                stateId: state.currentStateId,
+                at: enteredAt
+              }),
+              createSessionEvent({
+                type: "state_entered",
+                stateId,
+                at: enteredAt
+              })
+            ]
+          }
+        : null,
       history: [...state.history, createHistoryItem(stateId, reason)]
     }));
 
