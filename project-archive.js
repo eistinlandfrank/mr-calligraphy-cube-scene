@@ -576,6 +576,7 @@
         label: `${getDbModelActionLabel(action)}：${model.label}`,
         detail: formatDbModelSelectionDetail(model),
         conflictSummary,
+        conflictCount: conflicts.length,
         currentPreview: createDbModelPreview(currentModel, "本机中无此模型"),
         incomingPreview: createDbModelPreview(incomingModel, "档案中无此模型")
       };
@@ -757,13 +758,18 @@
         return true;
       }).map((record) => ({
         action: record.action,
-        key: String(record.key).trim()
+        key: String(record.key).trim(),
+        conflictMode: normalizeDbModelConflictMode(record.conflictMode)
       }));
       if (records.length) {
         result[id] = records;
       }
       return result;
     }, {});
+  }
+
+  function normalizeDbModelConflictMode(value) {
+    return value === "replace" ? "replace" : "rename";
   }
 
   function normalizeSelectedStorageFields(storageFields, storageKeys) {
@@ -1023,10 +1029,13 @@
   async function importSelectedDbModels(item, db, archiveRecords, selectedModels) {
     const archiveRecordMap = mapArchiveDbRecords(item, archiveRecords);
     const currentModelMap = mapDbModelRecords(item, await readAllRecords(db, item.storeName), false);
-    const selectedRemoveKeys = new Set(selectedModels
+    const explicitRemoveKeys = new Set(selectedModels
       .filter((selection) => selection.action === "remove")
       .map((selection) => selection.key));
+    const replacementRemoveKeys = new Set();
+    const restoredEntries = [];
     const restoredRecords = new Map();
+
     for (const selection of selectedModels) {
       if (selection.action === "remove") {
         continue;
@@ -1036,13 +1045,27 @@
         throw new Error(`${item.label} 中缺少要恢复的模型：${selection.key}。`);
       }
       const restoredRecord = await deserializeDbRecord(archiveRecord, item.label);
-      resolveDbModelRestoreConflict(item, restoredRecord, currentModelMap, selectedRemoveKeys, restoredRecords);
-      restoredRecords.set(selection.key, restoredRecord);
+      const restoredModel = normalizeDbModelRecord(item, restoredRecord, 0, false);
+      if (selection.conflictMode === "replace") {
+        findDbModelNameConflicts(restoredModel, currentModelMap, new Set([restoredModel.key])).forEach((conflict) => {
+          replacementRemoveKeys.add(conflict.key);
+        });
+      }
+      restoredEntries.push({ selection, record: restoredRecord });
     }
+
+    const selectedRemoveKeys = new Set([...explicitRemoveKeys, ...replacementRemoveKeys]);
+    restoredEntries.forEach(({ selection, record }) => {
+      resolveDbModelRestoreConflict(item, record, currentModelMap, selectedRemoveKeys, restoredRecords);
+      restoredRecords.set(selection.key, record);
+    });
 
     await new Promise((resolve, reject) => {
       const transaction = db.transaction(item.storeName, "readwrite");
       const store = transaction.objectStore(item.storeName);
+      replacementRemoveKeys.forEach((key) => {
+        store.delete(key);
+      });
       selectedModels.forEach((selection) => {
         if (selection.action === "remove") {
           store.delete(selection.key);
@@ -1647,11 +1670,13 @@
     const getRestoreInputs = () => Array.from(previewList?.querySelectorAll("[data-archive-kind][data-archive-id]") || []);
     const getFieldInputs = () => Array.from(previewList?.querySelectorAll("[data-storage-field-key][data-storage-field-path]") || []);
     const getModelInputs = () => Array.from(previewList?.querySelectorAll("[data-db-model-id][data-db-model-key]") || []);
+    const getModelConflictInputs = () => Array.from(previewList?.querySelectorAll("[data-db-model-id][data-db-model-conflict-for]") || []);
 
     const getSelectedRestoreOptions = () => {
       const selected = getRestoreInputs().filter((input) => input.checked);
       const fieldInputs = getFieldInputs();
       const modelInputs = getModelInputs();
+      const modelConflictInputs = getModelConflictInputs();
       const storageFields = {};
       const storageKeys = [];
       const dbRecords = {};
@@ -1691,10 +1716,17 @@
 
         const selectedModels = modelsForDb
           .filter((input) => input.checked)
-          .map((input) => ({
-            key: input.dataset.dbModelKey,
-            action: input.dataset.dbModelAction
-          }));
+          .map((input) => {
+            const conflictModeInput = modelConflictInputs.find((candidate) => (
+              candidate.dataset.dbModelId === id &&
+              candidate.dataset.dbModelConflictFor === input.dataset.dbModelKey
+            ));
+            return {
+              key: input.dataset.dbModelKey,
+              action: input.dataset.dbModelAction,
+              conflictMode: conflictModeInput?.value || "rename"
+            };
+          });
         if (selectedModels.length) {
           dbIds.push(id);
           dbRecords[id] = selectedModels;
@@ -1713,6 +1745,7 @@
       const inputs = getRestoreInputs();
       const fieldInputs = getFieldInputs();
       const modelInputs = getModelInputs();
+      const modelConflictInputs = getModelConflictInputs();
       const restoreOptions = getSelectedRestoreOptions();
       const selectedCount = restoreOptions.storageKeys.length + restoreOptions.dbIds.length;
       const selectedControlCount = inputs.filter((input) => input.checked).length +
@@ -1735,6 +1768,13 @@
         .map((input) => input.dataset.archiveId));
       modelInputs.forEach((input) => {
         input.disabled = isBusy || !checkedDbIds.has(input.dataset.dbModelId);
+      });
+      modelConflictInputs.forEach((input) => {
+        const modelInput = modelInputs.find((candidate) => (
+          candidate.dataset.dbModelId === input.dataset.dbModelId &&
+          candidate.dataset.dbModelKey === input.dataset.dbModelConflictFor
+        ));
+        input.disabled = isBusy || !checkedDbIds.has(input.dataset.dbModelId) || !modelInput?.checked;
       });
 
       if (selectAllInput) {
@@ -1902,6 +1942,26 @@
           }
           modelChoice.append(modelInput, modelText);
           modelItem.appendChild(modelChoice);
+          if (model.conflictCount) {
+            const conflictControl = document.createElement("label");
+            conflictControl.className = "main-project-model-conflict-control";
+            const conflictLabel = document.createElement("span");
+            conflictLabel.textContent = "冲突处理";
+            const conflictSelect = document.createElement("select");
+            conflictSelect.dataset.dbModelId = id;
+            conflictSelect.dataset.dbModelConflictFor = model.key;
+            [
+              ["rename", "保留本机，档案模型自动改名"],
+              ["replace", "替换本机同名模型"]
+            ].forEach(([value, textValue]) => {
+              const option = document.createElement("option");
+              option.value = value;
+              option.textContent = textValue;
+              conflictSelect.appendChild(option);
+            });
+            conflictControl.append(conflictLabel, conflictSelect);
+            modelItem.appendChild(conflictControl);
+          }
           if (model.currentPreview || model.incomingPreview) {
             const modelDetails = document.createElement("details");
             modelDetails.className = "main-project-model-details";
@@ -2076,7 +2136,7 @@
     });
 
     previewList?.addEventListener("change", (event) => {
-      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path], [data-db-model-id][data-db-model-key]")) {
+      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path], [data-db-model-id][data-db-model-key], [data-db-model-id][data-db-model-conflict-for]")) {
         updateRestoreSelectionState();
       }
     });

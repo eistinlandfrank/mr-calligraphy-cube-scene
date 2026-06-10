@@ -299,6 +299,23 @@ async function main() {
     "命名冲突模型单独恢复时不应覆盖本机旧模型。"
   );
 
+  await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
+    storageKeys: [],
+    dbIds: ["mainModels"],
+    dbRecords: {
+      mainModels: [{ key: "model-3", action: "add", conflictMode: "replace" }]
+    }
+  });
+  const replacedConflictRecords = indexedDbMock.dump("mr-calligraphy-main-model-store", "models");
+  assert(
+    replacedConflictRecords.some((record) => record.key === "model-3" && record.label === "本机旧模型"),
+    "选择替换冲突模型时应按档案原名称恢复。"
+  );
+  assert(
+    !replacedConflictRecords.some((record) => record.key === "model-1"),
+    "选择替换冲突模型时应删除本机同名旧模型。"
+  );
+
   await window.MRProjectArchive.importProject({
     ...legacyArchive,
     indexedDb: {}
