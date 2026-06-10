@@ -281,6 +281,161 @@
     }, 24);
   }
 
+  function exportReplayVideo(options = {}) {
+    const strokes = normalizeVideoStrokes(options.strokes || state.strokes);
+    const glyph = String(options.glyph || state.glyph || "永");
+    const width = Number(options.width || 720);
+    const height = Number(options.height || 720);
+    const fps = Number(options.fps || 30);
+    const durationMs = clamp(Number(options.durationMs || 0) || getReplayVideoDuration(strokes), 2400, 12000);
+
+    if (!strokes.length) {
+      return Promise.resolve({ ok: false, message: "还没有可导出的视频笔迹，请先书写或选择一条练习记录。" });
+    }
+    const canCaptureStream = typeof HTMLCanvasElement !== "undefined" && HTMLCanvasElement.prototype.captureStream;
+    if (!window.MediaRecorder || !canCaptureStream) {
+      return Promise.resolve({ ok: false, message: "当前浏览器不支持 Canvas 视频录制，请使用新版 Chrome / Edge / Firefox。" });
+    }
+
+    return new Promise((resolve) => {
+      const output = document.createElement("canvas");
+      output.width = width;
+      output.height = height;
+      const ctx = output.getContext("2d");
+      const stream = output.captureStream(fps);
+      const chunks = [];
+      const mimeType = getSupportedVideoMimeType();
+      let recorder;
+
+      try {
+        recorder = new window.MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      } catch (error) {
+        stream.getTracks().forEach((track) => track.stop());
+        resolve({ ok: false, message: "无法启动视频录制，浏览器不支持当前视频格式。" });
+        return;
+      }
+
+      recorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          chunks.push(event.data);
+        }
+      };
+      recorder.onerror = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        resolve({ ok: false, message: "视频录制失败，请稍后重试。" });
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (!chunks.length) {
+          resolve({ ok: false, message: "视频导出失败，没有生成有效视频数据。" });
+          return;
+        }
+        const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+        resolve({
+          ok: true,
+          blob,
+          mimeType: blob.type,
+          durationMs,
+          message: `已生成 ${Math.round(durationMs / 1000)} 秒书写回放视频。`
+        });
+      };
+
+      const start = performance.now();
+      drawReplayVideoFrame(ctx, { strokes, glyph, width, height, progress: 0 });
+      recorder.start(120);
+
+      function step(now) {
+        const progress = clamp((now - start) / durationMs, 0, 1);
+        drawReplayVideoFrame(ctx, { strokes, glyph, width, height, progress });
+        if (progress < 1 && recorder.state === "recording") {
+          window.requestAnimationFrame(step);
+          return;
+        }
+        drawReplayVideoFrame(ctx, { strokes, glyph, width, height, progress: 1 });
+        window.setTimeout(() => {
+          if (recorder.state === "recording") {
+            recorder.stop();
+          }
+        }, 180);
+      }
+
+      window.requestAnimationFrame(step);
+    });
+  }
+
+  function normalizeVideoStrokes(strokes) {
+    return Array.isArray(strokes)
+      ? strokes.map((stroke) => Array.isArray(stroke) ? stroke.map(normalizePoint).filter(isValidPoint) : []).filter((stroke) => stroke.length > 1)
+      : [];
+  }
+
+  function isValidPoint(point) {
+    return Number.isFinite(point.x) && Number.isFinite(point.y);
+  }
+
+  function getReplayVideoDuration(strokes) {
+    const pointCount = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
+    return Math.min(9000, Math.max(2800, pointCount * 28 + strokes.length * 220));
+  }
+
+  function getSupportedVideoMimeType() {
+    const types = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm"
+    ];
+    return types.find((type) => window.MediaRecorder?.isTypeSupported?.(type)) || "";
+  }
+
+  function drawReplayVideoFrame(ctx, { strokes, glyph, width, height, progress }) {
+    const visibleStrokes = getVisibleReplayStrokes(strokes, progress);
+    ctx.fillStyle = "#f2e5cb";
+    ctx.fillRect(0, 0, width, height);
+    drawSnapshotGuides(ctx, width, height);
+    ctx.save();
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = "#1a130f";
+    ctx.font = "500 410px KaiTi, STKaiti, SimSun, serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(glyph, width / 2, height / 2 + 18);
+    ctx.restore();
+    drawSnapshotStrokes(ctx, visibleStrokes, width, height);
+    drawReplayVideoMeta(ctx, { glyph, strokes, width, height, progress });
+  }
+
+  function getVisibleReplayStrokes(strokes, progress) {
+    const totalPoints = strokes.reduce((sum, stroke) => sum + stroke.length, 0);
+    let remaining = Math.max(0, Math.ceil(totalPoints * progress));
+    const visible = [];
+
+    for (const stroke of strokes) {
+      if (remaining <= 0) break;
+      if (remaining >= stroke.length) {
+        visible.push(stroke);
+        remaining -= stroke.length;
+        continue;
+      }
+      if (remaining > 1) {
+        visible.push(stroke.slice(0, remaining));
+      }
+      break;
+    }
+
+    return visible;
+  }
+
+  function drawReplayVideoMeta(ctx, { glyph, strokes, width, height, progress }) {
+    ctx.save();
+    ctx.fillStyle = "rgba(29, 18, 9, 0.74)";
+    ctx.font = "700 24px Microsoft YaHei, sans-serif";
+    ctx.textAlign = "left";
+    ctx.fillText(`MR 书法 · ${glyph}字回放`, 34, 46);
+    ctx.font = "500 17px Microsoft YaHei, sans-serif";
+    ctx.fillText(`${strokes.length} 笔 · ${Math.round(progress * 100)}%`, 34, height - 34);
+    ctx.restore();
+  }
+
   function stopReplay() {
     if (state.replayTimer) {
       window.clearInterval(state.replayTimer);
@@ -546,6 +701,7 @@
     clear,
     undo,
     replay,
+    exportReplayVideo,
     getResult,
     analyzeStrokes,
     loadStrokes,

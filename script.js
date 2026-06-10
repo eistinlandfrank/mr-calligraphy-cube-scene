@@ -297,7 +297,7 @@ const SCENES = [
     ],
     actions: [
       { label: "再写一遍", target: 3, response: "回到临摹场景，带着复盘结论再练一次。" },
-      { label: "生成视频", response: "视频导出需要接入书写轨迹回放后启用。" },
+      { label: "生成视频", response: "将根据真实书写笔迹导出 WebM 回放视频。" },
       { label: "保存作品", response: "作品已保存到作品集，可继续分享或导出。" }
     ],
     points: [
@@ -848,6 +848,7 @@ let activeMainObjectId = null;
 let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
+let isReplayVideoExporting = false;
 const mainSceneUndoStack = [];
 
 document.addEventListener("DOMContentLoaded", init);
@@ -3455,6 +3456,71 @@ function downloadLatestReport() {
   }
 }
 
+async function exportPracticeReplayVideo() {
+  if (!window.MRPracticeCanvas?.exportReplayVideo) {
+    return { ok: false, message: "书写画布尚未初始化，无法导出视频。" };
+  }
+  if (isReplayVideoExporting) {
+    return { ok: false, message: "书写回放视频正在生成中，请稍候。" };
+  }
+
+  const source = getPracticeVideoSource();
+  if (!source.strokes.length) {
+    return { ok: false, message: "请先在练习格中书写，或保存一条带笔迹的作品后再生成视频。" };
+  }
+
+  isReplayVideoExporting = true;
+  try {
+    if (source.source === "当前练习") {
+      recordLivePracticeIfAvailable({ allowCreate: true });
+    } else {
+      window.MRPracticeCanvas.loadStrokes?.(source.strokes);
+    }
+
+    const result = await window.MRPracticeCanvas.exportReplayVideo({
+      strokes: source.strokes,
+      glyph: source.glyph
+    });
+    if (!result?.ok || !result.blob) {
+      return result || { ok: false, message: "视频导出失败。" };
+    }
+
+    const filename = `mr-calligraphy-replay-${sanitizeFilename(source.glyph)}-${Date.now()}.webm`;
+    downloadBlob(result.blob, filename);
+    return {
+      ok: true,
+      message: `${result.message} 已下载：${filename}。`,
+      notice: `已导出${source.source}回放视频。`
+    };
+  } finally {
+    isReplayVideoExporting = false;
+  }
+}
+
+function getPracticeVideoSource() {
+  const liveStrokes = window.MRPracticeCanvas?.getStrokes?.() || [];
+  const stats = window.MRAppState?.getStats?.();
+  if (liveStrokes.length) {
+    return {
+      source: "当前练习",
+      glyph: stats?.glyph || "永",
+      strokes: liveStrokes
+    };
+  }
+
+  const review = window.MRAppState?.getLatestReview?.();
+  const session = review?.session;
+  if (session?.strokes?.length) {
+    return {
+      source: "最近作品",
+      glyph: session.glyph || stats?.glyph || "永",
+      strokes: session.strokes
+    };
+  }
+
+  return { source: "空记录", glyph: stats?.glyph || "永", strokes: [] };
+}
+
 function downloadDataUrl(dataUrl, filename) {
   const link = document.createElement("a");
   link.href = dataUrl;
@@ -3462,6 +3528,17 @@ function downloadDataUrl(dataUrl, filename) {
   document.body.appendChild(link);
   link.click();
   link.remove();
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1200);
 }
 
 function sanitizeFilename(name) {
@@ -4032,6 +4109,21 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
 
 function runAction(action) {
   const result = runLearningAction(action);
+  if (result && typeof result.then === "function") {
+    els.actionFeedback.textContent = "正在生成真实书写回放视频，请稍候...";
+    result
+      .then((resolved) => applyActionResult(resolved, action))
+      .catch((error) => applyActionResult({
+        ok: false,
+        message: error?.message || "操作失败，请稍后重试。"
+      }, action));
+    return;
+  }
+
+  applyActionResult(result, action);
+}
+
+function applyActionResult(result = {}, action = {}) {
   els.actionFeedback.textContent = result.message || action.response;
   renderLearningStateSummary();
   renderReviewPanel(currentIndex);
@@ -4065,14 +4157,6 @@ function getLearningActionHint(sceneIndex) {
 }
 
 function getLearningActionFeature(action) {
-  const disabledActions = {
-    "生成视频": "需要先接入书写轨迹回放与视频导出，本版暂不伪装为已生成。"
-  };
-
-  if (disabledActions[action.label]) {
-    return { state: "disabled", reason: disabledActions[action.label] };
-  }
-
   return { state: "real" };
 }
 
@@ -4143,6 +4227,8 @@ function runLearningAction(action) {
       return { ...appState.createReport(), target: action.target };
     case "查看作品":
       return { message: appState.getStats().latestArtwork ? "已打开最近保存的作品复盘页。" : "还没有保存作品，请先完成一次保存作品。", target: action.target };
+    case "生成视频":
+      return exportPracticeReplayVideo();
     case "制定计划":
       return appState.createPlan();
     case "查看成就":
