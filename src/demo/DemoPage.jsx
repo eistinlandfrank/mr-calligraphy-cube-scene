@@ -2,6 +2,7 @@ import { CircleGauge, HeartPulse, Monitor, Pause, Play, RotateCcw, Sparkles } fr
 import { useEffect, useMemo, useState } from "react";
 import { sceneConfigById } from "../data/scenes/index.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
+import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 import { CaregiverView } from "./CaregiverView.jsx";
 import { DemoTimeline, demoTimelineSteps } from "./DemoTimeline.jsx";
 import { ElderView } from "./ElderView.jsx";
@@ -18,9 +19,10 @@ export function DemoPage() {
   const [activeStep, setActiveStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [selectedObjectId, setSelectedObjectId] = useState("capsule-shell");
+  const storedScenes = useSceneStore((state) => state.scenes);
   const phase = demoTimelineSteps[activeStep];
   const activeMode = viewModes.find((item) => item.id === mode) ?? viewModes[0];
-  const sceneConfig = sceneConfigById[activeMode.sceneId];
+  const sceneConfig = selectSceneConfigById(storedScenes, activeMode.sceneId) ?? sceneConfigById[activeMode.sceneId];
 
   useEffect(() => {
     if (!isPlaying) {

@@ -1,8 +1,10 @@
 import { sceneConfigById } from "../data/scenes/index.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
+import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 
 export function PreviewPage({ sceneId }) {
-  const sceneConfig = sceneConfigById[sceneId] ?? sceneConfigById["capsule-product-showcase"];
+  const storedScenes = useSceneStore((state) => state.scenes);
+  const sceneConfig = selectSceneConfigById(storedScenes, sceneId) ?? sceneConfigById["capsule-product-showcase"];
   const mode = sceneConfig.type === "elder-view" ? "elder" : sceneConfig.type === "caregiver-view" ? "caregiver" : "product";
 
   return (
