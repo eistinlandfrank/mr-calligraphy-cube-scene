@@ -4,6 +4,19 @@ import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import {
+  createImportMetrics,
+  createModelStore,
+  formatImportMetrics,
+  getImportFileType,
+  measureImportedModel,
+  normalizeImportLabel,
+  normalizeImportMetrics,
+  parseImportedModel,
+  validateImportBuffer,
+  validateImportFile,
+  validateImportedModelMetrics
+} from "./model-import-utils.js";
 
 const canvas = document.getElementById("realisticCanvas");
 const resetButton = document.getElementById("resetCamera");
@@ -29,8 +42,14 @@ const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
 const IMPORTED_MODEL_LIST_KEY = "importedModels";
 const IMPORT_DB_NAME = "mr-calligraphy-model-store";
 const IMPORT_DB_STORE = "models";
-const MAX_IMPORT_MODEL_BYTES = 50 * 1024 * 1024;
 const MAX_UNDO_STEPS = 256;
+const importedModelStore = createModelStore({
+  dbName: IMPORT_DB_NAME,
+  storeName: IMPORT_DB_STORE,
+  keyPath: "id"
+});
+const importedGltfLoader = new GLTFLoader();
+const importedObjLoader = new OBJLoader();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x15120f);
@@ -528,10 +547,9 @@ function getImportedModelRecords() {
 
 function normalizeImportedRecord(record = {}, index = 0) {
   const fileName = String(record.fileName || "model.glb");
-  const extension = getFileExtension(fileName);
   const type = record.type === "glb" || record.type === "obj"
     ? record.type
-    : extension === "glb" || extension === "obj" ? extension : "glb";
+    : getImportFileType(fileName) || "glb";
   const id = String(record.id || makeImportedModelId(fileName || `model-${index + 1}`));
 
   return {
@@ -544,68 +562,12 @@ function normalizeImportedRecord(record = {}, index = 0) {
   };
 }
 
-function normalizeImportMetrics(metrics = {}) {
-  const source = metrics && typeof metrics === "object" ? metrics : {};
-  const dimensions = source.dimensions && typeof source.dimensions === "object" ? source.dimensions : {};
-
-  return {
-    fileBytes: Math.max(0, Math.round(readFiniteNumber(source.fileBytes, 0))),
-    meshCount: Math.max(0, Math.round(readFiniteNumber(source.meshCount, 0))),
-    vertexCount: Math.max(0, Math.round(readFiniteNumber(source.vertexCount, 0))),
-    dimensions: {
-      width: readFiniteNumber(dimensions.width, 0),
-      height: readFiniteNumber(dimensions.height, 0),
-      depth: readFiniteNumber(dimensions.depth, 0)
-    }
-  };
-}
-
-function readFiniteNumber(value, fallback) {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : fallback;
-}
-
-function openImportDb() {
-  return new Promise((resolve, reject) => {
-    const request = window.indexedDB.open(IMPORT_DB_NAME, 1);
-    request.addEventListener("upgradeneeded", () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(IMPORT_DB_STORE)) {
-        db.createObjectStore(IMPORT_DB_STORE, { keyPath: "id" });
-      }
-    });
-    request.addEventListener("success", () => resolve(request.result));
-    request.addEventListener("error", () => reject(request.error));
-  });
-}
-
 async function storeImportedModel(record, arrayBuffer) {
-  const db = await openImportDb();
-  await new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMPORT_DB_STORE, "readwrite");
-    transaction.objectStore(IMPORT_DB_STORE).put({
-      id: record.dbKey,
-      fileName: record.fileName,
-      type: record.type,
-      metrics: record.metrics,
-      arrayBuffer
-    });
-    transaction.addEventListener("complete", resolve);
-    transaction.addEventListener("error", () => reject(transaction.error));
-  });
-  db.close();
+  return importedModelStore.store(record, arrayBuffer);
 }
 
 async function readImportedModel(record) {
-  const db = await openImportDb();
-  const result = await new Promise((resolve, reject) => {
-    const transaction = db.transaction(IMPORT_DB_STORE, "readonly");
-    const request = transaction.objectStore(IMPORT_DB_STORE).get(record.dbKey);
-    request.addEventListener("success", () => resolve(request.result));
-    request.addEventListener("error", () => reject(request.error));
-  });
-  db.close();
-  return result;
+  return importedModelStore.read(record);
 }
 
 function toDegrees(radians) {
@@ -621,134 +583,8 @@ function makeImportedModelId(fileName) {
   return `import-${Date.now()}-${safeName}`;
 }
 
-function getFileExtension(fileName) {
-  return fileName.split(".").pop()?.toLowerCase() || "";
-}
-
 function setImportStatus(message) {
   if (importStatus) importStatus.textContent = message;
-}
-
-function normalizeImportLabel(fileName) {
-  return String(fileName || "导入模型").replace(/\.[^.]+$/, "").trim().slice(0, 48) || "导入模型";
-}
-
-function validateImportFile(file, type, label) {
-  if (!["glb", "obj"].includes(type)) {
-    throw new Error("只支持 .glb 和 .obj 文件。");
-  }
-  if (!file.size) {
-    throw new Error("模型文件为空。");
-  }
-  if (file.size > MAX_IMPORT_MODEL_BYTES) {
-    throw new Error(`模型文件不能超过 ${formatBytes(MAX_IMPORT_MODEL_BYTES)}。`);
-  }
-
-  const duplicate = getImportedModelRecords().find((record) => {
-    return String(record.fileName || "").toLowerCase() === file.name.toLowerCase() ||
-      String(record.label || "").toLowerCase() === label.toLowerCase();
-  });
-
-  if (duplicate) {
-    throw new Error(`已存在导入模型“${duplicate.label || duplicate.fileName}”，请先改名或恢复已有模型。`);
-  }
-}
-
-function validateImportBuffer(type, arrayBuffer, fileName) {
-  if (!arrayBuffer?.byteLength) {
-    throw new Error("模型文件没有可读取内容。");
-  }
-
-  if (type === "glb") {
-    if (arrayBuffer.byteLength < 12) {
-      throw new Error("GLB 文件头不完整。");
-    }
-    const magic = new DataView(arrayBuffer).getUint32(0, true);
-    if (magic !== 0x46546c67) {
-      throw new Error(`${fileName} 不是有效的 GLB 文件。`);
-    }
-    return;
-  }
-
-  const preview = new TextDecoder("utf-8").decode(arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, 512 * 1024)));
-  if (!/^\s*v\s+[-+0-9.]/m.test(preview)) {
-    throw new Error(`${fileName} 没有可读取的 OBJ 顶点数据。`);
-  }
-}
-
-function measureImportedModel(root) {
-  root.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(root);
-  const size = new THREE.Vector3();
-  let meshCount = 0;
-  let vertexCount = 0;
-
-  root.traverse((child) => {
-    if (!child.isMesh) return;
-    const count = Number(child.geometry?.attributes?.position?.count || 0);
-    if (count > 0) {
-      meshCount += 1;
-      vertexCount += count;
-    }
-  });
-
-  if (!box.isEmpty()) {
-    box.getSize(size);
-  }
-
-  return {
-    box,
-    meshCount,
-    vertexCount,
-    width: size.x,
-    height: size.y,
-    depth: size.z,
-    longestSide: Math.max(size.x, size.y, size.z)
-  };
-}
-
-function validateImportedModelMetrics(metrics) {
-  if (!metrics.meshCount || !metrics.vertexCount || metrics.box.isEmpty()) {
-    throw new Error("模型没有可读取的网格，请检查文件是否包含实体几何。");
-  }
-  if (!Number.isFinite(metrics.longestSide) || metrics.longestSide <= 0) {
-    throw new Error("模型尺寸无效，无法自动摆放。");
-  }
-}
-
-function createImportMetrics(metrics, fileBytes) {
-  return {
-    fileBytes: Number(fileBytes || 0),
-    meshCount: metrics.meshCount,
-    vertexCount: metrics.vertexCount,
-    dimensions: {
-      width: Number(metrics.width.toFixed(4)),
-      height: Number(metrics.height.toFixed(4)),
-      depth: Number(metrics.depth.toFixed(4))
-    }
-  };
-}
-
-function formatImportMetrics(metrics = {}) {
-  const dimensions = metrics.dimensions
-    ? `${formatMetricNumber(metrics.dimensions.width)}×${formatMetricNumber(metrics.dimensions.height)}×${formatMetricNumber(metrics.dimensions.depth)}`
-    : "尺寸未知";
-  return `${metrics.meshCount || 0} 个网格，${dimensions}，${formatBytes(metrics.fileBytes || 0)}`;
-}
-
-function formatMetricNumber(value) {
-  return Number(value || 0).toFixed(2);
-}
-
-function formatBytes(bytes) {
-  const value = Number(bytes || 0);
-  if (value >= 1024 * 1024) {
-    return `${(value / 1024 / 1024).toFixed(1)} MB`;
-  }
-  if (value >= 1024) {
-    return `${(value / 1024).toFixed(1)} KB`;
-  }
-  return `${value} B`;
 }
 
 function normalizeImportedObject(root) {
@@ -775,30 +611,12 @@ function prepareImportedObject(root) {
   });
 }
 
-function parseImportedModel(record, arrayBuffer) {
-  if (record.type === "glb") {
-    return new Promise((resolve, reject) => {
-      const loader = new GLTFLoader();
-      loader.parse(arrayBuffer.slice(0), "", (gltf) => resolve(gltf.scene || gltf.scenes?.[0]), reject);
-    });
-  }
-
-  if (record.type === "obj") {
-    const text = new TextDecoder().decode(arrayBuffer);
-    const object = new OBJLoader().parse(text);
-    object.traverse((child) => {
-      if (child.isMesh) {
-        child.material = new THREE.MeshStandardMaterial({ color: 0xc8b08a, roughness: 0.64, metalness: 0.03 });
-      }
-    });
-    return Promise.resolve(object);
-  }
-
-  return Promise.reject(new Error(`Unsupported model type: ${record.type}`));
-}
-
 async function createImportedModelObject(record, arrayBuffer) {
-  const importedObject = await parseImportedModel(record, arrayBuffer);
+  const importedObject = await parseImportedModel(record, arrayBuffer, {
+    gltfLoader: importedGltfLoader,
+    objLoader: importedObjLoader,
+    objMaterial: new THREE.MeshStandardMaterial({ color: 0xc8b08a, roughness: 0.64, metalness: 0.03 })
+  });
   const root = new THREE.Group();
   root.add(importedObject);
   const metrics = measureImportedModel(root);
@@ -849,11 +667,15 @@ async function handleImportModel(event) {
   const file = event.target.files?.[0];
   if (!file) return;
 
-  const type = getFileExtension(file.name);
+  const type = getImportFileType(file.name);
   const label = normalizeImportLabel(file.name);
 
   try {
-    validateImportFile(file, type, label);
+    validateImportFile(file, {
+      type,
+      label,
+      existingRecords: getImportedModelRecords()
+    });
     setImportStatus(`正在校验 ${file.name}...`);
     const id = makeImportedModelId(file.name);
     const record = {
