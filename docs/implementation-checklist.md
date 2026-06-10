@@ -444,8 +444,10 @@
 - [x] **P7-08：实现热点配置驱动**  
   验收：前台热点位置、名称、动作来自配置。
 
-- [ ] **P7-09：实现流程配置驱动**  
+- [x] **P7-09：实现流程配置驱动**  
   验收：前台状态机可读取 FlowConfig。
+
+  验收记录：2026-06-10 flowStore 启动时优先读取本地保存的 FlowConfig，并新增 setFlowConfig 校验、保存和重置状态机入口；后台导入 JSON 支持 FlowConfig，项目导出使用当前流程配置，Demo 状态机可按导入后的 states、actions、next 和 duration 运行；`npm run build` 通过。
 
 ---
 

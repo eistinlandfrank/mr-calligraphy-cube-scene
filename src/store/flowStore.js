@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import { loadDefaultFlow } from "../data/configLoader.js";
+import { cloneFlowConfig, validateFlowConfig } from "../flow-core/flowSchema.js";
 import { createReport } from "../report-core/reportSchema.js";
 import { createPracticeSession, createSessionEvent } from "../session-core/sessionSchema.js";
 
-const defaultFlow = loadDefaultFlow();
-const defaultStateId = defaultFlow.initialState;
 export const SESSION_STORAGE_KEY = "moyin-xinjing-practice-sessions";
+export const FLOW_STORAGE_KEY = "moyin-xinjing-flow-config";
+const defaultFlow = loadInitialFlowConfig();
+const defaultStateId = defaultFlow.initialState;
 
 export const useFlowStore = create((set, get) => ({
   flowConfig: defaultFlow,
@@ -43,6 +45,30 @@ export const useFlowStore = create((set, get) => ({
     }
 
     return Math.max(0, state.duration - get().getStateElapsedSeconds());
+  },
+
+  setFlowConfig: (flowConfig) => {
+    const result = validateFlowConfig(flowConfig);
+
+    if (!result.valid) {
+      return result;
+    }
+
+    const nextFlowConfig = cloneFlowConfig(flowConfig);
+    const nextStateId = nextFlowConfig.initialState;
+    persistFlowConfig(nextFlowConfig);
+    set({
+      flowConfig: nextFlowConfig,
+      currentStateId: nextStateId,
+      stateEnteredAt: Date.now(),
+      accumulatedPausedMs: 0,
+      pausedAt: null,
+      history: [createHistoryItem(nextStateId, "flow_config_loaded")],
+      isPaused: false,
+      session: null
+    });
+
+    return result;
   },
 
   canExecute: (actionId) => {
@@ -294,7 +320,7 @@ export const useFlowStore = create((set, get) => ({
     }
 
     if (actionId === "restart") {
-      get().transitionTo(defaultStateId, "restart");
+      get().transitionTo(get().flowConfig.initialState, "restart");
       return true;
     }
 
@@ -311,12 +337,13 @@ export const useFlowStore = create((set, get) => ({
   },
 
   resetFlow: () => {
+    const initialStateId = get().flowConfig.initialState;
     set({
-      currentStateId: defaultStateId,
+      currentStateId: initialStateId,
       stateEnteredAt: Date.now(),
       accumulatedPausedMs: 0,
       pausedAt: null,
-      history: [createHistoryItem(defaultStateId, "reset")],
+      history: [createHistoryItem(initialStateId, "reset")],
       isPaused: false,
       session: null
     });
@@ -470,6 +497,37 @@ function buildSessionReport(session, at) {
 
 function clampScore(value) {
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function loadInitialFlowConfig() {
+  const fallbackFlow = loadDefaultFlow();
+
+  if (typeof window === "undefined") {
+    return fallbackFlow;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(FLOW_STORAGE_KEY);
+
+    if (!raw) {
+      return fallbackFlow;
+    }
+
+    const storedFlowConfig = JSON.parse(raw);
+    const result = validateFlowConfig(storedFlowConfig);
+
+    return result.valid ? cloneFlowConfig(storedFlowConfig) : fallbackFlow;
+  } catch {
+    return fallbackFlow;
+  }
+}
+
+function persistFlowConfig(flowConfig) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.setItem(FLOW_STORAGE_KEY, JSON.stringify(flowConfig));
 }
 
 function averagePracticeMetric(strokes, key, fallback) {

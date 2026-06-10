@@ -1,9 +1,10 @@
 import { Download, Eye, RotateCcw, Save, Upload } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { createProjectExportPayload, downloadConfigJson, parseConfigJson } from "../data/configIO.js";
-import { loadDefaultFlow, loadDefaultProject } from "../data/configLoader.js";
+import { loadDefaultProject } from "../data/configLoader.js";
 import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
+import { useFlowStore } from "../store/flowStore.js";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 import { InspectorPanel } from "./InspectorPanel.jsx";
 import { SceneList } from "./SceneList.jsx";
@@ -20,6 +21,8 @@ export function SceneEditor() {
   const hydrateScenesFromIndexedDb = useSceneStore((state) => state.hydrateScenesFromIndexedDb);
   const resetScene = useSceneStore((state) => state.resetScene);
   const importScene = useSceneStore((state) => state.importScene);
+  const flowConfig = useFlowStore((state) => state.flowConfig);
+  const setFlowConfig = useFlowStore((state) => state.setFlowConfig);
   const fileInputRef = useRef(null);
   const [importStatus, setImportStatus] = useState("");
   const sceneConfig = selectSceneConfigById(scenes, activeSceneId);
@@ -42,7 +45,7 @@ export function SceneEditor() {
         ...project,
         scenes: scenes.map((scene) => scene.id)
       },
-      flow: loadDefaultFlow(),
+      flow: flowConfig,
       scenes
     });
 
@@ -65,8 +68,20 @@ export function SceneEditor() {
         return;
       }
 
+      if (parsed.type === "flow") {
+        const result = setFlowConfig(parsed.config);
+
+        if (!result.valid) {
+          setImportStatus(`导入失败：${result.errors[0]}`);
+          return;
+        }
+
+        setImportStatus(`已导入流程：${parsed.config.name}`);
+        return;
+      }
+
       if (parsed.type !== "scene") {
-        setImportStatus(`导入失败：后台场景编辑器当前仅支持 SceneConfig，检测到 ${parsed.type}。`);
+        setImportStatus(`导入失败：后台当前支持 SceneConfig 或 FlowConfig，检测到 ${parsed.type}。`);
         return;
       }
 
