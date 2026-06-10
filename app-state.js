@@ -1405,7 +1405,7 @@
     return {
       ok: true,
       report: clone(report),
-      message: `学习报告已生成：站内可复盘，HTML 文件已下载，${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
+      message: `学习报告已生成：站内可复盘，HTML 文件已下载，含能力雷达、签名水印和打印样式，${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
     };
   }
 
@@ -1474,6 +1474,59 @@
       .slice(-8);
   }
 
+  function getReportMetricTrend(report = null) {
+    const reportTime = Date.parse(report?.createdAt || "") || Infinity;
+    const isInRange = (value) => {
+      const time = Date.parse(value || "");
+      return !Number.isFinite(reportTime) || Number.isNaN(time) || time <= reportTime;
+    };
+    const hasMetrics = (metrics) => metrics && Object.values(metrics).some((value) => Number.isFinite(Number(value)) && Number(value) > 0);
+
+    return [
+      ...state.sessions
+        .filter((session) => hasMetrics(session.metrics) && isInRange(session.endedAt || session.snapshotAt || session.startedAt))
+        .map((session) => ({
+          id: session.id,
+          label: `${session.glyph || "字"}练习`,
+          type: "practice",
+          score: session.score || 0,
+          createdAt: session.endedAt || session.snapshotAt || session.startedAt,
+          metrics: normalizeMetrics(session.metrics)
+        })),
+      ...state.artworks
+        .map((artwork) => {
+          const session = artwork.sessionId
+            ? state.sessions.find((item) => item.id === artwork.sessionId)
+            : null;
+          if (!session || !hasMetrics(session.metrics) || !isInRange(artwork.createdAt)) {
+            return null;
+          }
+          return {
+            id: artwork.id,
+            label: artwork.title || `${artwork.glyph || "作品"}`,
+            type: "artwork",
+            score: artwork.score || session.score || 0,
+            createdAt: artwork.createdAt,
+            metrics: normalizeMetrics(session.metrics)
+          };
+        })
+        .filter(Boolean),
+      ...state.reports
+        .map(normalizeReport)
+        .filter((item) => hasMetrics(item.scoreBreakdown) && isInRange(item.createdAt))
+        .map((item) => ({
+          id: item.id,
+          label: item.title || "学习报告",
+          type: "report",
+          score: item.averageScore || 0,
+          createdAt: item.createdAt,
+          metrics: normalizeMetrics(item.scoreBreakdown)
+        }))
+    ]
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+      .slice(-12);
+  }
+
   function createReportHtml(report) {
     const normalizedReport = normalizeReport(report);
     const metrics = normalizedReport.scoreBreakdown;
@@ -1487,6 +1540,7 @@
       ["fluency", "流畅"],
       ["force", "力度"]
     ];
+    const watermarkText = `MR 书法本机学习报告 · ${normalizedReport.id} · ${formatDateTime(normalizedReport.createdAt)}`;
     const radarChart = createReportRadarSvg(metricLabels, metrics);
     const maxTrendScore = Math.max(100, ...trend.map((item) => item.score));
     const imageBlock = latestArtwork?.imageData
@@ -1509,7 +1563,8 @@
     :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; --wash:#eef8f3; }
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
-    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 46px; }
+    main { position: relative; z-index: 1; width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 46px; }
+    .watermark { position: fixed; inset: 0; z-index: 0; display: grid; place-items: center; pointer-events: none; color: rgba(36, 122, 103, 0.08); font-size: clamp(28px, 6vw, 72px); font-weight: 900; line-height: 1.2; text-align: center; transform: rotate(-28deg); }
     header { display: grid; gap: 12px; padding-bottom: 22px; border-bottom: 2px solid var(--ink); }
     h1, h2, p { margin: 0; }
     h1 { font-size: clamp(30px, 6vw, 56px); line-height: 1.05; letter-spacing: 0; }
@@ -1551,6 +1606,7 @@
       @page { size: A4; margin: 14mm; }
       body { background: #ffffff; font-size: 12px; }
       main { width: 100%; padding: 0; }
+      .watermark { color: rgba(36, 122, 103, 0.09); font-size: 40px; }
       .report-toolbar { display: none; }
       header, section, .summary, .stat, .radar-card, .artwork { break-inside: avoid; page-break-inside: avoid; }
       .summary, .stat, .radar-card, .artwork, .empty { background: #ffffff; }
@@ -1563,6 +1619,7 @@
   </style>
 </head>
 <body>
+  <div class="watermark" aria-hidden="true">${escapeHtml(watermarkText)}</div>
   <main>
     <div class="report-toolbar">
       <button type="button" onclick="window.print()">打印 / 保存 PDF</button>
@@ -1616,7 +1673,7 @@
       </ol>
     </section>
 
-    <footer>报告数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。如需迁移项目，请在主后台导出项目档案。</footer>
+    <footer>报告数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。报告水印：${escapeHtml(watermarkText)}。如需迁移项目，请在主后台导出项目档案。</footer>
   </main>
 </body>
 </html>`;
@@ -1761,6 +1818,7 @@
       latestPointCount: normalizedReport.latestPointCount,
       scoreBreakdown: clone(normalizedReport.scoreBreakdown || normalizeMetrics(null)),
       trend: clone(normalizedReport.trend || []),
+      metricTrend: clone(getReportMetricTrend(normalizedReport)),
       recommendations: clone(normalizedReport.recommendations || []),
       latestSession: latestSession
         ? {
@@ -1798,7 +1856,7 @@
       return { ok: false, message: "还没有可下载的报告。" };
     }
     downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
-    return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达和打印样式。` };
+    return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印和打印样式。` };
   }
 
   function getHistory(options = {}) {

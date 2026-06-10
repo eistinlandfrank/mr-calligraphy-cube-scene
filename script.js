@@ -837,6 +837,7 @@ const els = {
   reportRecommendations: document.getElementById("reportRecommendations"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
   reportDetailDownload: document.getElementById("reportDetailDownload"),
+  reportDetailPrint: document.getElementById("reportDetailPrint"),
   reportDetailOpenHistory: document.getElementById("reportDetailOpenHistory"),
   historyPanel: document.getElementById("historyPanel"),
   historySummary: document.getElementById("historySummary"),
@@ -928,6 +929,7 @@ let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
 let activeReportDetailId = null;
+let activeReportMetricKey = "structure";
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
@@ -941,6 +943,28 @@ const REPORT_METRIC_LABELS = [
   ["fluency", "流畅"],
   ["force", "力度"]
 ];
+const REPORT_METRIC_GUIDES = {
+  structure: {
+    focus: "结构稳定度",
+    advice: "观察中宫、重心和外轮廓，优先把字形站稳。"
+  },
+  stroke: {
+    focus: "笔画完整度",
+    advice: "单独复盘起笔、行笔和收笔，减少断裂和过短笔画。"
+  },
+  technique: {
+    focus: "笔法变化",
+    advice: "关注提按、转折和主次轻重，让线条更有层次。"
+  },
+  fluency: {
+    focus: "行笔流畅度",
+    advice: "用回放检查不必要停顿，保持速度变化自然。"
+  },
+  force: {
+    focus: "力度控制",
+    advice: "放大主笔按压力度，辅笔保持轻盈，避免整字同一重量。"
+  }
+};
 let activePlanId = null;
 let isReplayVideoExporting = false;
 let lecturePlaybackTimer = null;
@@ -3501,7 +3525,14 @@ function bindReviewControls() {
 function bindReportControls() {
   els.reportDetailCopyLink?.addEventListener("click", copyReportDetailLink);
   els.reportDetailDownload?.addEventListener("click", downloadReportDetail);
+  els.reportDetailPrint?.addEventListener("click", printReportDetail);
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
+  els.reportMetrics?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-report-metric]");
+    if (!button) return;
+    activeReportMetricKey = normalizeReportMetricKey(button.dataset.reportMetric);
+    renderReportPanel(currentIndex);
+  });
 }
 
 function bindHistoryControls() {
@@ -3916,8 +3947,9 @@ function renderReportPanel(sceneIndex = currentIndex) {
   els.reportStatus.textContent = detail.status || "站内报告";
   els.reportSummary.textContent = `${formatHistoryTime(detail.createdAt)} / ${detail.summary || "本报告基于本机练习、作品和评分记录生成。"}`;
   renderReportStats(detail);
-  renderReportMetrics(detail.scoreBreakdown || {});
-  renderReportTrend(detail.trend || []);
+  activeReportMetricKey = normalizeReportMetricKey(activeReportMetricKey);
+  renderReportMetrics(detail, activeReportMetricKey);
+  renderReportTrend(detail, activeReportMetricKey);
   renderReportLatest(detail);
   renderReportRecommendations(detail.recommendations || []);
   setReportDetailActions(detail);
@@ -3964,9 +3996,15 @@ function renderReportStats(detail) {
   });
 }
 
-function renderReportMetrics(metrics) {
+function renderReportMetrics(detail, selectedKey = activeReportMetricKey) {
   if (!els.reportMetrics) return;
   els.reportMetrics.innerHTML = "";
+  const metrics = detail?.scoreBreakdown || {};
+  const activeKey = normalizeReportMetricKey(selectedKey);
+  const activeLabel = getReportMetricLabel(activeKey);
+  const activeValue = clamp(Number(metrics?.[activeKey]) || 0, 0, 100);
+  const activePoints = getReportMetricPoints(detail, activeKey);
+  const guide = REPORT_METRIC_GUIDES[activeKey] || {};
   const title = document.createElement("strong");
   title.textContent = "能力结构";
   const list = document.createElement("div");
@@ -3974,8 +4012,11 @@ function renderReportMetrics(metrics) {
 
   REPORT_METRIC_LABELS.forEach(([key, label]) => {
     const value = clamp(Number(metrics?.[key]) || 0, 0, 100);
-    const row = document.createElement("div");
+    const row = document.createElement("button");
+    row.type = "button";
     row.className = `report-metric-row is-${key}`;
+    row.dataset.reportMetric = key;
+    row.setAttribute("aria-pressed", String(key === activeKey));
     const name = document.createElement("span");
     name.textContent = label;
     const track = document.createElement("i");
@@ -3989,36 +4030,49 @@ function renderReportMetrics(metrics) {
     list.appendChild(row);
   });
 
-  els.reportMetrics.append(title, list);
+  const detailCard = document.createElement("div");
+  detailCard.className = "report-metric-detail";
+  const detailTitle = document.createElement("span");
+  detailTitle.textContent = `${activeLabel}：${activeValue ? `${activeValue}分` : "未评分"}`;
+  const detailBody = document.createElement("p");
+  detailBody.textContent = activePoints.length
+    ? `${guide.focus || activeLabel}共有 ${activePoints.length} 个真实趋势点；${guide.advice || "继续保存更多练习后会形成更稳定的判断。"}`
+    : `${guide.focus || activeLabel}暂无趋势点。保存带评分的练习或导出报告后，这里会显示字段变化。`;
+  detailCard.append(detailTitle, detailBody);
+
+  els.reportMetrics.append(title, list, detailCard);
 }
 
-function renderReportTrend(trend) {
+function renderReportTrend(detail, metricKey = activeReportMetricKey) {
   if (!els.reportTrend) return;
   els.reportTrend.innerHTML = "";
+  const activeKey = normalizeReportMetricKey(metricKey);
+  const metricLabel = getReportMetricLabel(activeKey);
+  const points = getReportMetricPoints(detail, activeKey);
   const title = document.createElement("strong");
-  title.textContent = "分数趋势";
+  title.textContent = `${metricLabel}趋势`;
   els.reportTrend.appendChild(title);
 
-  if (!trend.length) {
+  if (!points.length) {
     const empty = document.createElement("p");
     empty.className = "report-empty";
-    empty.textContent = "暂无趋势点。保存练习或作品后再导出报告，会记录最近分数变化。";
+    empty.textContent = `暂无${metricLabel}趋势点。保存练习或导出报告后，会记录该字段的真实分数变化。`;
     els.reportTrend.appendChild(empty);
     return;
   }
 
   const bars = document.createElement("div");
   bars.className = "report-trend-bars";
-  trend.slice(-8).forEach((item) => {
+  points.slice(-8).forEach((item) => {
     const bar = document.createElement("span");
-    const score = clamp(Number(item.score) || 0, 6, 100);
+    const score = clamp(Number(item.value) || 0, 6, 100);
     bar.className = `report-trend-bar is-${item.type || "record"}`;
     bar.style.setProperty("--report-score-height", `${score}%`);
-    bar.title = `${item.label || "记录"} ${item.score || 0}分`;
+    bar.title = `${item.label || "记录"} ${metricLabel} ${item.value || 0}分`;
     bar.setAttribute("aria-label", bar.title);
 
     const value = document.createElement("em");
-    value.textContent = String(item.score || "-");
+    value.textContent = String(item.value || "-");
     const label = document.createElement("small");
     label.textContent = item.label || "记录";
     bar.append(value, label);
@@ -4079,7 +4133,45 @@ function setReportDetailActions(detail) {
   const hasDetail = Boolean(detail);
   if (els.reportDetailCopyLink) els.reportDetailCopyLink.disabled = !hasDetail;
   if (els.reportDetailDownload) els.reportDetailDownload.disabled = !hasDetail;
+  if (els.reportDetailPrint) els.reportDetailPrint.disabled = !hasDetail;
   if (els.reportDetailOpenHistory) els.reportDetailOpenHistory.disabled = !hasDetail;
+}
+
+function normalizeReportMetricKey(key) {
+  return REPORT_METRIC_LABELS.some(([metricKey]) => metricKey === key) ? key : REPORT_METRIC_LABELS[0][0];
+}
+
+function getReportMetricLabel(key) {
+  const found = REPORT_METRIC_LABELS.find(([metricKey]) => metricKey === key);
+  return found ? found[1] : "结构";
+}
+
+function getReportMetricPoints(detail, metricKey) {
+  const key = normalizeReportMetricKey(metricKey);
+  const source = Array.isArray(detail?.metricTrend) && detail.metricTrend.length
+    ? detail.metricTrend
+    : buildReportMetricTrendFallback(detail);
+
+  return source
+    .map((item) => ({
+      ...item,
+      value: clamp(Number(item?.metrics?.[key]) || 0, 0, 100)
+    }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+}
+
+function buildReportMetricTrendFallback(detail) {
+  if (!detail?.scoreBreakdown) {
+    return [];
+  }
+
+  return [{
+    label: detail.title || "学习报告",
+    type: "report",
+    createdAt: detail.createdAt,
+    metrics: detail.scoreBreakdown
+  }];
 }
 
 function getActiveReportDetail() {
@@ -4910,6 +5002,27 @@ function downloadReportDetail() {
   if (result?.message) {
     showNotice(result.message);
   }
+}
+
+function printReportDetail() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可打印的站内报告。");
+    return;
+  }
+
+  document.body.classList.add("is-report-printing");
+  showNotice("正在打开浏览器打印，可在打印窗口中选择“保存为 PDF”。");
+
+  const cleanup = () => {
+    document.body.classList.remove("is-report-printing");
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.setTimeout(() => {
+    window.print();
+    window.setTimeout(cleanup, 1200);
+  }, 60);
 }
 
 function openReportHistoryRecord() {

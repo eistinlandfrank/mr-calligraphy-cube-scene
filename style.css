@@ -3556,8 +3556,24 @@ body.is-model-view .notice-panel {
   gap: 8px;
   align-items: center;
   min-height: 24px;
+  width: 100%;
+  border: 0;
+  border-radius: 7px;
+  padding: 4px 5px;
   color: rgba(255, 250, 241, 0.72);
+  background: transparent;
+  cursor: pointer;
   font-size: 11px;
+  font: inherit;
+  text-align: left;
+}
+
+.report-metric-row:hover,
+.report-metric-row:focus-visible,
+.report-metric-row[aria-pressed="true"] {
+  outline: none;
+  color: #ffffff;
+  background: rgba(116, 255, 219, 0.1);
 }
 
 .report-metric-row i {
@@ -3580,6 +3596,27 @@ body.is-model-view .notice-panel {
   font-style: normal;
   font-weight: 900;
   text-align: right;
+}
+
+.report-metric-detail {
+  display: grid;
+  gap: 4px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(20, 38, 34, 0.42);
+}
+
+.report-metric-detail span {
+  color: #fffaf1;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.report-metric-detail p {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.66);
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .report-trend-bars {
@@ -3685,7 +3722,7 @@ body.is-model-view .notice-panel {
 
 .report-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 6px;
 }
 
@@ -3711,6 +3748,86 @@ body.is-model-view .notice-panel {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.42);
   background: rgba(255, 255, 255, 0.06);
+}
+
+@media print {
+  body.is-report-printing {
+    background: #ffffff;
+  }
+
+  body.is-report-printing * {
+    visibility: hidden;
+  }
+
+  body.is-report-printing #reportPanel,
+  body.is-report-printing #reportPanel * {
+    visibility: visible;
+  }
+
+  body.is-report-printing #reportPanel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    display: grid;
+    width: 100%;
+    gap: 12px;
+    margin: 0;
+    padding: 18mm 14mm;
+    border: 0;
+    color: #17221f;
+    background: #ffffff;
+  }
+
+  body.is-report-printing #reportPanel::before {
+    content: "MR 书法本机学习报告";
+    position: fixed;
+    inset: 35% auto auto 8%;
+    z-index: 0;
+    width: 84%;
+    color: rgba(36, 122, 103, 0.09);
+    font-size: 42px;
+    font-weight: 900;
+    line-height: 1.2;
+    text-align: center;
+    transform: rotate(-24deg);
+  }
+
+  body.is-report-printing .report-head strong,
+  body.is-report-printing .report-metrics > strong,
+  body.is-report-printing .report-trend > strong,
+  body.is-report-printing .report-latest > strong,
+  body.is-report-printing .report-stats strong,
+  body.is-report-printing .report-metric-row em,
+  body.is-report-printing .report-metric-detail span,
+  body.is-report-printing .report-latest-text span {
+    color: #17221f;
+  }
+
+  body.is-report-printing .report-head span,
+  body.is-report-printing .report-stats span,
+  body.is-report-printing .report-metrics,
+  body.is-report-printing .report-trend,
+  body.is-report-printing .report-latest,
+  body.is-report-printing .report-metric-detail {
+    border: 1px solid #dbe8e2;
+    color: #17221f;
+    background: #ffffff;
+  }
+
+  body.is-report-printing .report-summary,
+  body.is-report-printing .report-empty,
+  body.is-report-printing .report-stats small,
+  body.is-report-printing .report-metric-row,
+  body.is-report-printing .report-metric-detail p,
+  body.is-report-printing .report-trend-bar small,
+  body.is-report-printing .report-latest-text small,
+  body.is-report-printing .report-recommendations li {
+    color: #61706a;
+  }
+
+  body.is-report-printing .report-actions {
+    display: none;
+  }
 }
 
 .history-panel {
