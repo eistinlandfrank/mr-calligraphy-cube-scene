@@ -71,6 +71,100 @@ export const useFlowStore = create((set, get) => ({
     });
   },
 
+  recordPracticeStroke: (strokeRecord) => {
+    const at = strokeRecord?.completedAt ?? new Date().toISOString();
+
+    set((state) => {
+      if (!state.session || !strokeRecord?.strokeId) {
+        return state;
+      }
+
+      const strokes = mergePracticeStrokeRecord(state.session.practiceData.strokes, strokeRecord);
+
+      return {
+        session: {
+          ...state.session,
+          practiceData: {
+            ...state.session.practiceData,
+            strokes
+          },
+          events: [
+            ...state.session.events,
+            createSessionEvent({
+              type: "stroke_completed",
+              stateId: state.currentStateId,
+              at,
+              payload: {
+                strokeId: strokeRecord.strokeId,
+                label: strokeRecord.label,
+                pathAccuracy: strokeRecord.pathAccuracy,
+                rhythmStability: strokeRecord.rhythmStability,
+                averageDeviation: strokeRecord.averageDeviation
+              }
+            })
+          ]
+        }
+      };
+    });
+  },
+
+  completePracticeData: (result = {}) => {
+    const completedAt = result.completedAt ?? result.practiceData?.completedAt ?? new Date().toISOString();
+
+    set((state) => {
+      if (!state.session) {
+        return state;
+      }
+
+      const incomingPracticeData = result.practiceData ?? {};
+      const incomingStrokes = incomingPracticeData.strokes ?? result.strokeRecords ?? state.session.practiceData.strokes;
+      const expectedStrokeCount = normalizeNonNegativeInteger(
+        result.totalStrokeCount ?? incomingPracticeData.totalStrokeCount,
+        state.session.practiceData.expectedStrokeCount ?? incomingStrokes.length
+      );
+      const rewriteCount = normalizeNonNegativeInteger(
+        incomingPracticeData.rewriteCount,
+        state.session.practiceData.rewriteCount
+      );
+      const interruptionCount = normalizeNonNegativeInteger(
+        incomingPracticeData.interruptionCount,
+        state.session.practiceData.interruptionCount
+      );
+      const strokeOrderWarnings = normalizeNonNegativeInteger(
+        incomingPracticeData.strokeOrderWarnings,
+        state.session.practiceData.strokeOrderWarnings ?? 0
+      );
+
+      return {
+        session: {
+          ...state.session,
+          practiceData: {
+            ...state.session.practiceData,
+            completedAt,
+            strokes: incomingStrokes,
+            expectedStrokeCount,
+            rewriteCount,
+            interruptionCount,
+            strokeOrderWarnings
+          },
+          events: [
+            ...state.session.events,
+            createSessionEvent({
+              type: "practice_completed",
+              stateId: state.currentStateId,
+              at: completedAt,
+              payload: {
+                score: result.total,
+                completedStrokeCount: result.completedStrokeCount,
+                totalStrokeCount: result.totalStrokeCount
+              }
+            })
+          ]
+        }
+      };
+    });
+  },
+
   transitionTo: (stateId, reason = "manual") => {
     const nextState = getFlowState(get().flowConfig, stateId);
 
@@ -339,13 +433,16 @@ function buildTransitionSession(session, fromStateId, toStateId, reason, at) {
 function buildSessionReport(session, at) {
   const practiceData = session.practiceData;
   const strokeCount = practiceData.strokes.length;
+  const expectedStrokeCount = practiceData.expectedStrokeCount ?? 8;
+  const missingStrokePenalty = Math.max(0, expectedStrokeCount - strokeCount) * 12;
   const rewritePenalty = practiceData.rewriteCount * 2;
-  const interruptionPenalty = practiceData.interruptionCount * 5;
+  const interruptionPenalty = practiceData.interruptionCount * 12;
+  const strokeOrderWarnings = practiceData.strokeOrderWarnings ?? 0;
   const metrics = {
-    pathAccuracy: clampScore(78 + Math.min(strokeCount * 2, 12) - rewritePenalty),
-    strokeOrder: clampScore(practiceData.startedAt ? 88 + Math.min(strokeCount, 8) : 70),
-    rhythm: clampScore(84 - interruptionPenalty),
-    focus: clampScore(90 - interruptionPenalty - rewritePenalty)
+    pathAccuracy: averagePracticeMetric(practiceData.strokes, "pathAccuracy", 70 - missingStrokePenalty - rewritePenalty),
+    strokeOrder: clampScore(100 - strokeOrderWarnings * 10 - missingStrokePenalty),
+    rhythm: averagePracticeMetric(practiceData.strokes, "rhythmStability", 72 - missingStrokePenalty),
+    focus: clampScore(100 - interruptionPenalty - rewritePenalty - strokeOrderWarnings * 4)
   };
   const score = Math.round(
     metrics.pathAccuracy * 0.4 +
@@ -373,6 +470,24 @@ function buildSessionReport(session, at) {
 
 function clampScore(value) {
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function averagePracticeMetric(strokes, key, fallback) {
+  const values = strokes.map((stroke) => Number(stroke[key])).filter(Number.isFinite);
+
+  if (!values.length) {
+    return clampScore(fallback);
+  }
+
+  return clampScore(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function mergePracticeStrokeRecord(strokes, strokeRecord) {
+  return [...strokes.filter((stroke) => stroke.strokeId !== strokeRecord.strokeId), strokeRecord];
+}
+
+function normalizeNonNegativeInteger(value, fallback = 0) {
+  return Number.isInteger(value) && value >= 0 ? value : fallback;
 }
 
 function persistPracticeSession(session) {

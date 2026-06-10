@@ -1,7 +1,7 @@
 import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
 import { VirtualCalligraphyGame } from "../scene-core/VirtualCalligraphyGame.jsx";
 
-export function ElderView({ phase, paused = false, onGameProgress, onGameComplete }) {
+export function ElderView({ phase, paused = false, onGameProgress, onGameComplete, onStrokeComplete }) {
   const showTutorial = phase.id === "calligraphy_tutorial";
 
   return (
@@ -13,7 +13,12 @@ export function ElderView({ phase, paused = false, onGameProgress, onGameComplet
       {showTutorial ? (
         <CalligraphyTutorial />
       ) : (
-        <VirtualCalligraphyGame paused={paused} onProgressChange={onGameProgress} onComplete={onGameComplete} />
+        <VirtualCalligraphyGame
+          paused={paused}
+          onProgressChange={onGameProgress}
+          onComplete={onGameComplete}
+          onStrokeComplete={onStrokeComplete}
+        />
       )}
       <div className="phase-strip">
         <span>当前阶段</span>

@@ -53,8 +53,10 @@ export function createPracticeData(overrides = {}) {
     startedAt: overrides.startedAt ?? null,
     completedAt: overrides.completedAt ?? null,
     strokes: overrides.strokes ?? [],
+    expectedStrokeCount: overrides.expectedStrokeCount ?? 8,
     rewriteCount: overrides.rewriteCount ?? 0,
-    interruptionCount: overrides.interruptionCount ?? 0
+    interruptionCount: overrides.interruptionCount ?? 0,
+    strokeOrderWarnings: overrides.strokeOrderWarnings ?? 0
   };
 }
 
@@ -161,12 +163,20 @@ function validatePracticeData(practiceData, errors) {
     errors.push("practiceData.strokes 必须是数组。");
   }
 
+  if (!isNonNegativeInteger(practiceData.expectedStrokeCount)) {
+    errors.push("practiceData.expectedStrokeCount 必须是大于等于 0 的整数。");
+  }
+
   if (!isNonNegativeInteger(practiceData.rewriteCount)) {
     errors.push("practiceData.rewriteCount 必须是大于等于 0 的整数。");
   }
 
   if (!isNonNegativeInteger(practiceData.interruptionCount)) {
     errors.push("practiceData.interruptionCount 必须是大于等于 0 的整数。");
+  }
+
+  if (!isNonNegativeInteger(practiceData.strokeOrderWarnings)) {
+    errors.push("practiceData.strokeOrderWarnings 必须是大于等于 0 的整数。");
   }
 }
 

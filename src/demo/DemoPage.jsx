@@ -65,6 +65,8 @@ export function DemoPage() {
   const flowIsPaused = useFlowStore((state) => state.isPaused);
   const executableActions = useFlowStore((state) => state.getExecutableActions());
   const executeFlowAction = useFlowStore((state) => state.executeAction);
+  const recordPracticeStroke = useFlowStore((state) => state.recordPracticeStroke);
+  const completePracticeData = useFlowStore((state) => state.completePracticeData);
   const [flowClock, setFlowClock] = useState(Date.now());
   const phase = useMemo(() => ({
     id: flowState?.id ?? "idle",
@@ -141,6 +143,7 @@ export function DemoPage() {
           paused={flowIsPaused || isFlowPaused}
           onGameProgress={handleGameProgress}
           onGameComplete={handleGameComplete}
+          onStrokeComplete={recordPracticeStroke}
         />
       );
     }
@@ -160,7 +163,20 @@ export function DemoPage() {
     }
 
     return <ProductView phase={phase} />;
-  }, [executeFlowAction, flowIsPaused, flowReport, mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
+  }, [
+    completePracticeData,
+    executeFlowAction,
+    flowIsPaused,
+    flowReport,
+    mode,
+    phase,
+    recordPracticeStroke,
+    sceneConfig,
+    practiceProgress,
+    currentStroke,
+    remainingSeconds,
+    isFlowPaused
+  ]);
 
   function resetPlayback() {
     setIsPlaying(false);
@@ -181,6 +197,7 @@ export function DemoPage() {
 
   function handleGameComplete(result) {
     setCalligraphyProgress(100);
+    completePracticeData(result);
     if (phase.id === "practice_game") {
       executeFlowAction("finish");
     }

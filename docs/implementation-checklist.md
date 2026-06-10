@@ -292,8 +292,10 @@
 - [x] **P4-13：实现动态建议生成**  
   验收：建议内容根据最低分指标生成，而不是固定文案。
 
-- [ ] **P4-14：实现练习数据保存**  
+- [x] **P4-14：实现练习数据保存**  
   验收：每次练习生成 PracticeSession.practiceData。
+
+  验收记录：2026-06-10 VirtualCalligraphyGame 每笔完成后向 Demo 发出包含轨迹点、偏差、耗时和节奏的 strokeRecord，flowStore 写入 PracticeSession.practiceData.strokes 并追加 `stroke_completed` 事件；整字完成时写入 completedAt、expectedStrokeCount、rewriteCount、interruptionCount 和 strokeOrderWarnings，进入 scoring 时报告读取真实 practiceData 生成，`npm run build` 通过。
 
 ---
 

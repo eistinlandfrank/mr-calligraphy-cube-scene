@@ -25,8 +25,28 @@
 | `startedAt` | string/null | 练习开始时间 |
 | `completedAt` | string/null | 练习完成时间 |
 | `strokes` | array | 每一笔轨迹、偏差、耗时和完成状态 |
+| `expectedStrokeCount` | number | 本次练习预期笔画数 |
 | `rewriteCount` | number | 重写次数 |
 | `interruptionCount` | number | 暂停、中断或求助次数 |
+| `strokeOrderWarnings` | number | 起笔顺序或位置提醒次数 |
+
+## strokes 字段
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `strokeId` | string | 笔画 ID |
+| `label` | string | 笔画名称 |
+| `status` | string | 当前笔画完成状态 |
+| `startedAt` | string | 当前笔画开始时间 |
+| `completedAt` | string | 当前笔画完成时间 |
+| `points` | array | 用户描摹采样点，包含 SVG 坐标和采样时间 |
+| `averageDeviation` | number | 用户轨迹到标准路径的平均偏差 |
+| `maxDeviation` | number | 用户轨迹到标准路径的最大偏差 |
+| `pathAccuracy` | number | 当前笔画路径准确度 |
+| `actualDurationMs` | number | 当前笔画实际耗时 |
+| `expectedDurationMs` | number | 当前笔画预期耗时 |
+| `durationRatio` | number | 实际耗时与预期耗时比例 |
+| `rhythmStability` | number | 当前笔画节奏稳定度 |
 
 校验方法位于 `src/session-core/sessionSchema.js`：
 

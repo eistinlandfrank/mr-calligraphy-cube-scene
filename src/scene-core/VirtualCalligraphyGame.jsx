@@ -9,7 +9,7 @@ const metricLabels = {
   focus: "中断控制"
 };
 
-export function VirtualCalligraphyGame({ compact = false, paused = false, onComplete, onProgressChange }) {
+export function VirtualCalligraphyGame({ compact = false, paused = false, onComplete, onProgressChange, onStrokeComplete }) {
   const svgRef = useRef(null);
   const previousPausedRef = useRef(paused);
   const [currentStrokeIndex, setCurrentStrokeIndex] = useState(0);
@@ -20,6 +20,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   const [strokeFeedback, setStrokeFeedback] = useState("");
   const [strokeOrderWarnings, setStrokeOrderWarnings] = useState(0);
   const [interruptionCount, setInterruptionCount] = useState(0);
+  const [rewriteCount, setRewriteCount] = useState(0);
   const [completedStrokeIds, setCompletedStrokeIds] = useState([]);
   const [completedStrokeRecords, setCompletedStrokeRecords] = useState([]);
   const [scorePanel, setScorePanel] = useState(null);
@@ -94,6 +95,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     setIsPlaying(true);
     setIsDrawing(false);
     setUserStrokePoints([]);
+    setRewriteCount((count) => count + 1);
   }
 
   function completeWork(strokeRecords = completedStrokeRecords, completedCount = completedStrokeIds.length) {
@@ -118,7 +120,15 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
       completedAt,
       completedStrokeCount: normalizedCompletedCount,
       totalStrokeCount: yongCharacter.strokes.length,
-      strokeRecords
+      strokeRecords,
+      practiceData: {
+        character: yongCharacter.character,
+        completedAt,
+        strokes: strokeRecords,
+        rewriteCount,
+        interruptionCount,
+        strokeOrderWarnings
+      }
     };
 
     setProgress(1);
@@ -189,18 +199,22 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
 
     const deviation = calculatePathDeviation(points, currentStroke.points);
     const rhythm = calculateRhythmStability(points, currentStroke.duration);
+    const completedAt = new Date().toISOString();
     const strokeRecord = {
       strokeId: currentStroke.id,
       label: currentStroke.label,
+      status: "completed",
+      startedAt: new Date(Date.now() - rhythm.actualDurationMs).toISOString(),
+      completedAt,
       pointCount: points.length,
+      points: points.map(({ x, y, t }) => ({ x, y, t })),
       averageDeviation: deviation.averageDeviation,
       maxDeviation: deviation.maxDeviation,
       pathAccuracy: deviation.pathAccuracy,
       actualDurationMs: rhythm.actualDurationMs,
       expectedDurationMs: rhythm.expectedDurationMs,
       durationRatio: rhythm.durationRatio,
-      rhythmStability: rhythm.rhythmStability,
-      completedAt: new Date().toISOString()
+      rhythmStability: rhythm.rhythmStability
     };
     const nextStrokeRecords = mergeStrokeRecord(completedStrokeRecords, strokeRecord);
     const nextCompletedIds = addUniqueId(completedStrokeIds, currentStroke.id);
@@ -208,6 +222,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     setCompletedStrokeRecords(nextStrokeRecords);
     setCompletedStrokeIds(nextCompletedIds);
     setStrokeFeedback(`「${currentStroke.label}」已完成，平均偏差 ${deviation.averageDeviation} 点。`);
+    onStrokeComplete?.(strokeRecord);
 
     if (currentStrokeIndex >= yongCharacter.strokes.length - 1) {
       completeWork(nextStrokeRecords, nextCompletedIds.length);
@@ -285,6 +300,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
             ) : null}
             {strokeOrderWarnings ? <small>笔顺提醒 {strokeOrderWarnings} 次</small> : null}
             {interruptionCount ? <small>中断记录 {interruptionCount} 次</small> : null}
+            {rewriteCount ? <small>重写记录 {rewriteCount} 次</small> : null}
           </div>
           <div className="stroke-pill-grid">
             {yongCharacter.strokes.map((stroke, index) => (
