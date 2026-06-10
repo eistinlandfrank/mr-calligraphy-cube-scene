@@ -115,8 +115,10 @@
 
   验收记录：2026-06-10 新增 `src/flow-core/flowSchema.js`、`src/utils/validateFlowConfig.js` 和 `docs/flow-schema.md`，定义 FlowConfig 字段、标准状态与校验方法；示例 FlowConfig 校验通过。
 
-- [ ] **P2-04：定义 PracticeSession 数据结构**  
+- [x] **P2-04：定义 PracticeSession 数据结构**  
   验收：session 可记录开始时间、结束时间、当前状态、事件列表、练习数据、护工操作。
+
+  验收记录：2026-06-10 新增 `src/session-core/sessionSchema.js`、`src/utils/validatePracticeSession.js` 和 `docs/session-schema.md`，定义 session、events、practiceData 与 caregiverActions；示例 PracticeSession 校验通过。
 
 - [ ] **P2-05：定义 Report 数据结构**  
   验收：报告包含综合分、分项指标、建议和对应 sessionId。
