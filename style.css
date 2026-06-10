@@ -2143,6 +2143,134 @@ body.is-model-view .notice-panel {
   line-height: 1.4;
 }
 
+.review-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.review-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.review-head strong {
+  display: block;
+  margin-top: 3px;
+  color: #fffaf1;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.review-head span {
+  flex: 0 0 auto;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: #e6fff5;
+  background: rgba(63, 152, 101, 0.42);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.review-artwork {
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 116px;
+  margin-top: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(248, 237, 214, 0.18);
+}
+
+.review-artwork img {
+  width: 100%;
+  max-height: 180px;
+  object-fit: contain;
+  background: #f2e5cb;
+}
+
+.review-artwork p {
+  margin: 0;
+  padding: 12px;
+  color: rgba(255, 250, 241, 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.review-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.review-stats span {
+  min-height: 34px;
+  padding: 6px 7px;
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+}
+
+.review-stats strong {
+  float: right;
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.review-feedback {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-feedback li {
+  padding-left: 10px;
+  border-left: 2px solid rgba(116, 255, 219, 0.36);
+  color: rgba(255, 250, 241, 0.78);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.review-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.review-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.review-actions button:hover,
+.review-actions button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  background: rgba(47, 111, 104, 0.58);
+}
+
+.review-actions button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.42);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .insight-stack {
   position: absolute;
   z-index: 6;

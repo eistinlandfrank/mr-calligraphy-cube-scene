@@ -768,6 +768,18 @@ const els = {
   practiceClear: document.getElementById("practiceClear"),
   practiceReplay: document.getElementById("practiceReplay"),
   practiceCanvasStatus: document.getElementById("practiceCanvasStatus"),
+  reviewPanel: document.getElementById("reviewPanel"),
+  reviewTitle: document.getElementById("reviewTitle"),
+  reviewStatus: document.getElementById("reviewStatus"),
+  reviewArtworkImage: document.getElementById("reviewArtworkImage"),
+  reviewEmpty: document.getElementById("reviewEmpty"),
+  reviewScore: document.getElementById("reviewScore"),
+  reviewStrokeCount: document.getElementById("reviewStrokeCount"),
+  reviewPointCount: document.getElementById("reviewPointCount"),
+  reviewFeedback: document.getElementById("reviewFeedback"),
+  reviewReplay: document.getElementById("reviewReplay"),
+  reviewDownloadImage: document.getElementById("reviewDownloadImage"),
+  reviewDownloadReport: document.getElementById("reviewDownloadReport"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -1288,6 +1300,7 @@ function init() {
   buildPathList();
   bindQuickControls();
   bindLearningControls();
+  bindReviewControls();
   initPracticeCanvas();
   initInfoPanelDrag();
   installRoomApi();
@@ -3251,11 +3264,18 @@ function initPracticeCanvas() {
   }
 }
 
+function bindReviewControls() {
+  els.reviewReplay?.addEventListener("click", replayLatestArtwork);
+  els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
+  els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
+}
+
 function renderLearningState() {
   renderLearningStateSummary();
   updateSceneText(currentIndex);
   updateInteractionPanel(currentIndex, activePointIndex);
   updatePathPanel(currentIndex);
+  renderReviewPanel(currentIndex);
 }
 
 function renderLearningStateSummary() {
@@ -3279,6 +3299,103 @@ function renderLearningStateSummary() {
     const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
     els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.glyph}字 / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${trainingLabel}模式`;
   }
+}
+
+function renderReviewPanel(sceneIndex = currentIndex) {
+  if (!els.reviewPanel || !window.MRAppState?.getLatestReview) {
+    return;
+  }
+
+  const review = window.MRAppState.getLatestReview();
+  const artwork = review.artwork;
+  const session = review.session;
+  const report = review.report;
+  const shouldShow = Boolean(artwork || report || sceneIndex >= 6);
+  els.reviewPanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  const feedback = artwork?.feedback?.length ? artwork.feedback : session?.feedback || [];
+  els.reviewTitle.textContent = artwork?.title || "暂无作品";
+  els.reviewStatus.textContent = report ? "报告已生成" : artwork ? "可复盘" : "待保存";
+  els.reviewScore.textContent = artwork ? `${artwork.score}` : session ? `${session.score}` : "-";
+  els.reviewStrokeCount.textContent = String(artwork?.strokeCount || session?.strokeCount || 0);
+  els.reviewPointCount.textContent = String(artwork?.pointCount || session?.pointCount || 0);
+
+  const hasImage = Boolean(artwork?.imageData);
+  if (els.reviewArtworkImage) {
+    els.reviewArtworkImage.hidden = !hasImage;
+    if (hasImage) {
+      els.reviewArtworkImage.src = artwork.imageData;
+    } else {
+      els.reviewArtworkImage.removeAttribute("src");
+    }
+  }
+  if (els.reviewEmpty) {
+    els.reviewEmpty.hidden = hasImage;
+    els.reviewEmpty.textContent = artwork
+      ? "该作品没有截图，可回放已保存的笔迹。"
+      : "保存作品后会在这里显示截图、评分和笔迹反馈。";
+  }
+
+  els.reviewFeedback.innerHTML = "";
+  (feedback.length ? feedback : ["完成一次书写并保存作品后，会显示针对笔迹的复盘建议。"]).forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    els.reviewFeedback.appendChild(li);
+  });
+
+  const hasStrokes = Boolean(session?.strokes?.length);
+  els.reviewReplay.disabled = !hasStrokes;
+  els.reviewDownloadImage.disabled = !hasImage;
+  els.reviewDownloadReport.disabled = !report;
+}
+
+function replayLatestArtwork() {
+  const review = window.MRAppState?.getLatestReview?.();
+  const strokes = review?.session?.strokes || [];
+  if (!strokes.length) {
+    showNotice("还没有可回放的作品笔迹。");
+    return;
+  }
+  window.MRPracticeCanvas?.loadStrokes?.(strokes);
+  window.MRPracticeCanvas?.replay?.();
+  showNotice("正在回放最近保存的作品笔迹。");
+}
+
+function downloadLatestArtworkImage() {
+  const artwork = window.MRAppState?.getLatestReview?.()?.artwork;
+  if (!artwork?.imageData) {
+    showNotice("还没有可下载的作品图片。");
+    return;
+  }
+  downloadDataUrl(artwork.imageData, `${sanitizeFilename(artwork.title)}.jpg`);
+  showNotice("已下载最近保存的作品图片。");
+}
+
+function downloadLatestReport() {
+  const result = window.MRAppState?.downloadReport?.();
+  if (result?.message) {
+    showNotice(result.message);
+  }
+}
+
+function downloadDataUrl(dataUrl, filename) {
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+}
+
+function sanitizeFilename(name) {
+  return String(name || "mr-calligraphy-artwork")
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, "-")
+    .replace(/\s+/g, "-")
+    .slice(0, 64) || "mr-calligraphy-artwork";
 }
 
 function focusModelView() {
@@ -3325,6 +3442,7 @@ function loadScene(index) {
   updateSceneText(index);
   updateStepNavigation(index);
   updateInteractionPanel(index, 0);
+  renderReviewPanel(index);
   hideError();
   hideNotice();
 }
@@ -3588,6 +3706,7 @@ function runAction(action) {
   const result = runLearningAction(action);
   els.actionFeedback.textContent = result.message || action.response;
   renderLearningStateSummary();
+  renderReviewPanel(currentIndex);
 
   if (result.notice) {
     showNotice(result.notice);
@@ -3601,6 +3720,7 @@ function runAction(action) {
 
   updateSceneText(currentIndex);
   updatePathPanel(currentIndex);
+  renderReviewPanel(currentIndex);
 }
 
 function getLearningActionHint(sceneIndex) {

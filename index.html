@@ -117,6 +117,31 @@
           <div id="actionList" class="action-list"></div>
           <p id="actionFeedback" class="action-feedback">点击场景热点或下方按钮，可执行学习操作并写入本机记录。</p>
         </section>
+
+        <section id="reviewPanel" class="review-panel" aria-label="作品与报告预览" hidden>
+          <div class="review-head">
+            <div>
+              <div class="panel-eyebrow">作品复盘</div>
+              <strong id="reviewTitle">暂无作品</strong>
+            </div>
+            <span id="reviewStatus">未保存</span>
+          </div>
+          <div class="review-artwork">
+            <img id="reviewArtworkImage" alt="最近保存的书法作品截图">
+            <p id="reviewEmpty">保存作品后会在这里显示截图、评分和笔迹反馈。</p>
+          </div>
+          <div class="review-stats" aria-label="作品指标">
+            <span>评分 <strong id="reviewScore">-</strong></span>
+            <span>笔画 <strong id="reviewStrokeCount">-</strong></span>
+            <span>采样 <strong id="reviewPointCount">-</strong></span>
+          </div>
+          <ul id="reviewFeedback" class="review-feedback"></ul>
+          <div class="review-actions">
+            <button id="reviewReplay" type="button">回放作品</button>
+            <button id="reviewDownloadImage" type="button">下载图片</button>
+            <button id="reviewDownloadReport" type="button">下载报告</button>
+          </div>
+        </section>
       </section>
 
       <aside class="insight-stack" aria-label="实时反馈">

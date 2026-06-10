@@ -605,6 +605,31 @@
     return `本机记录：${stats.sessionCount} 次练习 / ${stats.artworkCount} 幅作品 / 平均 ${stats.averageScore} 分`;
   }
 
+  function getLatestReview() {
+    const artwork = state.artworks[state.artworks.length - 1] || null;
+    const session = artwork?.sessionId
+      ? state.sessions.find((item) => item.id === artwork.sessionId) || null
+      : state.sessions[state.sessions.length - 1] || null;
+    const report = state.reports[state.reports.length - 1] || null;
+    return {
+      artwork: artwork ? clone(artwork) : null,
+      session: session ? clone(session) : null,
+      report: report ? clone(report) : null,
+      stats: clone(getStats())
+    };
+  }
+
+  function downloadReport(reportId = null) {
+    const report = reportId
+      ? state.reports.find((item) => item.id === reportId)
+      : state.reports[state.reports.length - 1];
+    if (!report) {
+      return { ok: false, message: "还没有可下载的报告。" };
+    }
+    downloadJson(report, `mr-calligraphy-report-${report.id}.json`);
+    return { ok: true, message: "已下载最近的学习报告。" };
+  }
+
   window.MRAppState = {
     storageKey: STORAGE_KEY,
     modes: clone(MODE_CONFIG),
@@ -613,6 +638,7 @@
     getStats,
     getModeConfig,
     getReportPreview,
+    getLatestReview,
     setMode,
     selectDailyGlyph,
     rotateCopybook,
@@ -625,6 +651,7 @@
     saveArtwork,
     filterExcellentRecords,
     createPlan,
-    createReport
+    createReport,
+    downloadReport
   };
 })();
