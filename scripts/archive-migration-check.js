@@ -204,6 +204,18 @@ async function main() {
     mainModelPreview.modelSelections.some((item) => item.key === "model-1" && item.action === "update"),
     "主场景模型仓库预览应允许勾选单个修改模型。"
   );
+  const addedModelSelection = mainModelPreview.modelSelections.find((item) => item.key === "model-2");
+  const updatedModelSelection = mainModelPreview.modelSelections.find((item) => item.key === "model-1");
+  assert(
+    addedModelSelection?.currentPreview === "本机中无此模型" &&
+      addedModelSelection?.incomingPreview.includes("\"label\": \"档案新增模型\""),
+    "主场景模型仓库新增模型预览应显示本机缺失和档案元数据片段。"
+  );
+  assert(
+    updatedModelSelection?.currentPreview.includes("\"label\": \"本机旧模型\"") &&
+      updatedModelSelection?.incomingPreview.includes("\"label\": \"档案更新模型\""),
+    "主场景模型仓库修改模型预览应显示当前本机和导入档案元数据片段。"
+  );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
     storageKeys: ["mr-calligraphy-learning-state-v1"],

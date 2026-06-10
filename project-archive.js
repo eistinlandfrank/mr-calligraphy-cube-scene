@@ -484,9 +484,9 @@
         ...formatDbModelDiffItems("删除模型", removed)
       ].slice(0, 6),
       selections: [
-        ...createDbModelSelections("add", added),
-        ...createDbModelSelections("update", updated),
-        ...createDbModelSelections("remove", removed)
+        ...createDbModelSelections("add", added, currentMap, incomingMap),
+        ...createDbModelSelections("update", updated, currentMap, incomingMap),
+        ...createDbModelSelections("remove", removed, currentMap, incomingMap)
       ]
     };
   }
@@ -564,13 +564,19 @@
     });
   }
 
-  function createDbModelSelections(action, models) {
-    return models.map((model) => ({
-      action,
-      key: model.key,
-      label: `${getDbModelActionLabel(action)}：${model.label}`,
-      detail: formatDbModelSelectionDetail(model)
-    }));
+  function createDbModelSelections(action, models, currentMap, incomingMap) {
+    return models.map((model) => {
+      const currentModel = action === "add" ? null : currentMap.get(model.key);
+      const incomingModel = action === "remove" ? null : incomingMap.get(model.key);
+      return {
+        action,
+        key: model.key,
+        label: `${getDbModelActionLabel(action)}：${model.label}`,
+        detail: formatDbModelSelectionDetail(model),
+        currentPreview: createDbModelPreview(currentModel, "本机中无此模型"),
+        incomingPreview: createDbModelPreview(incomingModel, "档案中无此模型")
+      };
+    });
   }
 
   function getDbModelActionLabel(action) {
@@ -586,6 +592,34 @@
       model.bytes ? formatBytes(model.bytes) : "",
       model.sha256 ? "SHA-256" : ""
     ].filter(Boolean).join(" · ") || model.key;
+  }
+
+  function createDbModelPreview(model, missingLabel) {
+    if (!model) {
+      return missingLabel;
+    }
+
+    const preview = {
+      key: model.key,
+      label: model.label
+    };
+    if (model.fileName) {
+      preview.fileName = model.fileName;
+    }
+    if (model.type) {
+      preview.type = model.type;
+    }
+    if (model.bytes) {
+      preview.bytes = model.bytes;
+      preview.size = formatBytes(model.bytes);
+    }
+    if (model.sha256) {
+      preview.sha256 = model.sha256;
+    }
+    if (model.metrics && Object.keys(model.metrics).length) {
+      preview.metrics = model.metrics;
+    }
+    return createJsonPreview(preview, missingLabel);
   }
 
   async function readDbStoreRecords(item) {
@@ -1758,6 +1792,28 @@
           modelText.append(modelLabel, modelImpact);
           modelChoice.append(modelInput, modelText);
           modelItem.appendChild(modelChoice);
+          if (model.currentPreview || model.incomingPreview) {
+            const modelDetails = document.createElement("details");
+            modelDetails.className = "main-project-model-details";
+            const summary = document.createElement("summary");
+            summary.textContent = "查看模型片段";
+            const previewGrid = document.createElement("div");
+            previewGrid.className = "main-project-model-preview-grid";
+            [
+              ["当前本机", model.currentPreview],
+              ["导入档案", model.incomingPreview]
+            ].forEach(([previewLabel, previewValue]) => {
+              const previewBlock = document.createElement("span");
+              const previewTitle = document.createElement("strong");
+              previewTitle.textContent = previewLabel;
+              const previewCode = document.createElement("pre");
+              previewCode.textContent = previewValue || "无";
+              previewBlock.append(previewTitle, previewCode);
+              previewGrid.appendChild(previewBlock);
+            });
+            modelDetails.append(summary, previewGrid);
+            modelItem.appendChild(modelDetails);
+          }
           modelList.appendChild(modelItem);
         });
         body.append(modelList);
