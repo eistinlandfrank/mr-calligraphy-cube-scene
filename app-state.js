@@ -132,6 +132,13 @@
 
   const COPYBOOKS = Array.from(new Set(TASK_LIBRARY.map((task) => task.copybook)));
   const STROKES = ["点", "横", "竖", "撇", "捺", "钩", "提", "折"];
+  const SCORE_METRICS = [
+    { key: "structure", label: "结构" },
+    { key: "stroke", label: "笔画" },
+    { key: "technique", label: "笔法" },
+    { key: "fluency", label: "流畅" },
+    { key: "force", label: "力度" }
+  ];
   const LECTURE_STEP_COUNT = 5;
   const LECTURE_STEP_SECONDS = 24;
 
@@ -1758,6 +1765,7 @@
       .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
       .slice(-8);
     const dailyTrend = getHistoryDailyTrend(entries);
+    const metricTrend = getHistoryMetricTrend();
     return {
       filter,
       entries: filteredEntries.slice(0, limit).map(clone),
@@ -1775,7 +1783,8 @@
         score: entry.score,
         createdAt: entry.createdAt
       })),
-      dailyTrend
+      dailyTrend,
+      metricTrend
     };
   }
 
@@ -1823,6 +1832,122 @@
         reportCount: group.reportCount,
         totalCount: group.totalCount
       }));
+  }
+
+  function getHistoryMetricTrend() {
+    const sources = getMetricTrendSources();
+    return SCORE_METRICS
+      .map((metric) => {
+        const points = sources
+          .filter((source) => Number.isFinite(source.metrics?.[metric.key]) && source.metrics[metric.key] > 0)
+          .map((source) => ({
+            id: source.id,
+            type: source.type,
+            label: source.label,
+            date: source.date,
+            shortDate: source.date.slice(5),
+            value: source.metrics[metric.key]
+          }));
+
+        if (!points.length) {
+          return null;
+        }
+
+        const latest = points[points.length - 1].value;
+        const first = points[0].value;
+        const average = Math.round(points.reduce((sum, point) => sum + point.value, 0) / points.length);
+        return {
+          key: metric.key,
+          label: metric.label,
+          average,
+          latest,
+          delta: latest - first,
+          points
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function getMetricTrendSources() {
+    const sources = [];
+    const coveredSessionIds = new Set();
+
+    state.sessions.forEach((session) => {
+      if (!isMetricSession(session)) return;
+      const metrics = pickRealMetrics(session.metrics);
+      if (!metrics) return;
+      coveredSessionIds.add(session.id);
+      sources.push({
+        id: session.id,
+        type: "practice",
+        label: `${session.glyph}练习`,
+        date: toDateKey(session.endedAt || session.snapshotAt || session.startedAt),
+        metrics
+      });
+    });
+
+    state.artworks.forEach((artwork) => {
+      const linkedSession = artwork.sessionId
+        ? state.sessions.find((session) => session.id === artwork.sessionId) || null
+        : null;
+      if (!linkedSession || coveredSessionIds.has(linkedSession.id) || !isMetricSession(linkedSession)) {
+        return;
+      }
+      const metrics = pickRealMetrics(linkedSession.metrics);
+      if (!metrics) return;
+      sources.push({
+        id: artwork.id,
+        type: "artwork",
+        label: artwork.title || `${artwork.glyph}作品`,
+        date: toDateKey(artwork.createdAt),
+        metrics
+      });
+    });
+
+    state.reports.forEach((report) => {
+      if ((report.sessionCount || 0) + (report.artworkCount || 0) <= 0) return;
+      if (!Number.isFinite(report.averageScore) || report.averageScore <= 0) return;
+      const metrics = pickRealMetrics(report.scoreBreakdown);
+      if (!metrics) return;
+      sources.push({
+        id: report.id,
+        type: "report",
+        label: report.title || "学习报告",
+        date: toDateKey(report.createdAt),
+        metrics
+      });
+    });
+
+    return sources
+      .filter((source) => source.date)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .slice(-12);
+  }
+
+  function isMetricSession(session) {
+    return Boolean(
+      session
+      && ((session.strokeCount || 0) > 0 || session.status === "saved" || session.endedAt)
+      && Number.isFinite(session.score)
+      && session.score > 0
+    );
+  }
+
+  function pickRealMetrics(metrics) {
+    if (!metrics || typeof metrics !== "object") return null;
+    const picked = {};
+    SCORE_METRICS.forEach((metric) => {
+      const value = Number(metrics[metric.key]);
+      if (Number.isFinite(value) && value > 0) {
+        picked[metric.key] = Math.min(100, Math.max(0, Math.round(value)));
+      }
+    });
+    return Object.keys(picked).length ? picked : null;
+  }
+
+  function toDateKey(value) {
+    const date = new Date(value);
+    return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : "";
   }
 
   function sessionToHistoryEntry(session) {

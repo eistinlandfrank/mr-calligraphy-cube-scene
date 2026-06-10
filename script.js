@@ -3961,7 +3961,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
   els.historyDownloadArchive.disabled = history.total === 0;
   pruneHistorySelection(history.allIds || []);
 
-  renderHistoryTrend(history.trend, history.dailyTrend);
+  renderHistoryTrend(history.trend, history.dailyTrend, history.metricTrend);
   renderHistoryList(history.entries, history.filteredTotal);
   renderHistoryBatchControls(history);
   renderHistoryDetail();
@@ -4263,13 +4263,13 @@ function addCustomPlanItem() {
   }
 }
 
-function renderHistoryTrend(trend = [], dailyTrend = []) {
+function renderHistoryTrend(trend = [], dailyTrend = [], metricTrend = []) {
   if (!els.historyTrend) return;
   els.historyTrend.innerHTML = "";
 
-  if (!trend.length && !dailyTrend.length) {
+  if (!trend.length && !dailyTrend.length && !metricTrend.length) {
     const empty = document.createElement("p");
-    empty.textContent = "保存作品后会显示分数趋势。";
+    empty.textContent = "完成真实笔迹练习后会显示分数和维度趋势。";
     els.historyTrend.appendChild(empty);
     return;
   }
@@ -4323,6 +4323,48 @@ function renderHistoryTrend(trend = [], dailyTrend = []) {
     });
 
     section.append(title, bars);
+    els.historyTrend.appendChild(section);
+  }
+
+  if (metricTrend.length) {
+    const section = document.createElement("div");
+    section.className = "history-trend-section history-metric-section";
+    const title = document.createElement("strong");
+    title.textContent = "维度趋势";
+    const list = document.createElement("div");
+    list.className = "history-metric-list";
+
+    metricTrend.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = `history-metric-row is-${item.key}`;
+      const label = document.createElement("div");
+      label.className = "history-metric-label";
+      const name = document.createElement("span");
+      name.textContent = item.label;
+      const delta = document.createElement("em");
+      const deltaText = item.points.length > 1
+        ? `${item.delta >= 0 ? "+" : ""}${item.delta}`
+        : "新";
+      delta.textContent = `最新 ${item.latest} / 均 ${item.average} / ${deltaText}`;
+      label.append(name, delta);
+
+      const bars = document.createElement("div");
+      bars.className = "history-metric-bars";
+      item.points.forEach((point) => {
+        const bar = document.createElement("span");
+        const value = clamp(Number(point.value) || 0, 4, 100);
+        bar.className = `history-metric-point is-${point.type}`;
+        bar.style.setProperty("--metric-height", `${value}%`);
+        bar.title = `${point.shortDate} ${point.label} ${item.label} ${point.value}分`;
+        bar.setAttribute("aria-label", bar.title);
+        bars.appendChild(bar);
+      });
+
+      row.append(label, bars);
+      list.appendChild(row);
+    });
+
+    section.append(title, list);
     els.historyTrend.appendChild(section);
   }
 }

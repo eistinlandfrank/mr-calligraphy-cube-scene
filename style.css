@@ -3711,6 +3711,78 @@ body.is-model-view .notice-panel {
   grid-template-rows: auto 86px;
 }
 
+.history-metric-section {
+  grid-template-rows: auto auto;
+}
+
+.history-metric-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.history-metric-row {
+  display: grid;
+  grid-template-columns: minmax(58px, 78px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+.history-metric-label {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-metric-label span {
+  overflow: hidden;
+  color: rgba(255, 250, 241, 0.9);
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-metric-label em {
+  overflow: hidden;
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-metric-bars {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  min-width: 0;
+  height: 44px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.history-metric-point {
+  flex: 1 1 0;
+  min-width: 4px;
+  max-width: 16px;
+  height: var(--metric-height);
+  min-height: 4px;
+  border-radius: 999px 999px 3px 3px;
+  background: rgba(116, 255, 219, 0.62);
+}
+
+.history-metric-point.is-report {
+  background: rgba(178, 211, 255, 0.72);
+}
+
+.history-metric-point.is-artwork {
+  background: rgba(255, 209, 132, 0.72);
+}
+
 .history-daily-bar {
   position: relative;
   display: grid;
