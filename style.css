@@ -2660,6 +2660,97 @@ body.is-model-view .notice-panel {
   line-height: 1.4;
 }
 
+.lecture-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.lecture-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lecture-head strong {
+  display: block;
+  margin-top: 3px;
+  color: #fffaf1;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.lecture-head span {
+  flex: 0 0 auto;
+  min-width: 52px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: #e6fff5;
+  background: rgba(63, 152, 101, 0.42);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.lecture-progress {
+  height: 8px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lecture-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #74ffdb, #f7d78b);
+  transition: width 220ms ease;
+}
+
+.lecture-panel p {
+  min-height: 48px;
+  margin: 8px 0 0;
+  color: rgba(255, 250, 241, 0.82);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.lecture-step-list {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.lecture-step-list button {
+  min-height: 32px;
+  padding: 5px 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.62);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lecture-step-list button.is-current {
+  color: #1b211e;
+  border-color: rgba(247, 215, 139, 0.8);
+  background: #f7d78b;
+}
+
+.lecture-step-list button.is-done {
+  color: #e6fff5;
+  border-color: rgba(116, 255, 219, 0.38);
+  background: rgba(47, 111, 104, 0.58);
+}
+
 .review-panel {
   margin-top: 10px;
   padding-top: 10px;

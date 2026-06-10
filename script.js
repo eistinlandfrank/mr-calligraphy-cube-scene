@@ -86,13 +86,13 @@ const SCENES = [
     description: "通过碑帖选择、教师讲解和 AI 要点，理解“永”字的来源与方法。",
     focus: "画面包含碑帖列表、讲解视频、AI 讲解卡和永字八法清单。",
     metrics: [
-      ["讲解进度", "01:32 / 05:48"],
+      ["讲解进度", "0%"],
       ["当前字", "永"],
       ["学习法", "永字八法"],
       ["讲解模式", "AI + 教师"]
     ],
     actions: [
-      { label: "播放讲解", response: "模拟播放：AI 正在讲解“点、横、竖、钩、撇、捺”等笔法关系。" },
+      { label: "播放讲解", response: "将按讲解步骤推进，并保存当前进度。" },
       { label: "切换碑帖", response: "碑帖列表可切换不同范本，当前保持“永”字讲解。" },
       { label: "开始临摹", target: 3, response: "进入空间临摹与实时引导。" }
     ],
@@ -763,6 +763,12 @@ const els = {
   infoPanelHandle: document.getElementById("infoPanelHandle"),
   modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
   learningStateSummary: document.getElementById("learningStateSummary"),
+  lecturePanel: document.getElementById("lecturePanel"),
+  lectureTitle: document.getElementById("lectureTitle"),
+  lectureStatusLabel: document.getElementById("lectureStatusLabel"),
+  lectureProgressFill: document.getElementById("lectureProgressFill"),
+  lectureBody: document.getElementById("lectureBody"),
+  lectureStepList: document.getElementById("lectureStepList"),
   glyphValue: document.getElementById("practiceGlyphGuide"),
   practiceCanvas: document.getElementById("practiceCanvas"),
   practiceUndo: document.getElementById("practiceUndo"),
@@ -849,6 +855,8 @@ let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
 let isReplayVideoExporting = false;
+let lecturePlaybackTimer = null;
+const LECTURE_PLAYBACK_STEP_MS = 1200;
 const mainSceneUndoStack = [];
 
 document.addEventListener("DOMContentLoaded", init);
@@ -3288,6 +3296,7 @@ function bindLearningControls() {
     button.dataset.featureState = "real";
     button.addEventListener("click", () => {
       const mode = button.dataset.learningMode;
+      stopLecturePlayback();
       const result = window.MRAppState?.setMode(mode);
       if (result?.message) {
         showNotice(result.message);
@@ -3349,6 +3358,7 @@ function renderLearningState() {
   updateSceneText(currentIndex);
   updateInteractionPanel(currentIndex, activePointIndex);
   updatePathPanel(currentIndex);
+  renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
   renderHistoryPanel(currentIndex);
 }
@@ -3373,6 +3383,96 @@ function renderLearningStateSummary() {
   if (els.learningStateSummary) {
     const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
     els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.glyph}字 / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${trainingLabel}模式`;
+  }
+}
+
+function renderLecturePanel(sceneIndex = currentIndex) {
+  if (!els.lecturePanel || !window.MRAppState?.getLectureProgress) {
+    return;
+  }
+
+  const progress = window.MRAppState.getLectureProgress();
+  const shouldShow = sceneIndex === 2 || progress.status !== "idle";
+  els.lecturePanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  const statusLabel = progress.status === "complete"
+    ? "已完成"
+    : progress.status === "playing"
+      ? "播放中"
+      : "待讲解";
+  els.lectureTitle.textContent = progress.currentStep?.title || "讲解待开始";
+  els.lectureStatusLabel.textContent = statusLabel;
+  els.lectureProgressFill.style.width = `${progress.progressPercent}%`;
+  els.lectureBody.textContent = progress.currentStep?.body || "选择讲解后显示当前段落。";
+  els.lectureStepList.innerHTML = "";
+
+  progress.steps.forEach((step, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = step.title;
+    const isDone = progress.status === "complete" || index < progress.completedSteps - 1;
+    const isCurrent = progress.status !== "idle" && index === progress.stepIndex;
+    button.classList.toggle("is-done", isDone);
+    button.classList.toggle("is-current", isCurrent);
+    button.title = step.body;
+    button.disabled = true;
+    els.lectureStepList.appendChild(button);
+  });
+}
+
+function startLecturePlayback() {
+  const appState = window.MRAppState;
+  if (!appState?.startLecture || !appState?.advanceLecture) {
+    return { ok: false, message: "AI 讲解状态层尚未初始化。" };
+  }
+  if (lecturePlaybackTimer) {
+    return { ok: false, message: "AI 讲解正在播放中，请稍候。" };
+  }
+
+  const result = appState.startLecture();
+  renderLearningStateSummary();
+  renderLecturePanel(currentIndex);
+  updateSceneText(currentIndex);
+  updatePathPanel(currentIndex);
+  scheduleLectureAdvance();
+  return {
+    ...result,
+    message: `${result.message} 正在按段播放。`
+  };
+}
+
+function scheduleLectureAdvance() {
+  const progress = window.MRAppState?.getLectureProgress?.();
+  if (!progress || progress.status === "complete") {
+    stopLecturePlayback();
+    return;
+  }
+
+  lecturePlaybackTimer = window.setTimeout(() => {
+    lecturePlaybackTimer = null;
+    const result = window.MRAppState?.advanceLecture?.();
+    renderLearningStateSummary();
+    renderLecturePanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+    if (result?.message) {
+      els.actionFeedback.textContent = result.message;
+    }
+    if (result?.lecture?.status === "complete") {
+      showNotice("AI 讲解已完成，进度已保存。");
+      return;
+    }
+    scheduleLectureAdvance();
+  }, LECTURE_PLAYBACK_STEP_MS);
+}
+
+function stopLecturePlayback() {
+  if (lecturePlaybackTimer) {
+    window.clearTimeout(lecturePlaybackTimer);
+    lecturePlaybackTimer = null;
   }
 }
 
@@ -3846,6 +3946,7 @@ function loadScene(index) {
   updateSceneText(index);
   updateStepNavigation(index);
   updateInteractionPanel(index, 0);
+  renderLecturePanel(index);
   renderReviewPanel(index);
   renderHistoryPanel(index);
   hideError();
@@ -3955,6 +4056,7 @@ function getLearningSceneMetrics(index) {
     : stats.lectureStatus === "playing"
       ? "播放中"
       : "未开始";
+  const lectureProgress = stats.lectureProgress || window.MRAppState?.getLectureProgress?.();
   const trainingLabel = stats.trainingMode === "compare" ? "对比模式" : "示范模式";
 
   switch (index) {
@@ -3977,8 +4079,9 @@ function getLearningSceneMetrics(index) {
     case 2:
       return [
         ["讲解状态", lectureLabel],
-        ["当前字", stats.glyph],
-        ["学习法", stats.copybook],
+        ["讲解进度", `${lectureProgress?.progressPercent || 0}%`],
+        ["当前段落", lectureProgress?.currentStep?.title || "待开始"],
+        ["字帖", stats.copybook],
         ["学习模式", stats.modeLabel]
       ];
     case 3:
@@ -4126,6 +4229,7 @@ function runAction(action) {
 function applyActionResult(result = {}, action = {}) {
   els.actionFeedback.textContent = result.message || action.response;
   renderLearningStateSummary();
+  renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
 
   if (result.notice) {
@@ -4140,6 +4244,7 @@ function applyActionResult(result = {}, action = {}) {
 
   updateSceneText(currentIndex);
   updatePathPanel(currentIndex);
+  renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
   renderHistoryPanel(currentIndex);
 }
@@ -4180,11 +4285,14 @@ function runLearningAction(action) {
         };
       }
     case "选择日课字":
+      stopLecturePlayback();
       return appState.selectDailyGlyph();
     case "进入 AI 讲解":
+      return { ...appState.startLecture(), target: action.target };
     case "播放讲解":
-      return { ...appState.playLecture(), target: action.target };
+      return startLecturePlayback();
     case "切换碑帖":
+      stopLecturePlayback();
       return appState.rotateCopybook();
     case "进入临摹训练":
     case "开始临摹":

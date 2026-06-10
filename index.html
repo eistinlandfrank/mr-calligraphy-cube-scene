@@ -108,6 +108,21 @@
           <div id="contentTags" class="tag-row" aria-label="关键词"></div>
         </section>
 
+        <section id="lecturePanel" class="lecture-panel" aria-label="AI 讲解进度" hidden>
+          <div class="lecture-head">
+            <div>
+              <div class="panel-eyebrow">AI 讲解</div>
+              <strong id="lectureTitle">讲解待开始</strong>
+            </div>
+            <span id="lectureStatusLabel">待讲解</span>
+          </div>
+          <div class="lecture-progress" aria-hidden="true">
+            <span id="lectureProgressFill"></span>
+          </div>
+          <p id="lectureBody">选择讲解后显示当前段落。</p>
+          <div id="lectureStepList" class="lecture-step-list"></div>
+        </section>
+
         <section class="point-list" aria-label="内容热点列表">
           <div class="panel-eyebrow">可点击热点</div>
           <div id="pointList" class="chip-list"></div>

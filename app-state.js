@@ -29,6 +29,8 @@
 
   const COPYBOOKS = ["永字八法", "欧体楷书", "颜体楷书", "赵体行书"];
   const STROKES = ["点", "横", "竖", "撇", "捺", "钩", "提", "折"];
+  const LECTURE_STEP_COUNT = 5;
+  const LECTURE_STEP_SECONDS = 24;
 
   let state = normalizeState(loadRawState());
 
@@ -55,14 +57,23 @@
   function normalizeState(source) {
     const activeMode = source && MODE_CONFIG[source.activeMode] ? source.activeMode : "single";
     const modeConfig = MODE_CONFIG[activeMode];
+    const selectedGlyph = String(source?.selectedGlyph || modeConfig.glyph);
+    const selectedCopybook = String(source?.selectedCopybook || modeConfig.copybook);
+    const lecture = normalizeLecture(source?.lecture, {
+      mode: activeMode,
+      glyph: selectedGlyph,
+      copybook: selectedCopybook,
+      fallbackStatus: source?.lectureStatus
+    });
     return {
       version: VERSION,
       activeMode,
-      selectedGlyph: String(source?.selectedGlyph || modeConfig.glyph),
-      selectedCopybook: String(source?.selectedCopybook || modeConfig.copybook),
+      selectedGlyph,
+      selectedCopybook,
       activeStrokeIndex: normalizeInteger(source?.activeStrokeIndex, 0, 0, STROKES.length - 1),
       trainingMode: ["guide", "compare"].includes(source?.trainingMode) ? source.trainingMode : "guide",
-      lectureStatus: ["idle", "playing", "complete"].includes(source?.lectureStatus) ? source.lectureStatus : "idle",
+      lectureStatus: lecture.status,
+      lecture,
       artworkStyle: String(source?.artworkStyle || "楷书"),
       currentSessionId: typeof source?.currentSessionId === "string" ? source.currentSessionId : null,
       sessions: Array.isArray(source?.sessions) ? source.sessions.map(normalizeSession).filter(Boolean) : [],
@@ -179,6 +190,68 @@
     };
   }
 
+  function normalizeLecture(record, context = {}) {
+    const status = ["idle", "playing", "complete"].includes(record?.status)
+      ? record.status
+      : ["idle", "playing", "complete"].includes(context.fallbackStatus)
+        ? context.fallbackStatus
+        : "idle";
+    const stepIndex = status === "complete"
+      ? LECTURE_STEP_COUNT - 1
+      : normalizeInteger(record?.stepIndex, 0, 0, LECTURE_STEP_COUNT - 1);
+    return {
+      id: String(record?.id || makeId("lecture")),
+      mode: MODE_CONFIG[record?.mode] ? record.mode : context.mode || "single",
+      glyph: String(record?.glyph || context.glyph || "永"),
+      copybook: String(record?.copybook || context.copybook || "永字八法"),
+      status,
+      stepIndex,
+      startedAt: record?.startedAt ? String(record.startedAt) : null,
+      updatedAt: record?.updatedAt ? String(record.updatedAt) : null,
+      completedAt: record?.completedAt ? String(record.completedAt) : status === "complete" ? new Date().toISOString() : null
+    };
+  }
+
+  function getLectureSteps(lecture = state.lecture) {
+    const mode = MODE_CONFIG[lecture?.mode] ? lecture.mode : state.activeMode;
+    const glyph = String(lecture?.glyph || state.selectedGlyph || "永");
+    const copybook = String(lecture?.copybook || state.selectedCopybook || "永字八法");
+    const modeLabel = MODE_CONFIG[mode]?.label || "单字学习";
+    const shapeFocus = mode === "phrase"
+      ? "把单字结构放进行气中观察，先稳住字内重心，再看字与字之间的呼应。"
+      : mode === "creation"
+        ? "从单字骨架过渡到作品章法，先确定主次、留白和落款位置。"
+        : "先看中宫、重心和外轮廓，确认临写时每一笔服务于整体结构。";
+    const practiceFocus = mode === "creation"
+      ? "创作时保留碑帖笔意，同时让节奏在整幅作品中形成起伏。"
+      : mode === "phrase"
+        ? "集字时不要只拼字形，要把笔势方向和行距一并纳入练习。"
+        : "临摹时先慢后稳，再用回放检查起笔、行笔和收笔是否连续。";
+
+    return [
+      {
+        title: `${glyph}字目标`,
+        body: `${modeLabel}以“${glyph}”为当前任务，参考“${copybook}”，先确认结构目标和临写顺序。`
+      },
+      {
+        title: "结构观察",
+        body: shapeFocus
+      },
+      {
+        title: "笔法要点",
+        body: `重点观察“${glyph}”的起笔、转折、收笔和墨色轻重，避免把笔画写成孤立线段。`
+      },
+      {
+        title: "临写策略",
+        body: practiceFocus
+      },
+      {
+        title: "复盘标准",
+        body: "完成书写后保存作品，用结构、笔画、笔法、流畅度和力度五项指标对照复盘。"
+      }
+    ];
+  }
+
   function normalizeMetrics(metrics) {
     const source = metrics && typeof metrics === "object" ? metrics : {};
     return {
@@ -275,6 +348,56 @@
     return state.sessions.find((session) => session.id === state.currentSessionId) || null;
   }
 
+  function createLecture(status = "idle") {
+    const now = new Date().toISOString();
+    return {
+      id: makeId("lecture"),
+      mode: state.activeMode,
+      glyph: state.selectedGlyph,
+      copybook: state.selectedCopybook,
+      status,
+      stepIndex: status === "complete" ? LECTURE_STEP_COUNT - 1 : 0,
+      startedAt: status === "idle" ? null : now,
+      updatedAt: status === "idle" ? null : now,
+      completedAt: status === "complete" ? now : null
+    };
+  }
+
+  function resetLecture() {
+    state.lecture = createLecture("idle");
+    syncLectureStatus();
+  }
+
+  function syncLectureStatus() {
+    state.lectureStatus = state.lecture?.status || "idle";
+  }
+
+  function getLectureProgress() {
+    const lecture = normalizeLecture(state.lecture, {
+      mode: state.activeMode,
+      glyph: state.selectedGlyph,
+      copybook: state.selectedCopybook,
+      fallbackStatus: state.lectureStatus
+    });
+    const steps = getLectureSteps(lecture);
+    const completedSteps = lecture.status === "complete"
+      ? steps.length
+      : lecture.status === "idle"
+        ? 0
+        : lecture.stepIndex + 1;
+    const progressPercent = Math.round((completedSteps / Math.max(1, steps.length)) * 100);
+    return {
+      ...clone(lecture),
+      steps: clone(steps),
+      currentStep: clone(steps[lecture.stepIndex] || steps[0]),
+      completedSteps,
+      totalSteps: steps.length,
+      progressPercent,
+      elapsedSeconds: completedSteps * LECTURE_STEP_SECONDS,
+      totalSeconds: steps.length * LECTURE_STEP_SECONDS
+    };
+  }
+
   function getStats() {
     const sessions = state.sessions;
     const savedSessions = sessions.filter((session) => session.status === "saved" || session.endedAt);
@@ -298,6 +421,7 @@
       : latestArtwork?.feedback?.length
         ? latestArtwork.feedback
         : [];
+    const lectureProgress = getLectureProgress();
     return {
       activeMode: state.activeMode,
       modeLabel: getModeConfig().label,
@@ -306,6 +430,7 @@
       activeStroke: STROKES[state.activeStrokeIndex],
       trainingMode: state.trainingMode,
       lectureStatus: state.lectureStatus,
+      lectureProgress,
       sessionCount: sessions.length,
       savedSessionCount: savedSessions.length,
       artworkCount: state.artworks.length,
@@ -341,7 +466,7 @@
     state.selectedGlyph = config.glyph;
     state.selectedCopybook = config.copybook;
     state.currentSessionId = null;
-    state.lectureStatus = "idle";
+    resetLecture();
     state.activeStrokeIndex = 0;
     addEvent("mode", `切换到${config.label}`);
     saveState();
@@ -355,6 +480,7 @@
     const config = getModeConfig();
     state.selectedGlyph = config.glyph;
     state.selectedCopybook = config.copybook;
+    resetLecture();
     addEvent("task", config.taskTitle);
     saveState();
     return {
@@ -366,6 +492,7 @@
   function rotateCopybook() {
     const index = COPYBOOKS.indexOf(state.selectedCopybook);
     state.selectedCopybook = COPYBOOKS[(index + 1 + COPYBOOKS.length) % COPYBOOKS.length];
+    resetLecture();
     addEvent("copybook", `切换碑帖：${state.selectedCopybook}`);
     saveState();
     return {
@@ -375,12 +502,50 @@
   }
 
   function playLecture() {
-    state.lectureStatus = "complete";
-    addEvent("lecture", `完成${state.selectedGlyph}字讲解`);
+    return advanceLecture();
+  }
+
+  function startLecture() {
+    if (!state.lecture || state.lecture.status === "idle" || state.lecture.status === "complete") {
+      state.lecture = createLecture("playing");
+      addEvent("lecture", `开始${state.selectedGlyph}字讲解`);
+    } else {
+      state.lecture.updatedAt = new Date().toISOString();
+    }
+    syncLectureStatus();
     saveState();
+    const progress = getLectureProgress();
     return {
       ok: true,
-      message: `讲解已记录为完成：${state.selectedGlyph}字，碑帖“${state.selectedCopybook}”。`
+      lecture: progress,
+      message: `AI 讲解已开始：${progress.currentStep.title}，${progress.completedSteps}/${progress.totalSteps}。`
+    };
+  }
+
+  function advanceLecture() {
+    if (!state.lecture || state.lecture.status === "idle") {
+      state.lecture = createLecture("playing");
+      addEvent("lecture", `开始${state.selectedGlyph}字讲解`);
+    } else if (state.lecture.status === "complete") {
+      state.lecture = createLecture("playing");
+      addEvent("lecture", `重播${state.selectedGlyph}字讲解`);
+    } else if (state.lecture.stepIndex < LECTURE_STEP_COUNT - 1) {
+      state.lecture.stepIndex += 1;
+    } else {
+      state.lecture.status = "complete";
+      state.lecture.completedAt = new Date().toISOString();
+      addEvent("lecture", `完成${state.selectedGlyph}字讲解`);
+    }
+
+    state.lecture.updatedAt = new Date().toISOString();
+    syncLectureStatus();
+    saveState();
+    const progress = getLectureProgress();
+    const statusLabel = progress.status === "complete" ? "已完成" : "播放中";
+    return {
+      ok: true,
+      lecture: progress,
+      message: `${statusLabel}：${progress.currentStep.title}，${progress.completedSteps}/${progress.totalSteps}。${progress.currentStep.body}`
     };
   }
 
@@ -1045,6 +1210,7 @@
     getState: () => clone(state),
     getStats,
     getModeConfig,
+    getLectureProgress,
     getReportPreview,
     getLatestReview,
     getHistory,
@@ -1052,6 +1218,8 @@
     setMode,
     selectDailyGlyph,
     rotateCopybook,
+    startLecture,
+    advanceLecture,
     playLecture,
     startPractice,
     setTrainingMode,
