@@ -874,6 +874,7 @@ const els = {
   pointList: document.getElementById("pointList"),
   actionList: document.getElementById("actionList"),
   actionFeedback: document.getElementById("actionFeedback"),
+  actionDetail: document.getElementById("actionDetail"),
   coachScore: document.getElementById("coachScore"),
   insightScore: document.getElementById("insightScore"),
   pathProgress: document.getElementById("pathProgress"),
@@ -5040,6 +5041,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   els.pointList.innerHTML = "";
   els.actionList.innerHTML = "";
   els.actionFeedback.textContent = getLearningActionHint(sceneIndex);
+  renderActionDetail(null);
 
   pointView.tags.forEach((tag) => {
     const tagEl = document.createElement("span");
@@ -5219,6 +5221,7 @@ function runAction(action) {
 
 function applyActionResult(result = {}, action = {}) {
   els.actionFeedback.textContent = result.message || (action.label ? "操作已处理，但没有返回详细结果。" : "");
+  renderActionDetail(result.detail || null);
   if (result.plan?.id) {
     activePlanId = result.plan.id;
   }
@@ -5245,6 +5248,245 @@ function applyActionResult(result = {}, action = {}) {
   renderReviewPanel(currentIndex);
   renderHistoryPanel(currentIndex);
   renderPlanPanel(currentIndex);
+}
+
+function renderActionDetail(detail) {
+  if (!els.actionDetail) {
+    return;
+  }
+
+  els.actionDetail.innerHTML = "";
+  if (!detail) {
+    els.actionDetail.hidden = true;
+    els.actionDetail.removeAttribute("data-detail-type");
+    return;
+  }
+
+  els.actionDetail.hidden = false;
+  els.actionDetail.dataset.detailType = detail.type || "info";
+
+  const head = document.createElement("div");
+  head.className = "action-detail-head";
+  const titleWrap = document.createElement("div");
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = detail.eyebrow || "真实详情";
+  const title = document.createElement("strong");
+  title.textContent = detail.title || "操作详情";
+  titleWrap.append(eyebrow, title);
+  head.appendChild(titleWrap);
+
+  if (detail.status) {
+    const status = document.createElement("em");
+    status.textContent = detail.status;
+    head.appendChild(status);
+  }
+  els.actionDetail.appendChild(head);
+
+  if (detail.summary) {
+    const summary = document.createElement("p");
+    summary.className = "action-detail-summary";
+    summary.textContent = detail.summary;
+    els.actionDetail.appendChild(summary);
+  }
+
+  if (Array.isArray(detail.metrics) && detail.metrics.length) {
+    const metrics = document.createElement("div");
+    metrics.className = "action-detail-metrics";
+    detail.metrics.forEach((metric) => {
+      const item = document.createElement("div");
+      const label = document.createElement("span");
+      const value = document.createElement("strong");
+      label.textContent = metric.label;
+      value.textContent = metric.value;
+      item.append(label, value);
+      metrics.appendChild(item);
+    });
+    els.actionDetail.appendChild(metrics);
+  }
+
+  if (Array.isArray(detail.badges) && detail.badges.length) {
+    const badges = document.createElement("div");
+    badges.className = "achievement-grid";
+    detail.badges.forEach((badge) => {
+      const item = document.createElement("div");
+      item.className = "achievement-badge";
+      item.classList.toggle("is-done", Boolean(badge.done));
+      const label = document.createElement("strong");
+      const state = document.createElement("span");
+      const meta = document.createElement("small");
+      label.textContent = badge.label;
+      state.textContent = badge.done ? "已达成" : "未达成";
+      meta.textContent = badge.detail;
+      item.append(label, state, meta);
+      badges.appendChild(item);
+    });
+    els.actionDetail.appendChild(badges);
+  }
+
+  if (Array.isArray(detail.items) && detail.items.length) {
+    const list = document.createElement("ul");
+    list.className = "action-detail-list";
+    detail.items.slice(0, 6).forEach((text) => {
+      const item = document.createElement("li");
+      item.textContent = text;
+      list.appendChild(item);
+    });
+    els.actionDetail.appendChild(list);
+  }
+}
+
+function getMetricValue(metrics, key) {
+  const value = Number(metrics?.[key]);
+  return Number.isFinite(value) && value > 0 ? `${Math.round(value)}分` : "未评分";
+}
+
+function getLatestAnalyzablePractice(stats) {
+  const latestSession = stats?.latestSession;
+  const latestArtwork = stats?.latestArtwork;
+
+  if (latestSession && ((latestSession.strokeCount || 0) > 0 || latestSession.feedback?.length)) {
+    return {
+      source: "最近练习",
+      glyph: latestSession.glyph || stats.glyph,
+      score: latestSession.score || 0,
+      metrics: latestSession.metrics || {},
+      strokeCount: latestSession.strokeCount || 0,
+      pointCount: latestSession.pointCount || 0,
+      feedback: latestSession.feedback || [],
+      createdAt: latestSession.snapshotAt || latestSession.endedAt || latestSession.startedAt
+    };
+  }
+
+  if (latestArtwork && ((latestArtwork.strokeCount || 0) > 0 || latestArtwork.feedback?.length)) {
+    return {
+      source: "最近作品",
+      glyph: latestArtwork.glyph || stats.glyph,
+      score: latestArtwork.score || 0,
+      metrics: latestSession?.metrics || {},
+      strokeCount: latestArtwork.strokeCount || 0,
+      pointCount: latestArtwork.pointCount || 0,
+      feedback: latestArtwork.feedback?.length ? latestArtwork.feedback : latestSession?.feedback || [],
+      createdAt: latestArtwork.createdAt
+    };
+  }
+
+  return null;
+}
+
+function buildPracticeAnalysisDetail(recorded = null) {
+  const stats = window.MRAppState?.getStats?.();
+  const practice = recorded?.practice
+    ? {
+        source: "当前练习格",
+        glyph: stats?.glyph || "当前字",
+        score: recorded.practice.score || 0,
+        metrics: recorded.practice.metrics || {},
+        strokeCount: recorded.practice.strokeCount || 0,
+        pointCount: recorded.practice.pointCount || 0,
+        feedback: recorded.practice.feedback || [],
+        createdAt: new Date().toISOString()
+      }
+    : getLatestAnalyzablePractice(stats);
+
+  if (!practice) {
+    return {
+      type: "analysis",
+      eyebrow: "笔画分析",
+      title: "暂无真实笔迹",
+      status: "空状态",
+      summary: `当前任务是“${stats?.taskTitle || "书法练习"}”。请先在练习格中书写，再查看结构、笔画、笔法、流畅度和力度分析。`,
+      metrics: [
+        { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
+        { label: "评分记录", value: `${stats?.scoreCount || 0}条` },
+        { label: "当前字", value: stats?.glyph || "未选择" }
+      ],
+      items: ["没有真实笔迹时不会返回静态分析。", "完成一笔以上书写后，点击“查看笔画分析”会写入本机练习会话。"]
+    };
+  }
+
+  const feedback = practice.feedback?.length
+    ? practice.feedback
+    : ["暂无自动建议，请保存更多笔迹后继续复盘。"];
+
+  return {
+    type: "analysis",
+    eyebrow: "笔画分析",
+    title: `${practice.glyph || stats?.glyph || "当前字"}字真实笔迹分析`,
+    status: practice.source,
+    summary: `${practice.source}包含 ${practice.strokeCount} 笔、${practice.pointCount} 个采样点，综合评分 ${practice.score || "未评分"}。`,
+    metrics: [
+      { label: "综合", value: practice.score ? `${practice.score}分` : "未评分" },
+      { label: "结构", value: getMetricValue(practice.metrics, "structure") },
+      { label: "笔画", value: getMetricValue(practice.metrics, "stroke") },
+      { label: "笔法", value: getMetricValue(practice.metrics, "technique") },
+      { label: "流畅", value: getMetricValue(practice.metrics, "fluency") },
+      { label: "力度", value: getMetricValue(practice.metrics, "force") }
+    ],
+    items: feedback
+  };
+}
+
+function buildAchievementDetail() {
+  const stats = window.MRAppState?.getStats?.();
+  const taskProgress = stats?.taskProgress || {};
+  const planProgress = stats?.latestPlan?.progress || null;
+  const averageDone = Boolean(stats?.scoreCount && stats.averageScore >= 80);
+  const excellentDone = Boolean(stats?.scoreCount && stats.averageScore >= 90);
+  const badges = [
+    {
+      label: "完成真实练习",
+      done: (stats?.practicedSessionCount || 0) > 0,
+      detail: `${stats?.practicedSessionCount || 0} 次有笔迹练习`
+    },
+    {
+      label: "保存作品",
+      done: (stats?.artworkCount || 0) > 0,
+      detail: `${stats?.artworkCount || 0} 幅本机作品`
+    },
+    {
+      label: "导出报告",
+      done: (stats?.reportCount || 0) > 0,
+      detail: `${stats?.reportCount || 0} 份 HTML 报告`
+    },
+    {
+      label: "基础达标",
+      done: averageDone,
+      detail: stats?.scoreCount ? `平均 ${stats.averageScore} 分` : "暂无评分"
+    },
+    {
+      label: "优秀稳定",
+      done: excellentDone,
+      detail: stats?.scoreCount ? `平均 ${stats.averageScore} 分` : "暂无评分"
+    },
+    {
+      label: "制定计划",
+      done: Boolean(planProgress?.total),
+      detail: planProgress ? `${planProgress.done}/${planProgress.total} 项完成` : "暂无计划"
+    }
+  ];
+  const doneCount = badges.filter((badge) => badge.done).length;
+  const nextBadge = badges.find((badge) => !badge.done);
+
+  return {
+    type: "achievements",
+    eyebrow: "本机成就",
+    title: `${stats?.taskTitle || "当前任务"}成就进度`,
+    status: `${doneCount}/${badges.length}`,
+    summary: doneCount
+      ? `成就只根据本机真实记录计算：${stats.practicedSessionCount || 0} 次真实练习、${stats.artworkCount || 0} 幅作品、${stats.reportCount || 0} 份报告。`
+      : "当前还没有可达成成就的真实记录。先完成一次书写，成就会从本机状态中点亮。",
+    metrics: [
+      { label: "任务进度", value: `${taskProgress.percent || 0}%` },
+      { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
+      { label: "评分记录", value: `${stats?.scoreCount || 0}条` },
+      { label: "平均评分", value: formatAverageScore(stats) }
+    ],
+    badges,
+    items: [
+      nextBadge ? `下一步：${nextBadge.label}。${nextBadge.detail}` : "当前本机成就已全部点亮，可继续提高平均分或补充更多任务。",
+      "成就不会读取静态场景文案，也不会伪装成云端徽章。"
+    ]
+  };
 }
 
 function getLearningActionHint(sceneIndex) {
@@ -5278,12 +5520,19 @@ function runLearningAction(action) {
       {
         const recorded = recordLivePracticeIfAvailable({ allowCreate: true });
         if (recorded?.practice) {
+          const detail = buildPracticeAnalysisDetail(recorded);
           return {
-            message: `已记录当前笔迹：${recorded.practice.strokeCount} 笔、${recorded.practice.pointCount} 个采样点，评分 ${recorded.practice.score}。${recorded.practice.feedback[0] || ""}`
+            message: `已记录当前笔迹：${recorded.practice.strokeCount} 笔、${recorded.practice.pointCount} 个采样点，评分 ${recorded.practice.score}。`,
+            detail
           };
         }
+        const detail = buildPracticeAnalysisDetail();
+        const hasExisting = detail.status !== "空状态";
         return {
-          message: `当前任务：${appState.getStats().glyph}字。请先在练习格中书写，再查看真实笔画分析。`
+          message: hasExisting
+            ? "已读取最近一次真实笔迹分析。"
+            : `当前任务：${appState.getStats().glyph}字。请先在练习格中书写，再查看真实笔画分析。`,
+          detail
         };
       }
     case "选择日课字":
@@ -5343,9 +5592,13 @@ function runLearningAction(action) {
     case "制定计划":
       return appState.createPlan();
     case "查看成就":
-      return {
-        message: `当前成就来自本机记录：${appState.getStats().sessionCount} 次练习、${appState.getStats().artworkCount} 幅作品、${appState.getStats().reportCount} 份报告。`
-      };
+      {
+        const stats = appState.getStats();
+        return {
+          message: `当前成就来自本机记录：${stats.practicedSessionCount || 0} 次真实练习、${stats.artworkCount} 幅作品、${stats.reportCount} 份报告。`,
+          detail: buildAchievementDetail()
+        };
+      }
     case "查看详情":
       return { message: appState.getReportPreview() };
     case "返回首页":
