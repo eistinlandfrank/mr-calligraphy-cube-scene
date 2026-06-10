@@ -225,8 +225,10 @@
 
   验收记录：2026-06-10 暂停时可执行操作自动从 pause 切换为 resume；resume 会恢复 active 状态、累计暂停时长并继续倒计时，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-14：实现结束逻辑**  
+- [x] **P3-14：实现结束逻辑**  
   验收：结束后保存 session，并进入报告或完成状态。
+
+  验收记录：2026-06-10 非练习评分阶段执行 `finish` 会进入 `finished` 或已有报告时进入 `caregiver_confirm`；进入 finished 会保存 session，护工结束操作已接入状态机，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-15：实现 session event 记录**  
   验收：每次状态变化和关键操作都会写入 events。

@@ -183,6 +183,11 @@ export const useFlowStore = create((set, get) => ({
       return true;
     }
 
+    if (actionId === "finish" && state.id !== "practice_game" && state.id !== "scoring") {
+      const targetStateId = get().session?.report ? "caregiver_confirm" : "finished";
+      return get().transitionTo(targetStateId, actionId);
+    }
+
     if (state.next) {
       return get().transitionTo(state.next, actionId);
     }

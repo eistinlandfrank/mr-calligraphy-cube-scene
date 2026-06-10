@@ -197,8 +197,9 @@ export function DemoPage() {
 
     if (actionId === "end") {
       setIsPlaying(false);
-      setActiveStep(demoTimelineSteps.length - 1);
-      setMode("caregiver");
+      if (executableActions.includes("finish")) {
+        executeFlowAction("finish");
+      }
       setCaregiverNotice("护工已结束体验并进入报告确认。");
       return;
     }
