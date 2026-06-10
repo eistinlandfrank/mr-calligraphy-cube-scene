@@ -60,6 +60,9 @@ export function DemoPage() {
   const flowSession = useFlowStore((state) => state.session);
   const flowReport = useFlowStore((state) => state.session?.report);
   const flowStateEnteredAt = useFlowStore((state) => state.stateEnteredAt);
+  const flowAccumulatedPausedMs = useFlowStore((state) => state.accumulatedPausedMs);
+  const flowPausedAt = useFlowStore((state) => state.pausedAt);
+  const flowIsPaused = useFlowStore((state) => state.isPaused);
   const executableActions = useFlowStore((state) => state.getExecutableActions());
   const executeFlowAction = useFlowStore((state) => state.executeAction);
   const [flowClock, setFlowClock] = useState(Date.now());
@@ -91,7 +94,7 @@ export function DemoPage() {
   }, []);
 
   useEffect(() => {
-    if (!isPlaying || isFlowPaused) {
+    if (!isPlaying || isFlowPaused || flowIsPaused) {
       return undefined;
     }
 
@@ -110,13 +113,14 @@ export function DemoPage() {
     }, 2200);
 
     return () => window.clearInterval(timer);
-  }, [isPlaying, isFlowPaused]);
+  }, [flowIsPaused, isPlaying, isFlowPaused]);
 
   const practiceProgress = Math.max(
     Math.min(100, Math.round((activeStep / (demoTimelineSteps.length - 1)) * 100)),
     calligraphyProgress
   );
-  const flowElapsedSeconds = Math.max(0, Math.floor((flowClock - flowStateEnteredAt) / 1000));
+  const effectiveFlowClock = flowIsPaused && flowPausedAt ? flowPausedAt : flowClock;
+  const flowElapsedSeconds = Math.max(0, Math.floor((effectiveFlowClock - flowStateEnteredAt - flowAccumulatedPausedMs) / 1000));
   const flowRemainingSeconds = flowState?.duration ? Math.max(0, flowState.duration - flowElapsedSeconds) : 0;
   const remainingSeconds = flowState?.duration ? flowRemainingSeconds : Math.max(0, 900 - activeStep * 118);
   const currentStroke = mode === "elder" ? calligraphyStroke : ["侧", "勒", "努", "趯", "策", "掠"][Math.min(activeStep, 5)];
@@ -131,7 +135,14 @@ export function DemoPage() {
     }
 
     if (mode === "elder") {
-      return <ElderView phase={phase} onGameProgress={handleGameProgress} onGameComplete={handleGameComplete} />;
+      return (
+        <ElderView
+          phase={phase}
+          paused={flowIsPaused || isFlowPaused}
+          onGameProgress={handleGameProgress}
+          onGameComplete={handleGameComplete}
+        />
+      );
     }
 
     if (mode === "caregiver") {
@@ -142,14 +153,14 @@ export function DemoPage() {
           progress={practiceProgress}
           currentStroke={currentStroke}
           remainingSeconds={remainingSeconds}
-          isPaused={isFlowPaused}
+          isPaused={flowIsPaused || isFlowPaused}
           onAction={handleCaregiverAction}
         />
       );
     }
 
     return <ProductView phase={phase} />;
-  }, [executeFlowAction, flowReport, mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
+  }, [executeFlowAction, flowIsPaused, flowReport, mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
 
   function resetPlayback() {
     setIsPlaying(false);

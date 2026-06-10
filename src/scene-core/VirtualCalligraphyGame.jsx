@@ -10,7 +10,7 @@ const metricLabels = {
   focus: "专注"
 };
 
-export function VirtualCalligraphyGame({ compact = false, onComplete, onProgressChange }) {
+export function VirtualCalligraphyGame({ compact = false, paused = false, onComplete, onProgressChange }) {
   const [currentStrokeIndex, setCurrentStrokeIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -24,16 +24,17 @@ export function VirtualCalligraphyGame({ compact = false, onComplete, onProgress
   }, [currentStrokeIndex]);
 
   useEffect(() => {
-    if (!isPlaying || scorePanel) {
+    if (!isPlaying || scorePanel || paused) {
       return undefined;
     }
 
     let frameId = 0;
     const startedAt = performance.now();
-    const duration = (currentStroke?.duration ?? 1.2) * 1000;
+    const startProgress = progress;
+    const duration = Math.max(120, (1 - startProgress) * (currentStroke?.duration ?? 1.2) * 1000);
 
     function step(now) {
-      const nextProgress = Math.min(1, (now - startedAt) / duration);
+      const nextProgress = Math.min(1, startProgress + (1 - startProgress) * ((now - startedAt) / duration));
       setProgress(nextProgress);
 
       if (nextProgress < 1) {
@@ -47,7 +48,7 @@ export function VirtualCalligraphyGame({ compact = false, onComplete, onProgress
 
     frameId = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frameId);
-  }, [currentStroke, isPlaying, scorePanel]);
+  }, [currentStroke, isPlaying, paused, scorePanel]);
 
   useEffect(() => {
     const totalProgress = Math.round(((completedStrokeIds.length + progress) / yongCharacter.strokes.length) * 100);

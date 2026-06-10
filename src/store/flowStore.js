@@ -11,6 +11,8 @@ export const useFlowStore = create((set, get) => ({
   flowConfig: defaultFlow,
   currentStateId: defaultStateId,
   stateEnteredAt: Date.now(),
+  accumulatedPausedMs: 0,
+  pausedAt: null,
   history: [createHistoryItem(defaultStateId, "init")],
   isPaused: false,
   session: null,
@@ -19,7 +21,11 @@ export const useFlowStore = create((set, get) => ({
 
   getExecutableActions: () => getFlowState(get().flowConfig, get().currentStateId)?.actions ?? [],
 
-  getStateElapsedSeconds: () => Math.max(0, Math.floor((Date.now() - get().stateEnteredAt) / 1000)),
+  getStateElapsedSeconds: () => {
+    const state = get();
+    const now = state.isPaused && state.pausedAt ? state.pausedAt : Date.now();
+    return Math.max(0, Math.floor((now - state.stateEnteredAt - state.accumulatedPausedMs) / 1000));
+  },
 
   getRemainingSeconds: () => {
     const state = getFlowState(get().flowConfig, get().currentStateId);
@@ -48,6 +54,8 @@ export const useFlowStore = create((set, get) => ({
     set((state) => ({
       currentStateId: stateId,
       stateEnteredAt: Date.parse(enteredAt),
+      accumulatedPausedMs: 0,
+      pausedAt: null,
       isPaused: false,
       session: state.session ? buildTransitionSession(state.session, state.currentStateId, stateId, reason, enteredAt) : null,
       history: [...state.history, createHistoryItem(stateId, reason)]
@@ -91,6 +99,8 @@ export const useFlowStore = create((set, get) => ({
       set((current) => ({
         currentStateId: state.next,
         stateEnteredAt: Date.parse(startedAt),
+        accumulatedPausedMs: 0,
+        pausedAt: null,
         isPaused: false,
         session,
         history: [...current.history, createHistoryItem(state.next, actionId)]
@@ -100,7 +110,26 @@ export const useFlowStore = create((set, get) => ({
     }
 
     if (actionId === "pause") {
-      set({ isPaused: true });
+      const pausedAt = Date.now();
+      set((state) => ({
+        isPaused: true,
+        pausedAt,
+        session: state.session
+          ? {
+              ...state.session,
+              status: "paused",
+              events: [
+                ...state.session.events,
+                createSessionEvent({
+                  type: "action_triggered",
+                  stateId: state.currentStateId,
+                  at: new Date(pausedAt).toISOString(),
+                  payload: { actionId }
+                })
+              ]
+            }
+          : null
+      }));
       return true;
     }
 
@@ -130,6 +159,8 @@ export const useFlowStore = create((set, get) => ({
     set({
       currentStateId: defaultStateId,
       stateEnteredAt: Date.now(),
+      accumulatedPausedMs: 0,
+      pausedAt: null,
       history: [createHistoryItem(defaultStateId, "reset")],
       isPaused: false,
       session: null

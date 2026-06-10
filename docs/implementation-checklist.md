@@ -215,8 +215,10 @@
 
   验收记录：2026-06-10 进入 `finished` 会标记 PracticeSession 为 completed、写入 `session_finished` 事件并保存到浏览器 localStorage；finished 保留 reset/restart 操作，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-12：实现暂停逻辑**  
+- [x] **P3-12：实现暂停逻辑**  
   验收：暂停后计时器、动画、输入采集停止。
+
+  验收记录：2026-06-10 flowStore 增加 pause 状态、暂停时间和剩余时间冻结计算；VirtualCalligraphyGame 支持 paused，暂停时停止 requestAnimationFrame 动画，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-13：实现继续逻辑**  
   验收：继续后计时器、动画、输入采集恢复。
