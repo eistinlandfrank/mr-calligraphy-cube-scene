@@ -1215,7 +1215,7 @@
     return {
       ok: true,
       report: clone(report),
-      message: `HTML 学习报告已生成并下载：${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
+      message: `HTML 学习报告已生成并下载：含能力雷达和打印样式，${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
     };
   }
 
@@ -1297,6 +1297,7 @@
       ["fluency", "流畅"],
       ["force", "力度"]
     ];
+    const radarChart = createReportRadarSvg(metricLabels, metrics);
     const maxTrendScore = Math.max(100, ...trend.map((item) => item.score));
     const imageBlock = latestArtwork?.imageData
       ? `<figure class="artwork"><img src="${escapeAttr(latestArtwork.imageData)}" alt="${escapeAttr(latestArtwork.title)}"><figcaption>${escapeHtml(latestArtwork.title)} · ${latestArtwork.score} 分</figcaption></figure>`
@@ -1330,6 +1331,17 @@
     .stat span { display: block; color: var(--muted); font-size: 12px; }
     .stat strong { display: block; margin-top: 4px; font-size: 26px; line-height: 1.1; }
     section { margin-top: 26px; }
+    .report-toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; margin-bottom: 14px; padding: 10px 0; background: var(--paper); }
+    .report-toolbar button { min-height: 38px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 8px; color: #ffffff; background: var(--ink); font: inherit; cursor: pointer; }
+    .report-toolbar button:hover { background: var(--jade); }
+    .report-layout { display: grid; grid-template-columns: minmax(250px, 0.95fr) minmax(0, 1.05fr); gap: 18px; align-items: center; margin-top: 12px; }
+    .radar-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .radar-chart { display: block; width: 100%; max-width: 320px; aspect-ratio: 1; margin: 0 auto; overflow: visible; }
+    .radar-ring, .radar-axis { stroke: var(--line); stroke-width: 1; fill: none; }
+    .radar-area { fill: rgba(36, 122, 103, 0.24); stroke: var(--jade); stroke-width: 2.5; }
+    .radar-point { fill: var(--jade); stroke: #ffffff; stroke-width: 2; }
+    .radar-label { fill: var(--ink); font-size: 12px; font-weight: 700; }
+    .radar-value { fill: var(--muted); font-size: 10px; }
     .metrics { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
     .metrics li { display: grid; grid-template-columns: 64px 1fr 44px; gap: 10px; align-items: center; }
     .track { height: 12px; overflow: hidden; border-radius: 99px; background: var(--line); }
@@ -1345,11 +1357,27 @@
     .empty { margin-top: 12px; padding: 16px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); background: #ffffff; }
     .recommendations { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 20px; }
     footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
-    @media (max-width: 720px) { main { width: min(100% - 20px, 960px); padding-top: 20px; } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trend { grid-template-columns: repeat(4, minmax(0, 1fr)); height: 260px; } }
+    @media print {
+      @page { size: A4; margin: 14mm; }
+      body { background: #ffffff; font-size: 12px; }
+      main { width: 100%; padding: 0; }
+      .report-toolbar { display: none; }
+      header, section, .summary, .stat, .radar-card, .artwork { break-inside: avoid; page-break-inside: avoid; }
+      .summary, .stat, .radar-card, .artwork, .empty { background: #ffffff; }
+      .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .trend { height: 140px; }
+      .artwork img { max-height: 300px; }
+      footer { font-size: 10px; }
+    }
+    @media (max-width: 720px) { main { width: min(100% - 20px, 960px); padding-top: 20px; } .grid, .report-layout { grid-template-columns: 1fr; } .trend { grid-template-columns: repeat(4, minmax(0, 1fr)); height: 260px; } }
   </style>
 </head>
 <body>
   <main>
+    <div class="report-toolbar">
+      <button type="button" onclick="window.print()">打印 / 保存 PDF</button>
+    </div>
+
     <header>
       <p class="meta">MR Calligraphy Report · ${escapeHtml(formatDateTime(normalizedReport.createdAt))}</p>
       <h1>MR 书法学习报告</h1>
@@ -1370,12 +1398,15 @@
 
     <section>
       <h2>能力结构</h2>
-      <ul class="metrics">
-        ${metricLabels.map(([key, label]) => {
-          const value = normalizeScore(metrics[key], 0);
-          return `<li><span>${label}</span><span class="track"><span class="fill" style="width:${value}%"></span></span><strong>${value}</strong></li>`;
-        }).join("")}
-      </ul>
+      <div class="report-layout">
+        <div class="radar-card">${radarChart}</div>
+        <ul class="metrics">
+          ${metricLabels.map(([key, label]) => {
+            const value = normalizeScore(metrics[key], 0);
+            return `<li><span>${label}</span><span class="track"><span class="fill" style="width:${value}%"></span></span><strong>${value}</strong></li>`;
+          }).join("")}
+        </ul>
+      </div>
     </section>
 
     <section>
@@ -1399,6 +1430,57 @@
   </main>
 </body>
 </html>`;
+  }
+
+  function createReportRadarSvg(metricLabels, metrics) {
+    const center = 160;
+    const maxRadius = 96;
+    const labelRadius = 126;
+    const ringValues = [25, 50, 75, 100];
+    const getAngle = (index) => -Math.PI / 2 + (Math.PI * 2 * index) / metricLabels.length;
+    const axisPoints = metricLabels.map(([, label], index) => {
+      const angle = getAngle(index);
+      return {
+        label,
+        outer: getRadarPoint(center, maxRadius, angle),
+        labelPoint: getRadarPoint(center, labelRadius, angle)
+      };
+    });
+    const areaPoints = metricLabels.map(([key], index) => {
+      const value = normalizeScore(metrics[key], 0);
+      return {
+        value,
+        point: getRadarPoint(center, maxRadius * (value / 100), getAngle(index))
+      };
+    });
+    const rings = ringValues.map((value) => {
+      const points = metricLabels
+        .map((_, index) => getRadarPoint(center, maxRadius * (value / 100), getAngle(index)))
+        .map((point) => `${point.x},${point.y}`)
+        .join(" ");
+      return `<polygon class="radar-ring" points="${points}"></polygon>`;
+    }).join("");
+    const axes = axisPoints
+      .map((axis) => `<line class="radar-axis" x1="${center}" y1="${center}" x2="${axis.outer.x}" y2="${axis.outer.y}"></line>`)
+      .join("");
+    const area = areaPoints.map(({ point }) => `${point.x},${point.y}`).join(" ");
+    const points = areaPoints
+      .map(({ point }) => `<circle class="radar-point" cx="${point.x}" cy="${point.y}" r="4"></circle>`)
+      .join("");
+    const labels = axisPoints.map((axis, index) => {
+      const anchor = axis.labelPoint.x > center + 8 ? "start" : axis.labelPoint.x < center - 8 ? "end" : "middle";
+      const value = areaPoints[index].value;
+      return `<text class="radar-label" x="${axis.labelPoint.x}" y="${axis.labelPoint.y}" text-anchor="${anchor}" dominant-baseline="central">${escapeHtml(axis.label)}</text><text class="radar-value" x="${axis.labelPoint.x}" y="${axis.labelPoint.y + 14}" text-anchor="${anchor}" dominant-baseline="central">${value}</text>`;
+    }).join("");
+
+    return `<svg class="radar-chart" viewBox="0 0 320 320" role="img" aria-label="能力雷达图"><title>能力雷达图</title><g>${rings}</g><g>${axes}</g><polygon class="radar-area" points="${area}"></polygon><g>${points}</g><g>${labels}</g></svg>`;
+  }
+
+  function getRadarPoint(center, radius, angle) {
+    return {
+      x: Number((center + Math.cos(angle) * radius).toFixed(2)),
+      y: Number((center + Math.sin(angle) * radius).toFixed(2))
+    };
   }
 
   function findReportArtwork(report) {
@@ -1469,7 +1551,7 @@
       return { ok: false, message: "还没有可下载的报告。" };
     }
     downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
-    return { ok: true, message: "已下载最近的 HTML 学习报告。" };
+    return { ok: true, message: "已下载最近的 HTML 学习报告，含能力雷达和打印样式。" };
   }
 
   function getHistory(options = {}) {
