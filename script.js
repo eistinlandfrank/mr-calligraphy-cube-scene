@@ -826,6 +826,18 @@ const els = {
   reviewReplay: document.getElementById("reviewReplay"),
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
+  reportPanel: document.getElementById("reportPanel"),
+  reportTitle: document.getElementById("reportTitle"),
+  reportStatus: document.getElementById("reportStatus"),
+  reportSummary: document.getElementById("reportSummary"),
+  reportStats: document.getElementById("reportStats"),
+  reportMetrics: document.getElementById("reportMetrics"),
+  reportTrend: document.getElementById("reportTrend"),
+  reportLatest: document.getElementById("reportLatest"),
+  reportRecommendations: document.getElementById("reportRecommendations"),
+  reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
+  reportDetailDownload: document.getElementById("reportDetailDownload"),
+  reportDetailOpenHistory: document.getElementById("reportDetailOpenHistory"),
   historyPanel: document.getElementById("historyPanel"),
   historySummary: document.getElementById("historySummary"),
   historyDownloadArchive: document.getElementById("historyDownloadArchive"),
@@ -850,6 +862,7 @@ const els = {
   historyDetailReplay: document.getElementById("historyDetailReplay"),
   historyDetailDownloadImage: document.getElementById("historyDetailDownloadImage"),
   historyDetailDownloadReport: document.getElementById("historyDetailDownloadReport"),
+  historyDetailOpenReport: document.getElementById("historyDetailOpenReport"),
   historyDetailCopyLink: document.getElementById("historyDetailCopyLink"),
   historyDetailDelete: document.getElementById("historyDetailDelete"),
   planPanel: document.getElementById("planPanel"),
@@ -914,10 +927,20 @@ let activeMainObjectId = null;
 let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
+let activeReportDetailId = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
 const HISTORY_DETAIL_QUERY_KEY = "history";
+const REPORT_DETAIL_QUERY_KEY = "report";
+const REPORT_DETAIL_SCENE_INDEX = 8;
+const REPORT_METRIC_LABELS = [
+  ["structure", "结构"],
+  ["stroke", "笔画"],
+  ["technique", "笔法"],
+  ["fluency", "流畅"],
+  ["force", "力度"]
+];
 let activePlanId = null;
 let isReplayVideoExporting = false;
 let lecturePlaybackTimer = null;
@@ -1423,6 +1446,7 @@ function init() {
   bindLearningControls();
   bindTaskControls();
   bindReviewControls();
+  bindReportControls();
   bindHistoryControls();
   bindPlanControls();
   initPracticeCanvas();
@@ -1437,8 +1461,11 @@ function init() {
   renderLearningStateSummary();
   renderTaskPanel();
 
+  const routedReportId = getReportDetailRouteId();
   const routedHistoryId = getHistoryDetailRouteId();
-  if (routedHistoryId) {
+  if (routedReportId) {
+    openReportDetailRoute(routedReportId, { updateUrl: false, showMissing: true });
+  } else if (routedHistoryId) {
     openHistoryDetailRoute(routedHistoryId, { updateUrl: false, showMissing: true });
   } else {
     loadScene(0);
@@ -3471,6 +3498,12 @@ function bindReviewControls() {
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
 }
 
+function bindReportControls() {
+  els.reportDetailCopyLink?.addEventListener("click", copyReportDetailLink);
+  els.reportDetailDownload?.addEventListener("click", downloadReportDetail);
+  els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
+}
+
 function bindHistoryControls() {
   els.historyFilterButtons.forEach((button) => {
     button.addEventListener("click", () => {
@@ -3504,6 +3537,7 @@ function bindHistoryControls() {
   els.historyDetailReplay?.addEventListener("click", replayHistoryDetail);
   els.historyDetailDownloadImage?.addEventListener("click", downloadHistoryDetailImage);
   els.historyDetailDownloadReport?.addEventListener("click", downloadHistoryDetailReport);
+  els.historyDetailOpenReport?.addEventListener("click", openHistoryReportDetail);
   els.historyDetailCopyLink?.addEventListener("click", copyHistoryDetailLink);
   els.historyDetailDelete?.addEventListener("click", deleteHistoryDetail);
   els.historyDownloadArchive?.addEventListener("click", () => {
@@ -3552,6 +3586,7 @@ function renderLearningState() {
   updatePathPanel(currentIndex);
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
+  renderReportPanel(currentIndex);
   renderHistoryPanel(currentIndex);
   renderPlanPanel(currentIndex);
 }
@@ -3851,6 +3886,207 @@ function downloadLatestReport() {
   if (result?.message) {
     showNotice(result.message);
   }
+}
+
+function renderReportPanel(sceneIndex = currentIndex) {
+  if (!els.reportPanel || !window.MRAppState?.getReportDetail) {
+    return;
+  }
+
+  let detail = window.MRAppState.getReportDetail(activeReportDetailId);
+  if (activeReportDetailId && !detail) {
+    activeReportDetailId = null;
+    clearReportDetailRoute();
+    detail = window.MRAppState.getReportDetail();
+  }
+
+  const shouldShow = Boolean(detail || sceneIndex >= REPORT_DETAIL_SCENE_INDEX);
+  els.reportPanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  if (!detail) {
+    renderReportEmptyState();
+    setReportDetailActions(null);
+    return;
+  }
+
+  els.reportTitle.textContent = detail.title || "学习报告";
+  els.reportStatus.textContent = detail.status || "站内报告";
+  els.reportSummary.textContent = `${formatHistoryTime(detail.createdAt)} / ${detail.summary || "本报告基于本机练习、作品和评分记录生成。"}`;
+  renderReportStats(detail);
+  renderReportMetrics(detail.scoreBreakdown || {});
+  renderReportTrend(detail.trend || []);
+  renderReportLatest(detail);
+  renderReportRecommendations(detail.recommendations || []);
+  setReportDetailActions(detail);
+}
+
+function renderReportEmptyState() {
+  els.reportTitle.textContent = "暂无站内报告";
+  els.reportStatus.textContent = "待生成";
+  els.reportSummary.textContent = "点击“导出报告”后，会生成可下载的 HTML 文件，并在这里展示同一份本机报告。";
+  [
+    els.reportStats,
+    els.reportMetrics,
+    els.reportTrend,
+    els.reportLatest,
+    els.reportRecommendations
+  ].forEach((node) => {
+    if (node) node.innerHTML = "";
+  });
+
+  if (els.reportStats) {
+    const empty = document.createElement("p");
+    empty.className = "report-empty";
+    empty.textContent = "还没有报告记录。完成一次真实练习并导出报告后，这里会显示学习统计、能力结构、趋势和建议。";
+    els.reportStats.appendChild(empty);
+  }
+}
+
+function renderReportStats(detail) {
+  if (!els.reportStats) return;
+  els.reportStats.innerHTML = "";
+  [
+    ["练习", `${detail.sessionCount || 0}次`],
+    ["作品", `${detail.artworkCount || 0}幅`],
+    ["平均", `${detail.averageScore || 0}分`],
+    ["分钟", `${detail.learningMinutes || 0}`]
+  ].forEach(([label, value]) => {
+    const item = document.createElement("span");
+    const name = document.createElement("small");
+    const data = document.createElement("strong");
+    name.textContent = label;
+    data.textContent = value;
+    item.append(name, data);
+    els.reportStats.appendChild(item);
+  });
+}
+
+function renderReportMetrics(metrics) {
+  if (!els.reportMetrics) return;
+  els.reportMetrics.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "能力结构";
+  const list = document.createElement("div");
+  list.className = "report-metric-list";
+
+  REPORT_METRIC_LABELS.forEach(([key, label]) => {
+    const value = clamp(Number(metrics?.[key]) || 0, 0, 100);
+    const row = document.createElement("div");
+    row.className = `report-metric-row is-${key}`;
+    const name = document.createElement("span");
+    name.textContent = label;
+    const track = document.createElement("i");
+    track.setAttribute("aria-hidden", "true");
+    const fill = document.createElement("b");
+    fill.style.width = `${value}%`;
+    track.appendChild(fill);
+    const score = document.createElement("em");
+    score.textContent = value ? `${value}` : "未评分";
+    row.append(name, track, score);
+    list.appendChild(row);
+  });
+
+  els.reportMetrics.append(title, list);
+}
+
+function renderReportTrend(trend) {
+  if (!els.reportTrend) return;
+  els.reportTrend.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "分数趋势";
+  els.reportTrend.appendChild(title);
+
+  if (!trend.length) {
+    const empty = document.createElement("p");
+    empty.className = "report-empty";
+    empty.textContent = "暂无趋势点。保存练习或作品后再导出报告，会记录最近分数变化。";
+    els.reportTrend.appendChild(empty);
+    return;
+  }
+
+  const bars = document.createElement("div");
+  bars.className = "report-trend-bars";
+  trend.slice(-8).forEach((item) => {
+    const bar = document.createElement("span");
+    const score = clamp(Number(item.score) || 0, 6, 100);
+    bar.className = `report-trend-bar is-${item.type || "record"}`;
+    bar.style.setProperty("--report-score-height", `${score}%`);
+    bar.title = `${item.label || "记录"} ${item.score || 0}分`;
+    bar.setAttribute("aria-label", bar.title);
+
+    const value = document.createElement("em");
+    value.textContent = String(item.score || "-");
+    const label = document.createElement("small");
+    label.textContent = item.label || "记录";
+    bar.append(value, label);
+    bars.appendChild(bar);
+  });
+  els.reportTrend.appendChild(bars);
+}
+
+function renderReportLatest(detail) {
+  if (!els.reportLatest) return;
+  els.reportLatest.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "最近笔迹";
+  els.reportLatest.appendChild(title);
+
+  const latest = document.createElement("div");
+  latest.className = "report-latest-grid";
+
+  const session = document.createElement("div");
+  session.className = "report-latest-text";
+  const sessionTitle = document.createElement("span");
+  sessionTitle.textContent = detail.latestSession?.title || "暂无练习会话";
+  const sessionMeta = document.createElement("small");
+  sessionMeta.textContent = detail.latestSession
+    ? `${detail.latestSession.glyph || "-"} / ${detail.latestSession.strokeCount || 0} 笔 / ${detail.latestSession.pointCount || 0} 点 / ${detail.latestSession.score || 0}分`
+    : "完成一次临摹后，报告会关联最近笔迹。";
+  session.append(sessionTitle, sessionMeta);
+  latest.appendChild(session);
+
+  if (detail.latestArtwork?.imageData) {
+    const image = document.createElement("img");
+    image.src = detail.latestArtwork.imageData;
+    image.alt = detail.latestArtwork.title || "最近作品";
+    latest.appendChild(image);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "report-empty";
+    empty.textContent = detail.latestArtwork
+      ? "最近作品没有截图，可从学习档案回放笔迹。"
+      : "暂无最近作品截图。";
+    latest.appendChild(empty);
+  }
+
+  els.reportLatest.appendChild(latest);
+}
+
+function renderReportRecommendations(items) {
+  if (!els.reportRecommendations) return;
+  els.reportRecommendations.innerHTML = "";
+  (items.length ? items : ["完成真实书写并保存作品后，会生成更具体的练习建议。"]).slice(0, 6).forEach((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    els.reportRecommendations.appendChild(item);
+  });
+}
+
+function setReportDetailActions(detail) {
+  const hasDetail = Boolean(detail);
+  if (els.reportDetailCopyLink) els.reportDetailCopyLink.disabled = !hasDetail;
+  if (els.reportDetailDownload) els.reportDetailDownload.disabled = !hasDetail;
+  if (els.reportDetailOpenHistory) els.reportDetailOpenHistory.disabled = !hasDetail;
+}
+
+function getActiveReportDetail() {
+  if (!window.MRAppState?.getReportDetail) {
+    return null;
+  }
+  return window.MRAppState.getReportDetail(activeReportDetailId);
 }
 
 async function exportPracticeReplayVideo() {
@@ -4438,6 +4674,7 @@ function selectHistoryDetail(recordId, options = {}) {
   }
 
   activeHistoryDetailId = detailId;
+  activeReportDetailId = null;
   if (options.updateUrl !== false) {
     setHistoryDetailRoute(detailId);
   }
@@ -4465,9 +4702,11 @@ function openHistoryDetailRoute(recordId, options = {}) {
 
   const detail = window.MRAppState?.getHistoryDetail?.(detailId) || null;
   activeHistoryDetailId = detail ? detailId : null;
+  activeReportDetailId = null;
   if (options.updateUrl !== false) {
     setHistoryDetailRoute(detailId);
   }
+  clearReportDetailRoute();
   loadScene(6);
 
   if (detail) {
@@ -4484,6 +4723,7 @@ function openHistoryDetailRoute(recordId, options = {}) {
 
 function getHistoryDetailUrl(recordId) {
   const url = new URL(window.location.href);
+  url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId || "").trim());
   return url.toString();
 }
@@ -4494,9 +4734,10 @@ function setHistoryDetailRoute(recordId) {
   }
 
   const url = new URL(window.location.href);
+  url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId));
   window.history.replaceState(
-    { ...(window.history.state || {}), historyDetailId: String(recordId) },
+    { ...(window.history.state || {}), historyDetailId: String(recordId), reportDetailId: null },
     "",
     url.toString()
   );
@@ -4563,6 +4804,141 @@ function fallbackCopyText(text) {
   return ok;
 }
 
+function getReportDetailRouteId() {
+  try {
+    return new URLSearchParams(window.location.search).get(REPORT_DETAIL_QUERY_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function openReportDetailRoute(reportId, options = {}) {
+  const detailId = String(reportId || "").trim();
+  if (!detailId) {
+    return false;
+  }
+
+  const detail = window.MRAppState?.getReportDetail?.(detailId) || null;
+  activeReportDetailId = detail ? detail.id : null;
+  activeHistoryDetailId = null;
+  selectedHistoryIds.clear();
+
+  if (detail) {
+    if (options.updateUrl !== false) {
+      setReportDetailRoute(detail.id);
+    }
+    clearHistoryDetailRoute();
+    loadScene(REPORT_DETAIL_SCENE_INDEX);
+    showNotice(`已打开站内学习报告：${detail.title}`);
+    return true;
+  }
+
+  clearReportDetailRoute();
+  clearHistoryDetailRoute();
+  loadScene(REPORT_DETAIL_SCENE_INDEX);
+  if (options.showMissing) {
+    showNotice("未找到这份学习报告，已打开报告页空状态。");
+  }
+  return false;
+}
+
+function getReportDetailUrl(reportId) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.set(REPORT_DETAIL_QUERY_KEY, String(reportId || "").trim());
+  return url.toString();
+}
+
+function setReportDetailRoute(reportId) {
+  if (!window.history?.replaceState || !reportId) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.set(REPORT_DETAIL_QUERY_KEY, String(reportId));
+  window.history.replaceState(
+    { ...(window.history.state || {}), reportDetailId: String(reportId), historyDetailId: null },
+    "",
+    url.toString()
+  );
+}
+
+function clearReportDetailRoute() {
+  if (!window.history?.replaceState) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(REPORT_DETAIL_QUERY_KEY)) {
+    return;
+  }
+  url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
+  window.history.replaceState(
+    { ...(window.history.state || {}), reportDetailId: null },
+    "",
+    url.toString()
+  );
+}
+
+function copyReportDetailLink() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可复制的站内报告链接。");
+    return;
+  }
+
+  const url = getReportDetailUrl(detail.id);
+  activeReportDetailId = detail.id;
+  setReportDetailRoute(detail.id);
+  copyText(url)
+    .then((ok) => {
+      showNotice(ok
+        ? "已复制这份站内报告的直达链接。"
+        : "已把这份站内报告的直达链接写入地址栏，可手动复制。");
+    });
+}
+
+function downloadReportDetail() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可下载的站内报告。");
+    return;
+  }
+
+  const result = window.MRAppState?.downloadReport?.(detail.id);
+  if (result?.message) {
+    showNotice(result.message);
+  }
+}
+
+function openReportHistoryRecord() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可查看的报告档案记录。");
+    return;
+  }
+
+  activeHistoryFilter = "report";
+  activeHistoryLimit = 50;
+  activeHistoryDetailId = detail.id;
+  activeReportDetailId = null;
+  selectedHistoryIds.clear();
+  setHistoryDetailRoute(detail.id);
+  clearReportDetailRoute();
+  loadScene(6);
+  showNotice(`已打开报告档案记录：${detail.title}`);
+}
+
+function openHistoryReportDetail() {
+  const detail = getActiveHistoryDetail();
+  if (detail?.type !== "report") {
+    showNotice("请选择一条报告记录。");
+    return;
+  }
+  openReportDetailRoute(detail.id);
+}
+
 function handleHistorySelectionChange(event) {
   const input = event.target.closest("[data-history-select-id]");
   if (!input) return;
@@ -4618,6 +4994,10 @@ function deleteSelectedHistoryRecords() {
     if (activeHistoryDetailId && ids.includes(activeHistoryDetailId)) {
       activeHistoryDetailId = null;
       clearHistoryDetailRoute();
+    }
+    if (activeReportDetailId && ids.includes(activeReportDetailId)) {
+      activeReportDetailId = null;
+      clearReportDetailRoute();
     }
     refreshAfterHistoryMutation();
     showNotice(result.message);
@@ -4687,6 +5067,7 @@ function clearHistoryTrash() {
 function refreshAfterHistoryMutation() {
   renderLearningStateSummary();
   renderReviewPanel(currentIndex);
+  renderReportPanel(currentIndex);
   renderHistoryPanel(currentIndex);
   updatePathPanel(currentIndex);
   updateSceneText(currentIndex);
@@ -4801,6 +5182,7 @@ function setHistoryDetailActions(detail) {
   if (els.historyDetailReplay) els.historyDetailReplay.disabled = !hasStrokes;
   if (els.historyDetailDownloadImage) els.historyDetailDownloadImage.disabled = !hasImage;
   if (els.historyDetailDownloadReport) els.historyDetailDownloadReport.disabled = !hasReport;
+  if (els.historyDetailOpenReport) els.historyDetailOpenReport.disabled = !hasReport;
   if (els.historyDetailCopyLink) els.historyDetailCopyLink.disabled = !hasDetail;
   if (els.historyDetailDelete) els.historyDetailDelete.disabled = !hasDetail;
 }
@@ -4850,6 +5232,10 @@ function deleteHistoryDetail() {
   const result = window.MRAppState?.deleteHistoryRecord?.(detail.id);
   if (result?.ok) {
     selectedHistoryIds.delete(detail.id);
+    if (activeReportDetailId === detail.id) {
+      activeReportDetailId = null;
+      clearReportDetailRoute();
+    }
     activeHistoryDetailId = null;
     clearHistoryDetailRoute();
     refreshAfterHistoryMutation();
@@ -4950,12 +5336,17 @@ function loadScene(index) {
     activeHistoryDetailId = null;
     clearHistoryDetailRoute();
   }
+  if (index !== REPORT_DETAIL_SCENE_INDEX && getReportDetailRouteId()) {
+    activeReportDetailId = null;
+    clearReportDetailRoute();
+  }
 
   updateSceneText(index);
   updateStepNavigation(index);
   updateInteractionPanel(index, 0);
   renderLecturePanel(index);
   renderReviewPanel(index);
+  renderReportPanel(index);
   renderHistoryPanel(index);
   renderPlanPanel(index);
   hideError();
@@ -5415,10 +5806,15 @@ function applyActionResult(result = {}, action = {}) {
   if (result.plan?.id) {
     activePlanId = result.plan.id;
   }
+  if (result.report?.id) {
+    activeReportDetailId = result.report.id;
+    setReportDetailRoute(result.report.id);
+  }
   renderLearningStateSummary();
   renderTaskPanel();
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
+  renderReportPanel(currentIndex);
   renderPlanPanel(currentIndex);
 
   if (result.notice) {
@@ -5436,6 +5832,7 @@ function applyActionResult(result = {}, action = {}) {
   renderTaskPanel();
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
+  renderReportPanel(currentIndex);
   renderHistoryPanel(currentIndex);
   renderPlanPanel(currentIndex);
 }

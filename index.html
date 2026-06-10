@@ -174,6 +174,27 @@
           </div>
         </section>
 
+        <section id="reportPanel" class="report-panel" aria-label="站内学习报告" hidden>
+          <div class="report-head">
+            <div>
+              <div class="panel-eyebrow">站内报告</div>
+              <strong id="reportTitle">暂无报告</strong>
+            </div>
+            <span id="reportStatus">待生成</span>
+          </div>
+          <p id="reportSummary" class="report-summary">导出报告后会在这里展示站内复盘。</p>
+          <div id="reportStats" class="report-stats" aria-label="报告统计"></div>
+          <div id="reportMetrics" class="report-metrics" aria-label="能力结构"></div>
+          <div id="reportTrend" class="report-trend" aria-label="报告趋势"></div>
+          <div id="reportLatest" class="report-latest" aria-label="最近笔迹与作品"></div>
+          <ul id="reportRecommendations" class="report-recommendations"></ul>
+          <div class="report-actions">
+            <button data-feature-state="real-local" id="reportDetailCopyLink" type="button">复制报告链接</button>
+            <button data-feature-state="real-export" id="reportDetailDownload" type="button">下载 HTML</button>
+            <button data-feature-state="real-local" id="reportDetailOpenHistory" type="button">查看档案记录</button>
+          </div>
+        </section>
+
         <section id="historyPanel" class="history-panel" aria-label="学习档案" hidden>
           <div class="history-head">
             <div>
@@ -216,6 +237,7 @@
               <button data-feature-state="real-local" id="historyDetailReplay" type="button">回放笔迹</button>
               <button data-feature-state="real-export" id="historyDetailDownloadImage" type="button">下载图片</button>
               <button data-feature-state="real-export" id="historyDetailDownloadReport" type="button">下载报告</button>
+              <button data-feature-state="real-local" id="historyDetailOpenReport" type="button">站内查看</button>
               <button data-feature-state="real-local" id="historyDetailCopyLink" type="button">复制链接</button>
               <button data-feature-state="real-local" id="historyDetailDelete" type="button">删除记录</button>
             </div>

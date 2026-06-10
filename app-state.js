@@ -1405,7 +1405,7 @@
     return {
       ok: true,
       report: clone(report),
-      message: `HTML 学习报告已生成并下载：含能力雷达和打印样式，${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
+      message: `学习报告已生成：站内可复盘，HTML 文件已下载，${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
     };
   }
 
@@ -1734,6 +1734,62 @@
     };
   }
 
+  function getReportDetail(reportId = null) {
+    const recordId = String(reportId || "");
+    const report = recordId
+      ? state.reports.find((item) => item.id === recordId)
+      : state.reports[state.reports.length - 1];
+    if (!report) {
+      return null;
+    }
+
+    const normalizedReport = normalizeReport(report);
+    const latestSession = findReportSession(normalizedReport);
+    const latestArtwork = findReportArtwork(normalizedReport);
+    return {
+      id: normalizedReport.id,
+      type: "report",
+      title: normalizedReport.title || "学习报告",
+      createdAt: normalizedReport.createdAt,
+      status: normalizedReport.format === "html" ? "HTML 报告" : "站内报告",
+      summary: normalizedReport.summary,
+      sessionCount: normalizedReport.sessionCount,
+      artworkCount: normalizedReport.artworkCount,
+      averageScore: normalizedReport.averageScore,
+      learningMinutes: normalizedReport.learningMinutes,
+      latestStrokeCount: normalizedReport.latestStrokeCount,
+      latestPointCount: normalizedReport.latestPointCount,
+      scoreBreakdown: clone(normalizedReport.scoreBreakdown || normalizeMetrics(null)),
+      trend: clone(normalizedReport.trend || []),
+      recommendations: clone(normalizedReport.recommendations || []),
+      latestSession: latestSession
+        ? {
+            id: latestSession.id,
+            title: latestSession.title || `${latestSession.glyph}字练习`,
+            glyph: latestSession.glyph,
+            score: latestSession.score,
+            strokeCount: latestSession.strokeCount || 0,
+            pointCount: latestSession.pointCount || 0,
+            createdAt: latestSession.endedAt || latestSession.snapshotAt || latestSession.startedAt,
+            feedback: clone(latestSession.feedback || [])
+          }
+        : null,
+      latestArtwork: latestArtwork
+        ? {
+            id: latestArtwork.id,
+            title: latestArtwork.title,
+            style: latestArtwork.style,
+            score: latestArtwork.score,
+            strokeCount: latestArtwork.strokeCount || 0,
+            pointCount: latestArtwork.pointCount || 0,
+            createdAt: latestArtwork.createdAt,
+            imageData: latestArtwork.imageData || null,
+            feedback: clone(latestArtwork.feedback || [])
+          }
+        : null
+    };
+  }
+
   function downloadReport(reportId = null) {
     const report = reportId
       ? state.reports.find((item) => item.id === reportId)
@@ -1742,7 +1798,7 @@
       return { ok: false, message: "还没有可下载的报告。" };
     }
     downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
-    return { ok: true, message: "已下载最近的 HTML 学习报告，含能力雷达和打印样式。" };
+    return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达和打印样式。` };
   }
 
   function getHistory(options = {}) {
@@ -2464,6 +2520,7 @@
     getPlanHistory,
     getLatestPlan,
     getReportPreview,
+    getReportDetail,
     getLatestReview,
     getHistory,
     getHistoryDetail,
