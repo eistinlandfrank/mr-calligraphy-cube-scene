@@ -27,7 +27,109 @@
     }
   };
 
-  const COPYBOOKS = ["永字八法", "欧体楷书", "颜体楷书", "赵体行书"];
+  const TASK_LIBRARY = [
+    {
+      id: "single-yong-basic",
+      mode: "single",
+      glyph: "永",
+      copybook: "永字八法",
+      taskTitle: "今日单字：永",
+      level: "基础",
+      focus: "永字八法的八个基本笔势",
+      description: "用“永”字串联点、横、竖、钩、撇、捺等基本笔法，适合建立单字练习基准。",
+      strokePlan: ["观察中宫", "慢写八法", "回放检查", "保存作品"]
+    },
+    {
+      id: "single-ren-structure",
+      mode: "single",
+      glyph: "仁",
+      copybook: "欧体楷书",
+      taskTitle: "今日单字：仁",
+      level: "基础",
+      focus: "左右结构和横画间距",
+      description: "练习单人旁和右部横画的比例，重点观察左右重心与横画长短。",
+      strokePlan: ["拆左右比例", "练单人旁", "控制横距", "保存对比"]
+    },
+    {
+      id: "single-he-balance",
+      mode: "single",
+      glyph: "和",
+      copybook: "颜体楷书",
+      taskTitle: "今日单字：和",
+      level: "进阶",
+      focus: "左右呼应和口部收束",
+      description: "把“禾”和“口”的空间关系写稳定，避免左重右轻或口部松散。",
+      strokePlan: ["确定左右宽度", "练撇捺开合", "收紧口部", "评分复盘"]
+    },
+    {
+      id: "phrase-he-jing",
+      mode: "phrase",
+      glyph: "和",
+      copybook: "集字基础",
+      taskTitle: "集字练习：和敬",
+      level: "基础",
+      focus: "双字间距和行气",
+      description: "从单字过渡到双字组合，先练“和”的稳定，再看“敬”的纵向节奏。",
+      strokePlan: ["单字复写", "双字间距", "行气检查", "作品保存"]
+    },
+    {
+      id: "phrase-li-zhi",
+      mode: "phrase",
+      glyph: "礼",
+      copybook: "欧体楷书",
+      taskTitle: "集字练习：礼志",
+      level: "进阶",
+      focus: "左右结构与上下呼应",
+      description: "练习礼字旁和心字底相关结构，让两字在大小与重心上形成一致节奏。",
+      strokePlan: ["拆偏旁", "定中轴", "连写两字", "查看趋势"]
+    },
+    {
+      id: "phrase-ya-zheng",
+      mode: "phrase",
+      glyph: "雅",
+      copybook: "赵体行书",
+      taskTitle: "集字练习：雅正",
+      level: "挑战",
+      focus: "行书牵丝和双字姿态",
+      description: "观察行书中牵丝、收放和字势变化，练习双字组合的轻重节奏。",
+      strokePlan: ["看字势", "练牵丝", "连写双字", "导出报告"]
+    },
+    {
+      id: "creation-ya",
+      mode: "creation",
+      glyph: "雅",
+      copybook: "创作实践",
+      taskTitle: "创作主题：雅",
+      level: "基础",
+      focus: "单字作品完整度",
+      description: "以“雅”为主题完成一幅单字作品，关注主笔、留白和落款空间。",
+      strokePlan: ["确定章法", "完成创作", "保存作品", "制定计划"]
+    },
+    {
+      id: "creation-jing",
+      mode: "creation",
+      glyph: "静",
+      copybook: "赵体行书",
+      taskTitle: "创作主题：静",
+      level: "进阶",
+      focus: "行书节奏与留白",
+      description: "用行书语感完成“静”字创作，强调线条节奏和画面安定感。",
+      strokePlan: ["观察节奏", "控制留白", "完成作品", "视频回放"]
+    },
+    {
+      id: "creation-xin",
+      mode: "creation",
+      glyph: "心",
+      copybook: "颜体楷书",
+      taskTitle: "创作主题：心",
+      level: "挑战",
+      focus: "少笔画字的姿态控制",
+      description: "用较少笔画建立完整作品气息，重点控制点画之间的呼应和重心。",
+      strokePlan: ["定点位", "练呼应", "保存作品", "报告复盘"]
+    }
+  ];
+
+  const COPYBOOKS = Array.from(new Set(TASK_LIBRARY.map((task) => task.copybook)));
   const STROKES = ["点", "横", "竖", "撇", "捺", "钩", "提", "折"];
   const LECTURE_STEP_COUNT = 5;
   const LECTURE_STEP_SECONDS = 24;
@@ -57,8 +159,11 @@
   function normalizeState(source) {
     const activeMode = source && MODE_CONFIG[source.activeMode] ? source.activeMode : "single";
     const modeConfig = MODE_CONFIG[activeMode];
-    const selectedGlyph = String(source?.selectedGlyph || modeConfig.glyph);
-    const selectedCopybook = String(source?.selectedCopybook || modeConfig.copybook);
+    const baseGlyph = String(source?.selectedGlyph || modeConfig.glyph);
+    const baseCopybook = String(source?.selectedCopybook || modeConfig.copybook);
+    const selectedTask = normalizeTask(source?.selectedTaskId, activeMode, baseGlyph, baseCopybook);
+    const selectedGlyph = String(selectedTask?.glyph || baseGlyph);
+    const selectedCopybook = String(selectedTask?.copybook || baseCopybook);
     const lecture = normalizeLecture(source?.lecture, {
       mode: activeMode,
       glyph: selectedGlyph,
@@ -68,6 +173,7 @@
     return {
       version: VERSION,
       activeMode,
+      selectedTaskId: selectedTask?.id || `${activeMode}-${selectedGlyph}`,
       selectedGlyph,
       selectedCopybook,
       activeStrokeIndex: normalizeInteger(source?.activeStrokeIndex, 0, 0, STROKES.length - 1),
@@ -378,6 +484,62 @@
     return { ...MODE_CONFIG[mode] || MODE_CONFIG.single };
   }
 
+  function getTaskById(taskId) {
+    return TASK_LIBRARY.find((task) => task.id === taskId) || null;
+  }
+
+  function getTasksForMode(mode = state?.activeMode || "single") {
+    const activeMode = MODE_CONFIG[mode] ? mode : "single";
+    return TASK_LIBRARY.filter((task) => task.mode === activeMode);
+  }
+
+  function findTaskForState(mode, glyph, copybook) {
+    const tasks = getTasksForMode(mode);
+    return tasks.find((task) => task.glyph === glyph && task.copybook === copybook)
+      || tasks.find((task) => task.glyph === glyph)
+      || tasks[0]
+      || TASK_LIBRARY[0];
+  }
+
+  function normalizeTask(taskId, mode, glyph, copybook) {
+    const task = taskId ? getTaskById(String(taskId)) : null;
+    if (task && task.mode === mode) {
+      return task;
+    }
+    return findTaskForState(mode, glyph, copybook);
+  }
+
+  function getCurrentTask() {
+    return getTaskById(state.selectedTaskId) || findTaskForState(state.activeMode, state.selectedGlyph, state.selectedCopybook);
+  }
+
+  function getTaskLibrary(mode = state.activeMode) {
+    const tasks = getTasksForMode(mode);
+    const currentTask = getCurrentTask();
+    return {
+      activeMode: MODE_CONFIG[mode] ? mode : state.activeMode,
+      currentTask: clone(currentTask),
+      tasks: clone(tasks.map((task) => ({
+        ...task,
+        active: task.id === currentTask?.id
+      })))
+    };
+  }
+
+  function applyTask(task, options = {}) {
+    if (!task) return null;
+    state.activeMode = task.mode;
+    state.selectedTaskId = task.id;
+    state.selectedGlyph = task.glyph;
+    state.selectedCopybook = task.copybook;
+    state.activeStrokeIndex = 0;
+    if (options.resetSession !== false) {
+      state.currentSessionId = null;
+    }
+    resetLecture();
+    return task;
+  }
+
   function getCurrentSession() {
     return state.sessions.find((session) => session.id === state.currentSessionId) || null;
   }
@@ -453,6 +615,7 @@
 
   function getStats() {
     const sessions = state.sessions;
+    const currentTask = getCurrentTask();
     const savedSessions = sessions.filter((session) => session.status === "saved" || session.endedAt);
     const scores = savedSessions.length ? savedSessions.map((session) => session.score) : sessions.map((session) => session.score);
     const averageScore = scores.length
@@ -479,6 +642,12 @@
     return {
       activeMode: state.activeMode,
       modeLabel: getModeConfig().label,
+      selectedTaskId: currentTask?.id || state.selectedTaskId,
+      taskTitle: currentTask?.taskTitle || getModeConfig().taskTitle,
+      taskDescription: currentTask?.description || getModeConfig().description,
+      taskFocus: currentTask?.focus || "基础笔势",
+      taskLevel: currentTask?.level || "基础",
+      taskSteps: clone(currentTask?.strokePlan || []),
       glyph: state.selectedGlyph,
       copybook: state.selectedCopybook,
       activeStroke: STROKES[state.activeStrokeIndex],
@@ -517,42 +686,65 @@
       return { ok: false, message: "未知学习模式。" };
     }
     const config = MODE_CONFIG[mode];
-    state.activeMode = mode;
-    state.selectedGlyph = config.glyph;
-    state.selectedCopybook = config.copybook;
-    state.currentSessionId = null;
-    resetLecture();
-    state.activeStrokeIndex = 0;
-    addEvent("mode", `切换到${config.label}`);
+    const task = getTasksForMode(mode)[0] || findTaskForState(mode, config.glyph, config.copybook);
+    applyTask(task);
+    addEvent("mode", `切换到${config.label}：${task.taskTitle}`);
     saveState();
     return {
       ok: true,
-      message: `已切换到${config.label}，当前任务为“${config.taskTitle}”。`
+      task: clone(task),
+      message: `已切换到${config.label}，当前任务为“${task.taskTitle}”。`
     };
   }
 
   function selectDailyGlyph() {
-    const config = getModeConfig();
-    state.selectedGlyph = config.glyph;
-    state.selectedCopybook = config.copybook;
-    resetLecture();
-    addEvent("task", config.taskTitle);
+    const tasks = getTasksForMode(state.activeMode);
+    const currentTask = getCurrentTask();
+    const currentIndex = tasks.findIndex((task) => task.id === currentTask?.id);
+    const task = tasks[(currentIndex + 1 + tasks.length) % tasks.length] || currentTask;
+    applyTask(task);
+    addEvent("task", task.taskTitle);
     saveState();
     return {
       ok: true,
-      message: `已确认${config.taskTitle}，碑帖为“${config.copybook}”。`
+      task: clone(task),
+      message: `已确认${task.taskTitle}，碑帖为“${task.copybook}”。`
     };
   }
 
   function rotateCopybook() {
-    const index = COPYBOOKS.indexOf(state.selectedCopybook);
-    state.selectedCopybook = COPYBOOKS[(index + 1 + COPYBOOKS.length) % COPYBOOKS.length];
-    resetLecture();
-    addEvent("copybook", `切换碑帖：${state.selectedCopybook}`);
+    const tasks = getTasksForMode(state.activeMode);
+    const currentTask = getCurrentTask();
+    const currentIndex = tasks.findIndex((task) => task.id === currentTask?.id);
+    const orderedTasks = [
+      ...tasks.slice(Math.max(0, currentIndex + 1)),
+      ...tasks.slice(0, Math.max(0, currentIndex + 1))
+    ];
+    const task = orderedTasks.find((item) => item.copybook !== state.selectedCopybook)
+      || tasks[(currentIndex + 1 + tasks.length) % tasks.length]
+      || currentTask;
+    applyTask(task);
+    addEvent("copybook", `切换碑帖：${task.copybook}`);
     saveState();
     return {
       ok: true,
-      message: `已切换到“${state.selectedCopybook}”，后续练习会记录到当前任务。`
+      task: clone(task),
+      message: `已切换到“${task.copybook}”，当前任务为“${task.taskTitle}”。`
+    };
+  }
+
+  function selectTask(taskId) {
+    const task = getTaskById(String(taskId || ""));
+    if (!task) {
+      return { ok: false, message: "未找到这个学习任务。" };
+    }
+    applyTask(task);
+    addEvent("task", `选择任务：${task.taskTitle}`);
+    saveState();
+    return {
+      ok: true,
+      task: clone(task),
+      message: `已选择“${task.taskTitle}”，重点练习：${task.focus}。`
     };
   }
 
@@ -618,7 +810,7 @@
     const session = {
       id: makeId("session"),
       title: "",
-      taskId: `${state.activeMode}-${state.selectedGlyph}`,
+      taskId: getCurrentTask()?.id || `${state.activeMode}-${state.selectedGlyph}`,
       mode: state.activeMode,
       glyph: state.selectedGlyph,
       copybook: state.selectedCopybook,
@@ -779,6 +971,7 @@
 
   function createPlan() {
     const stats = getStats();
+    const currentTask = getCurrentTask();
     const latestMetrics = stats.latestSession?.metrics || getReportScoreBreakdown();
     const weakness = getWeakestMetric(latestMetrics);
     const hasArtwork = state.artworks.length > 0;
@@ -786,13 +979,15 @@
     const plan = {
       id: makeId("plan"),
       createdAt: new Date().toISOString(),
-      title: `${state.selectedGlyph}字下一阶段练习计划`,
+      title: `${currentTask.taskTitle}下一阶段练习计划`,
       mode: state.activeMode,
+      taskId: currentTask.id,
       glyph: state.selectedGlyph,
       copybook: state.selectedCopybook,
-      summary: `围绕“${state.selectedGlyph}”和“${state.selectedCopybook}”安排 4 个可勾选任务。`,
+      summary: `围绕“${currentTask.taskTitle}”和“${state.selectedCopybook}”安排可勾选任务，重点是${currentTask.focus}。`,
       items: [
         makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`),
+        makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务步骤完成：${currentTask.strokePlan.join("、")}。`),
         makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice),
         makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。"),
         makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。")
@@ -1421,10 +1616,13 @@
   window.MRAppState = {
     storageKey: STORAGE_KEY,
     modes: clone(MODE_CONFIG),
+    tasks: clone(TASK_LIBRARY),
+    copybooks: [...COPYBOOKS],
     strokes: [...STROKES],
     getState: () => clone(state),
     getStats,
     getModeConfig,
+    getTaskLibrary,
     getLectureProgress,
     getLatestPlan,
     getReportPreview,
@@ -1436,6 +1634,7 @@
     setMode,
     selectDailyGlyph,
     rotateCopybook,
+    selectTask,
     startLecture,
     advanceLecture,
     playLecture,

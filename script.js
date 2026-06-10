@@ -763,6 +763,13 @@ const els = {
   infoPanelHandle: document.getElementById("infoPanelHandle"),
   modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
   learningStateSummary: document.getElementById("learningStateSummary"),
+  taskPanel: document.getElementById("taskPanel"),
+  taskTitle: document.getElementById("taskTitle"),
+  taskLevel: document.getElementById("taskLevel"),
+  taskDescription: document.getElementById("taskDescription"),
+  taskMeta: document.getElementById("taskMeta"),
+  taskSteps: document.getElementById("taskSteps"),
+  taskList: document.getElementById("taskList"),
   lecturePanel: document.getElementById("lecturePanel"),
   lectureTitle: document.getElementById("lectureTitle"),
   lectureStatusLabel: document.getElementById("lectureStatusLabel"),
@@ -1364,6 +1371,7 @@ function init() {
   buildPathList();
   bindQuickControls();
   bindLearningControls();
+  bindTaskControls();
   bindReviewControls();
   bindHistoryControls();
   bindPlanControls();
@@ -1376,6 +1384,7 @@ function init() {
   buildSceneConfigPanel();
   initCubeControls();
   renderLearningStateSummary();
+  renderTaskPanel();
 
   loadScene(0);
   if (new URLSearchParams(window.location.search).has("modelView")) {
@@ -3316,6 +3325,20 @@ function bindLearningControls() {
   });
 }
 
+function bindTaskControls() {
+  els.taskList?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-task-id]");
+    if (!button) return;
+
+    stopLecturePlayback();
+    const result = window.MRAppState?.selectTask?.(button.dataset.taskId);
+    if (result?.message) {
+      showNotice(result.message);
+    }
+    renderLearningState();
+  });
+}
+
 function initPracticeCanvas() {
   const stats = window.MRAppState?.getStats?.();
   window.MRPracticeCanvas?.init?.({
@@ -3382,6 +3405,7 @@ function bindPlanControls() {
 
 function renderLearningState() {
   renderLearningStateSummary();
+  renderTaskPanel();
   updateSceneText(currentIndex);
   updateInteractionPanel(currentIndex, activePointIndex);
   updatePathPanel(currentIndex);
@@ -3410,8 +3434,69 @@ function renderLearningStateSummary() {
 
   if (els.learningStateSummary) {
     const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
-    els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.glyph}字 / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${trainingLabel}模式`;
+    els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.taskTitle} / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${trainingLabel}模式`;
   }
+}
+
+function renderTaskPanel() {
+  if (!els.taskPanel || !window.MRAppState?.getTaskLibrary) {
+    return;
+  }
+
+  const library = window.MRAppState.getTaskLibrary();
+  const stats = window.MRAppState.getStats();
+  const task = library.currentTask || {
+    taskTitle: stats.taskTitle,
+    level: stats.taskLevel,
+    description: stats.taskDescription,
+    glyph: stats.glyph,
+    copybook: stats.copybook,
+    focus: stats.taskFocus,
+    strokePlan: stats.taskSteps || []
+  };
+
+  els.taskTitle.textContent = task.taskTitle || stats.taskTitle;
+  els.taskLevel.textContent = task.level || stats.taskLevel || "基础";
+  els.taskDescription.textContent = task.description || stats.taskDescription || "选择任务后显示练习目标。";
+
+  els.taskMeta.innerHTML = "";
+  [
+    ["练习字", `${task.glyph || stats.glyph}字`],
+    ["碑帖", task.copybook || stats.copybook],
+    ["重点", task.focus || stats.taskFocus]
+  ].forEach(([label, value]) => {
+    const chip = document.createElement("span");
+    chip.textContent = `${label}：${value}`;
+    els.taskMeta.appendChild(chip);
+  });
+
+  els.taskSteps.innerHTML = "";
+  const steps = task.strokePlan?.length ? task.strokePlan : stats.taskSteps || [];
+  steps.forEach((step, index) => {
+    const item = document.createElement("li");
+    item.textContent = `${index + 1}. ${step}`;
+    els.taskSteps.appendChild(item);
+  });
+
+  els.taskList.innerHTML = "";
+  library.tasks.forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "task-option";
+    button.dataset.taskId = item.id;
+    button.dataset.featureState = "real";
+    button.classList.toggle("is-active", Boolean(item.active));
+
+    const title = document.createElement("strong");
+    title.textContent = item.taskTitle;
+    const detail = document.createElement("span");
+    detail.textContent = `${item.level} / ${item.copybook}`;
+    const focus = document.createElement("small");
+    focus.textContent = item.focus;
+
+    button.append(title, detail, focus);
+    els.taskList.appendChild(button);
+  });
 }
 
 function renderLecturePanel(sceneIndex = currentIndex) {
@@ -4196,17 +4281,17 @@ function getLearningSceneMetrics(index) {
       return [
         ["综合评分", `${stats.averageScore}分`],
         ["当前模式", stats.modeLabel],
+        ["当前任务", stats.taskTitle],
         ["练习次数", `${stats.sessionCount}次`],
-        ["作品", `${stats.artworkCount}幅`],
-        ["报告", `${stats.reportCount}份`]
+        ["作品", `${stats.artworkCount}幅`]
       ];
     case 1:
       return [
         ["学习时长", `${stats.learningMinutes}分钟`],
-        ["完成练习", `${stats.savedSessionCount}次`],
+        ["任务级别", stats.taskLevel],
         ["当前字", stats.glyph],
         ["碑帖", stats.copybook],
-        ["连续学习", stats.sessionCount > 0 ? "1天" : "0天"]
+        ["练习重点", stats.taskFocus]
       ];
     case 2:
       return [
@@ -4214,7 +4299,7 @@ function getLearningSceneMetrics(index) {
         ["讲解进度", `${lectureProgress?.progressPercent || 0}%`],
         ["当前段落", lectureProgress?.currentStep?.title || "待开始"],
         ["字帖", stats.copybook],
-        ["学习模式", stats.modeLabel]
+        ["任务", stats.taskTitle]
       ];
     case 3:
       return [
@@ -4361,6 +4446,7 @@ function runAction(action) {
 function applyActionResult(result = {}, action = {}) {
   els.actionFeedback.textContent = result.message || action.response;
   renderLearningStateSummary();
+  renderTaskPanel();
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
   renderPlanPanel(currentIndex);
@@ -4377,6 +4463,7 @@ function applyActionResult(result = {}, action = {}) {
 
   updateSceneText(currentIndex);
   updatePathPanel(currentIndex);
+  renderTaskPanel();
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
   renderHistoryPanel(currentIndex);
