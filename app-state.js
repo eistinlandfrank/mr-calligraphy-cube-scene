@@ -227,12 +227,15 @@
   function normalizeArtwork(record) {
     if (!record || typeof record !== "object") return null;
     const feedback = normalizeStringList(record.feedback);
+    const fallbackTask = findTaskForState(record.mode, record.glyph, record.copybook);
     return {
       id: String(record.id || makeId("artwork")),
       sessionId: record.sessionId ? String(record.sessionId) : null,
+      taskId: getTaskById(record.taskId) ? String(record.taskId) : null,
       title: String(record.title || "书法练习作品"),
       glyph: String(record.glyph || "永"),
       mode: MODE_CONFIG[record.mode] ? record.mode : "single",
+      copybook: String(record.copybook || fallbackTask?.copybook || "永字八法"),
       style: String(record.style || "楷书"),
       score: normalizeScore(record.score, 86),
       strokeCount: normalizeInteger(record.strokeCount, 0, 0, 999),
@@ -249,6 +252,7 @@
     if (!record || typeof record !== "object") return null;
     return {
       id: String(record.id || makeId("report")),
+      taskId: getTaskById(record.taskId) ? String(record.taskId) : null,
       title: String(record.title || "学习报告"),
       createdAt: String(record.createdAt || new Date().toISOString()),
       range: String(record.range || "all"),
@@ -283,10 +287,12 @@
     const items = Array.isArray(record.items)
       ? record.items.map(normalizePlanItem).filter(Boolean).slice(0, 8)
       : [];
+    const fallbackTask = findTaskForState(record.mode, record.glyph, record.copybook);
     return {
       id: String(record.id || makeId("plan")),
       createdAt: String(record.createdAt || new Date().toISOString()),
       title: String(record.title || "下一阶段练习计划"),
+      taskId: getTaskById(record.taskId) ? String(record.taskId) : fallbackTask?.id || null,
       mode: MODE_CONFIG[record.mode] ? record.mode : "single",
       glyph: String(record.glyph || "永"),
       copybook: String(record.copybook || "永字八法"),
@@ -518,12 +524,124 @@
     const currentTask = getCurrentTask();
     return {
       activeMode: MODE_CONFIG[mode] ? mode : state.activeMode,
-      currentTask: clone(currentTask),
+      currentTask: currentTask ? clone({
+        ...currentTask,
+        progress: getTaskProgress(currentTask.id)
+      }) : null,
       tasks: clone(tasks.map((task) => ({
         ...task,
-        active: task.id === currentTask?.id
+        active: task.id === currentTask?.id,
+        progress: getTaskProgress(task.id)
       })))
     };
+  }
+
+  function getTaskProgress(taskId = getCurrentTask()?.id) {
+    const task = getTaskById(String(taskId || ""));
+    if (!task) {
+      return {
+        taskId: null,
+        status: "unknown",
+        statusLabel: "未知任务",
+        percent: 0,
+        sessionCount: 0,
+        savedSessionCount: 0,
+        artworkCount: 0,
+        reportCount: 0,
+        averageScore: 0,
+        latestAt: null
+      };
+    }
+
+    const sessions = state.sessions.filter((session) => getSessionTaskId(session) === task.id);
+    const savedSessions = sessions.filter((session) => session.status === "saved" || session.endedAt);
+    const activeSessions = sessions.filter((session) => session.status === "active" && !session.endedAt);
+    const artworks = state.artworks.filter((artwork) => getArtworkTaskId(artwork) === task.id);
+    const reports = state.reports.filter((report) => getReportTaskId(report) === task.id);
+    const scores = [
+      ...savedSessions.map((session) => session.score),
+      ...artworks.map((artwork) => artwork.score)
+    ].filter((score) => Number.isFinite(score) && score > 0);
+    const latestAt = [
+      ...sessions.map((session) => session.endedAt || session.snapshotAt || session.startedAt),
+      ...artworks.map((artwork) => artwork.createdAt),
+      ...reports.map((report) => report.createdAt)
+    ]
+      .filter(Boolean)
+      .filter((date) => Number.isFinite(Date.parse(date)))
+      .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
+
+    const milestones = [
+      { id: "practice", label: "完成练习", done: sessions.length > 0 },
+      { id: "artwork", label: "保存作品", done: savedSessions.length > 0 || artworks.length > 0 },
+      { id: "report", label: "导出报告", done: reports.length > 0 }
+    ];
+    const doneCount = milestones.filter((item) => item.done).length;
+    const status = reports.length > 0
+      ? "reported"
+      : artworks.length > 0 || savedSessions.length > 0
+        ? "artwork"
+        : activeSessions.length > 0
+          ? "active"
+          : sessions.length > 0
+            ? "practiced"
+            : "todo";
+
+    return {
+      taskId: task.id,
+      status,
+      statusLabel: getTaskProgressLabel(status),
+      percent: Math.round((doneCount / milestones.length) * 100),
+      milestones: clone(milestones),
+      sessionCount: sessions.length,
+      savedSessionCount: savedSessions.length,
+      activeSessionCount: activeSessions.length,
+      artworkCount: artworks.length,
+      reportCount: reports.length,
+      averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
+      latestAt
+    };
+  }
+
+  function getTaskProgressLabel(status) {
+    const labels = {
+      reported: "已报告",
+      artwork: "已保存",
+      active: "练习中",
+      practiced: "已练习",
+      todo: "待开始",
+      unknown: "未知任务"
+    };
+    return labels[status] || labels.unknown;
+  }
+
+  function getSessionTaskId(session) {
+    if (!session) return null;
+    if (getTaskById(session.taskId)) return session.taskId;
+    return findTaskForState(session.mode, session.glyph, session.copybook)?.id || null;
+  }
+
+  function getArtworkTaskId(artwork) {
+    if (!artwork) return null;
+    if (getTaskById(artwork.taskId)) return artwork.taskId;
+    const linkedSession = artwork.sessionId
+      ? state.sessions.find((session) => session.id === artwork.sessionId) || null
+      : null;
+    return getSessionTaskId(linkedSession)
+      || findTaskForState(artwork.mode, artwork.glyph, artwork.copybook)?.id
+      || null;
+  }
+
+  function getReportTaskId(report) {
+    if (!report) return null;
+    if (getTaskById(report.taskId)) return report.taskId;
+    const linkedSession = report.latestSessionId
+      ? state.sessions.find((session) => session.id === report.latestSessionId) || null
+      : null;
+    const linkedArtwork = report.latestArtworkId
+      ? state.artworks.find((artwork) => artwork.id === report.latestArtworkId) || null
+      : null;
+    return getSessionTaskId(linkedSession) || getArtworkTaskId(linkedArtwork) || null;
   }
 
   function applyTask(task, options = {}) {
@@ -639,6 +757,7 @@
         ? latestArtwork.feedback
         : [];
     const lectureProgress = getLectureProgress();
+    const taskProgress = getTaskProgress(currentTask?.id);
     return {
       activeMode: state.activeMode,
       modeLabel: getModeConfig().label,
@@ -648,6 +767,7 @@
       taskFocus: currentTask?.focus || "基础笔势",
       taskLevel: currentTask?.level || "基础",
       taskSteps: clone(currentTask?.strokePlan || []),
+      taskProgress,
       glyph: state.selectedGlyph,
       copybook: state.selectedCopybook,
       activeStroke: STROKES[state.activeStrokeIndex],
@@ -937,9 +1057,11 @@
     const artwork = {
       id: makeId("artwork"),
       sessionId: session.id,
+      taskId: getSessionTaskId(session),
       title: `${session.glyph}字${state.artworkStyle}练习`,
       glyph: session.glyph,
       mode: session.mode,
+      copybook: session.copybook,
       style: state.artworkStyle,
       score: session.score,
       strokeCount: session.strokeCount || practice?.strokeCount || 0,
@@ -974,8 +1096,9 @@
     const currentTask = getCurrentTask();
     const latestMetrics = stats.latestSession?.metrics || getReportScoreBreakdown();
     const weakness = getWeakestMetric(latestMetrics);
-    const hasArtwork = state.artworks.length > 0;
-    const hasReport = state.reports.length > 0;
+    const taskProgress = getTaskProgress(currentTask.id);
+    const hasArtwork = taskProgress.artworkCount > 0;
+    const hasReport = taskProgress.reportCount > 0;
     const plan = {
       id: makeId("plan"),
       createdAt: new Date().toISOString(),
@@ -1062,6 +1185,7 @@
     const reportTrend = getReportTrend();
     const report = {
       id: makeId("report"),
+      taskId: stats.selectedTaskId,
       title: "学习报告",
       createdAt: new Date().toISOString(),
       range: "all",
@@ -1623,6 +1747,7 @@
     getStats,
     getModeConfig,
     getTaskLibrary,
+    getTaskProgress,
     getLectureProgress,
     getLatestPlan,
     getReportPreview,

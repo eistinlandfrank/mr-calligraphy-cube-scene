@@ -768,6 +768,7 @@ const els = {
   taskLevel: document.getElementById("taskLevel"),
   taskDescription: document.getElementById("taskDescription"),
   taskMeta: document.getElementById("taskMeta"),
+  taskProgress: document.getElementById("taskProgress"),
   taskSteps: document.getElementById("taskSteps"),
   taskList: document.getElementById("taskList"),
   lecturePanel: document.getElementById("lecturePanel"),
@@ -3452,8 +3453,10 @@ function renderTaskPanel() {
     glyph: stats.glyph,
     copybook: stats.copybook,
     focus: stats.taskFocus,
-    strokePlan: stats.taskSteps || []
+    strokePlan: stats.taskSteps || [],
+    progress: stats.taskProgress
   };
+  const progress = task.progress || stats.taskProgress || {};
 
   els.taskTitle.textContent = task.taskTitle || stats.taskTitle;
   els.taskLevel.textContent = task.level || stats.taskLevel || "基础";
@@ -3463,12 +3466,15 @@ function renderTaskPanel() {
   [
     ["练习字", `${task.glyph || stats.glyph}字`],
     ["碑帖", task.copybook || stats.copybook],
-    ["重点", task.focus || stats.taskFocus]
+    ["重点", task.focus || stats.taskFocus],
+    ["状态", progress.statusLabel || "待开始"]
   ].forEach(([label, value]) => {
     const chip = document.createElement("span");
     chip.textContent = `${label}：${value}`;
     els.taskMeta.appendChild(chip);
   });
+
+  renderTaskProgress(progress);
 
   els.taskSteps.innerHTML = "";
   const steps = task.strokePlan?.length ? task.strokePlan : stats.taskSteps || [];
@@ -3493,10 +3499,48 @@ function renderTaskPanel() {
     detail.textContent = `${item.level} / ${item.copybook}`;
     const focus = document.createElement("small");
     focus.textContent = item.focus;
+    const status = document.createElement("em");
+    status.textContent = `${item.progress?.statusLabel || "待开始"} · ${item.progress?.percent || 0}%`;
 
-    button.append(title, detail, focus);
+    button.append(title, detail, focus, status);
     els.taskList.appendChild(button);
   });
+}
+
+function renderTaskProgress(progress = {}) {
+  if (!els.taskProgress) {
+    return;
+  }
+
+  els.taskProgress.innerHTML = "";
+
+  const head = document.createElement("div");
+  head.className = "task-progress-head";
+  const label = document.createElement("strong");
+  label.textContent = progress.statusLabel || "待开始";
+  const percent = document.createElement("span");
+  percent.textContent = `${progress.percent || 0}%`;
+  head.append(label, percent);
+
+  const rail = document.createElement("div");
+  rail.className = "task-progress-rail";
+  const fill = document.createElement("span");
+  fill.style.width = `${Math.max(0, Math.min(100, progress.percent || 0))}%`;
+  rail.appendChild(fill);
+
+  const detail = document.createElement("p");
+  detail.textContent = `${progress.sessionCount || 0} 次练习 / ${progress.artworkCount || 0} 幅作品 / ${progress.reportCount || 0} 份报告`;
+
+  const milestones = document.createElement("div");
+  milestones.className = "task-milestones";
+  (progress.milestones || []).forEach((item) => {
+    const badge = document.createElement("span");
+    badge.classList.toggle("is-done", Boolean(item.done));
+    badge.textContent = item.done ? `已${item.label}` : item.label;
+    milestones.appendChild(badge);
+  });
+
+  els.taskProgress.append(head, rail, detail, milestones);
 }
 
 function renderLecturePanel(sceneIndex = currentIndex) {
@@ -4287,7 +4331,7 @@ function getLearningSceneMetrics(index) {
       ];
     case 1:
       return [
-        ["学习时长", `${stats.learningMinutes}分钟`],
+        ["任务进度", `${stats.taskProgress?.percent || 0}%`],
         ["任务级别", stats.taskLevel],
         ["当前字", stats.glyph],
         ["碑帖", stats.copybook],
@@ -4625,21 +4669,28 @@ function getLearningPathState(index, stats) {
     return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
   }
 
+  const taskProgress = stats.taskProgress || {};
+
   switch (index) {
     case 1:
       return { done: Boolean(stats.glyph), activeLabel: "选字中", doneLabel: "已选字", pendingLabel: "待选字" };
     case 2:
       return { done: stats.lectureStatus === "complete", activeLabel: "讲解中", doneLabel: "已讲解", pendingLabel: "待讲解" };
     case 3:
-      return { done: stats.sessionCount > 0, activeLabel: stats.sessionCount > 0 ? "练习中" : "待创建", doneLabel: "已练习", pendingLabel: "待练习" };
+      return {
+        done: (taskProgress.sessionCount || 0) > 0,
+        activeLabel: (taskProgress.activeSessionCount || 0) > 0 ? "练习中" : "待创建",
+        doneLabel: "已练习",
+        pendingLabel: "待练习"
+      };
     case 5:
-      return { done: stats.artworkCount > 0, activeLabel: "创作中", doneLabel: "已保存", pendingLabel: "待创作" };
+      return { done: (taskProgress.artworkCount || 0) > 0, activeLabel: "创作中", doneLabel: "已保存", pendingLabel: "待创作" };
     case 6:
-      return { done: stats.sessionCount > 0, activeLabel: "记录中", doneLabel: "有记录", pendingLabel: "无记录" };
+      return { done: (taskProgress.sessionCount || 0) > 0, activeLabel: "记录中", doneLabel: "有记录", pendingLabel: "无记录" };
     case 7:
-      return { done: stats.artworkCount > 0, activeLabel: "复盘中", doneLabel: "可复盘", pendingLabel: "待作品" };
+      return { done: (taskProgress.artworkCount || 0) > 0, activeLabel: "复盘中", doneLabel: "可复盘", pendingLabel: "待作品" };
     case 8:
-      return { done: stats.reportCount > 0, activeLabel: "报告中", doneLabel: "已导出", pendingLabel: "待报告" };
+      return { done: (taskProgress.reportCount || 0) > 0, activeLabel: "报告中", doneLabel: "已导出", pendingLabel: "待报告" };
     case 9:
       {
         const progress = stats.latestPlan?.progress;
