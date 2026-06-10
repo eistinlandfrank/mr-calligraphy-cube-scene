@@ -36,20 +36,139 @@
     return summarizeArchive(archive, "已导出项目档案。");
   }
 
-  async function importProject(file) {
-    if (!file) {
-      return { ok: false, message: "请选择项目档案 JSON 文件。" };
-    }
+  async function importProject(fileOrArchive) {
+    const archive = await resolveArchive(fileOrArchive);
+    await restoreProjectArchive(archive);
+    return summarizeArchive(archive, "已恢复项目档案，刷新页面后生效。");
+  }
 
-    const archive = JSON.parse(await file.text());
+  async function prepareImportProject(file) {
+    const archive = await readArchiveFile(file);
+    return {
+      ok: true,
+      archive,
+      preview: await createArchivePreview(archive),
+      message: "项目档案已校验，请确认差异后恢复。"
+    };
+  }
+
+  async function restoreProjectArchive(archive) {
     validateArchive(archive);
     importLocalStorage(archive.storage || {});
 
     for (const item of DB_ITEMS) {
       await importDbStore(item, archive.indexedDb?.[item.id]);
     }
+  }
 
-    return summarizeArchive(archive, "已恢复项目档案，刷新页面后生效。");
+  async function resolveArchive(fileOrArchive) {
+    if (fileOrArchive && typeof fileOrArchive.text === "function") {
+      const result = await prepareImportProject(fileOrArchive);
+      return result.archive;
+    }
+
+    validateArchive(fileOrArchive);
+    return fileOrArchive;
+  }
+
+  async function readArchiveFile(file) {
+    if (!file) {
+      throw new Error("请选择项目档案 JSON 文件。");
+    }
+
+    let archive;
+    try {
+      archive = JSON.parse(await file.text());
+    } catch (error) {
+      throw new Error("项目档案 JSON 格式不正确，无法读取。");
+    }
+
+    validateArchive(archive);
+    return archive;
+  }
+
+  async function createArchivePreview(archive) {
+    validateArchive(archive);
+
+    const storage = STORAGE_ITEMS.map((item) => compareStorageItem(item, archive.storage || {}));
+    const indexedDb = [];
+
+    for (const item of DB_ITEMS) {
+      indexedDb.push(await compareDbItem(item, archive.indexedDb?.[item.id]));
+    }
+
+    return {
+      exportedAt: archive.exportedAt || "",
+      source: archive.source || "",
+      storage,
+      indexedDb,
+      summary: summarizeImportPreview(storage, indexedDb)
+    };
+  }
+
+  function compareStorageItem(item, storage) {
+    const record = storage[item.key];
+    const incomingValue = record?.value == null ? null : record.value;
+    const currentValue = window.localStorage.getItem(item.key);
+
+    if (incomingValue !== null && typeof incomingValue !== "string") {
+      throw new Error(`项目档案中的 ${item.label} 数据格式不正确。`);
+    }
+
+    return {
+      id: item.key,
+      label: item.label,
+      change: getStorageChange(currentValue, incomingValue),
+      currentBytes: currentValue ? new Blob([currentValue]).size : 0,
+      incomingBytes: incomingValue ? new Blob([incomingValue]).size : 0
+    };
+  }
+
+  async function compareDbItem(item, pack) {
+    const records = Array.isArray(pack?.records) ? pack.records : [];
+    const currentRecords = await readDbStoreRecords(item);
+
+    return {
+      id: item.id,
+      label: item.label,
+      currentCount: currentRecords.length,
+      incomingCount: records.length,
+      change: currentRecords.length === records.length ? "same-count" : "replace"
+    };
+  }
+
+  async function readDbStoreRecords(item) {
+    const db = await openDb(item);
+    const records = await readAllRecords(db, item.storeName);
+    db.close();
+    return records;
+  }
+
+  function getStorageChange(currentValue, incomingValue) {
+    if (incomingValue === null && currentValue == null) return "empty";
+    if (incomingValue === null) return "remove";
+    if (currentValue == null) return "add";
+    if (currentValue === incomingValue) return "same";
+    return "update";
+  }
+
+  function summarizeImportPreview(storage, indexedDb) {
+    const storageSummary = storage.reduce((result, item) => {
+      result[item.change] = (result[item.change] || 0) + 1;
+      return result;
+    }, {});
+    const dbReplaceCount = indexedDb.filter((item) => item.change === "replace").length;
+    const incomingModelCount = indexedDb.reduce((sum, item) => sum + item.incomingCount, 0);
+
+    return {
+      storageAdded: storageSummary.add || 0,
+      storageUpdated: storageSummary.update || 0,
+      storageRemoved: storageSummary.remove || 0,
+      storageSame: storageSummary.same || 0,
+      storageEmpty: storageSummary.empty || 0,
+      dbReplaceCount,
+      incomingModelCount
+    };
   }
 
   function exportLocalStorage() {
@@ -232,12 +351,54 @@
     ].join("");
   }
 
+  function formatArchiveDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "导出时间未知";
+    }
+
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function formatBytes(bytes) {
+    if (!bytes) return "0 B";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function describeStorageChange(item) {
+    const labels = {
+      add: "新增",
+      update: "覆盖",
+      remove: "清空",
+      same: "不变",
+      empty: "保持为空"
+    };
+
+    return `${labels[item.change] || "未知"} · 当前 ${formatBytes(item.currentBytes)} → 档案 ${formatBytes(item.incomingBytes)}`;
+  }
+
+  function describeDbChange(item) {
+    const label = item.change === "replace" ? "替换" : "数量相同";
+    return `${label} · 当前 ${item.currentCount} 个 → 档案 ${item.incomingCount} 个`;
+  }
+
   function bindProjectArchiveControls() {
     const exportButton = document.getElementById("projectExportButton");
     const importFile = document.getElementById("projectImportFile");
     const status = document.getElementById("projectArchiveStatus");
+    const previewBox = document.getElementById("projectImportPreview");
+    const previewTitle = document.getElementById("projectImportPreviewTitle");
+    const previewMeta = document.getElementById("projectImportPreviewMeta");
+    const previewList = document.getElementById("projectImportPreviewList");
+    const confirmButton = document.getElementById("projectImportConfirm");
+    const cancelButton = document.getElementById("projectImportCancel");
 
     if (!exportButton && !importFile) return;
+
+    let pendingArchive = null;
 
     const setStatus = (message, tone = "normal") => {
       if (!status) return;
@@ -245,8 +406,62 @@
       status.dataset.tone = tone;
     };
 
+    const setBusy = (isBusy) => {
+      if (exportButton) exportButton.disabled = isBusy;
+      if (importFile) importFile.disabled = isBusy;
+      if (confirmButton) confirmButton.disabled = isBusy || !pendingArchive;
+      if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
+    };
+
+    const clearPendingImport = () => {
+      pendingArchive = null;
+      if (previewBox) previewBox.hidden = true;
+      if (previewList) previewList.innerHTML = "";
+      if (previewTitle) previewTitle.textContent = "待导入档案";
+      if (previewMeta) previewMeta.textContent = "尚未选择文件";
+      if (confirmButton) confirmButton.disabled = true;
+      if (cancelButton) cancelButton.disabled = true;
+    };
+
+    const appendPreviewLine = (fragment, label, detail, change) => {
+      const item = document.createElement("li");
+      item.dataset.change = change || "normal";
+
+      const title = document.createElement("strong");
+      title.textContent = label;
+
+      const text = document.createElement("span");
+      text.textContent = detail;
+
+      item.append(title, text);
+      fragment.appendChild(item);
+    };
+
+    const renderImportPreview = (preview) => {
+      if (!previewBox || !previewList) return;
+
+      previewBox.hidden = false;
+      if (previewTitle) previewTitle.textContent = "待导入项目档案";
+      if (previewMeta) {
+        const summary = preview.summary;
+        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${summary.incomingModelCount} 模型`;
+      }
+
+      const fragment = document.createDocumentFragment();
+      preview.storage.forEach((item) => appendPreviewLine(fragment, item.label, describeStorageChange(item), item.change));
+      preview.indexedDb.forEach((item) => appendPreviewLine(fragment, item.label, describeDbChange(item), item.change));
+
+      previewList.innerHTML = "";
+      previewList.appendChild(fragment);
+      if (confirmButton) confirmButton.disabled = !pendingArchive;
+      if (cancelButton) cancelButton.disabled = false;
+    };
+
+    clearPendingImport();
+
     if (exportButton) {
       exportButton.addEventListener("click", async () => {
+        clearPendingImport();
         exportButton.disabled = true;
         setStatus("正在整理项目档案，请稍候。", "loading");
         try {
@@ -265,22 +480,46 @@
         const file = importFile.files?.[0];
         if (!file) return;
 
-        if (exportButton) exportButton.disabled = true;
-        importFile.disabled = true;
-        setStatus("正在校验并恢复项目档案。", "loading");
+        clearPendingImport();
+        setBusy(true);
+        setStatus("正在校验项目档案并生成差异预览。", "loading");
         try {
-          const result = await importProject(file);
-          setStatus(`${result.message} 页面即将刷新。`, "success");
-          window.setTimeout(() => window.location.reload(), 900);
+          const result = await prepareImportProject(file);
+          pendingArchive = result.archive;
+          renderImportPreview(result.preview);
+          setStatus(`${result.message} 点击“确认恢复”后才会覆盖当前本机项目。`, "success");
         } catch (error) {
           setStatus(error?.message || "项目档案导入失败。", "error");
-          if (exportButton) exportButton.disabled = false;
-          importFile.disabled = false;
         } finally {
+          setBusy(false);
           importFile.value = "";
         }
       });
     }
+
+    confirmButton?.addEventListener("click", async () => {
+      if (!pendingArchive) {
+        setStatus("请先选择项目档案。", "error");
+        return;
+      }
+
+      setBusy(true);
+      setStatus("正在恢复项目档案，当前本机项目将被档案内容替换。", "loading");
+      try {
+        await restoreProjectArchive(pendingArchive);
+        const result = summarizeArchive(pendingArchive, "已恢复项目档案，刷新页面后生效。");
+        setStatus(`${result.message} 页面即将刷新。`, "success");
+        window.setTimeout(() => window.location.reload(), 900);
+      } catch (error) {
+        setStatus(error?.message || "项目档案导入失败。", "error");
+        setBusy(false);
+      }
+    });
+
+    cancelButton?.addEventListener("click", () => {
+      clearPendingImport();
+      setStatus("已取消导入项目档案，当前本机项目未被修改。", "normal");
+    });
   }
 
   window.MRProjectArchive = {
@@ -288,6 +527,8 @@
     version: ARCHIVE_VERSION,
     exportProject,
     importProject,
+    prepareImportProject,
+    restoreProjectArchive,
     storageItems: STORAGE_ITEMS.map((item) => ({ ...item })),
     dbItems: DB_ITEMS.map((item) => ({ ...item }))
   };

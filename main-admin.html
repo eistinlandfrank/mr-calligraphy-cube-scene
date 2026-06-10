@@ -142,6 +142,17 @@
             </label>
           </div>
           <p id="projectArchiveStatus" class="main-project-status">可导出学习记录、房间配置、场景布局、发布版本、保存历史和本机导入模型。</p>
+          <div id="projectImportPreview" class="main-project-preview" hidden>
+            <div class="main-project-preview-head">
+              <strong id="projectImportPreviewTitle">待导入档案</strong>
+              <span id="projectImportPreviewMeta">尚未选择文件</span>
+            </div>
+            <ul id="projectImportPreviewList" class="main-project-preview-list"></ul>
+            <div class="main-project-confirm">
+              <button id="projectImportConfirm" type="button">确认恢复</button>
+              <button id="projectImportCancel" type="button">取消</button>
+            </div>
+          </div>
         </section>
 
         <section class="main-publish-panel" aria-label="发布预览">
