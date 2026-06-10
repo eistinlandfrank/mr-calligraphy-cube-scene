@@ -5,6 +5,7 @@ import { LoadingState } from "../app/LoadingState.jsx";
 import { CapsulePod } from "./CapsulePod.jsx";
 import { Hotspot } from "./Hotspot.jsx";
 import { SceneObject } from "./SceneObject.jsx";
+import { validateSceneConfig } from "./sceneSchema.js";
 
 const capsuleObjectIds = new Set([
   "capsule-shell",
@@ -44,10 +45,15 @@ export function SceneRenderer({
 }) {
   const [isReady, setIsReady] = useState(false);
   const backgroundColor = sceneConfig?.environment?.fog ? "#d8ded4" : "#ebe2d4";
+  const configValidation = useMemo(() => validateSceneConfig(sceneConfig), [sceneConfig]);
 
   useEffect(() => {
     setIsReady(false);
   }, [sceneConfig?.id, mode]);
+
+  if (!configValidation.valid) {
+    return <ConfigErrorPanel sceneConfig={sceneConfig} errors={configValidation.errors} warnings={configValidation.warnings} />;
+  }
 
   return (
     <div className={`scene-renderer ${className}`} aria-busy={!isReady}>
@@ -106,6 +112,17 @@ export function SceneRenderer({
         </Suspense>
       </Canvas>
     </div>
+  );
+}
+
+function ConfigErrorPanel({ sceneConfig, errors, warnings }) {
+  return (
+    <section className="config-error-panel" role="alert" aria-label="SceneConfig 配置错误">
+      <span>SceneConfig</span>
+      <strong>{sceneConfig?.id ?? "未识别配置"}</strong>
+      <p>{errors[0] ?? "配置格式无效，无法渲染当前场景。"}</p>
+      {warnings.length ? <small>{warnings[0]}</small> : null}
+    </section>
   );
 }
 

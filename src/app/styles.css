@@ -265,6 +265,36 @@ textarea {
   inset: 0;
 }
 
+.config-error-panel {
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  min-height: 100%;
+  padding: 24px;
+  color: #3f2a22;
+  background: #f5e5df;
+}
+
+.config-error-panel span {
+  color: #9b3d31;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.config-error-panel strong {
+  color: #211f1b;
+  font-size: 22px;
+}
+
+.config-error-panel p,
+.config-error-panel small {
+  max-width: 520px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
 .loading-state {
   display: inline-flex;
   align-items: center;
