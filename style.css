@@ -463,7 +463,8 @@ button {
 }
 
 .main-light-panel,
-.main-add-panel {
+.main-add-panel,
+.main-project-panel {
   display: grid;
   gap: 10px;
   padding: 12px;
@@ -527,6 +528,93 @@ button {
 .main-add-panel button:hover {
   border-color: rgba(116, 255, 219, 0.56);
   background: rgba(47, 111, 104, 0.58);
+}
+
+.main-project-actions {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.main-project-actions button,
+.main-project-import {
+  display: grid;
+  align-items: center;
+  min-height: 36px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.34);
+  font: inherit;
+}
+
+.main-project-actions button {
+  cursor: pointer;
+}
+
+.main-project-actions button:hover,
+.main-project-import:hover {
+  border-color: rgba(116, 255, 219, 0.56);
+  background: rgba(47, 111, 104, 0.56);
+}
+
+.main-project-actions button:disabled,
+.main-project-import:has(input:disabled) {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.main-project-import {
+  position: relative;
+  justify-items: center;
+  overflow: hidden;
+  padding: 0 10px;
+  cursor: pointer;
+}
+
+.main-project-import span {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.main-project-import input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.main-project-import input:disabled {
+  cursor: wait;
+}
+
+.main-project-status {
+  min-height: 34px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.66);
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.main-project-status[data-tone="loading"] {
+  color: #dffdf0;
+  border-color: rgba(188, 245, 217, 0.22);
+}
+
+.main-project-status[data-tone="success"] {
+  color: #bcf5d9;
+  border-color: rgba(116, 255, 219, 0.28);
+  background: rgba(47, 111, 104, 0.18);
+}
+
+.main-project-status[data-tone="error"] {
+  color: #ffd5cb;
+  border-color: rgba(255, 120, 94, 0.34);
+  background: rgba(201, 63, 47, 0.14);
 }
 
 .main-light-title {
