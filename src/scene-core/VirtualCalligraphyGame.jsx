@@ -17,6 +17,8 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   const [isPlaying, setIsPlaying] = useState(true);
   const [isDrawing, setIsDrawing] = useState(false);
   const [userStrokePoints, setUserStrokePoints] = useState([]);
+  const [strokeFeedback, setStrokeFeedback] = useState("");
+  const [strokeOrderWarnings, setStrokeOrderWarnings] = useState(0);
   const [completedStrokeIds, setCompletedStrokeIds] = useState([]);
   const [scorePanel, setScorePanel] = useState(null);
   const currentStroke = yongCharacter.strokes[currentStrokeIndex];
@@ -26,6 +28,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     setIsPlaying(true);
     setIsDrawing(false);
     setUserStrokePoints([]);
+    setStrokeFeedback("");
   }, [currentStrokeIndex]);
 
   useEffect(() => {
@@ -95,10 +98,18 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
 
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const point = getSvgPoint(event, svgRef.current);
+    const expectedStart = getExpectedStartPoint(currentStroke);
+
+    if (getPointDistance(point, expectedStart) > 58) {
+      setStrokeOrderWarnings((count) => count + 1);
+      setStrokeFeedback(`请按顺序从「${currentStroke.label}」起笔位置开始。`);
+      return;
+    }
 
     setIsPlaying(false);
     setIsDrawing(true);
     setUserStrokePoints([point]);
+    setStrokeFeedback("正在记录当前笔画轨迹。");
     setProgress(0);
   }
 
@@ -129,6 +140,27 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
 
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     setIsDrawing(false);
+    evaluateStrokeCompletion(userStrokePoints);
+  }
+
+  function evaluateStrokeCompletion(points) {
+    if (points.length < 8 || progress < 0.3) {
+      setStrokeFeedback("轨迹太短，请重写当前笔画。");
+      setProgress(0);
+      return;
+    }
+
+    setCompletedStrokeIds((ids) => (ids.includes(currentStroke.id) ? ids : [...ids, currentStroke.id]));
+    setStrokeFeedback(`「${currentStroke.label}」已完成，系统已进入下一笔。`);
+
+    if (currentStrokeIndex >= yongCharacter.strokes.length - 1) {
+      completeWork();
+      return;
+    }
+
+    window.setTimeout(() => {
+      setCurrentStrokeIndex((index) => Math.min(index + 1, yongCharacter.strokes.length - 1));
+    }, 420);
   }
 
   return (
@@ -188,8 +220,9 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
           <div className="current-stroke-card">
             <span>当前笔画</span>
             <strong>{currentStroke.label}</strong>
-            <p>{activeTip}</p>
+            <p>{strokeFeedback || activeTip}</p>
             <small>已记录 {userStrokePoints.length} 个轨迹点</small>
+            {strokeOrderWarnings ? <small>笔顺提醒 {strokeOrderWarnings} 次</small> : null}
           </div>
           <div className="stroke-pill-grid">
             {yongCharacter.strokes.map((stroke, index) => (
@@ -279,6 +312,11 @@ function getSvgPoint(event, svgElement) {
     y: roundPoint(svgPoint.y),
     t: Math.round(performance.now())
   };
+}
+
+function getExpectedStartPoint(stroke) {
+  const [x = 150, y = 150] = stroke.points[0] ?? [];
+  return { x, y };
 }
 
 function getPointDistance(a, b) {
