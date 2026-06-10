@@ -8,8 +8,24 @@ export default defineConfig({
       name: "preview-route-fallback",
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          if (req.url?.startsWith("/preview/")) {
-            req.url = "/preview/";
+          if (!req.url) {
+            next();
+            return;
+          }
+
+          const [path, query = ""] = req.url.split("?");
+          const suffix = query ? `?${query}` : "";
+
+          if (path === "/demo") {
+            req.url = `/demo/${suffix}`;
+          }
+
+          if (path === "/admin") {
+            req.url = `/admin/${suffix}`;
+          }
+
+          if (path === "/preview" || path.startsWith("/preview/")) {
+            req.url = `/preview/${suffix}`;
           }
 
           next();
