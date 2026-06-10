@@ -1772,14 +1772,19 @@ textarea {
 }
 
 .scene-list button,
-.scene-tree button {
+.scene-tree button,
+.scene-tree-node {
   width: 100%;
   border: 1px solid rgba(38, 34, 28, 0.1);
   border-radius: 8px;
   color: #3f3930;
   background: rgba(255, 255, 255, 0.55);
-  cursor: pointer;
   text-align: left;
+}
+
+.scene-list button,
+.scene-tree button {
+  cursor: pointer;
 }
 
 .scene-list button {
@@ -1790,12 +1795,14 @@ textarea {
 }
 
 .scene-list button strong,
-.scene-tree button strong {
+.scene-tree button strong,
+.scene-tree-node strong {
   overflow-wrap: anywhere;
 }
 
 .scene-list button span,
-.scene-tree small {
+.scene-tree small,
+.scene-tree-empty {
   color: #766c5d;
   font-size: 12px;
   font-weight: 800;
@@ -1813,7 +1820,24 @@ textarea {
   color: rgba(255, 255, 255, 0.78);
 }
 
-.scene-tree button {
+.scene-tree-group {
+  display: grid;
+  gap: 6px;
+}
+
+.scene-tree-group-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 2px 0;
+  color: #766c5d;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.scene-tree button,
+.scene-tree-node {
   display: grid;
   grid-template-columns: 20px minmax(0, 1fr) 18px;
   align-items: center;
@@ -1822,7 +1846,19 @@ textarea {
   padding: 8px 9px;
 }
 
-.scene-tree button span {
+.scene-tree-node.is-readonly {
+  cursor: default;
+}
+
+.scene-tree-empty {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px dashed rgba(38, 34, 28, 0.16);
+  border-radius: 8px;
+}
+
+.scene-tree button span,
+.scene-tree-node span {
   display: grid;
   gap: 2px;
   min-width: 0;

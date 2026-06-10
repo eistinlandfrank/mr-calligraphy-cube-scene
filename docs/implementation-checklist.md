@@ -367,8 +367,10 @@
 - [x] **P6-04：建立 3D Viewport**  
   验收：后台能渲染当前选中场景。
 
-- [ ] **P6-05：建立 Scene Tree**  
+- [x] **P6-05：建立 Scene Tree**  
   验收：对象树显示当前场景 objects、lights、uiPanels、hotspots。
+
+  验收记录：2026-06-10 SceneTree 改为按 Objects、Lights、UI Panels、Hotspots 分组渲染；Objects 保持可点击选择并显示可见状态，其余配置节点以只读行展示标题、ID 或触发类型，空数组显示空状态；`npm run build` 通过。
 
 - [x] **P6-06：实现对象选择**  
   验收：点击对象树或 3D 对象后，属性面板显示对应对象。
