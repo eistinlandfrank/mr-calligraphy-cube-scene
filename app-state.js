@@ -938,6 +938,78 @@
     };
   }
 
+  function getHistoryDetail(id) {
+    const recordId = String(id || "");
+    const session = state.sessions.find((item) => item.id === recordId);
+    if (session) {
+      return {
+        type: "practice",
+        id: session.id,
+        title: `${session.glyph}字${session.trainingMode === "compare" ? "对比" : "示范"}练习`,
+        createdAt: session.endedAt || session.startedAt,
+        score: session.score,
+        status: session.status === "saved" ? "已保存" : "进行中",
+        summary: `${session.copybook} / ${session.strokeCount || 0} 笔 / ${session.pointCount || 0} 个采样点`,
+        glyph: session.glyph,
+        copybook: session.copybook,
+        trainingMode: session.trainingMode,
+        strokeCount: session.strokeCount || 0,
+        pointCount: session.pointCount || 0,
+        metrics: clone(session.metrics),
+        feedback: clone(session.feedback || []),
+        strokes: clone(session.strokes || [])
+      };
+    }
+
+    const artwork = state.artworks.find((item) => item.id === recordId);
+    if (artwork) {
+      const linkedSession = artwork.sessionId
+        ? state.sessions.find((item) => item.id === artwork.sessionId) || null
+        : null;
+      return {
+        type: "artwork",
+        id: artwork.id,
+        title: artwork.title,
+        createdAt: artwork.createdAt,
+        score: artwork.score,
+        status: artwork.imageData ? "有截图" : "无截图",
+        summary: `${artwork.style} / ${artwork.strokeCount || 0} 笔 / ${artwork.pointCount || 0} 个采样点`,
+        glyph: artwork.glyph,
+        style: artwork.style,
+        strokeCount: artwork.strokeCount || 0,
+        pointCount: artwork.pointCount || 0,
+        feedback: clone(artwork.feedback || linkedSession?.feedback || []),
+        imageData: artwork.imageData || null,
+        sessionId: artwork.sessionId,
+        strokes: clone(linkedSession?.strokes || [])
+      };
+    }
+
+    const report = state.reports.find((item) => item.id === recordId);
+    if (report) {
+      return {
+        type: "report",
+        id: report.id,
+        title: "学习报告",
+        createdAt: report.createdAt,
+        score: report.averageScore,
+        status: report.format === "html" ? "HTML" : "可下载",
+        summary: report.summary,
+        sessionCount: report.sessionCount,
+        artworkCount: report.artworkCount,
+        averageScore: report.averageScore,
+        learningMinutes: report.learningMinutes || 0,
+        latestStrokeCount: report.latestStrokeCount || 0,
+        latestPointCount: report.latestPointCount || 0,
+        recommendations: clone(report.recommendations || []),
+        scoreBreakdown: clone(report.scoreBreakdown || normalizeMetrics(null)),
+        trend: clone(report.trend || [])
+      };
+    }
+
+    return null;
+  }
+
   function getHistorySummary(entries) {
     const practiceCount = entries.filter((entry) => entry.type === "practice").length;
     const artworkCount = entries.filter((entry) => entry.type === "artwork").length;
@@ -976,6 +1048,7 @@
     getReportPreview,
     getLatestReview,
     getHistory,
+    getHistoryDetail,
     setMode,
     selectDailyGlyph,
     rotateCopybook,

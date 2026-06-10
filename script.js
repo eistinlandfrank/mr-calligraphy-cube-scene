@@ -787,6 +787,14 @@ const els = {
   historyFilterButtons: Array.from(document.querySelectorAll("[data-history-filter]")),
   historyTrend: document.getElementById("historyTrend"),
   historyList: document.getElementById("historyList"),
+  historyDetail: document.getElementById("historyDetail"),
+  historyDetailType: document.getElementById("historyDetailType"),
+  historyDetailTitle: document.getElementById("historyDetailTitle"),
+  historyDetailBody: document.getElementById("historyDetailBody"),
+  historyDetailClose: document.getElementById("historyDetailClose"),
+  historyDetailReplay: document.getElementById("historyDetailReplay"),
+  historyDetailDownloadImage: document.getElementById("historyDetailDownloadImage"),
+  historyDetailDownloadReport: document.getElementById("historyDetailDownloadReport"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -839,6 +847,7 @@ let activeRoleId = null;
 let activeMainObjectId = null;
 let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
+let activeHistoryDetailId = null;
 const mainSceneUndoStack = [];
 
 document.addEventListener("DOMContentLoaded", init);
@@ -3317,6 +3326,15 @@ function bindHistoryControls() {
       renderHistoryPanel(currentIndex);
     });
   });
+  els.historyList?.addEventListener("click", handleHistoryListClick);
+  els.historyDetailClose?.addEventListener("click", () => {
+    activeHistoryDetailId = null;
+    renderHistoryDetail();
+    renderHistoryPanel(currentIndex);
+  });
+  els.historyDetailReplay?.addEventListener("click", replayHistoryDetail);
+  els.historyDetailDownloadImage?.addEventListener("click", downloadHistoryDetailImage);
+  els.historyDetailDownloadReport?.addEventListener("click", downloadHistoryDetailReport);
   els.historyDownloadArchive?.addEventListener("click", () => {
     const result = window.MRAppState?.downloadArchive?.();
     if (result?.message) {
@@ -3480,6 +3498,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
 
   renderHistoryTrend(history.trend);
   renderHistoryList(history.entries, history.filteredTotal);
+  renderHistoryDetail();
 }
 
 function renderHistoryTrend(trend) {
@@ -3517,8 +3536,12 @@ function renderHistoryList(entries, filteredTotal) {
   }
 
   entries.forEach((entry) => {
-    const item = document.createElement("article");
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = `history-item is-${entry.type}`;
+    item.dataset.historyId = entry.id;
+    item.classList.toggle("is-active", activeHistoryDetailId === entry.id);
+    item.setAttribute("aria-pressed", activeHistoryDetailId === entry.id ? "true" : "false");
     const body = document.createElement("div");
     const title = document.createElement("strong");
     const meta = document.createElement("span");
@@ -3531,6 +3554,163 @@ function renderHistoryList(entries, filteredTotal) {
     item.append(body, score);
     els.historyList.appendChild(item);
   });
+}
+
+function handleHistoryListClick(event) {
+  const item = event.target.closest("[data-history-id]");
+  if (!item) return;
+  activeHistoryDetailId = item.dataset.historyId;
+  renderHistoryPanel(currentIndex);
+}
+
+function renderHistoryDetail() {
+  if (!els.historyDetail || !window.MRAppState?.getHistoryDetail) {
+    return;
+  }
+
+  const detail = activeHistoryDetailId
+    ? window.MRAppState.getHistoryDetail(activeHistoryDetailId)
+    : null;
+
+  if (!detail) {
+    els.historyDetail.hidden = true;
+    setHistoryDetailActions(null);
+    return;
+  }
+
+  els.historyDetail.hidden = false;
+  if (els.historyDetailType) {
+    els.historyDetailType.textContent = getHistoryDetailTypeLabel(detail.type);
+  }
+  if (els.historyDetailTitle) {
+    els.historyDetailTitle.textContent = detail.title;
+  }
+  renderHistoryDetailBody(detail);
+  setHistoryDetailActions(detail);
+}
+
+function renderHistoryDetailBody(detail) {
+  if (!els.historyDetailBody) return;
+  els.historyDetailBody.innerHTML = "";
+
+  const summary = document.createElement("p");
+  summary.className = "history-detail-summary";
+  summary.textContent = `${formatHistoryTime(detail.createdAt)} / ${detail.summary || detail.status}`;
+  els.historyDetailBody.appendChild(summary);
+
+  const stats = document.createElement("div");
+  stats.className = "history-detail-stats";
+  getHistoryDetailStats(detail).forEach(([label, value]) => {
+    const item = document.createElement("span");
+    const name = document.createElement("small");
+    const data = document.createElement("strong");
+    name.textContent = label;
+    data.textContent = String(value);
+    item.append(name, data);
+    stats.appendChild(item);
+  });
+  els.historyDetailBody.appendChild(stats);
+
+  if (detail.imageData) {
+    const image = document.createElement("img");
+    image.className = "history-detail-image";
+    image.src = detail.imageData;
+    image.alt = detail.title;
+    els.historyDetailBody.appendChild(image);
+  }
+
+  const feedback = detail.recommendations || detail.feedback || [];
+  const list = document.createElement("ul");
+  list.className = "history-detail-feedback";
+  (feedback.length ? feedback : ["该记录暂无详细建议。"]).slice(0, 6).forEach((text) => {
+    const item = document.createElement("li");
+    item.textContent = text;
+    list.appendChild(item);
+  });
+  els.historyDetailBody.appendChild(list);
+}
+
+function getHistoryDetailStats(detail) {
+  if (detail.type === "report") {
+    return [
+      ["练习", `${detail.sessionCount || 0}次`],
+      ["作品", `${detail.artworkCount || 0}幅`],
+      ["平均", `${detail.averageScore || 0}分`],
+      ["分钟", `${detail.learningMinutes || 0}`]
+    ];
+  }
+
+  if (detail.type === "artwork") {
+    return [
+      ["评分", `${detail.score || 0}分`],
+      ["风格", detail.style || "-"],
+      ["笔画", `${detail.strokeCount || 0}`],
+      ["采样", `${detail.pointCount || 0}`]
+    ];
+  }
+
+  return [
+    ["评分", `${detail.score || 0}分`],
+    ["字", detail.glyph || "-"],
+    ["笔画", `${detail.strokeCount || 0}`],
+    ["采样", `${detail.pointCount || 0}`]
+  ];
+}
+
+function getHistoryDetailTypeLabel(type) {
+  if (type === "artwork") return "作品详情";
+  if (type === "report") return "报告详情";
+  return "练习详情";
+}
+
+function setHistoryDetailActions(detail) {
+  const hasStrokes = Boolean(detail?.strokes?.length);
+  const hasImage = Boolean(detail?.imageData);
+  const hasReport = detail?.type === "report";
+  if (els.historyDetailReplay) els.historyDetailReplay.disabled = !hasStrokes;
+  if (els.historyDetailDownloadImage) els.historyDetailDownloadImage.disabled = !hasImage;
+  if (els.historyDetailDownloadReport) els.historyDetailDownloadReport.disabled = !hasReport;
+}
+
+function getActiveHistoryDetail() {
+  if (!activeHistoryDetailId || !window.MRAppState?.getHistoryDetail) {
+    return null;
+  }
+  return window.MRAppState.getHistoryDetail(activeHistoryDetailId);
+}
+
+function replayHistoryDetail() {
+  const detail = getActiveHistoryDetail();
+  const strokes = detail?.strokes || [];
+  if (!strokes.length) {
+    showNotice("这条记录没有可回放的笔迹。");
+    return;
+  }
+  window.MRPracticeCanvas?.loadStrokes?.(strokes);
+  window.MRPracticeCanvas?.replay?.();
+  showNotice(`正在回放：${detail.title}`);
+}
+
+function downloadHistoryDetailImage() {
+  const detail = getActiveHistoryDetail();
+  if (!detail?.imageData) {
+    showNotice("这条记录没有可下载的图片。");
+    return;
+  }
+  downloadDataUrl(detail.imageData, `${sanitizeFilename(detail.title)}.jpg`);
+  showNotice("已下载所选历史作品图片。");
+}
+
+function downloadHistoryDetailReport() {
+  const detail = getActiveHistoryDetail();
+  if (detail?.type !== "report") {
+    showNotice("请选择一条报告记录。");
+    return;
+  }
+  const result = window.MRAppState?.downloadReport?.(detail.id);
+  if (result?.message) {
+    showNotice(result.message);
+  }
 }
 
 function formatHistoryTime(value) {
