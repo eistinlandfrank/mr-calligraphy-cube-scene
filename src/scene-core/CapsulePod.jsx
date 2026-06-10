@@ -8,6 +8,14 @@ export function CapsulePod({ mode, phaseIndex, sceneConfig, selectedObjectId, on
   const immersionOn = phaseIndex >= 3 || mode === "elder";
   const gameOn = phaseIndex >= 4 || mode === "elder";
   const reportOn = phaseIndex >= 5;
+  const shellObject = getSceneObject(sceneConfig, "capsule-shell");
+  const doorObject = getSceneObject(sceneConfig, "capsule-door");
+  const chairObject = getSceneObject(sceneConfig, "recliner-chair");
+  const screenObject = getSceneObject(sceneConfig, "immersive-screen");
+  const windowObject = getSceneObject(sceneConfig, "observation-window");
+  const caregiverScreenObject = getSceneObject(sceneConfig, "caregiver-screen", "caregiver-dashboard");
+  const emergencyObject = getSceneObject(sceneConfig, "emergency-button");
+  const brushObject = getSceneObject(sceneConfig, "virtual-brush");
 
   useFrame((state) => {
     if (!brushRef.current) {
@@ -16,85 +24,97 @@ export function CapsulePod({ mode, phaseIndex, sceneConfig, selectedObjectId, on
 
     const t = state.clock.getElapsedTime();
     const active = gameOn ? 1 : 0.22;
-    brushRef.current.position.x = 0.18 + Math.sin(t * 1.8) * 0.28 * active;
-    brushRef.current.position.y = 1.1 + Math.cos(t * 1.4) * 0.12 * active;
+    brushRef.current.position.x = brushObject.position[0] + Math.sin(t * 1.8) * 0.28 * active;
+    brushRef.current.position.y = brushObject.position[1] + Math.cos(t * 1.4) * 0.12 * active;
+    brushRef.current.position.z = brushObject.position[2];
     brushRef.current.rotation.z = -0.35 + Math.sin(t * 1.2) * 0.18 * active;
   });
 
   return (
     <group>
       <CapsuleShell
-        color={getObjectMaterial(sceneConfig, "capsule-shell").color}
+        object={shellObject}
         selected={selectedObjectId === "capsule-shell"}
         mode={mode}
         onSelect={() => onSelectObject?.("capsule-shell")}
       />
       <CapsuleDoor
+        object={doorObject}
         closed={doorClosed}
         selected={selectedObjectId === "capsule-door"}
-        material={getObjectMaterial(sceneConfig, "capsule-door")}
         onSelect={() => onSelectObject?.("capsule-door")}
       />
       <ReclinerChair
+        object={chairObject}
         selected={selectedObjectId === "recliner-chair"}
-        material={getObjectMaterial(sceneConfig, "recliner-chair")}
         onSelect={() => onSelectObject?.("recliner-chair")}
       />
       <ImmersiveScreen
+        object={screenObject}
         active={immersionOn}
         selected={selectedObjectId === "immersive-screen"}
-        material={getObjectMaterial(sceneConfig, "immersive-screen")}
         onSelect={() => onSelectObject?.("immersive-screen")}
       />
       <ObservationWindow
+        object={windowObject}
         selected={selectedObjectId === "observation-window"}
-        material={getObjectMaterial(sceneConfig, "observation-window")}
         hidden={mode === "elder"}
         onSelect={() => onSelectObject?.("observation-window")}
       />
       <CaregiverScreen
+        object={caregiverScreenObject}
         active={mode === "caregiver" || reportOn}
         selected={selectedObjectId === "caregiver-screen" || selectedObjectId === "caregiver-dashboard"}
-        material={getObjectMaterial(sceneConfig, "caregiver-screen", "caregiver-dashboard")}
         hidden={mode === "elder"}
         onSelect={() => onSelectObject?.("caregiver-screen")}
       />
       <EmergencyButton
+        object={emergencyObject}
         selected={selectedObjectId === "emergency-button"}
-        material={getObjectMaterial(sceneConfig, "emergency-button")}
         hidden={mode === "elder"}
         onSelect={() => onSelectObject?.("emergency-button")}
       />
-      <VirtualBrush refObject={brushRef} active={gameOn} />
+      <VirtualBrush object={brushObject} refObject={brushRef} active={gameOn} />
       <InkPanels active={immersionOn} reportOn={reportOn} />
     </group>
   );
 }
 
-function CapsuleShell({ color, selected, mode, onSelect }) {
+function CapsuleShell({ object, selected, mode, onSelect }) {
+  if (object.visible === false) {
+    return null;
+  }
+
+  const material = object.material;
+
   return (
-    <group onClick={stopAndRun(onSelect)}>
-      <mesh castShadow receiveShadow rotation={[0, 0, Math.PI / 2]} position={[0, 0.98, 0]}>
+    <group
+      onClick={stopAndRun(onSelect)}
+      position={object.position}
+      rotation={object.rotation}
+      scale={object.scale}
+    >
+      <mesh castShadow receiveShadow rotation={[0, 0, Math.PI / 2]}>
         <capsuleGeometry args={[0.82, 3.25, 24, 56]} />
         <meshPhysicalMaterial
-          color={color}
-          roughness={0.46}
-          metalness={0.08}
+          color={material.color}
+          roughness={material.roughness ?? 0.46}
+          metalness={material.metalness ?? 0.08}
           transparent
-          opacity={mode === "elder" ? 0.16 : 0.42}
+          opacity={mode === "elder" ? 0.16 : Math.min(material.opacity ?? 1, 0.62)}
           transmission={0.08}
           side={THREE.DoubleSide}
         />
       </mesh>
-      <mesh rotation={[0, 0, Math.PI / 2]} position={[0, 0.98, 0]}>
+      <mesh rotation={[0, 0, Math.PI / 2]}>
         <torusGeometry args={[0.83, 0.025, 12, 64]} />
         <meshStandardMaterial color={selected ? "#d7aa72" : "#9b7c55"} roughness={0.34} metalness={0.18} />
       </mesh>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[-1.78, 0.98, 0]}>
+      <mesh rotation={[0, Math.PI / 2, 0]} position={[-1.78, 0, 0]}>
         <torusGeometry args={[0.83, 0.028, 12, 64]} />
         <meshStandardMaterial color={selected ? "#d7aa72" : "#9b7c55"} roughness={0.34} metalness={0.18} />
       </mesh>
-      <mesh rotation={[0, Math.PI / 2, 0]} position={[1.78, 0.98, 0]}>
+      <mesh rotation={[0, Math.PI / 2, 0]} position={[1.78, 0, 0]}>
         <torusGeometry args={[0.83, 0.028, 12, 64]} />
         <meshStandardMaterial color={selected ? "#d7aa72" : "#9b7c55"} roughness={0.34} metalness={0.18} />
       </mesh>
@@ -102,12 +122,18 @@ function CapsuleShell({ color, selected, mode, onSelect }) {
   );
 }
 
-function CapsuleDoor({ closed, selected, material, onSelect }) {
-  const x = closed ? 0.86 : 1.34;
+function CapsuleDoor({ object, closed, selected, onSelect }) {
+  if (object.visible === false) {
+    return null;
+  }
+
+  const position = [...object.position];
+  const material = object.material;
+  position[0] += closed ? -0.18 : 0.34;
 
   return (
-    <group onClick={stopAndRun(onSelect)}>
-      <mesh castShadow position={[x, 1.02, 0.43]} rotation={[0, -0.2, 0]}>
+    <group onClick={stopAndRun(onSelect)} position={position} rotation={object.rotation} scale={object.scale}>
+      <mesh castShadow>
         <boxGeometry args={[0.08, 1.18, 1.28]} />
         <meshPhysicalMaterial
           color={material.color}
@@ -118,7 +144,7 @@ function CapsuleDoor({ closed, selected, material, onSelect }) {
           transmission={0.2}
         />
       </mesh>
-      <mesh position={[x + 0.02, 1.02, 1.1]} rotation={[0, -0.2, 0]}>
+      <mesh position={[0.02, 0, 0.67]}>
         <boxGeometry args={[0.04, 0.92, 0.04]} />
         <meshStandardMaterial color={selected ? "#d7aa72" : "#8f6a45"} roughness={0.3} metalness={0.26} />
       </mesh>
@@ -126,9 +152,15 @@ function CapsuleDoor({ closed, selected, material, onSelect }) {
   );
 }
 
-function ReclinerChair({ selected, material, onSelect }) {
+function ReclinerChair({ object, selected, onSelect }) {
+  if (object.visible === false) {
+    return null;
+  }
+
+  const material = object.material;
+
   return (
-    <group onClick={stopAndRun(onSelect)} position={[-0.18, 0.45, 0]}>
+    <group onClick={stopAndRun(onSelect)} position={object.position} rotation={object.rotation} scale={object.scale}>
       <mesh castShadow receiveShadow rotation={[0.16, 0, 0]}>
         <boxGeometry args={[1.7, 0.18, 0.56]} />
         <meshStandardMaterial color={selected ? "#d7aa72" : material.color} roughness={0.64} metalness={0.04} />
@@ -149,9 +181,15 @@ function ReclinerChair({ selected, material, onSelect }) {
   );
 }
 
-function ImmersiveScreen({ active, selected, material, onSelect }) {
+function ImmersiveScreen({ object, active, selected, onSelect }) {
+  if (object.visible === false) {
+    return null;
+  }
+
+  const material = object.material;
+
   return (
-    <group onClick={stopAndRun(onSelect)} position={[0, 1.16, -0.22]}>
+    <group onClick={stopAndRun(onSelect)} position={object.position} rotation={object.rotation} scale={object.scale}>
       <mesh rotation={[0, 0, 0]}>
         <cylinderGeometry args={[1.18, 1.18, 2.85, 64, 1, true, Math.PI * 0.61, Math.PI * 0.78]} />
         <meshStandardMaterial
@@ -171,13 +209,15 @@ function ImmersiveScreen({ active, selected, material, onSelect }) {
   );
 }
 
-function ObservationWindow({ selected, material, hidden, onSelect }) {
-  if (hidden) {
+function ObservationWindow({ object, selected, hidden, onSelect }) {
+  if (hidden || object.visible === false) {
     return null;
   }
 
+  const material = object.material;
+
   return (
-    <mesh onClick={stopAndRun(onSelect)} castShadow position={[0.18, 1.28, 0.84]} rotation={[0, 0.02, 0]}>
+    <mesh onClick={stopAndRun(onSelect)} castShadow position={object.position} rotation={object.rotation} scale={object.scale}>
       <boxGeometry args={[1.15, 0.42, 0.05]} />
       <meshPhysicalMaterial
         color={selected ? "#d7aa72" : material.color}
@@ -191,13 +231,15 @@ function ObservationWindow({ selected, material, hidden, onSelect }) {
   );
 }
 
-function CaregiverScreen({ active, selected, material, hidden, onSelect }) {
-  if (hidden) {
+function CaregiverScreen({ object, active, selected, hidden, onSelect }) {
+  if (hidden || object.visible === false) {
     return null;
   }
 
+  const material = object.material;
+
   return (
-    <group onClick={stopAndRun(onSelect)} position={[-1.78, 1.17, 0.38]} rotation={[0, 0.42, 0]}>
+    <group onClick={stopAndRun(onSelect)} position={object.position} rotation={object.rotation} scale={object.scale}>
       <mesh castShadow>
         <boxGeometry args={[0.74, 0.52, 0.06]} />
         <meshStandardMaterial
@@ -216,13 +258,15 @@ function CaregiverScreen({ active, selected, material, hidden, onSelect }) {
   );
 }
 
-function EmergencyButton({ selected, material, hidden, onSelect }) {
-  if (hidden) {
+function EmergencyButton({ object, selected, hidden, onSelect }) {
+  if (hidden || object.visible === false) {
     return null;
   }
 
+  const material = object.material;
+
   return (
-    <group onClick={stopAndRun(onSelect)} position={[-1.46, 0.62, 0.95]}>
+    <group onClick={stopAndRun(onSelect)} position={object.position} rotation={object.rotation} scale={object.scale}>
       <mesh castShadow>
         <cylinderGeometry args={[0.14, 0.14, 0.06, 32]} />
         <meshStandardMaterial color="#3b2a24" roughness={0.42} metalness={0.12} />
@@ -241,9 +285,15 @@ function EmergencyButton({ selected, material, hidden, onSelect }) {
   );
 }
 
-function VirtualBrush({ refObject, active }) {
+function VirtualBrush({ object, refObject, active }) {
   return (
-    <group ref={refObject} position={[0.18, 1.1, 0.1]} rotation={[0.22, 0, -0.35]} visible={active}>
+    <group
+      ref={refObject}
+      position={object.position}
+      rotation={object.rotation}
+      scale={object.scale}
+      visible={active && object.visible !== false}
+    >
       <mesh castShadow rotation={[0, 0, Math.PI / 2]}>
         <cylinderGeometry args={[0.035, 0.035, 0.8, 24]} />
         <meshStandardMaterial color="#b98945" roughness={0.4} metalness={0.04} />
@@ -275,9 +325,39 @@ function InkPanels({ active, reportOn }) {
   );
 }
 
-function getObjectMaterial(sceneConfig, ...ids) {
+function getSceneObject(sceneConfig, ...ids) {
   const object = sceneConfig?.objects?.find((item) => ids.includes(item.id));
+  const defaults = getDefaultTransform(ids[0]);
+  const material = getObjectMaterial(object);
 
+  return {
+    id: object?.id ?? ids[0],
+    visible: object?.visible ?? true,
+    interactive: object?.interactive ?? false,
+    position: object?.position ?? defaults.position,
+    rotation: object?.rotation ?? defaults.rotation,
+    scale: object?.scale ?? defaults.scale,
+    material
+  };
+}
+
+function getDefaultTransform(id) {
+  const map = {
+    "capsule-shell": { position: [0, 0.98, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    "capsule-door": { position: [1.26, 1.04, 0.18], rotation: [0, -0.2, 0], scale: [1, 1, 1] },
+    "recliner-chair": { position: [-0.18, 0.45, 0], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    "immersive-screen": { position: [0, 1.16, -0.22], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    "observation-window": { position: [0.18, 1.28, 0.84], rotation: [0, 0.02, 0], scale: [1, 1, 1] },
+    "caregiver-screen": { position: [-1.78, 1.17, 0.38], rotation: [0, 0.42, 0], scale: [1, 1, 1] },
+    "caregiver-dashboard": { position: [-1.78, 1.17, 0.38], rotation: [0, 0.42, 0], scale: [1, 1, 1] },
+    "emergency-button": { position: [-1.46, 0.62, 0.95], rotation: [0, 0, 0], scale: [1, 1, 1] },
+    "virtual-brush": { position: [0.18, 1.1, 0.1], rotation: [0.22, 0, -0.35], scale: [1, 1, 1] }
+  };
+
+  return map[id] ?? { position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1] };
+}
+
+function getObjectMaterial(object) {
   return {
     color: object?.material?.color ?? "#f1eadf",
     roughness: object?.material?.roughness ?? 0.45,
