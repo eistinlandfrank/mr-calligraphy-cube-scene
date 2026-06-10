@@ -329,6 +329,132 @@ body.admin-page .design-panel {
   right: 28px;
   top: 126px;
   bottom: auto;
+  max-height: calc(100vh - 154px);
+  overflow-y: auto;
+}
+
+.realistic-publish-panel,
+.realistic-history-panel {
+  display: grid;
+  gap: 9px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 249, 237, 0.16);
+}
+
+.realistic-panel-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.realistic-panel-title span {
+  color: #d9b884;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.realistic-panel-title strong {
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.realistic-panel-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.realistic-history-panel .realistic-panel-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.realistic-panel-actions button,
+.realistic-snapshot-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(255, 249, 237, 0.26);
+  border-radius: 8px;
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.realistic-panel-actions button:hover,
+.realistic-panel-actions button:focus-visible,
+.realistic-snapshot-actions button:hover,
+.realistic-snapshot-actions button:focus-visible {
+  border-color: rgba(217, 184, 132, 0.72);
+  outline: none;
+  background: rgba(184, 59, 40, 0.82);
+}
+
+.realistic-panel-status {
+  min-height: 22px;
+  margin: 0;
+  color: rgba(255, 249, 237, 0.68);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.realistic-panel-status[data-tone="success"] {
+  color: #a9f0c5;
+}
+
+.realistic-panel-status[data-tone="error"] {
+  color: #ffaf9b;
+}
+
+.realistic-snapshot-list {
+  display: grid;
+  gap: 7px;
+}
+
+.realistic-snapshot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(255, 249, 237, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.realistic-snapshot-detail {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.realistic-snapshot-detail strong,
+.realistic-snapshot-detail span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.realistic-snapshot-detail strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.realistic-snapshot-detail span {
+  color: rgba(255, 249, 237, 0.58);
+  font-size: 11px;
+}
+
+.realistic-snapshot-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.realistic-snapshot-actions button {
+  min-height: 30px;
+  padding: 0 8px;
 }
 
 @media (max-width: 720px) {

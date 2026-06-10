@@ -7,7 +7,9 @@
     mainLayout: "mr-calligraphy-main-scene-layout-v1",
     mainHistory: "mr-calligraphy-main-scene-history-v1",
     mainPublished: "mr-calligraphy-main-scene-published-v1",
-    realisticLayout: "mr-calligraphy-realistic-layout-v1"
+    realisticLayout: "mr-calligraphy-realistic-layout-v1",
+    realisticHistory: "mr-calligraphy-realistic-history-v1",
+    realisticPublished: "mr-calligraphy-realistic-published-v1"
   };
 
   function createProjectSchema(source = {}) {
@@ -19,8 +21,10 @@
     const mainHistory = parseStorageJson(storage, STORAGE_KEYS.mainHistory);
     const mainPublished = parseStorageJson(storage, STORAGE_KEYS.mainPublished);
     const realisticLayout = parseStorageJson(storage, STORAGE_KEYS.realisticLayout);
+    const realisticHistory = parseStorageJson(storage, STORAGE_KEYS.realisticHistory);
+    const realisticPublished = parseStorageJson(storage, STORAGE_KEYS.realisticPublished);
     const mainScene = normalizeMainScene(mainLayout, mainHistory, mainPublished);
-    const realisticScene = normalizeRealisticScene(realisticLayout);
+    const realisticScene = normalizeRealisticScene(realisticLayout, realisticHistory, realisticPublished);
     const assetManifest = createAssetManifest(mainScene, realisticScene, indexedDb);
     const sections = {
       learning: normalizeLearning(learning),
@@ -163,29 +167,57 @@
     };
   }
 
-  function normalizeRealisticScene(layout) {
+  function normalizeRealisticScene(layout, history, published) {
+    const draft = normalizeRealisticLayout(layout);
+    const snapshots = Array.isArray(history?.snapshots) ? history.snapshots : Array.isArray(history) ? history : [];
+    const latestSnapshotAt = snapshots.map((item) => normalizeDate(item?.createdAt)).filter(Boolean).sort().pop() || null;
+    const publishedLayout = normalizeRealisticLayout(published?.layout);
+    const publishedAt = normalizeDate(published?.publishedAt);
+
+    return {
+      schema: "realistic-layout-v1",
+      storageKeys: {
+        draft: STORAGE_KEYS.realisticLayout,
+        history: STORAGE_KEYS.realisticHistory,
+        published: STORAGE_KEYS.realisticPublished
+      },
+      available: Boolean(layout),
+      draft,
+      history: {
+        supported: true,
+        snapshotCount: snapshots.length,
+        latestSnapshotAt
+      },
+      published: {
+        supported: true,
+        status: published?.layout ? "published-local" : "not-published",
+        publishedAt,
+        stats: normalizeRealisticStats(published?.stats),
+        layout: publishedLayout
+      }
+    };
+  }
+
+  function normalizeRealisticLayout(layout) {
     const importedModels = Array.isArray(layout?.importedModels) ? layout.importedModels : [];
     const objectEntries = Object.entries(layout && typeof layout === "object" ? layout : {})
       .filter(([key, value]) => key !== "importedModels" && value && typeof value === "object");
     const deletedCount = objectEntries.filter(([, value]) => value?.deleted === true).length;
 
     return {
-      schema: "realistic-layout-v1",
-      storageKey: STORAGE_KEYS.realisticLayout,
-      available: Boolean(layout),
       objectStateCount: objectEntries.length,
       importedCount: importedModels.length,
       deletedCount,
       objectIds: objectEntries.map(([key]) => key),
-      importedIds: importedModels.map((item, index) => String(item?.id || `realistic-imported-${index + 1}`)),
-      history: {
-        supported: false,
-        snapshotCount: 0
-      },
-      published: {
-        supported: false,
-        status: "not-supported"
-      }
+      importedIds: importedModels.map((item, index) => String(item?.id || `realistic-imported-${index + 1}`))
+    };
+  }
+
+  function normalizeRealisticStats(stats) {
+    return {
+      objectStateCount: normalizeCount(stats?.objectStateCount),
+      importedCount: normalizeCount(stats?.importedCount),
+      deletedCount: normalizeCount(stats?.deletedCount)
     };
   }
 
@@ -193,7 +225,7 @@
     const mainDbKeys = new Set(getDbRecords(indexedDb?.mainModels).map((record) => String(record?.data?.key || record?.data?.id || "")));
     const realisticDbKeys = new Set(getDbRecords(indexedDb?.realisticModels).map((record) => String(record?.data?.id || record?.data?.dbKey || "")));
     const mainAssets = collectImportedAssets("main", mainScene?.draft?.importedIds || [], getStorageImportedRecords(indexedDb, "mainModels"), mainDbKeys);
-    const realisticAssets = collectImportedAssets("realistic", realisticScene?.importedIds || [], getStorageImportedRecords(indexedDb, "realisticModels"), realisticDbKeys);
+    const realisticAssets = collectImportedAssets("realistic", realisticScene?.draft?.importedIds || [], getStorageImportedRecords(indexedDb, "realisticModels"), realisticDbKeys);
     const assets = [...mainAssets, ...realisticAssets];
 
     return {
@@ -235,7 +267,8 @@
       learningRecords: (sections.learning.sessionCount || 0) + (sections.learning.artworkCount || 0) + (sections.learning.reportCount || 0),
       mainDraftObjects: (sections.mainScene.draft.objectStateCount || 0) + (sections.mainScene.draft.customCount || 0) + (sections.mainScene.draft.importedCount || 0),
       mainSnapshots: sections.mainScene.history.snapshotCount || 0,
-      realisticObjects: (sections.realisticScene.objectStateCount || 0) + (sections.realisticScene.importedCount || 0),
+      realisticObjects: (sections.realisticScene.draft.objectStateCount || 0) + (sections.realisticScene.draft.importedCount || 0),
+      realisticSnapshots: sections.realisticScene.history.snapshotCount || 0,
       roomRoles: sections.room.roleCount || 0,
       importedModels: assetManifest.importedModelCount || 0,
       missingModelBinaries: assetManifest.missingBinaryCount || 0

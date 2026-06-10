@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；仍缺完整版本迁移和跨后台发布适配。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；写实后台保存历史和本机发布已补第一版，仍缺完整版本迁移、对象 schema 统一和远端发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -89,6 +89,8 @@
 - `roles`：场景角色列表。
 - `mainSceneLayout`：主场景物体布局、灯光、导入模型索引。
 - `realisticSceneLayout`：写实场景物体布局、导入模型索引。
+- `realisticSceneHistory`：写实场景最近 10 次本机快照。
+- `realisticScenePublished`：写实演示页读取的本机发布版本。
 
 ### 4.2 LearningTask
 
@@ -229,7 +231,7 @@
 - 增加项目级“导入/导出/备份/恢复”。第一版已完成，并已补差异预览、二次确认和选择性恢复。
 - 增加保存历史，至少保留最近 10 次布局快照。主后台第一版已完成。
 - 后台页面增加“预览前台”入口，能带当前配置打开 `index.html`。主后台第一版已完成。
-- 明确主后台与写实后台的边界，避免两套编辑器能力割裂。导入模型校验与 IndexedDB 读写已统一，后续继续统一对象 schema 和历史记录。
+- 明确主后台与写实后台的边界，避免两套编辑器能力割裂。导入模型校验、IndexedDB 读写、写实保存历史和本机发布已补第一版，后续继续统一对象 schema、迁移执行器和远端发布。
 
 验收：
 
@@ -768,7 +770,7 @@
 已知限制：
 
 - 写实后台的“删除物体”仍是可撤回的隐藏状态，不是永久删除；因此不会在删除时清理 IndexedDB 文件。
-- 主后台和写实后台已共用 `model-import-utils.js` 的导入校验、指标和 IndexedDB 读写；后续继续统一对象 schema 和历史记录。
+- 主后台和写实后台已共用 `model-import-utils.js` 的导入校验、指标和 IndexedDB 读写；写实后台历史和本机发布已补第一版，后续继续统一对象 schema、迁移执行器和远端发布。
 - 模型校验仍没有覆盖外部贴图依赖、动画、骨骼和材质完整性。
 
 ### 2026-06-11：补齐主后台草稿预览和发布边界
@@ -1821,7 +1823,7 @@
 
 已知限制：
 
-- 两套后台只统一了导入模型底层工具；对象 schema、历史记录、发布流程和远端资产服务仍未统一。
+- 两套后台已统一导入模型底层工具，并补齐写实后台本机历史和本机发布第一版；对象 schema、迁移执行器、发布说明、回滚原因和远端资产服务仍未统一。
 - 当前导入校验仍是浏览器端静态预检，不能替代后端安全扫描和资产管线处理。
 - OBJ 材质仍按后台各自场景策略处理，还没有统一材质映射配置。
 
@@ -1934,7 +1936,7 @@
 - schema 将 `mr-calligraphy-learning-state-v1` 归一化为学习 section，统计练习、真实笔迹练习、作品、报告、计划和最近记录时间。
 - schema 将 `mr-calligraphy-room-config-v3-wood` 归一化为房间 section，统计贴图和角色。
 - schema 将主后台草稿、保存历史和本机发布版本归一化为 `mainScene` section，区分 draft、history 和 published。
-- schema 将写实后台布局归一化为 `realisticScene` section，并明确当前写实后台历史和发布能力仍未支持。
+- schema 将写实后台布局、保存历史和本机发布版本归一化为 `realisticScene` section，区分 draft、history 和 published。
 - schema 生成 `assetManifest`，列出主后台与写实后台导入模型，并标记 IndexedDB 二进制是否存在。
 - `project-archive.js` 导出项目档案时会写入 `projectSchema`；导入旧档案时也会临时合成 schema 用于预览。
 - 导入预览顶部显示 schema 版本和导入模型数量，方便确认档案不是单纯 raw localStorage 包。
@@ -1943,7 +1945,7 @@
 验收方式：
 
 - 打开 `http://localhost:41496/main-admin.html`，点击“导出项目档案”，下载 JSON 应包含 `projectSchema`。
-- `projectSchema.summary` 应包含 `learningRecords`、`mainDraftObjects`、`realisticObjects`、`importedModels` 等统一摘要。
+- `projectSchema.summary` 应包含 `learningRecords`、`mainDraftObjects`、`realisticObjects`、`realisticSnapshots`、`importedModels` 等统一摘要。
 - 导入项目档案预览时，顶部应显示 `schema v1` 和模型数量。
 - 旧项目档案没有 `projectSchema` 时，仍可导入预览，并由当前工具临时合成 schema 摘要。
 
@@ -1958,5 +1960,55 @@
 已知限制：
 
 - schema 第一版仍是导出摘要层，不会自动迁移旧 storage；后续要补 migration 执行器。
-- 写实后台已被 schema 标记为无历史、无发布能力；后续仍需补写实后台历史记录和发布适配。
+- 写实后台历史记录和本机发布已进入 schema 摘要；后续仍需补对象 schema 迁移、发布说明、回滚原因和远端发布适配。
 - 资产清单会检查 IndexedDB 是否存在对应模型二进制，但还没有做哈希校验和尺寸/文件名冲突修复。
+
+### 2026-06-11：补齐写实后台历史和本机发布
+
+功能名：写实后台从单纯本机草稿编辑升级为可保存快照、草稿预览和本机发布到演示页。
+
+涉及文件：
+
+- `realistic-admin.html`
+- `realistic-demo.html`
+- `realistic-demo.css`
+- `realistic-scene.js`
+- `project-archive.js`
+- `project-schema-utils.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 写实后台新增“预览草稿 / 打开演示 / 发布到演示”控制区，按钮分别标记为 `real-local` 和 `real-published-local`。
+- 写实后台新增“保存快照 / 刷新列表 / 恢复 / 删除”保存历史区，最多保留最近 10 次本机快照。
+- 写实演示页默认优先读取本机发布版本；使用 `?realisticPreview=draft` 时读取当前草稿，便于后台编辑时即时预览。
+- 发布到演示时会写入 `mr-calligraphy-realistic-published-v1`，并自动保存一条“发布前快照”。
+- 导入写实模型成功后会保存一条导入快照，方便用户回退到导入后的状态。
+- 快照保存或删除写入本机存储失败时，会回到真实存储状态并显示错误提示，不返回假成功。
+- 项目档案新增导出 `mr-calligraphy-realistic-history-v1` 和 `mr-calligraphy-realistic-published-v1`。
+- `projectSchema.realisticScene` 新增 `history` 和 `published` 摘要，`summary.realisticSnapshots` 可统计写实快照数量。
+- 写实后台右侧面板增加滚动约束，避免新增真实控制区后在小屏幕上溢出不可操作。
+
+验收方式：
+
+- 打开 `http://localhost:41496/realistic-admin.html`，调整任一对象后点击“保存快照”，保存历史列表应出现一条可恢复、可删除记录。
+- 点击“发布到演示”后打开 `http://localhost:41496/realistic-demo.html`，演示页应读取已发布版本；点击“预览草稿”应打开带 `?realisticPreview=draft` 的草稿预览。
+- 在写实后台导入有效 GLB / OBJ 后，保存历史应增加一条“导入：文件名”快照。
+- 从主后台导出项目档案，JSON 应包含写实历史、写实发布版本和 `projectSchema.summary.realisticSnapshots`。
+
+当前验证结果：
+
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check project-schema-utils.js`
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- Node 模拟 `window.MRProjectSchema.createProjectSchema()` 通过，能统计写实历史、发布版本和 `realisticSnapshots`。
+
+已知限制：
+
+- 写实发布仍是浏览器本机 localStorage 发布，不是服务器部署，也没有账号权限、审核流和跨设备同步。
+- 写实历史目前是手动快照、导入快照和发布前快照，不是每次拖拽自动形成完整版本流。
+- 写实对象 schema 仍与主后台没有完全统一，后续需要补迁移执行器、发布说明、回滚原因和远端发布适配。

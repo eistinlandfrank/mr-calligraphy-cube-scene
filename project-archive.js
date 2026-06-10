@@ -7,7 +7,9 @@
     { key: "mr-calligraphy-main-scene-layout-v1", label: "主场景布局" },
     { key: "mr-calligraphy-main-scene-history-v1", label: "主场景保存历史" },
     { key: "mr-calligraphy-main-scene-published-v1", label: "主场景发布版本" },
-    { key: "mr-calligraphy-realistic-layout-v1", label: "写实场景布局" }
+    { key: "mr-calligraphy-realistic-layout-v1", label: "写实场景布局" },
+    { key: "mr-calligraphy-realistic-history-v1", label: "写实场景保存历史" },
+    { key: "mr-calligraphy-realistic-published-v1", label: "写实场景发布版本" }
   ];
   const DB_ITEMS = [
     { id: "mainModels", label: "主场景导入模型", dbName: "mr-calligraphy-main-model-store", storeName: "models", keyPath: "key" },
@@ -238,6 +240,7 @@
       mainDraftObjects: Number(summary.mainDraftObjects) || 0,
       mainSnapshots: Number(summary.mainSnapshots) || 0,
       realisticObjects: Number(summary.realisticObjects) || 0,
+      realisticSnapshots: Number(summary.realisticSnapshots) || 0,
       importedModels: Number(summary.importedModels) || 0,
       missingModelBinaries: Number(summary.missingModelBinaries) || 0
     };

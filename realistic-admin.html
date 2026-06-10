@@ -73,6 +73,30 @@
         <input id="importModelInput" type="file" accept=".glb,.obj,model/gltf-binary,text/plain">
       </label>
       <p id="importStatus" class="import-status">导入后的模型会保存到本机浏览器，并同步到演示页。</p>
+      <section class="realistic-publish-panel" aria-label="写实场景发布">
+        <div class="realistic-panel-title">
+          <span>Preview / Publish</span>
+          <strong>预览发布</strong>
+        </div>
+        <div class="realistic-panel-actions">
+          <button data-feature-state="real-local" id="realisticPreviewDraft" type="button">预览草稿</button>
+          <button data-feature-state="real-local" id="realisticOpenLive" type="button">打开演示</button>
+          <button data-feature-state="real-published-local" id="realisticPublishLayout" type="button">发布到演示</button>
+        </div>
+        <p id="realisticPublishStatus" class="realistic-panel-status">尚未读取发布状态。</p>
+      </section>
+      <section class="realistic-history-panel" aria-label="写实场景保存历史">
+        <div class="realistic-panel-title">
+          <span>Snapshots</span>
+          <strong>保存历史</strong>
+        </div>
+        <div class="realistic-panel-actions">
+          <button data-feature-state="real-local" id="realisticSnapshotCreate" type="button">保存快照</button>
+          <button data-feature-state="real-local" id="realisticSnapshotRefresh" type="button">刷新列表</button>
+        </div>
+        <p id="realisticHistoryStatus" class="realistic-panel-status">最多保留最近 10 次写实场景快照。</p>
+        <div id="realisticSnapshotList" class="realistic-snapshot-list" aria-live="polite"></div>
+      </section>
       <div class="demo-actions editor-camera-actions">
         <button data-feature-state="real-local" id="resetCamera" type="button">重置视角</button>
         <button data-feature-state="real-local" id="toggleMotion" type="button">暂停旋转</button>
@@ -89,6 +113,6 @@
       }
     }
   </script>
-  <script type="module" src="realistic-scene.js?v=shared-import-utils-20260611"></script>
+  <script type="module" src="realistic-scene.js?v=realistic-publish-20260611"></script>
 </body>
 </html>

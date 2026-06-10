@@ -37,12 +37,23 @@ const deleteObjectButton = document.getElementById("deleteObject");
 const restoreObjectButton = document.getElementById("restoreObject");
 const importModelInput = document.getElementById("importModelInput");
 const importStatus = document.getElementById("importStatus");
+const previewDraftButton = document.getElementById("realisticPreviewDraft");
+const openLiveButton = document.getElementById("realisticOpenLive");
+const publishLayoutButton = document.getElementById("realisticPublishLayout");
+const publishStatus = document.getElementById("realisticPublishStatus");
+const snapshotCreateButton = document.getElementById("realisticSnapshotCreate");
+const snapshotRefreshButton = document.getElementById("realisticSnapshotRefresh");
+const historyStatus = document.getElementById("realisticHistoryStatus");
+const snapshotList = document.getElementById("realisticSnapshotList");
 const isDesignMode = Boolean(designObjectSelect && designXInput && designYInput && designZInput);
 const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
+const SCENE_HISTORY_STORAGE_KEY = "mr-calligraphy-realistic-history-v1";
+const SCENE_PUBLISHED_STORAGE_KEY = "mr-calligraphy-realistic-published-v1";
 const IMPORTED_MODEL_LIST_KEY = "importedModels";
 const IMPORT_DB_NAME = "mr-calligraphy-model-store";
 const IMPORT_DB_STORE = "models";
 const MAX_UNDO_STEPS = 256;
+const MAX_HISTORY_SNAPSHOTS = 10;
 const importedModelStore = createModelStore({
   dbName: IMPORT_DB_NAME,
   storeName: IMPORT_DB_STORE,
@@ -95,7 +106,8 @@ let selectedDesignObject = null;
 let dragStartSnapshot = null;
 let inputStartSnapshot = null;
 const undoStack = [];
-const savedSceneLayout = loadSavedSceneLayout();
+const savedSceneLayout = loadSceneLayoutForCurrentMode();
+let layoutHistory = loadLayoutHistory();
 
 const woodMap = createWoodTexture();
 const paperMap = createPaperTexture();
@@ -519,10 +531,40 @@ function addNoise(ctx, width, height, strength) {
   ctx.putImageData(image, 0, 0);
 }
 
-function loadSavedSceneLayout() {
+function loadSceneLayoutForCurrentMode() {
+  if (isDesignMode) {
+    window.MR_REALISTIC_SCENE_SOURCE = "draft-editor";
+    return loadDraftSceneLayout();
+  }
+
+  if (shouldPreviewDraftLayout()) {
+    window.MR_REALISTIC_SCENE_SOURCE = "draft-preview";
+    return loadDraftSceneLayout();
+  }
+
+  const published = loadPublishedLayoutRecord();
+  if (published?.layout) {
+    window.MR_REALISTIC_SCENE_SOURCE = "published";
+    window.MR_REALISTIC_SCENE_PUBLISHED_AT = published.publishedAt || "";
+    return normalizeSceneLayout(published.layout);
+  }
+
+  window.MR_REALISTIC_SCENE_SOURCE = "draft-fallback";
+  return loadDraftSceneLayout();
+}
+
+function shouldPreviewDraftLayout() {
+  try {
+    return new URLSearchParams(window.location.search).get("realisticPreview") === "draft";
+  } catch (error) {
+    return false;
+  }
+}
+
+function loadDraftSceneLayout() {
   try {
     const raw = window.localStorage.getItem(SCENE_LAYOUT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : {};
+    return normalizeSceneLayout(raw ? JSON.parse(raw) : {});
   } catch (error) {
     console.warn("Scene layout could not be read from localStorage.", error);
     return {};
@@ -530,11 +572,125 @@ function loadSavedSceneLayout() {
 }
 
 function saveSceneLayout() {
+  if (!isDesignMode) {
+    return;
+  }
   try {
-    window.localStorage.setItem(SCENE_LAYOUT_STORAGE_KEY, JSON.stringify(savedSceneLayout));
+    window.localStorage.setItem(SCENE_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeSceneLayout(savedSceneLayout)));
   } catch (error) {
     console.warn("Scene layout could not be saved to localStorage.", error);
   }
+}
+
+function loadLayoutHistory() {
+  try {
+    const raw = window.localStorage.getItem(SCENE_HISTORY_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const source = Array.isArray(parsed.snapshots) ? parsed.snapshots : Array.isArray(parsed) ? parsed : [];
+    return source.map(normalizeLayoutSnapshot).filter(Boolean).slice(0, MAX_HISTORY_SNAPSHOTS);
+  } catch (error) {
+    console.warn("Scene history could not be read from localStorage.", error);
+    return [];
+  }
+}
+
+function saveLayoutHistory() {
+  try {
+    window.localStorage.setItem(SCENE_HISTORY_STORAGE_KEY, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      snapshots: layoutHistory.slice(0, MAX_HISTORY_SNAPSHOTS)
+    }));
+    return true;
+  } catch (error) {
+    console.warn("Scene history could not be saved to localStorage.", error);
+    return false;
+  }
+}
+
+function loadPublishedLayoutRecord() {
+  try {
+    const raw = window.localStorage.getItem(SCENE_PUBLISHED_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    console.warn("Published scene layout could not be read from localStorage.", error);
+    return null;
+  }
+}
+
+function normalizeSceneLayout(value = {}) {
+  const layout = {};
+  const source = value && typeof value === "object" ? value : {};
+  Object.entries(source).forEach(([key, record]) => {
+    if (key === IMPORTED_MODEL_LIST_KEY) {
+      return;
+    }
+    const normalized = normalizeSavedTransform(record);
+    if (normalized) {
+      layout[key] = normalized;
+    }
+  });
+  layout[IMPORTED_MODEL_LIST_KEY] = Array.isArray(source[IMPORTED_MODEL_LIST_KEY])
+    ? source[IMPORTED_MODEL_LIST_KEY].map(normalizeImportedRecord)
+    : [];
+  return layout;
+}
+
+function normalizeSavedTransform(record) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  return {
+    x: readFiniteNumber(record.x, 0),
+    y: readFiniteNumber(record.y, 0),
+    z: readFiniteNumber(record.z, 0),
+    rx: readFiniteNumber(record.rx, 0),
+    ry: readFiniteNumber(record.ry, 0),
+    rz: readFiniteNumber(record.rz, 0),
+    deleted: record.deleted === true
+  };
+}
+
+function readFiniteNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeLayoutSnapshot(record, index = 0) {
+  if (!record || typeof record !== "object" || !record.layout) {
+    return null;
+  }
+
+  const layout = normalizeSceneLayout(record.layout);
+  return {
+    id: String(record.id || `realistic-snapshot-${Date.now()}-${index}`),
+    label: String(record.label || (index === 0 ? "写实场景快照" : `写实场景快照 ${index + 1}`)).slice(0, 60),
+    createdAt: Number.isFinite(Date.parse(record.createdAt)) ? record.createdAt : new Date().toISOString(),
+    layout,
+    stats: normalizeLayoutStats(record.stats, layout)
+  };
+}
+
+function normalizeLayoutStats(stats, layout = savedSceneLayout) {
+  const fallback = getLayoutStats(layout);
+  return {
+    objectStateCount: Math.max(0, Math.round(readFiniteNumber(stats?.objectStateCount, fallback.objectStateCount))),
+    importedCount: Math.max(0, Math.round(readFiniteNumber(stats?.importedCount, fallback.importedCount))),
+    deletedCount: Math.max(0, Math.round(readFiniteNumber(stats?.deletedCount, fallback.deletedCount)))
+  };
+}
+
+function getLayoutStats(layout = savedSceneLayout) {
+  const objectStates = Object.entries(layout && typeof layout === "object" ? layout : {})
+    .filter(([key, record]) => key !== IMPORTED_MODEL_LIST_KEY && record && typeof record === "object")
+    .map(([, record]) => record);
+  const importedCount = Array.isArray(layout?.[IMPORTED_MODEL_LIST_KEY]) ? layout[IMPORTED_MODEL_LIST_KEY].length : 0;
+  return {
+    objectStateCount: objectStates.length,
+    importedCount,
+    deletedCount: objectStates.filter((record) => record.deleted === true).length
+  };
 }
 
 function getImportedModelRecords() {
@@ -585,6 +741,219 @@ function makeImportedModelId(fileName) {
 
 function setImportStatus(message) {
   if (importStatus) importStatus.textContent = message;
+}
+
+function createLayoutSnapshot(label = "手动快照", options = {}) {
+  if (!isDesignMode) {
+    return null;
+  }
+
+  const snapshot = {
+    id: `realistic-snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    label: String(label || "手动快照").slice(0, 60),
+    createdAt: new Date().toISOString(),
+    layout: normalizeSceneLayout(savedSceneLayout),
+    stats: getLayoutStats(savedSceneLayout)
+  };
+
+  layoutHistory = [
+    snapshot,
+    ...layoutHistory.filter((item) => item.id !== snapshot.id)
+  ].slice(0, MAX_HISTORY_SNAPSHOTS);
+  const saved = saveLayoutHistory();
+  if (!saved) {
+    layoutHistory = loadLayoutHistory();
+    renderHistoryPanel();
+    setHistoryStatus("保存快照失败，可能是浏览器本机存储空间不足。", "error");
+    return null;
+  }
+
+  renderHistoryPanel();
+
+  if (options.status !== false) {
+    setHistoryStatus(`已保存快照：${snapshot.label}`, "success");
+  }
+  return snapshot;
+}
+
+function renderHistoryPanel() {
+  if (!snapshotList) {
+    return;
+  }
+
+  snapshotList.innerHTML = "";
+  if (!layoutHistory.length) {
+    const empty = document.createElement("p");
+    empty.className = "realistic-panel-status";
+    empty.textContent = "暂无快照。点击“保存快照”记录当前写实场景。";
+    snapshotList.appendChild(empty);
+    setHistoryStatus("最多保留最近 10 次写实场景快照。", "normal");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  layoutHistory.forEach((snapshot) => {
+    fragment.appendChild(createSnapshotRow(snapshot));
+  });
+  snapshotList.appendChild(fragment);
+  setHistoryStatus(`已保留 ${layoutHistory.length} / ${MAX_HISTORY_SNAPSHOTS} 次快照。`, "normal");
+}
+
+function createSnapshotRow(snapshot) {
+  const row = document.createElement("div");
+  row.className = "realistic-snapshot-row";
+
+  const detail = document.createElement("div");
+  detail.className = "realistic-snapshot-detail";
+  const title = document.createElement("strong");
+  title.textContent = snapshot.label;
+  const meta = document.createElement("span");
+  meta.textContent = `${formatDateTime(snapshot.createdAt)} · ${formatSnapshotStats(snapshot.stats)}`;
+  detail.append(title, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "realistic-snapshot-actions";
+
+  const restoreButton = document.createElement("button");
+  restoreButton.type = "button";
+  restoreButton.dataset.featureState = "real-local";
+  restoreButton.dataset.snapshotAction = "restore";
+  restoreButton.dataset.snapshotId = snapshot.id;
+  restoreButton.textContent = "恢复";
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.dataset.featureState = "real-local";
+  deleteButton.dataset.snapshotAction = "delete";
+  deleteButton.dataset.snapshotId = snapshot.id;
+  deleteButton.textContent = "删除";
+
+  actions.append(restoreButton, deleteButton);
+  row.append(detail, actions);
+  return row;
+}
+
+function handleSnapshotListClick(event) {
+  const button = event.target.closest("[data-snapshot-action]");
+  if (!button) {
+    return;
+  }
+
+  const snapshot = layoutHistory.find((item) => item.id === button.dataset.snapshotId);
+  if (!snapshot) {
+    setHistoryStatus("未找到该快照。", "error");
+    renderHistoryPanel();
+    return;
+  }
+
+  if (button.dataset.snapshotAction === "restore") {
+    restoreLayoutSnapshot(snapshot);
+    return;
+  }
+
+  if (button.dataset.snapshotAction === "delete") {
+    deleteLayoutSnapshot(snapshot.id);
+  }
+}
+
+function restoreLayoutSnapshot(snapshot) {
+  createLayoutSnapshot("恢复前自动快照", { status: false });
+  try {
+    window.localStorage.setItem(SCENE_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeSceneLayout(snapshot.layout)));
+    setHistoryStatus(`已恢复快照：${snapshot.label}，页面即将刷新。`, "success");
+    window.setTimeout(() => window.location.reload(), 800);
+  } catch (error) {
+    console.warn("Scene snapshot could not be restored.", error);
+    setHistoryStatus("恢复快照失败，可能是浏览器本机存储空间不足。", "error");
+  }
+}
+
+function deleteLayoutSnapshot(id) {
+  const before = layoutHistory.length;
+  layoutHistory = layoutHistory.filter((snapshot) => snapshot.id !== id);
+  const saved = saveLayoutHistory();
+  if (!saved) {
+    layoutHistory = loadLayoutHistory();
+    renderHistoryPanel();
+    setHistoryStatus("删除快照失败，可能是浏览器本机存储空间不足。", "error");
+    return;
+  }
+
+  renderHistoryPanel();
+  setHistoryStatus(before === layoutHistory.length ? "未找到要删除的快照。" : "已删除快照。", "success");
+}
+
+function publishLayoutToDemo() {
+  if (!isDesignMode) {
+    return;
+  }
+
+  const record = {
+    version: 1,
+    publishedAt: new Date().toISOString(),
+    layout: normalizeSceneLayout(savedSceneLayout),
+    stats: getLayoutStats(savedSceneLayout)
+  };
+
+  try {
+    createLayoutSnapshot("发布前快照", { status: false });
+    window.localStorage.setItem(SCENE_PUBLISHED_STORAGE_KEY, JSON.stringify(record));
+    renderPublishPanel();
+    setPublishStatus(`已发布：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(record.stats)}`, "success");
+  } catch (error) {
+    console.warn("Published scene layout could not be saved.", error);
+    setPublishStatus("发布失败，可能是浏览器本机存储空间不足。", "error");
+  }
+}
+
+function renderPublishPanel() {
+  if (!publishStatus) {
+    return;
+  }
+
+  const record = loadPublishedLayoutRecord();
+  if (!record?.layout) {
+    setPublishStatus("尚未发布。写实演示页会临时读取当前草稿。", "normal");
+    return;
+  }
+
+  setPublishStatus(`已发布：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(normalizeLayoutStats(record.stats, record.layout))}`, "success");
+}
+
+function setPublishStatus(message, tone = "normal") {
+  if (!publishStatus) {
+    return;
+  }
+  publishStatus.textContent = message;
+  publishStatus.dataset.tone = tone;
+}
+
+function setHistoryStatus(message, tone = "normal") {
+  if (!historyStatus) {
+    return;
+  }
+  historyStatus.textContent = message;
+  historyStatus.dataset.tone = tone;
+}
+
+function openDemoPreview(url) {
+  const target = window.open(url, "_blank", "noopener");
+  if (!target) {
+    window.location.href = url;
+  }
+}
+
+function formatSnapshotStats(stats = {}) {
+  return `${stats.objectStateCount || 0} 已改对象 / ${stats.importedCount || 0} 导入 / ${stats.deletedCount || 0} 删除`;
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function normalizeImportedObject(root) {
@@ -693,6 +1062,7 @@ async function handleImportModel(event) {
     await storeImportedModel(record, arrayBuffer);
     getImportedModelRecords().push(record);
     saveSceneLayout();
+    createLayoutSnapshot(`导入：${label}`, { status: false });
     addPreparedImportedModelToScene(record, importPack.root, true);
     setImportStatus(`已导入 ${file.name}：${formatImportMetrics(record.metrics)}。`);
   } catch (error) {
@@ -1083,6 +1453,18 @@ function bindUi() {
     deleteObjectButton?.addEventListener("click", deleteSelectedObject);
     restoreObjectButton?.addEventListener("click", restoreSelectedObject);
     importModelInput?.addEventListener("change", handleImportModel);
+    previewDraftButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html?realisticPreview=draft"));
+    openLiveButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html"));
+    publishLayoutButton?.addEventListener("click", publishLayoutToDemo);
+    snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
+    snapshotRefreshButton?.addEventListener("click", () => {
+      layoutHistory = loadLayoutHistory();
+      renderHistoryPanel();
+      setHistoryStatus("已刷新保存历史列表。", "success");
+    });
+    snapshotList?.addEventListener("click", handleSnapshotListClick);
+    renderPublishPanel();
+    renderHistoryPanel();
     window.addEventListener("keydown", handleEditorKeydown);
   }
 
