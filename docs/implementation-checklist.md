@@ -185,8 +185,10 @@
 
   验收记录：2026-06-10 flowStore 增加状态进入时间、已用时和剩余时间计算；Demo 根据 `immersive_intro` 同步切换老人视角与阶段说明，并使用 FlowConfig duration 计算剩余时间，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-06：实现 calligraphy_tutorial 状态**  
+- [x] **P3-06：实现 calligraphy_tutorial 状态**  
   验收：进入书法讲解阶段，前台显示当前练习字与笔画说明。
+
+  验收记录：2026-06-10 老人端在 `calligraphy_tutorial` 状态显示“永”字教程卡片和八法笔画说明，其他阶段保留书法练习组件；`npm run build` 通过。
 
 - [ ] **P3-07：实现 practice_game 状态**  
   验收：进入真实书法练习组件，开始采集用户输入。
