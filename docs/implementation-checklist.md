@@ -25,7 +25,7 @@
 | P0 | 项目整理与文档基线 | 完成 |
 | P1 | 现代前端工程骨架 | 完成 |
 | P2 | 数据结构与配置系统 | 完成 |
-| P3 | 前台真实流程状态机 | 未完成 |
+| P3 | 前台真实流程状态机 | 完成 |
 | P4 | 书法游戏真实化 | 未完成 |
 | P5 | 护工端状态联动 | 未完成 |
 | P6 | 后台 3D 场景编辑器 MVP | 未完成 |
@@ -230,8 +230,10 @@
 
   验收记录：2026-06-10 非练习评分阶段执行 `finish` 会进入 `finished` 或已有报告时进入 `caregiver_confirm`；进入 finished 会保存 session，护工结束操作已接入状态机，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-15：实现 session event 记录**  
+- [x] **P3-15：实现 session event 记录**  
   验收：每次状态变化和关键操作都会写入 events。
+
+  验收记录：2026-06-10 flowStore 已在 start、pause、resume、状态切换、评分生成、练习开始、流程完成等关键操作写入 PracticeSession.events，并新增 `recordSessionEvent` 通用方法；Demo 控制台显示事件数量，store 脚本和 `npm run build` 通过。
 
 ---
 

@@ -50,6 +50,27 @@ export const useFlowStore = create((set, get) => ({
     return Boolean(state?.actions?.includes(actionId));
   },
 
+  recordSessionEvent: (event) => {
+    set((state) => {
+      if (!state.session) {
+        return state;
+      }
+
+      return {
+        session: {
+          ...state.session,
+          events: [
+            ...state.session.events,
+            createSessionEvent({
+              stateId: state.currentStateId,
+              ...event
+            })
+          ]
+        }
+      };
+    });
+  },
+
   transitionTo: (stateId, reason = "manual") => {
     const nextState = getFlowState(get().flowConfig, stateId);
 
