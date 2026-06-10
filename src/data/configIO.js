@@ -1,6 +1,37 @@
 import { validateFlowConfig } from "../flow-core/flowSchema.js";
 import { validateSceneConfig } from "../scene-core/sceneSchema.js";
 
+export function createProjectExportPayload({ project, flow, scenes }) {
+  return {
+    type: "project-config-export",
+    version: "0.1.0",
+    exportedAt: new Date().toISOString(),
+    project,
+    flow,
+    scenes
+  };
+}
+
+export function stringifyConfigJson(config) {
+  return `${JSON.stringify(config, null, 2)}\n`;
+}
+
+export function downloadConfigJson(config, filename) {
+  if (typeof document === "undefined") {
+    throw new Error("downloadConfigJson 只能在浏览器环境中使用。");
+  }
+
+  const blob = new Blob([stringifyConfigJson(config)], {
+    type: "application/json;charset=utf-8"
+  });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 export function parseConfigJson(text) {
   try {
     const config = JSON.parse(text);

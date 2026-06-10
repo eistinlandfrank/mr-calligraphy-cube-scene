@@ -1,6 +1,7 @@
 import { Download, Eye, RotateCcw, Save, Upload } from "lucide-react";
 import { useRef, useState } from "react";
-import { parseConfigJson } from "../data/configIO.js";
+import { createProjectExportPayload, downloadConfigJson, parseConfigJson } from "../data/configIO.js";
+import { loadDefaultFlow, loadDefaultProject } from "../data/configLoader.js";
 import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
@@ -26,14 +27,21 @@ export function SceneEditor() {
   const isCaregiverPreview = ["caregiver-view", "calligraphy-game", "gallery-report"].includes(sceneConfig.type);
 
   function exportScene() {
-    const payload = JSON.stringify(sceneConfig, null, 2);
-    const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${sceneConfig.id}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadConfigJson(sceneConfig, `${sceneConfig.id}.json`);
+  }
+
+  function exportProject() {
+    const project = loadDefaultProject();
+    const payload = createProjectExportPayload({
+      project: {
+        ...project,
+        scenes: scenes.map((scene) => scene.id)
+      },
+      flow: loadDefaultFlow(),
+      scenes
+    });
+
+    downloadConfigJson(payload, `${project.id}-config.json`);
   }
 
   async function importSceneConfig(event) {
@@ -86,7 +94,11 @@ export function SceneEditor() {
           </button>
           <button type="button" onClick={exportScene}>
             <Download size={17} strokeWidth={2.2} />
-            <span>导出 JSON</span>
+            <span>导出场景</span>
+          </button>
+          <button type="button" onClick={exportProject}>
+            <Download size={17} strokeWidth={2.2} />
+            <span>导出项目</span>
           </button>
           <button type="button" onClick={() => fileInputRef.current?.click()}>
             <Upload size={17} strokeWidth={2.2} />

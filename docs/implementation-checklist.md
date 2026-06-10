@@ -24,7 +24,7 @@
 |---|---|---|
 | P0 | 项目整理与文档基线 | 完成 |
 | P1 | 现代前端工程骨架 | 完成 |
-| P2 | 数据结构与配置系统 | 未完成 |
+| P2 | 数据结构与配置系统 | 完成 |
 | P3 | 前台真实流程状态机 | 未完成 |
 | P4 | 书法游戏真实化 | 未完成 |
 | P5 | 护工端状态联动 | 未完成 |
@@ -151,8 +151,10 @@
 
   验收记录：2026-06-10 新增 `src/data/configIO.js`，支持识别并校验 ProjectConfig、FlowConfig、SceneConfig JSON；后台 SceneConfig 导入改用统一解析校验方法，导入方法脚本和 `npm run build` 通过。
 
-- [ ] **P2-12：建立配置导出方法**  
+- [x] **P2-12：建立配置导出方法**  
   验收：用户可以导出当前项目配置为 JSON 文件。
+
+  验收记录：2026-06-10 `src/data/configIO.js` 新增 JSON 序列化、浏览器下载与项目导出 payload 方法；后台支持导出当前 SceneConfig 与包含 project、flow、scenes 的项目配置 JSON，导出方法脚本和 `npm run build` 通过。
 
 ---
 
