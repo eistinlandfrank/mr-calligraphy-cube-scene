@@ -33,6 +33,7 @@ const newObjectHeightInput = document.getElementById("mainNewObjectHeight");
 const newObjectDepthInput = document.getElementById("mainNewObjectDepth");
 const newObjectRadiusInput = document.getElementById("mainNewObjectRadius");
 const newObjectAddButton = document.getElementById("mainNewObjectAdd");
+const newObjectUpdateButton = document.getElementById("mainNewObjectUpdate");
 const customStatus = document.getElementById("mainCustomStatus");
 const importModelNameInput = document.getElementById("mainImportModelName");
 const importModelInput = document.getElementById("mainImportModel");
@@ -1673,6 +1674,7 @@ function selectObject(id) {
   syncInputs();
   updateUiState();
   renderLayerPanel();
+  syncCustomEditorFromSelection();
 }
 
 function syncInputs() {
@@ -1717,6 +1719,9 @@ function updateUiState() {
   });
   deleteButton.disabled = deleted || locked;
   restoreButton.disabled = (!deleted && !hidden) || (deleted && (isCustom || isImported));
+  if (newObjectUpdateButton) {
+    newObjectUpdateButton.disabled = !isCustom || deleted || hidden || locked;
+  }
 }
 
 function snapshot(entry) {
@@ -1838,6 +1843,19 @@ async function undo() {
     return;
   }
 
+  if (item.kind === "custom-update") {
+    const entry = objects.get(item.id);
+    if (entry) {
+      applyCustomSpecToEntry(entry, item.spec);
+      applySnapshot(item.snapshot);
+      saveEntry(entry);
+      selectObject(entry.id);
+      createLayoutSnapshot(`撤回编辑：${entry.label}`, { notice: false });
+      showNotice(`已撤回编辑：${entry.label}`);
+    }
+    return;
+  }
+
   applySnapshot(item);
 }
 
@@ -1883,12 +1901,110 @@ function addCustomObject() {
   populateObjectSelect();
   selectObject(entry.id);
   pushUndo({ kind: "custom-add", id: entry.id });
-  if (newObjectNameInput) {
-    newObjectNameInput.value = "";
-  }
   createLayoutSnapshot(`新增：${entry.label}`, { notice: false });
   showCustomStatus(`已新增：${entry.label}。可在对象图层中搜索、隐藏或锁定。`);
   showNotice(`已新增：${entry.label}`);
+}
+
+function updateSelectedCustomObject() {
+  const entry = getSelectedCustomEntry();
+  if (!entry) {
+    showCustomStatus("请选择一个新增基础物体后再更新。");
+    return;
+  }
+  if (!canEditCustomEntry(entry)) {
+    showCustomStatus("当前物体已隐藏、锁定或删除，需恢复并解锁后才能更新。");
+    return;
+  }
+
+  const beforeSpec = clonePlain(entry.object.userData.customSpec);
+  const beforeSnapshot = snapshot(entry);
+  const type = CUSTOM_TYPE_LABELS[newObjectTypeSelect.value] ? newObjectTypeSelect.value : beforeSpec.type;
+  const label = newObjectNameInput?.value.trim() || beforeSpec.label;
+  const spec = normalizeCustomObject({
+    ...beforeSpec,
+    label,
+    type,
+    color: newObjectColorInput?.value || beforeSpec.color,
+    size: readCustomObjectSize(type)
+  });
+
+  if (JSON.stringify(beforeSpec) === JSON.stringify(spec)) {
+    showCustomStatus("当前尺寸、颜色和名称没有变化。");
+    return;
+  }
+
+  pushUndo({
+    kind: "custom-update",
+    id: entry.id,
+    spec: beforeSpec,
+    snapshot: beforeSnapshot
+  });
+  applyCustomSpecToEntry(entry, spec);
+  saveEntry(entry);
+  populateObjectSelect();
+  selectObject(entry.id);
+  createLayoutSnapshot(`编辑：${entry.label}`, { notice: false });
+  showCustomStatus(`已更新：${entry.label}。尺寸和颜色已写入本机布局。`);
+  showNotice(`已更新：${entry.label}`);
+}
+
+function applyCustomSpecToEntry(entry, spec) {
+  if (!entry || entry.object.userData.isCustom !== true) {
+    return;
+  }
+
+  const normalized = normalizeCustomObject(spec);
+  disposeCustomEntryMeshes(entry.object);
+
+  const nextGroup = createCustomGroup(normalized);
+  while (nextGroup.children.length) {
+    entry.object.add(nextGroup.children[0]);
+  }
+  entry.object.userData.label = normalized.label;
+  entry.object.userData.defaultState = makeDefaultState(normalized);
+  entry.object.userData.customSpec = normalized;
+  entry.label = normalized.label;
+  replaceCustomSpec(normalized);
+  registerSelectableMeshes(entry.object);
+}
+
+function disposeCustomEntryMeshes(object) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+
+    const index = selectableMeshes.indexOf(child);
+    if (index >= 0) {
+      selectableMeshes.splice(index, 1);
+    }
+    child.geometry?.dispose?.();
+    if (Array.isArray(child.material)) {
+      child.material.forEach((material) => material.dispose?.());
+    } else {
+      child.material?.dispose?.();
+    }
+  });
+  object.clear();
+}
+
+function replaceCustomSpec(spec) {
+  const index = layout.customObjects.findIndex((item) => item.id === spec.id);
+  if (index >= 0) {
+    layout.customObjects[index] = spec;
+  } else {
+    layout.customObjects.push(spec);
+  }
+  saveLayout();
+}
+
+function registerSelectableMeshes(object) {
+  object.traverse((child) => {
+    if (!child.isMesh) return;
+    child.castShadow = true;
+    child.receiveShadow = true;
+    child.userData.designRoot = object;
+    selectableMeshes.push(child);
+  });
 }
 
 function readCustomObjectSize(type) {
@@ -1930,7 +2046,72 @@ function syncCustomSizeInputs(resetValues = false) {
   if (resetValues || !newObjectDepthInput?.value) setInputNumber(newObjectDepthInput, size.depth);
   if (resetValues || !newObjectRadiusInput?.value) setInputNumber(newObjectRadiusInput, size.radius);
 
-  showCustomStatus(`${CUSTOM_TYPE_LABELS[type]} 会以当前尺寸新增到主写字桌前方。`);
+  const entry = getSelectedCustomEntry();
+  if (entry && canEditCustomEntry(entry)) {
+    showCustomStatus(`正在编辑：${entry.label}。调整参数后点击“更新所选”。`);
+  } else {
+    showCustomStatus(`${CUSTOM_TYPE_LABELS[type]} 会以当前尺寸新增到主写字桌前方。`);
+  }
+}
+
+function syncCustomEditorFromSelection() {
+  const entry = getSelectedCustomEntry();
+  if (!entry) {
+    if (newObjectUpdateButton) {
+      newObjectUpdateButton.disabled = true;
+    }
+    showCustomStatus(selectedEntry
+      ? "当前选中对象不是新增基础物体；可继续新增基础物体，或在图层中选择已有新增物体后更新。"
+      : "新增后会自动保存到本机布局，并同步到正常主场景。");
+    return;
+  }
+
+  const spec = entry.object.userData.customSpec || {};
+  if (newObjectTypeSelect) {
+    newObjectTypeSelect.value = CUSTOM_TYPE_LABELS[spec.type] ? spec.type : "box";
+  }
+  if (newObjectNameInput) {
+    newObjectNameInput.value = spec.label || entry.label;
+  }
+  if (newObjectColorInput) {
+    newObjectColorInput.value = normalizeColor(spec.color || "#8b5a2b");
+  }
+  syncCustomSizeInputs(false);
+  syncCustomSizeValues(spec);
+  if (newObjectUpdateButton) {
+    newObjectUpdateButton.disabled = !canEditCustomEntry(entry);
+  }
+  showCustomStatus(canEditCustomEntry(entry)
+    ? `已载入：${entry.label}。可修改名称、类型、颜色和尺寸后更新。`
+    : `已载入：${entry.label}，需恢复显示并解锁后才能更新。`);
+}
+
+function syncCustomSizeValues(spec = {}) {
+  const type = CUSTOM_TYPE_LABELS[spec.type] ? spec.type : "box";
+  const fallback = CUSTOM_TYPE_SIZES[type] || CUSTOM_TYPE_SIZES.box;
+  const size = { ...fallback, ...(spec.size || {}) };
+
+  if (type === "cylinder") {
+    setInputNumber(newObjectRadiusInput, size.radius);
+    setInputNumber(newObjectHeightInput, size.height);
+    return;
+  }
+
+  setInputNumber(newObjectWidthInput, size.width);
+  setInputNumber(newObjectHeightInput, size.height);
+  setInputNumber(newObjectDepthInput, size.depth);
+}
+
+function getSelectedCustomEntry() {
+  return selectedEntry?.object.userData.isCustom === true ? selectedEntry : null;
+}
+
+function canEditCustomEntry(entry) {
+  return Boolean(entry)
+    && entry.object.userData.isCustom === true
+    && entry.object.userData.deleted !== true
+    && entry.object.userData.hidden !== true
+    && entry.object.userData.locked !== true;
 }
 
 function toggleCustomSizeField(name, isVisible) {
@@ -2222,6 +2403,7 @@ function bindUi() {
   snapshotList?.addEventListener("click", handleSnapshotListClick);
   renderHistoryPanel();
   newObjectAddButton?.addEventListener("click", addCustomObject);
+  newObjectUpdateButton?.addEventListener("click", updateSelectedCustomObject);
   newObjectTypeSelect?.addEventListener("change", () => syncCustomSizeInputs(true));
   syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
