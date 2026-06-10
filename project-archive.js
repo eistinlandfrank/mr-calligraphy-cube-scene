@@ -24,7 +24,7 @@
       indexedDb: {},
       notes: [
         "该档案包含 MR 书法项目的本机学习记录、场景配置、后台布局和已导入模型文件。",
-        "恢复档案会覆盖当前浏览器中的同名项目状态。"
+        "恢复档案前可在主后台选择要恢复的条目；勾选条目会覆盖当前浏览器中的同名项目状态。"
       ]
     };
 
@@ -52,12 +52,20 @@
     };
   }
 
-  async function restoreProjectArchive(archive) {
+  async function restoreProjectArchive(archive, options = null) {
     validateArchive(archive);
-    importLocalStorage(archive.storage || {});
+    const restoreOptions = normalizeRestoreOptions(options);
+
+    if (!restoreOptions.storageKeys.length && !restoreOptions.dbIds.length) {
+      throw new Error("请至少选择一项要恢复的项目档案内容。");
+    }
+
+    importLocalStorage(archive.storage || {}, restoreOptions.storageKeys);
 
     for (const item of DB_ITEMS) {
-      await importDbStore(item, archive.indexedDb?.[item.id]);
+      if (restoreOptions.dbIds.includes(item.id)) {
+        await importDbStore(item, archive.indexedDb?.[item.id]);
+      }
     }
   }
 
@@ -183,8 +191,27 @@
     }, {});
   }
 
-  function importLocalStorage(storage) {
+  function normalizeRestoreOptions(options) {
+    const allStorageKeys = STORAGE_ITEMS.map((item) => item.key);
+    const allDbIds = DB_ITEMS.map((item) => item.id);
+    const storageKeys = Array.isArray(options?.storageKeys)
+      ? options.storageKeys.filter((key) => allStorageKeys.includes(key))
+      : allStorageKeys;
+    const dbIds = Array.isArray(options?.dbIds)
+      ? options.dbIds.filter((id) => allDbIds.includes(id))
+      : allDbIds;
+    return {
+      storageKeys: [...new Set(storageKeys)],
+      dbIds: [...new Set(dbIds)]
+    };
+  }
+
+  function importLocalStorage(storage, selectedKeys = STORAGE_ITEMS.map((item) => item.key)) {
+    const selected = new Set(selectedKeys);
     STORAGE_ITEMS.forEach((item) => {
+      if (!selected.has(item.key)) {
+        return;
+      }
       const record = storage[item.key];
       if (!record || record.value == null) {
         window.localStorage.removeItem(item.key);
@@ -312,9 +339,16 @@
     }
   }
 
-  function summarizeArchive(archive, prefix) {
-    const storageCount = Object.values(archive.storage || {}).filter((record) => record?.value).length;
-    const modelCount = Object.values(archive.indexedDb || {}).reduce((sum, pack) => {
+  function summarizeArchive(archive, prefix, options = null) {
+    const restoreOptions = normalizeRestoreOptions(options);
+    const selectedStorageKeys = new Set(restoreOptions.storageKeys);
+    const selectedDbIds = new Set(restoreOptions.dbIds);
+    const storageCount = STORAGE_ITEMS
+      .filter((item) => selectedStorageKeys.has(item.key))
+      .filter((item) => archive.storage?.[item.key]?.value)
+      .length;
+    const modelCount = DB_ITEMS.filter((item) => selectedDbIds.has(item.id)).reduce((sum, item) => {
+      const pack = archive.indexedDb?.[item.id];
       return sum + (Array.isArray(pack?.records) ? pack.records.length : 0);
     }, 0);
     return {
@@ -393,12 +427,15 @@
     const previewTitle = document.getElementById("projectImportPreviewTitle");
     const previewMeta = document.getElementById("projectImportPreviewMeta");
     const previewList = document.getElementById("projectImportPreviewList");
+    const selectAllInput = document.getElementById("projectImportSelectAll");
+    const selectionStatus = document.getElementById("projectImportSelectionStatus");
     const confirmButton = document.getElementById("projectImportConfirm");
     const cancelButton = document.getElementById("projectImportCancel");
 
     if (!exportButton && !importFile) return;
 
     let pendingArchive = null;
+    let isBusy = false;
 
     const setStatus = (message, tone = "normal") => {
       if (!status) return;
@@ -406,11 +443,44 @@
       status.dataset.tone = tone;
     };
 
-    const setBusy = (isBusy) => {
+    const setBusy = (busy) => {
+      isBusy = Boolean(busy);
       if (exportButton) exportButton.disabled = isBusy;
       if (importFile) importFile.disabled = isBusy;
-      if (confirmButton) confirmButton.disabled = isBusy || !pendingArchive;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
+      updateRestoreSelectionState();
+    };
+
+    const getRestoreInputs = () => Array.from(previewList?.querySelectorAll("[data-archive-kind][data-archive-id]") || []);
+
+    const getSelectedRestoreOptions = () => {
+      const selected = getRestoreInputs().filter((input) => input.checked);
+      return {
+        storageKeys: selected.filter((input) => input.dataset.archiveKind === "storage").map((input) => input.dataset.archiveId),
+        dbIds: selected.filter((input) => input.dataset.archiveKind === "indexedDb").map((input) => input.dataset.archiveId)
+      };
+    };
+
+    const updateRestoreSelectionState = () => {
+      const inputs = getRestoreInputs();
+      const selectedCount = inputs.filter((input) => input.checked).length;
+      inputs.forEach((input) => {
+        input.disabled = isBusy;
+      });
+
+      if (selectAllInput) {
+        selectAllInput.disabled = isBusy || !pendingArchive || inputs.length === 0;
+        selectAllInput.checked = inputs.length > 0 && selectedCount === inputs.length;
+        selectAllInput.indeterminate = selectedCount > 0 && selectedCount < inputs.length;
+      }
+      if (selectionStatus) {
+        selectionStatus.textContent = pendingArchive
+          ? `将恢复 ${selectedCount}/${inputs.length} 项。未勾选的本机内容会保持不变。`
+          : "尚未选择恢复内容。";
+      }
+      if (confirmButton) {
+        confirmButton.disabled = isBusy || !pendingArchive || selectedCount === 0;
+      }
     };
 
     const clearPendingImport = () => {
@@ -419,21 +489,40 @@
       if (previewList) previewList.innerHTML = "";
       if (previewTitle) previewTitle.textContent = "待导入档案";
       if (previewMeta) previewMeta.textContent = "尚未选择文件";
+      if (selectionStatus) selectionStatus.textContent = "尚未选择恢复内容。";
+      if (selectAllInput) {
+        selectAllInput.checked = false;
+        selectAllInput.indeterminate = false;
+        selectAllInput.disabled = true;
+      }
       if (confirmButton) confirmButton.disabled = true;
       if (cancelButton) cancelButton.disabled = true;
     };
 
-    const appendPreviewLine = (fragment, label, detail, change) => {
+    const appendPreviewLine = (fragment, itemKind, id, label, detail, change) => {
       const item = document.createElement("li");
       item.dataset.change = change || "normal";
 
+      const choice = document.createElement("label");
+      choice.className = "main-project-preview-choice";
+
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.checked = true;
+      input.dataset.archiveKind = itemKind;
+      input.dataset.archiveId = id;
+      input.setAttribute("aria-label", `恢复${label}`);
+
+      const body = document.createElement("span");
       const title = document.createElement("strong");
       title.textContent = label;
 
       const text = document.createElement("span");
       text.textContent = detail;
 
-      item.append(title, text);
+      body.append(title, text);
+      choice.append(input, body);
+      item.append(choice);
       fragment.appendChild(item);
     };
 
@@ -448,13 +537,13 @@
       }
 
       const fragment = document.createDocumentFragment();
-      preview.storage.forEach((item) => appendPreviewLine(fragment, item.label, describeStorageChange(item), item.change));
-      preview.indexedDb.forEach((item) => appendPreviewLine(fragment, item.label, describeDbChange(item), item.change));
+      preview.storage.forEach((item) => appendPreviewLine(fragment, "storage", item.id, item.label, describeStorageChange(item), item.change));
+      preview.indexedDb.forEach((item) => appendPreviewLine(fragment, "indexedDb", item.id, item.label, describeDbChange(item), item.change));
 
       previewList.innerHTML = "";
       previewList.appendChild(fragment);
-      if (confirmButton) confirmButton.disabled = !pendingArchive;
       if (cancelButton) cancelButton.disabled = false;
+      updateRestoreSelectionState();
     };
 
     clearPendingImport();
@@ -487,7 +576,7 @@
           const result = await prepareImportProject(file);
           pendingArchive = result.archive;
           renderImportPreview(result.preview);
-          setStatus(`${result.message} 点击“确认恢复”后才会覆盖当前本机项目。`, "success");
+          setStatus(`${result.message} 可取消不想覆盖的条目，再点击“恢复所选”。`, "success");
         } catch (error) {
           setStatus(error?.message || "项目档案导入失败。", "error");
         } finally {
@@ -502,12 +591,18 @@
         setStatus("请先选择项目档案。", "error");
         return;
       }
+      const restoreOptions = getSelectedRestoreOptions();
+      if (!restoreOptions.storageKeys.length && !restoreOptions.dbIds.length) {
+        setStatus("请至少勾选一项要恢复的项目档案内容。", "error");
+        updateRestoreSelectionState();
+        return;
+      }
 
       setBusy(true);
-      setStatus("正在恢复项目档案，当前本机项目将被档案内容替换。", "loading");
+      setStatus("正在恢复所选项目档案，未勾选的本机内容会保持不变。", "loading");
       try {
-        await restoreProjectArchive(pendingArchive);
-        const result = summarizeArchive(pendingArchive, "已恢复项目档案，刷新页面后生效。");
+        await restoreProjectArchive(pendingArchive, restoreOptions);
+        const result = summarizeArchive(pendingArchive, "已恢复所选项目档案，刷新页面后生效。", restoreOptions);
         setStatus(`${result.message} 页面即将刷新。`, "success");
         window.setTimeout(() => window.location.reload(), 900);
       } catch (error) {
@@ -519,6 +614,19 @@
     cancelButton?.addEventListener("click", () => {
       clearPendingImport();
       setStatus("已取消导入项目档案，当前本机项目未被修改。", "normal");
+    });
+
+    previewList?.addEventListener("change", (event) => {
+      if (event.target.matches("[data-archive-kind][data-archive-id]")) {
+        updateRestoreSelectionState();
+      }
+    });
+
+    selectAllInput?.addEventListener("change", () => {
+      getRestoreInputs().forEach((input) => {
+        input.checked = selectAllInput.checked;
+      });
+      updateRestoreSelectionState();
     });
   }
 
