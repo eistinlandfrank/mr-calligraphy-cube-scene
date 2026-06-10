@@ -3713,6 +3713,26 @@ body.is-model-view .notice-panel {
   line-height: 1.45;
 }
 
+.plan-history-select {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.plan-history-select select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
 .plan-item-list {
   display: grid;
   gap: 6px;
@@ -3728,6 +3748,14 @@ body.is-model-view .notice-panel {
   padding: 8px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.07);
+}
+
+.plan-item-check {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
 }
 
 .plan-item input {
@@ -3759,6 +3787,45 @@ body.is-model-view .notice-panel {
 .plan-item.is-done strong {
   color: rgba(255, 250, 241, 0.58);
   text-decoration: line-through;
+}
+
+.plan-item-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-column: 1 / -1;
+  gap: 5px;
+}
+
+.plan-item-actions button {
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.82);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.plan-item-actions button:hover,
+.plan-item-actions button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  background: rgba(47, 111, 104, 0.46);
+}
+
+.plan-item-actions button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.34);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.plan-item-actions button:last-child {
+  border-color: rgba(255, 123, 123, 0.22);
+  color: #ffe0dc;
+  background: rgba(135, 47, 47, 0.18);
 }
 
 .plan-empty {

@@ -852,6 +852,7 @@ const els = {
   planProgressLabel: document.getElementById("planProgressLabel"),
   planProgressFill: document.getElementById("planProgressFill"),
   planSummary: document.getElementById("planSummary"),
+  planHistorySelect: document.getElementById("planHistorySelect"),
   planItemList: document.getElementById("planItemList"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
@@ -909,6 +910,7 @@ let activeHistoryDetailId = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
+let activePlanId = null;
 let isReplayVideoExporting = false;
 let lecturePlaybackTimer = null;
 const LECTURE_PLAYBACK_STEP_MS = 1200;
@@ -3489,12 +3491,22 @@ function bindHistoryControls() {
 }
 
 function bindPlanControls() {
+  els.planHistorySelect?.addEventListener("change", () => {
+    activePlanId = els.planHistorySelect.value || null;
+    renderPlanPanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+  });
+
   els.planItemList?.addEventListener("change", (event) => {
     const input = event.target.closest("[data-plan-item-id]");
     if (!input) return;
     const planId = input.dataset.planId;
     const itemId = input.dataset.planItemId;
     const result = window.MRAppState?.togglePlanItem?.(planId, itemId, input.checked);
+    if (result?.plan?.id) {
+      activePlanId = result.plan.id;
+    }
     if (result?.message) {
       showNotice(result.message);
     }
@@ -3502,6 +3514,8 @@ function bindPlanControls() {
     updateSceneText(currentIndex);
     updatePathPanel(currentIndex);
   });
+
+  els.planItemList?.addEventListener("click", handlePlanItemAction);
 }
 
 function renderLearningState() {
@@ -3977,16 +3991,27 @@ function renderHistoryBatchControls(history) {
 }
 
 function renderPlanPanel(sceneIndex = currentIndex) {
-  if (!els.planPanel || !window.MRAppState?.getLatestPlan) {
+  if (!els.planPanel || !window.MRAppState?.getPlanHistory) {
     return;
   }
 
-  const plan = window.MRAppState.getLatestPlan();
-  const shouldShow = Boolean(plan || sceneIndex >= 8);
+  const planHistory = window.MRAppState.getPlanHistory();
+  if (activePlanId && !planHistory.some((plan) => plan.id === activePlanId)) {
+    activePlanId = null;
+  }
+  const fallbackPlan = planHistory[0] || null;
+  const plan = activePlanId
+    ? window.MRAppState.getPlan?.(activePlanId)
+    : fallbackPlan;
+  if (!activePlanId && plan) {
+    activePlanId = plan.id;
+  }
+  const shouldShow = Boolean(planHistory.length || sceneIndex >= 8);
   els.planPanel.hidden = !shouldShow;
   if (!shouldShow) {
     return;
   }
+  renderPlanHistorySelect(planHistory, plan?.id || "");
 
   const progress = plan?.progress || { done: 0, total: 0, percent: 0 };
   els.planTitle.textContent = plan?.title || "暂无计划";
@@ -4003,10 +4028,13 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     return;
   }
 
-  plan.items.forEach((item) => {
+  plan.items.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "plan-item";
+    row.classList.toggle("is-done", item.done);
+
     const label = document.createElement("label");
-    label.className = "plan-item";
-    label.classList.toggle("is-done", item.done);
+    label.className = "plan-item-check";
 
     const checkbox = document.createElement("input");
     checkbox.type = "checkbox";
@@ -4021,8 +4049,110 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     detail.textContent = item.detail || "完成后勾选，进度会保存到本机。";
     body.append(title, detail);
     label.append(checkbox, body);
-    els.planItemList.appendChild(label);
+
+    const actions = document.createElement("div");
+    actions.className = "plan-item-actions";
+    [
+      ["up", "上移", index === 0],
+      ["down", "下移", index === plan.items.length - 1],
+      ["edit", "编辑", false],
+      ["delete", "删除", false]
+    ].forEach(([action, text, disabled]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real";
+      button.dataset.planAction = action;
+      button.dataset.planId = plan.id;
+      button.dataset.planItemId = item.id;
+      button.disabled = disabled;
+      button.textContent = text;
+      actions.appendChild(button);
+    });
+
+    row.append(label, actions);
+    els.planItemList.appendChild(row);
   });
+}
+
+function renderPlanHistorySelect(planHistory, activeId) {
+  if (!els.planHistorySelect) return;
+  els.planHistorySelect.innerHTML = "";
+  if (!planHistory.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "暂无计划";
+    els.planHistorySelect.appendChild(option);
+    els.planHistorySelect.disabled = true;
+    return;
+  }
+
+  planHistory.forEach((plan, index) => {
+    const option = document.createElement("option");
+    option.value = plan.id;
+    option.textContent = `${index === 0 ? "最新 · " : ""}${formatHistoryTime(plan.createdAt)} · ${plan.progress.done}/${plan.progress.total} · ${plan.title}`;
+    els.planHistorySelect.appendChild(option);
+  });
+  els.planHistorySelect.disabled = false;
+  els.planHistorySelect.value = activeId || planHistory[0]?.id || "";
+}
+
+function handlePlanItemAction(event) {
+  const button = event.target.closest("[data-plan-action]");
+  if (!button) return;
+
+  const planId = button.dataset.planId;
+  const itemId = button.dataset.planItemId;
+  const action = button.dataset.planAction;
+  let result = null;
+
+  if (action === "edit") {
+    result = editPlanItem(planId, itemId);
+  } else if (action === "delete") {
+    result = deletePlanItem(planId, itemId);
+  } else if (action === "up" || action === "down") {
+    result = window.MRAppState?.movePlanItem?.(planId, itemId, action);
+  }
+
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  if (result?.ok) {
+    activePlanId = result.plan?.id || planId;
+    renderPlanPanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+    renderLearningStateSummary();
+  }
+}
+
+function editPlanItem(planId, itemId) {
+  const plan = window.MRAppState?.getPlan?.(planId);
+  const item = plan?.items?.find((entry) => entry.id === itemId);
+  if (!item) {
+    return { ok: false, message: "未找到计划任务。" };
+  }
+
+  const title = window.prompt("计划项标题", item.title);
+  if (title === null) {
+    return null;
+  }
+  const detail = window.prompt("计划项说明", item.detail || "");
+  if (detail === null) {
+    return null;
+  }
+  return window.MRAppState?.updatePlanItem?.(planId, itemId, { title, detail });
+}
+
+function deletePlanItem(planId, itemId) {
+  const plan = window.MRAppState?.getPlan?.(planId);
+  const item = plan?.items?.find((entry) => entry.id === itemId);
+  if (!item) {
+    return { ok: false, message: "未找到计划任务。" };
+  }
+  if (!window.confirm(`确定删除计划项“${item.title}”吗？`)) {
+    return null;
+  }
+  return window.MRAppState?.deletePlanItem?.(planId, itemId);
 }
 
 function renderHistoryTrend(trend) {
@@ -4714,6 +4844,9 @@ function runAction(action) {
 
 function applyActionResult(result = {}, action = {}) {
   els.actionFeedback.textContent = result.message || (action.label ? "操作已处理，但没有返回详细结果。" : "");
+  if (result.plan?.id) {
+    activePlanId = result.plan.id;
+  }
   renderLearningStateSummary();
   renderTaskPanel();
   renderLecturePanel(currentIndex);

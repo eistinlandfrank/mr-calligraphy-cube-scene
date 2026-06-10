@@ -724,7 +724,24 @@
 
   function getLatestPlan() {
     const plan = state.plans[state.plans.length - 1] || null;
-    if (!plan) return null;
+    return plan ? decoratePlan(plan) : null;
+  }
+
+  function getPlan(planId = null) {
+    if (!planId) {
+      return getLatestPlan();
+    }
+    const plan = state.plans.find((item) => item.id === String(planId));
+    return plan ? decoratePlan(plan) : null;
+  }
+
+  function getPlanHistory() {
+    return [...state.plans]
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+      .map(decoratePlan);
+  }
+
+  function decoratePlan(plan) {
     return {
       ...clone(plan),
       progress: getPlanProgress(plan)
@@ -1175,9 +1192,74 @@
     saveState();
     return {
       ok: true,
-      plan: getLatestPlan(),
+      plan: decoratePlan(plan),
       message: item.done ? `已完成计划项：${item.title}。` : `已取消完成：${item.title}。`
     };
+  }
+
+  function updatePlanItem(planId, itemId, updates = {}) {
+    const plan = state.plans.find((item) => item.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "未找到学习计划。" };
+    }
+    const item = plan.items.find((entry) => entry.id === String(itemId || ""));
+    if (!item) {
+      return { ok: false, message: "未找到计划任务。" };
+    }
+
+    const nextTitle = String(updates.title ?? item.title).trim().replace(/\s+/g, " ").slice(0, 64);
+    const nextDetail = String(updates.detail ?? item.detail).trim().replace(/\s+/g, " ").slice(0, 140);
+    if (nextTitle.length < 2) {
+      return { ok: false, message: "计划项标题至少需要 2 个字符。" };
+    }
+
+    item.title = nextTitle;
+    item.detail = nextDetail;
+    addEvent("plan-item-edit", `编辑计划项：${item.title}`);
+    saveState();
+    return { ok: true, plan: decoratePlan(plan), message: `已更新计划项：${item.title}。` };
+  }
+
+  function movePlanItem(planId, itemId, direction) {
+    const plan = state.plans.find((item) => item.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "未找到学习计划。" };
+    }
+    const index = plan.items.findIndex((item) => item.id === String(itemId || ""));
+    if (index < 0) {
+      return { ok: false, message: "未找到计划任务。" };
+    }
+    const offset = direction === "down" ? 1 : -1;
+    const nextIndex = index + offset;
+    if (nextIndex < 0 || nextIndex >= plan.items.length) {
+      return { ok: false, message: "该计划项已经在边界位置。" };
+    }
+
+    const [item] = plan.items.splice(index, 1);
+    plan.items.splice(nextIndex, 0, item);
+    addEvent("plan-item-move", `调整计划项顺序：${item.title}`);
+    saveState();
+    return { ok: true, plan: decoratePlan(plan), message: `已调整计划项顺序：${item.title}。` };
+  }
+
+  function deletePlanItem(planId, itemId) {
+    const plan = state.plans.find((item) => item.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "未找到学习计划。" };
+    }
+    const index = plan.items.findIndex((item) => item.id === String(itemId || ""));
+    if (index < 0) {
+      return { ok: false, message: "未找到计划任务。" };
+    }
+
+    const [item] = plan.items.splice(index, 1);
+    const progress = getPlanProgress(plan);
+    plan.completedAt = progress.total > 0 && progress.done === progress.total
+      ? new Date().toISOString()
+      : null;
+    addEvent("plan-item-delete", `删除计划项：${item.title}`);
+    saveState();
+    return { ok: true, plan: decoratePlan(plan), message: `已删除计划项：${item.title}。` };
   }
 
   function createReport() {
@@ -1933,6 +2015,8 @@
     getTaskLibrary,
     getTaskProgress,
     getLectureProgress,
+    getPlan,
+    getPlanHistory,
     getLatestPlan,
     getReportPreview,
     getLatestReview,
@@ -1958,6 +2042,9 @@
     filterExcellentRecords,
     createPlan,
     togglePlanItem,
+    updatePlanItem,
+    movePlanItem,
+    deletePlanItem,
     createReport,
     downloadReport,
     downloadArchive
