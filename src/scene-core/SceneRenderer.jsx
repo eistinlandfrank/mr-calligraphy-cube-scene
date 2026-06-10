@@ -173,12 +173,14 @@ export function SceneRenderer({
             <SceneUiPanel key={panel.id} panel={panel} />
           ))}
           {showHotspots
-            ? sceneConfig?.hotspots?.map((hotspot) => (
-                <Hotspot key={hotspot.id} hotspot={hotspot} onSelect={() => onSelectObject?.(hotspot.target)} />
-              ))
+            ? sceneConfig?.hotspots?.map((hotspot) => {
+                const selectableId = hotspot.target ?? hotspot.targetScene ?? hotspot.targetAction ?? hotspot.id;
+                return <Hotspot key={hotspot.id} hotspot={hotspot} onSelect={() => onSelectObject?.(selectableId)} />;
+              })
             : null}
           <SceneReadySignal key={`${sceneConfig?.id ?? "scene"}-${mode}`} onReady={() => setIsReady(true)} />
           <SceneXrBridge onRendererReady={setXrRenderer} />
+          <XrInteractionLayer active={xrActive} onSelect={onSelectObject} />
         </Suspense>
       </Canvas>
       <XrControlPanel
@@ -228,6 +230,135 @@ function SceneXrBridge({ onRendererReady }) {
       onRendererReady?.(null);
     };
   }, [gl, onRendererReady]);
+
+  return null;
+}
+
+function XrInteractionLayer({ active, onSelect }) {
+  const { camera, gl, scene } = useThree();
+  const gazeStateRef = useRef({ id: null, elapsed: 0, triggered: false });
+
+  useEffect(() => {
+    if (!active) {
+      return undefined;
+    }
+
+    const controllers = [0, 1].map((index) => {
+      const controller = gl.xr.getController(index);
+      const ray = createControllerRay();
+      const handleSelectStart = () => {
+        selectFromControllerRay(controller, scene, onSelect);
+      };
+
+      controller.add(ray);
+      controller.addEventListener("selectstart", handleSelectStart);
+      scene.add(controller);
+
+      return { controller, handleSelectStart, ray };
+    });
+
+    return () => {
+      controllers.forEach(({ controller, handleSelectStart, ray }) => {
+        controller.removeEventListener("selectstart", handleSelectStart);
+        controller.remove(ray);
+        scene.remove(controller);
+        ray.geometry.dispose();
+        ray.material.dispose();
+      });
+    };
+  }, [active, gl, onSelect, scene]);
+
+  useFrame((_, delta) => {
+    if (!active) {
+      return;
+    }
+
+    updateGazeSelection(camera, scene, onSelect, gazeStateRef.current, delta);
+  });
+
+  return null;
+}
+
+function createControllerRay() {
+  const geometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0),
+    new THREE.Vector3(0, 0, -1)
+  ]);
+  const material = new THREE.LineBasicMaterial({ color: "#d7aa72", transparent: true, opacity: 0.86 });
+  const line = new THREE.Line(geometry, material);
+
+  line.name = "XR 控制器射线";
+  line.scale.z = 4;
+  return line;
+}
+
+function selectFromControllerRay(controller, scene, onSelect) {
+  const raycaster = new THREE.Raycaster();
+  const rotation = new THREE.Matrix4();
+
+  rotation.extractRotation(controller.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(rotation);
+  selectFirstRaycastTarget(raycaster, scene, onSelect);
+}
+
+function updateGazeSelection(camera, scene, onSelect, gazeState, delta) {
+  const raycaster = new THREE.Raycaster();
+
+  raycaster.setFromCamera({ x: 0, y: 0 }, camera);
+  const selectableId = getFirstSelectableId(raycaster, scene);
+
+  if (selectableId !== gazeState.id) {
+    gazeState.id = selectableId;
+    gazeState.elapsed = 0;
+    gazeState.triggered = false;
+    return;
+  }
+
+  if (!selectableId || gazeState.triggered) {
+    return;
+  }
+
+  gazeState.elapsed += delta;
+
+  if (gazeState.elapsed >= 1.15) {
+    gazeState.triggered = true;
+    onSelect?.(selectableId);
+  }
+}
+
+function selectFirstRaycastTarget(raycaster, scene, onSelect) {
+  const selectableId = getFirstSelectableId(raycaster, scene);
+
+  if (selectableId) {
+    onSelect?.(selectableId);
+  }
+}
+
+function getFirstSelectableId(raycaster, scene) {
+  const intersections = raycaster.intersectObjects(scene.children, true);
+
+  for (const intersection of intersections) {
+    const selectableId = findSelectableId(intersection.object);
+
+    if (selectableId) {
+      return selectableId;
+    }
+  }
+
+  return null;
+}
+
+function findSelectableId(object) {
+  let current = object;
+
+  while (current) {
+    if (current.userData?.selectableId) {
+      return current.userData.selectableId;
+    }
+
+    current = current.parent;
+  }
 
   return null;
 }
@@ -289,8 +420,8 @@ function SceneUiPanel({ panel }) {
   const tone = getPanelTone(panel.tone);
 
   return (
-    <group position={panel.position} rotation={panel.rotation}>
-      <mesh>
+    <group position={panel.position} rotation={panel.rotation} userData={{ selectableId: panel.id }}>
+      <mesh userData={{ selectableId: panel.id }}>
         <boxGeometry args={[width, height, 0.028]} />
         <meshStandardMaterial
           color={tone.background}
@@ -302,7 +433,7 @@ function SceneUiPanel({ panel }) {
           emissiveIntensity={0.18}
         />
       </mesh>
-      <mesh position={[0, 0, 0.018]}>
+      <mesh position={[0, 0, 0.018]} userData={{ selectableId: panel.id }}>
         <planeGeometry args={[width * 0.9, height * 0.78]} />
         <meshBasicMaterial map={texture} transparent />
       </mesh>

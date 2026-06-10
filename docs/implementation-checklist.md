@@ -465,11 +465,13 @@
 
   验收记录：2026-06-10 SceneRenderer 启动后通过 navigator.xr.isSessionSupported 检测 immersive-vr 支持，3D 视窗右上角显示 WebXR 状态；支持设备可点击“进入 XR”请求 XRSession，不支持或检测失败时按钮禁用并显示原因；`npm run build` 通过。
 
-- [ ] **P8-03：实现 XR 控制器射线选择**  
+- [x] **P8-03：实现 XR 控制器射线选择**  
   验收：控制器射线可以选择空间按钮。
 
-- [ ] **P8-04：实现 XR 凝视交互**  
+- [x] **P8-04：实现 XR 凝视交互**  
   验收：头部朝向可触发凝视按钮。
+
+  验收记录：2026-06-10 SceneRenderer 在 XR active 时挂载 XrInteractionLayer，为双控制器添加可视射线并在 selectstart 时 raycast 可选节点；Hotspot 和 SceneUiPanel 写入 selectableId，射线可选中热点或空间 UI；同时中心凝视 raycast 同一批 selectable 节点，停留约 1.15 秒触发选择；`npm run build` 通过。
 
 - [ ] **P8-05：适配老人端空间 UI 大字号**  
   验收：XR 模式下文字可读，按钮尺寸适老。
