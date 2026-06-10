@@ -19,7 +19,15 @@ export const useFlowStore = create((set, get) => ({
 
   getCurrentState: () => getFlowState(get().flowConfig, get().currentStateId),
 
-  getExecutableActions: () => getFlowState(get().flowConfig, get().currentStateId)?.actions ?? [],
+  getExecutableActions: () => {
+    const actions = getFlowState(get().flowConfig, get().currentStateId)?.actions ?? [];
+
+    if (!get().isPaused) {
+      return actions;
+    }
+
+    return actions.map((action) => (action === "pause" ? "resume" : action));
+  },
 
   getStateElapsedSeconds: () => {
     const state = get();
@@ -66,6 +74,38 @@ export const useFlowStore = create((set, get) => ({
 
   executeAction: (actionId) => {
     const state = getFlowState(get().flowConfig, get().currentStateId);
+
+    if (actionId === "resume" && get().isPaused) {
+      const resumedAt = Date.now();
+      const current = get();
+      const pausedDuration = current.pausedAt ? resumedAt - current.pausedAt : 0;
+
+      set((storeState) => ({
+        isPaused: false,
+        pausedAt: null,
+        accumulatedPausedMs: storeState.accumulatedPausedMs + pausedDuration,
+        session: storeState.session
+          ? {
+              ...storeState.session,
+              status: "active",
+              events: [
+                ...storeState.session.events,
+                createSessionEvent({
+                  type: "action_triggered",
+                  stateId: storeState.currentStateId,
+                  at: new Date(resumedAt).toISOString(),
+                  payload: {
+                    actionId,
+                    pausedMs: pausedDuration
+                  }
+                })
+              ]
+            }
+          : null
+      }));
+
+      return true;
+    }
 
     if (!state?.actions?.includes(actionId)) {
       return false;
@@ -130,11 +170,6 @@ export const useFlowStore = create((set, get) => ({
             }
           : null
       }));
-      return true;
-    }
-
-    if (actionId === "resume") {
-      set({ isPaused: false });
       return true;
     }
 

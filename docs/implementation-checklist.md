@@ -220,8 +220,10 @@
 
   验收记录：2026-06-10 flowStore 增加 pause 状态、暂停时间和剩余时间冻结计算；VirtualCalligraphyGame 支持 paused，暂停时停止 requestAnimationFrame 动画，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-13：实现继续逻辑**  
+- [x] **P3-13：实现继续逻辑**  
   验收：继续后计时器、动画、输入采集恢复。
+
+  验收记录：2026-06-10 暂停时可执行操作自动从 pause 切换为 resume；resume 会恢复 active 状态、累计暂停时长并继续倒计时，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-14：实现结束逻辑**  
   验收：结束后保存 session，并进入报告或完成状态。
