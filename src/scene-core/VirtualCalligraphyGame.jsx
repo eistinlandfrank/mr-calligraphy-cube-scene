@@ -3,15 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
 
 const metricLabels = {
-  structure: "结构",
-  stroke: "笔画",
-  method: "笔法",
+  pathAccuracy: "路径准确",
+  strokeOrder: "笔顺完成",
   rhythm: "节奏",
-  focus: "专注"
+  focus: "中断控制"
 };
 
 export function VirtualCalligraphyGame({ compact = false, paused = false, onComplete, onProgressChange }) {
   const svgRef = useRef(null);
+  const previousPausedRef = useRef(paused);
   const [currentStrokeIndex, setCurrentStrokeIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
@@ -19,6 +19,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   const [userStrokePoints, setUserStrokePoints] = useState([]);
   const [strokeFeedback, setStrokeFeedback] = useState("");
   const [strokeOrderWarnings, setStrokeOrderWarnings] = useState(0);
+  const [interruptionCount, setInterruptionCount] = useState(0);
   const [completedStrokeIds, setCompletedStrokeIds] = useState([]);
   const [completedStrokeRecords, setCompletedStrokeRecords] = useState([]);
   const [scorePanel, setScorePanel] = useState(null);
@@ -64,6 +65,14 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     onProgressChange?.(totalProgress, currentStroke?.label);
   }, [completedStrokeIds, currentStroke, onProgressChange, progress]);
 
+  useEffect(() => {
+    if (paused && !previousPausedRef.current && !scorePanel) {
+      setInterruptionCount((count) => count + 1);
+    }
+
+    previousPausedRef.current = paused;
+  }, [paused, scorePanel]);
+
   const brushPosition = useMemo(() => getBrushPosition(currentStroke.points, progress), [currentStroke, progress]);
   const activeTip = scorePanel ? "作品已生成，可查看鼓励式评分。" : currentStroke.tip;
   const latestStrokeRecord = completedStrokeRecords[completedStrokeRecords.length - 1];
@@ -96,7 +105,12 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
       yongCharacter.strokes.length,
       Math.max(completedCount, strokeRecords.length)
     );
-    const score = buildScore(normalizedCompletedCount);
+    const score = buildScore({
+      completedCount: normalizedCompletedCount,
+      strokeRecords,
+      strokeOrderWarnings,
+      interruptionCount
+    });
     const completedAt = new Date().toISOString();
     const result = {
       ...score,
@@ -270,6 +284,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
               </small>
             ) : null}
             {strokeOrderWarnings ? <small>笔顺提醒 {strokeOrderWarnings} 次</small> : null}
+            {interruptionCount ? <small>中断记录 {interruptionCount} 次</small> : null}
           </div>
           <div className="stroke-pill-grid">
             {yongCharacter.strokes.map((stroke, index) => (
@@ -455,22 +470,45 @@ function roundMetric(value) {
   return Math.round(value * 10) / 10;
 }
 
-function buildScore(completedCount) {
-  const completionBoost = Math.min(8, completedCount);
-  const metrics = Object.fromEntries(
-    Object.entries(yongCharacter.scoreTemplate).map(([key, value], index) => [
-      key,
-      clamp(value + completionBoost - index, 0, 100)
-    ])
+function buildScore({ completedCount, strokeRecords, strokeOrderWarnings, interruptionCount }) {
+  const totalStrokeCount = yongCharacter.strokes.length;
+  const missingStrokePenalty = (totalStrokeCount - completedCount) * 12;
+  const metrics = {
+    pathAccuracy: averageRecordMetric(strokeRecords, "pathAccuracy", 70 - missingStrokePenalty),
+    strokeOrder: clamp(100 - strokeOrderWarnings * 10 - missingStrokePenalty, 0, 100),
+    rhythm: averageRecordMetric(strokeRecords, "rhythmStability", 72 - missingStrokePenalty),
+    focus: clamp(100 - interruptionCount * 12 - strokeOrderWarnings * 4, 0, 100)
+  };
+  const total = Math.round(
+    metrics.pathAccuracy * 0.4 +
+      metrics.strokeOrder * 0.25 +
+      metrics.rhythm * 0.2 +
+      metrics.focus * 0.15
   );
-  const total = Math.round(Object.values(metrics).reduce((sum, value) => sum + value, 0) / Object.values(metrics).length);
   const lowestMetric = Object.entries(metrics).sort((a, b) => a[1] - b[1])[0][0];
+  const suggestionLabels = {
+    pathAccuracy: "下一轮可放慢落笔，优先让轨迹贴合标准路径。",
+    strokeOrder: "下一轮先跟读笔顺，再从当前笔画起点入笔。",
+    rhythm: "下一轮保持呼吸和下笔速度一致，减少忽快忽慢。",
+    focus: "下一轮可减少暂停中断，先完成一组短练习。"
+  };
 
   return {
     total,
     metrics,
-    suggestion: `整体完成稳定，下一轮可继续关注“${metricLabels[lowestMetric]}”，保持呼吸节奏后再写一遍。`
+    suggestion: `${suggestionLabels[lowestMetric]} 当前最值得关注的是“${metricLabels[lowestMetric]}”。`
   };
+}
+
+function averageRecordMetric(records, key, fallback) {
+  const values = records.map((record) => Number(record[key])).filter(Number.isFinite);
+
+  if (!values.length) {
+    return clamp(Math.round(fallback), 0, 100);
+  }
+
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return clamp(Math.round(total / values.length), 0, 100);
 }
 
 function interpolate(start, end, progress) {
