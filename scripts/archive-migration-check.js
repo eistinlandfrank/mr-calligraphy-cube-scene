@@ -7,11 +7,27 @@ global.document = {
 };
 const removedStorageKeys = [];
 const writtenStorageKeys = [];
+const localValues = new Map([
+  [
+    "mr-calligraphy-learning-state-v1",
+    JSON.stringify({
+      sessions: [{ id: "session-1", score: 70 }],
+      reports: []
+    })
+  ]
+]);
 global.localStorage = {
-  getItem: () => null,
-  setItem: (key) => writtenStorageKeys.push(key),
-  removeItem: (key) => removedStorageKeys.push(key)
+  getItem: (key) => localValues.get(key) || null,
+  setItem: (key, value) => {
+    writtenStorageKeys.push(key);
+    localValues.set(key, value);
+  },
+  removeItem: (key) => {
+    removedStorageKeys.push(key);
+    localValues.delete(key);
+  }
 };
+global.indexedDB = createIndexedDbMock();
 
 require("../project-schema-utils.js");
 require("../project-archive.js");
@@ -24,7 +40,10 @@ const legacyArchive = {
   storage: {
     "mr-calligraphy-learning-state-v1": {
       label: "学习状态",
-      value: JSON.stringify({ sessions: [] }),
+      value: JSON.stringify({
+        sessions: [{ id: "session-1", score: 88 }],
+        artworks: [{ id: "art-1" }]
+      }),
       bytes: 15
     }
   },
@@ -63,6 +82,26 @@ async function main() {
     "projectSchema 应保留同一组迁移记录。"
   );
 
+  const previewResult = await window.MRProjectArchive.prepareImportProject({
+    text: async () => JSON.stringify(legacyArchive)
+  });
+  const learningPreview = previewResult.preview.storage.find(
+    (item) => item.id === "mr-calligraphy-learning-state-v1"
+  );
+  assert(learningPreview, "导入预览应包含学习状态。");
+  assert(
+    learningPreview.fieldDiffSummary.includes("修改字段"),
+    "学习状态预览应显示字段级修改摘要。"
+  );
+  assert(
+    learningPreview.fieldDiffs.some((item) => item.includes("sessions[0].score")),
+    "学习状态预览应显示 sessions[0].score 字段变化。"
+  );
+  assert(
+    learningPreview.fieldDiffs.some((item) => item.includes("artworks.length")),
+    "学习状态预览应显示 artworks.length 新增变化。"
+  );
+
   await window.MRProjectArchive.importProject({
     ...legacyArchive,
     indexedDb: {}
@@ -83,4 +122,67 @@ function assert(condition, message) {
   if (!condition) {
     throw new Error(message);
   }
+}
+
+function createIndexedDbMock() {
+  const dbStores = new Map();
+
+  return {
+    open: (dbName) => {
+      const request = { result: null, error: null, onsuccess: null, onerror: null, onupgradeneeded: null };
+      const db = createDb(dbName, dbStores);
+      request.result = db;
+      queueMicrotask(() => {
+        request.onupgradeneeded?.();
+        request.onsuccess?.();
+      });
+      return request;
+    }
+  };
+}
+
+function createDb(dbName, dbStores) {
+  const stores = dbStores.get(dbName) || new Map();
+  dbStores.set(dbName, stores);
+
+  return {
+    objectStoreNames: {
+      contains: (storeName) => stores.has(storeName)
+    },
+    createObjectStore: (storeName) => {
+      if (!stores.has(storeName)) {
+        stores.set(storeName, []);
+      }
+    },
+    transaction: (storeName) => {
+      if (!stores.has(storeName)) {
+        stores.set(storeName, []);
+      }
+      const transaction = {
+        error: null,
+        oncomplete: null,
+        onerror: null,
+        objectStore: () => createObjectStoreMock(stores.get(storeName))
+      };
+      queueMicrotask(() => transaction.oncomplete?.());
+      return transaction;
+    },
+    close: () => {}
+  };
+}
+
+function createObjectStoreMock(records) {
+  return {
+    getAll: () => {
+      const request = { result: records.slice(), error: null, onsuccess: null, onerror: null };
+      queueMicrotask(() => request.onsuccess?.());
+      return request;
+    },
+    clear: () => {
+      records.length = 0;
+    },
+    put: (record) => {
+      records.push(record);
+    }
+  };
 }

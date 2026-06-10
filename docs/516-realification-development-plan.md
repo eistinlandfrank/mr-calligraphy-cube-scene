@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要和写实发布版本摘要已补第一版，仍缺对象 schema 统一、字段级迁移和远端发布适配。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要和 localStorage 字段级差异预览已补第一版，仍缺对象 schema 统一、字段级合并迁移和远端发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -166,7 +166,7 @@
 
 任务：
 
-- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成；项目档案迁移预检、默认保留旧档案缺项和 `projectSchema.migrations` 记录已完成第一版。
+- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成；项目档案迁移预检、默认保留旧档案缺项、`projectSchema.migrations` 记录和 localStorage 字段级差异预览已完成第一版。
 - 把主场景 `mr-calligraphy-main-scene-layout-v1`、写实场景 `mr-calligraphy-realistic-layout-v1`、房间配置 `mr-calligraphy-room-config-v3-wood` 纳入统一读写。
 - 新增项目导出 JSON：导出场景配置、学习记录、作品索引和本机导入模型二进制。
 - 新增项目导入 JSON：校验版本，展示差异预览，确认后覆盖同名本机项目状态。
@@ -841,8 +841,8 @@
 
 已知限制：
 
-- 差异预览第一版只显示条目级变化和模型数量变化，还没有 JSON 字段级 diff。
-- 已支持条目级选择性恢复；还不能在单个 JSON 内做字段级选择。
+- 差异预览已补 localStorage JSON 字段级 diff 第一版，会展示字段新增、修改、删除路径。
+- 已支持条目级选择性恢复；还不能在单个 JSON 内做字段级选择或字段级合并。
 - 项目档案仍是浏览器本机文件流转，不是远端多人协作或云端恢复。
 
 ### 2026-06-11：补齐项目档案选择性恢复
@@ -876,7 +876,7 @@
 
 已知限制：
 
-- 选择性恢复粒度是条目级，还不是 JSON 字段级 diff 和字段级合并。
+- 选择性恢复粒度仍是条目级；JSON 字段级 diff 已用于预览，但还不能字段级合并恢复。
 - IndexedDB 模型仓库仍按仓库整体替换，不能只勾选单个模型恢复。
 - 项目档案仍是浏览器本机 JSON 文件流转，不是远端协作或云端版本库。
 
@@ -2276,3 +2276,55 @@
 - 差异预览仍是本机浏览器里的发布前摘要，不是远端发布审批 diff。
 - 当前差异粒度是对象/灯光/图层条目级，还没有字段级展开、三维可视化高亮和逐字段选择发布。
 - Playwright 依赖仍受本机 npm 代理限制未执行，只校验了测试源码语法；需要在具备依赖的环境里跑完整 E2E。
+
+### 2026-06-11：新增项目档案字段级差异预览
+
+功能名：主后台项目档案导入前的 localStorage JSON 字段级变化摘要。
+
+涉及文件：
+
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `MRProjectArchive.prepareImportProject()` 生成预览时，会为 localStorage JSON 项额外计算 `fieldDiffSummary` 和 `fieldDiffs`。
+- 字段差异支持新增、修改、删除三类路径，覆盖对象字段、数组长度和数组前 8 项的叶子字段。
+- 主后台项目档案导入预览会在每个本机 JSON 条目下展示字段变化摘要和最多 6 条具体路径。
+- 非 JSON storage 仍保持原有条目级预览，不会因为字段解析失败阻断项目导入。
+- `scripts/archive-migration-check.js` 新增最小 IndexedDB mock，并断言学习状态预览能显示 `sessions[0].score` 修改和 `artworks.length` 新增。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，先导出项目档案，再修改当前本机学习状态、房间或场景布局。
+- 选择之前导出的 JSON 后，预览列表应显示条目级“覆盖/新增/清空”状态，并在 JSON 条目下显示字段级新增、修改、删除摘要。
+- 运行 `node scripts/archive-migration-check.js`，应输出项目档案迁移检查通过，并覆盖字段级差异断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 字段级差异目前只用于导入前预览，恢复时仍按 localStorage 条目整体覆盖或保留。
+- 还没有可展开 JSON 树、字段勾选、字段级合并和冲突解决策略。
+- IndexedDB 模型仓库预览仍是数量、哈希和仓库级替换摘要，不展示单模型字段级 diff。

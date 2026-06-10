@@ -131,6 +131,7 @@
     const incomingValue = record?.value == null ? null : record.value;
     const currentValue = window.localStorage.getItem(item.key);
     const migratedMissing = record?.migratedMissing === true;
+    const fieldDiff = createStorageFieldDiff(currentValue, incomingValue);
 
     if (incomingValue !== null && typeof incomingValue !== "string") {
       throw new Error(`项目档案中的 ${item.label} 数据格式不正确。`);
@@ -142,9 +143,108 @@
       change: getStorageChange(currentValue, incomingValue),
       currentBytes: currentValue ? new Blob([currentValue]).size : 0,
       incomingBytes: incomingValue ? new Blob([incomingValue]).size : 0,
+      fieldDiffSummary: fieldDiff.summary,
+      fieldDiffs: fieldDiff.items,
       defaultSelected: !migratedMissing,
       migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机内容。` : ""
     };
+  }
+
+  function createStorageFieldDiff(currentValue, incomingValue) {
+    const current = parseJsonForDiff(currentValue);
+    const incoming = parseJsonForDiff(incomingValue);
+    if (!current.ok || !incoming.ok) {
+      return { summary: "", items: [] };
+    }
+
+    const currentFields = current.value == null ? new Map() : flattenDiffFields(current.value);
+    const incomingFields = incoming.value == null ? new Map() : flattenDiffFields(incoming.value);
+    const added = [];
+    const updated = [];
+    const removed = [];
+
+    incomingFields.forEach((incomingField, path) => {
+      const currentField = currentFields.get(path);
+      if (!currentField) {
+        added.push(incomingField);
+        return;
+      }
+      if (incomingField.signature !== currentField.signature) {
+        updated.push(incomingField);
+      }
+    });
+
+    currentFields.forEach((currentField, path) => {
+      if (!incomingFields.has(path)) {
+        removed.push(currentField);
+      }
+    });
+
+    const total = added.length + updated.length + removed.length;
+    if (!total) {
+      return { summary: "字段无变化", items: [] };
+    }
+
+    return {
+      summary: `${added.length} 新增字段 / ${updated.length} 修改字段 / ${removed.length} 删除字段`,
+      items: [
+        ...formatFieldDiffItems("新增", added),
+        ...formatFieldDiffItems("修改", updated),
+        ...formatFieldDiffItems("删除", removed)
+      ].slice(0, 6)
+    };
+  }
+
+  function parseJsonForDiff(value) {
+    if (typeof value !== "string" || !value.trim()) {
+      return { ok: true, value: null };
+    }
+    try {
+      return { ok: true, value: JSON.parse(value) };
+    } catch (error) {
+      return { ok: false, value: null };
+    }
+  }
+
+  function flattenDiffFields(value, path = "root", result = new Map(), depth = 0) {
+    if (depth >= 4 || !value || typeof value !== "object") {
+      result.set(path, { path, signature: stableStringify(value) });
+      return result;
+    }
+
+    if (Array.isArray(value)) {
+      result.set(`${path}.length`, { path: `${path}.length`, signature: stableStringify(value.length) });
+      value.slice(0, 8).forEach((item, index) => flattenDiffFields(item, `${path}[${index}]`, result, depth + 1));
+      if (value.length > 8) {
+        result.set(`${path}[...]`, { path: `${path}[...]`, signature: stableStringify(value.length) });
+      }
+      return result;
+    }
+
+    const keys = Object.keys(value).sort();
+    if (!keys.length) {
+      result.set(path, { path, signature: "{}" });
+      return result;
+    }
+
+    keys.forEach((key) => {
+      flattenDiffFields(value[key], path === "root" ? key : `${path}.${key}`, result, depth + 1);
+    });
+    return result;
+  }
+
+  function formatFieldDiffItems(action, fields) {
+    return fields.map((field) => `${action}：${field.path}`);
+  }
+
+  function stableStringify(value) {
+    if (Array.isArray(value)) {
+      return `[${value.map(stableStringify).join(",")}]`;
+    }
+    if (value && typeof value === "object") {
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
   }
 
   async function compareDbItem(item, pack) {
@@ -891,6 +991,22 @@
       text.textContent = detail;
 
       body.append(title, text);
+      if (options.fieldDiffSummary) {
+        const fieldSummary = document.createElement("span");
+        fieldSummary.className = "main-project-field-summary";
+        fieldSummary.textContent = options.fieldDiffSummary;
+        body.append(fieldSummary);
+      }
+      if (Array.isArray(options.fieldDiffs) && options.fieldDiffs.length) {
+        const fieldList = document.createElement("ul");
+        fieldList.className = "main-project-field-diffs";
+        options.fieldDiffs.forEach((fieldDiff) => {
+          const fieldItem = document.createElement("li");
+          fieldItem.textContent = fieldDiff;
+          fieldList.appendChild(fieldItem);
+        });
+        body.append(fieldList);
+      }
       if (options.migrationNote) {
         const note = document.createElement("span");
         note.className = "main-project-preview-note";
@@ -936,6 +1052,8 @@
       preview.migrations?.forEach((migration) => appendMigrationLine(fragment, migration));
       preview.storage.forEach((item) => appendPreviewLine(fragment, "storage", item.id, item.label, describeStorageChange(item), item.change, {
         defaultSelected: item.defaultSelected,
+        fieldDiffSummary: item.fieldDiffSummary,
+        fieldDiffs: item.fieldDiffs,
         migrationNote: item.migrationNote
       }));
       preview.indexedDb.forEach((item) => appendPreviewLine(fragment, "indexedDb", item.id, item.label, describeDbChange(item), item.change, {
