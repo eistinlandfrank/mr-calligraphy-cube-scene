@@ -205,8 +205,10 @@
 
   验收记录：2026-06-10 新增 `ReportView`，`report` 状态读取 PracticeSession.report 展示综合分、分项指标、摘要和建议；store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-10：实现 caregiver_confirm 状态**  
+- [x] **P3-10：实现 caregiver_confirm 状态**  
   验收：护工端需要确认结束、重来或保存报告。
+
+  验收记录：2026-06-10 新增 `CaregiverConfirmView`，`caregiver_confirm` 状态展示报告摘要，并提供确认结束、重新练习、保存报告操作；store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-11：实现 finished 状态**  
   验收：流程结束，session 保存，用户可重新开始。

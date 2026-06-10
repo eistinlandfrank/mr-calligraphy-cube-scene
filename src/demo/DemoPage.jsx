@@ -5,6 +5,7 @@ import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { getCurrentFlowState, useFlowStore } from "../store/flowStore.js";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 import { CaregiverView } from "./CaregiverView.jsx";
+import { CaregiverConfirmView } from "./CaregiverConfirmView.jsx";
 import { DemoTimeline, demoTimelineSteps } from "./DemoTimeline.jsx";
 import { ElderView } from "./ElderView.jsx";
 import { ProductView } from "./ProductView.jsx";
@@ -125,6 +126,10 @@ export function DemoPage() {
       return <ReportView phase={phase} report={flowReport} />;
     }
 
+    if (phase.id === "caregiver_confirm") {
+      return <CaregiverConfirmView phase={phase} report={flowReport} onAction={executeFlowAction} />;
+    }
+
     if (mode === "elder") {
       return <ElderView phase={phase} onGameProgress={handleGameProgress} onGameComplete={handleGameComplete} />;
     }
@@ -144,7 +149,7 @@ export function DemoPage() {
     }
 
     return <ProductView phase={phase} />;
-  }, [flowReport, mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
+  }, [executeFlowAction, flowReport, mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
 
   function resetPlayback() {
     setIsPlaying(false);
