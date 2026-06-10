@@ -27,3 +27,4 @@
 - 2026-06-10：完成 P2-03。新增 FlowConfig 校验模块和文档，明确主演示流程状态、actions、next 和 duration 结构。
 - 2026-06-10：完成 P2-04。新增 PracticeSession 校验模块和文档，可记录开始/结束时间、当前状态、事件、练习数据和护工操作。
 - 2026-06-10：完成 P2-05。新增 Report 校验模块和文档，报告包含 sessionId、综合分、分项指标、动态建议和摘要。
+- 2026-06-10：完成 P2-06。新增标准默认项目配置 `src/data/defaultProject.json`，保留旧 `project-config.json` 兼容后续迁移。

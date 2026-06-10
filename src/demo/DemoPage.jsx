@@ -1,5 +1,6 @@
 import { CircleGauge, HeartPulse, Monitor, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import defaultProject from "../data/defaultProject.json" with { type: "json" };
 import { sceneConfigById } from "../data/scenes/index.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
@@ -136,8 +137,8 @@ export function DemoPage() {
   return (
     <main className="demo-app">
       <header className="demo-topbar">
-        <a className="brand-mark" href="/demo" aria-label="墨韵心境前台演示端">
-          <span>墨韵心境</span>
+        <a className="brand-mark" href="/demo" aria-label={`${defaultProject.name}前台演示端`}>
+          <span>{defaultProject.name}</span>
           <strong>胶囊舱演示</strong>
         </a>
         <nav aria-label="演示端导航">

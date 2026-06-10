@@ -125,8 +125,10 @@
 
   验收记录：2026-06-10 新增 `src/report-core/reportSchema.js`、`src/utils/validateReport.js` 和 `docs/report-schema.md`，定义综合分、分项指标、建议与 sessionId；示例 Report 校验通过。
 
-- [ ] **P2-06：建立默认项目配置**  
+- [x] **P2-06：建立默认项目配置**  
   验收：`src/data/defaultProject.json` 存在，可被前台读取。
+
+  验收记录：2026-06-10 新增 `src/data/defaultProject.json`，包含项目 ID、名称、默认场景、默认流程、场景列表、主题和功能开关；前台 Demo 已读取该配置用于项目名称展示，JSON 解析通过。
 
 - [ ] **P2-07：建立默认流程配置**  
   验收：`src/data/defaultFlow.json` 存在，覆盖 idle 到 finished 的主演示流程。
