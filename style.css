@@ -3195,6 +3195,117 @@ body.is-model-view .notice-panel {
   background: rgba(135, 47, 47, 0.46);
 }
 
+.plan-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.plan-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.plan-head strong {
+  display: block;
+  margin-top: 3px;
+  color: #fffaf1;
+  font-size: 14px;
+  line-height: 1.25;
+}
+
+.plan-head span {
+  flex: 0 0 auto;
+  min-width: 48px;
+  padding: 3px 7px;
+  border-radius: 6px;
+  color: #e6fff5;
+  background: rgba(63, 152, 101, 0.42);
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.plan-progress {
+  height: 8px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.plan-progress span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #67d494, #f7d78b);
+  transition: width 180ms ease;
+}
+
+.plan-panel p {
+  margin: 8px 0 0;
+  color: rgba(255, 250, 241, 0.74);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.plan-item-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.plan-item {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-height: 42px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.plan-item input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: #67d494;
+}
+
+.plan-item strong,
+.plan-item small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.plan-item strong {
+  color: #fffaf1;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.plan-item small {
+  margin-top: 3px;
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.plan-item.is-done strong {
+  color: rgba(255, 250, 241, 0.58);
+  text-decoration: line-through;
+}
+
+.plan-empty {
+  padding: 10px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .insight-stack {
   position: absolute;
   z-index: 6;

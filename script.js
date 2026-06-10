@@ -803,6 +803,12 @@ const els = {
   historyDetailDownloadImage: document.getElementById("historyDetailDownloadImage"),
   historyDetailDownloadReport: document.getElementById("historyDetailDownloadReport"),
   historyDetailDelete: document.getElementById("historyDetailDelete"),
+  planPanel: document.getElementById("planPanel"),
+  planTitle: document.getElementById("planTitle"),
+  planProgressLabel: document.getElementById("planProgressLabel"),
+  planProgressFill: document.getElementById("planProgressFill"),
+  planSummary: document.getElementById("planSummary"),
+  planItemList: document.getElementById("planItemList"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -1360,6 +1366,7 @@ function init() {
   bindLearningControls();
   bindReviewControls();
   bindHistoryControls();
+  bindPlanControls();
   initPracticeCanvas();
   initInfoPanelDrag();
   installRoomApi();
@@ -3357,6 +3364,22 @@ function bindHistoryControls() {
   });
 }
 
+function bindPlanControls() {
+  els.planItemList?.addEventListener("change", (event) => {
+    const input = event.target.closest("[data-plan-item-id]");
+    if (!input) return;
+    const planId = input.dataset.planId;
+    const itemId = input.dataset.planItemId;
+    const result = window.MRAppState?.togglePlanItem?.(planId, itemId, input.checked);
+    if (result?.message) {
+      showNotice(result.message);
+    }
+    renderPlanPanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+  });
+}
+
 function renderLearningState() {
   renderLearningStateSummary();
   updateSceneText(currentIndex);
@@ -3365,6 +3388,7 @@ function renderLearningState() {
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
   renderHistoryPanel(currentIndex);
+  renderPlanPanel(currentIndex);
 }
 
 function renderLearningStateSummary() {
@@ -3680,6 +3704,55 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
   renderHistoryTrend(history.trend);
   renderHistoryList(history.entries, history.filteredTotal);
   renderHistoryDetail();
+}
+
+function renderPlanPanel(sceneIndex = currentIndex) {
+  if (!els.planPanel || !window.MRAppState?.getLatestPlan) {
+    return;
+  }
+
+  const plan = window.MRAppState.getLatestPlan();
+  const shouldShow = Boolean(plan || sceneIndex >= 8);
+  els.planPanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  const progress = plan?.progress || { done: 0, total: 0, percent: 0 };
+  els.planTitle.textContent = plan?.title || "暂无计划";
+  els.planProgressLabel.textContent = `${progress.done}/${progress.total}`;
+  els.planProgressFill.style.width = `${progress.percent}%`;
+  els.planSummary.textContent = plan?.summary || "点击“制定计划”后会生成可勾选任务。";
+  els.planItemList.innerHTML = "";
+
+  if (!plan?.items?.length) {
+    const empty = document.createElement("p");
+    empty.className = "plan-empty";
+    empty.textContent = "还没有学习计划。";
+    els.planItemList.appendChild(empty);
+    return;
+  }
+
+  plan.items.forEach((item) => {
+    const label = document.createElement("label");
+    label.className = "plan-item";
+    label.classList.toggle("is-done", item.done);
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = item.done === true;
+    checkbox.dataset.planId = plan.id;
+    checkbox.dataset.planItemId = item.id;
+
+    const body = document.createElement("span");
+    const title = document.createElement("strong");
+    const detail = document.createElement("small");
+    title.textContent = item.title;
+    detail.textContent = item.detail || "完成后勾选，进度会保存到本机。";
+    body.append(title, detail);
+    label.append(checkbox, body);
+    els.planItemList.appendChild(label);
+  });
 }
 
 function renderHistoryTrend(trend) {
@@ -4005,6 +4078,7 @@ function loadScene(index) {
   renderLecturePanel(index);
   renderReviewPanel(index);
   renderHistoryPanel(index);
+  renderPlanPanel(index);
   hideError();
   hideNotice();
 }
@@ -4103,6 +4177,8 @@ function getLearningSceneMetrics(index) {
   const latestSession = stats.latestSession;
   const latestArtwork = stats.latestArtwork;
   const latestReport = stats.latestReport;
+  const latestPlan = stats.latestPlan;
+  const planProgress = latestPlan?.progress;
   const livePractice = getCurrentPracticeResult({ includeImage: false, requireStrokes: false });
   const hasLivePractice = livePractice && livePractice.strokeCount > 0;
   const metrics = hasLivePractice ? livePractice.metrics : latestSession?.metrics || {};
@@ -4186,7 +4262,7 @@ function getLearningSceneMetrics(index) {
         ["练习字数", `${stats.sessionCount}字`],
         ["保存作品", `${stats.artworkCount}幅`],
         ["报告导出", latestReport ? "已导出" : "未导出"],
-        ["平均评分", `${stats.averageScore}分`]
+        ["计划进度", planProgress ? `${planProgress.done}/${planProgress.total}` : "未制定"]
       ];
     case 9:
       return [
@@ -4194,7 +4270,7 @@ function getLearningSceneMetrics(index) {
         ["结构学习", `${stats.savedSessionCount}次`],
         ["作品创作", `${stats.artworkCount}幅`],
         ["实践练习", `${stats.sessionCount}次`],
-        ["学习时长", `${stats.learningMinutes}分钟`]
+        ["计划完成", planProgress ? `${planProgress.percent}%` : "未制定"]
       ];
     default:
       return scene.metrics;
@@ -4287,6 +4363,7 @@ function applyActionResult(result = {}, action = {}) {
   renderLearningStateSummary();
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
+  renderPlanPanel(currentIndex);
 
   if (result.notice) {
     showNotice(result.notice);
@@ -4303,6 +4380,7 @@ function applyActionResult(result = {}, action = {}) {
   renderLecturePanel(currentIndex);
   renderReviewPanel(currentIndex);
   renderHistoryPanel(currentIndex);
+  renderPlanPanel(currentIndex);
 }
 
 function getLearningActionHint(sceneIndex) {
@@ -4476,7 +4554,16 @@ function getLearningPathState(index, stats) {
     case 8:
       return { done: stats.reportCount > 0, activeLabel: "报告中", doneLabel: "已导出", pendingLabel: "待报告" };
     case 9:
-      return { done: stats.reportCount > 0, activeLabel: "总结中", doneLabel: "已总结", pendingLabel: "待总结" };
+      {
+        const progress = stats.latestPlan?.progress;
+        const hasPlan = Boolean(progress?.total);
+        return {
+          done: hasPlan && progress.done === progress.total,
+          activeLabel: hasPlan ? `计划 ${progress.done}/${progress.total}` : "总结中",
+          doneLabel: "计划完成",
+          pendingLabel: "待计划"
+        };
+      }
     default:
       return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
   }

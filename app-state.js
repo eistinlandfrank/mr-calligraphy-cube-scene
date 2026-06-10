@@ -174,11 +174,43 @@
 
   function normalizePlan(record) {
     if (!record || typeof record !== "object") return null;
+    const items = Array.isArray(record.items)
+      ? record.items.map(normalizePlanItem).filter(Boolean).slice(0, 8)
+      : [];
     return {
       id: String(record.id || makeId("plan")),
       createdAt: String(record.createdAt || new Date().toISOString()),
       title: String(record.title || "下一阶段练习计划"),
-      items: Array.isArray(record.items) ? record.items.map(String).filter(Boolean) : []
+      mode: MODE_CONFIG[record.mode] ? record.mode : "single",
+      glyph: String(record.glyph || "永"),
+      copybook: String(record.copybook || "永字八法"),
+      summary: String(record.summary || ""),
+      items,
+      completedAt: record.completedAt ? String(record.completedAt) : null
+    };
+  }
+
+  function normalizePlanItem(item, index) {
+    if (typeof item === "string") {
+      const title = item.trim();
+      if (!title) return null;
+      return {
+        id: `plan-item-${index + 1}`,
+        title,
+        detail: "",
+        done: false,
+        completedAt: null
+      };
+    }
+    if (!item || typeof item !== "object") return null;
+    const title = String(item.title || item.text || "").trim();
+    if (!title) return null;
+    return {
+      id: String(item.id || `plan-item-${index + 1}`),
+      title,
+      detail: String(item.detail || ""),
+      done: item.done === true,
+      completedAt: item.completedAt ? String(item.completedAt) : null
     };
   }
 
@@ -400,6 +432,25 @@
     };
   }
 
+  function getPlanProgress(plan) {
+    const items = Array.isArray(plan?.items) ? plan.items : [];
+    const doneCount = items.filter((item) => item.done).length;
+    return {
+      total: items.length,
+      done: doneCount,
+      percent: items.length ? Math.round((doneCount / items.length) * 100) : 0
+    };
+  }
+
+  function getLatestPlan() {
+    const plan = state.plans[state.plans.length - 1] || null;
+    if (!plan) return null;
+    return {
+      ...clone(plan),
+      progress: getPlanProgress(plan)
+    };
+  }
+
   function getStats() {
     const sessions = state.sessions;
     const savedSessions = sessions.filter((session) => session.status === "saved" || session.endedAt);
@@ -418,6 +469,7 @@
     const latestSession = sessions[sessions.length - 1] || null;
     const latestArtwork = state.artworks[state.artworks.length - 1] || null;
     const latestReport = state.reports[state.reports.length - 1] || null;
+    const latestPlan = getLatestPlan();
     const latestFeedback = latestSession?.feedback?.length
       ? latestSession.feedback
       : latestArtwork?.feedback?.length
@@ -443,6 +495,7 @@
       latestSession,
       latestArtwork,
       latestReport,
+      latestPlan,
       latestFeedback
     };
   }
@@ -725,19 +778,87 @@
   }
 
   function createPlan() {
+    const stats = getStats();
+    const latestMetrics = stats.latestSession?.metrics || getReportScoreBreakdown();
+    const weakness = getWeakestMetric(latestMetrics);
+    const hasArtwork = state.artworks.length > 0;
+    const hasReport = state.reports.length > 0;
     const plan = {
       id: makeId("plan"),
       createdAt: new Date().toISOString(),
-      title: "下一阶段练习计划",
-      items: ["每天完成 1 次单字临摹", "复盘最低分维度", "保存 3 幅可对比作品"]
+      title: `${state.selectedGlyph}字下一阶段练习计划`,
+      mode: state.activeMode,
+      glyph: state.selectedGlyph,
+      copybook: state.selectedCopybook,
+      summary: `围绕“${state.selectedGlyph}”和“${state.selectedCopybook}”安排 4 个可勾选任务。`,
+      items: [
+        makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`),
+        makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice),
+        makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。"),
+        makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。")
+      ],
+      completedAt: null
     };
     state.plans.push(plan);
     addEvent("plan", plan.title);
     saveState();
     return {
       ok: true,
-      plan: clone(plan),
-      message: "已生成并保存下一阶段练习计划。"
+      plan: getLatestPlan(),
+      message: `已生成并保存下一阶段练习计划：${plan.items.length} 个任务。`
+    };
+  }
+
+  function makePlanItem(id, title, detail) {
+    return {
+      id,
+      title,
+      detail,
+      done: false,
+      completedAt: null
+    };
+  }
+
+  function getWeakestMetric(metrics = {}) {
+    const labels = {
+      structure: ["结构", "先慢写外轮廓，检查重心是否稳定。"],
+      stroke: ["笔画", "单独练起笔、行笔和收笔，避免笔画断裂。"],
+      technique: ["笔法", "重点观察转折和提按，让线条有轻重变化。"],
+      fluency: ["流畅度", "用回放检查行笔停顿，减少不必要的抖动。"],
+      force: ["力度", "控制按压变化，让主笔更明确、辅笔更轻。"]
+    };
+    return Object.entries(labels)
+      .map(([key, [label, advice]]) => ({
+        key,
+        label,
+        advice,
+        score: normalizeScore(metrics?.[key], 100)
+      }))
+      .sort((a, b) => a.score - b.score)[0];
+  }
+
+  function togglePlanItem(planId, itemId, done = null) {
+    const plan = state.plans.find((item) => item.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "未找到学习计划。" };
+    }
+    const item = plan.items.find((entry) => entry.id === String(itemId || ""));
+    if (!item) {
+      return { ok: false, message: "未找到计划任务。" };
+    }
+
+    item.done = typeof done === "boolean" ? done : !item.done;
+    item.completedAt = item.done ? new Date().toISOString() : null;
+    const progress = getPlanProgress(plan);
+    plan.completedAt = progress.total > 0 && progress.done === progress.total
+      ? new Date().toISOString()
+      : null;
+    addEvent("plan-item", `${item.done ? "完成" : "取消"}计划项：${item.title}`);
+    saveState();
+    return {
+      ok: true,
+      plan: getLatestPlan(),
+      message: item.done ? `已完成计划项：${item.title}。` : `已取消完成：${item.title}。`
     };
   }
 
@@ -1305,6 +1426,7 @@
     getStats,
     getModeConfig,
     getLectureProgress,
+    getLatestPlan,
     getReportPreview,
     getLatestReview,
     getHistory,
@@ -1325,6 +1447,7 @@
     saveArtwork,
     filterExcellentRecords,
     createPlan,
+    togglePlanItem,
     createReport,
     downloadReport,
     downloadArchive
