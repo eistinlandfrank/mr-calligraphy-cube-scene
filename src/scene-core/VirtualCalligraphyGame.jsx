@@ -1,5 +1,5 @@
 import { Check, RotateCcw, SkipForward } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
 
 const metricLabels = {
@@ -11,9 +11,12 @@ const metricLabels = {
 };
 
 export function VirtualCalligraphyGame({ compact = false, paused = false, onComplete, onProgressChange }) {
+  const svgRef = useRef(null);
   const [currentStrokeIndex, setCurrentStrokeIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [userStrokePoints, setUserStrokePoints] = useState([]);
   const [completedStrokeIds, setCompletedStrokeIds] = useState([]);
   const [scorePanel, setScorePanel] = useState(null);
   const currentStroke = yongCharacter.strokes[currentStrokeIndex];
@@ -21,6 +24,8 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   useEffect(() => {
     setProgress(0);
     setIsPlaying(true);
+    setIsDrawing(false);
+    setUserStrokePoints([]);
   }, [currentStrokeIndex]);
 
   useEffect(() => {
@@ -72,6 +77,8 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   function replayStroke() {
     setProgress(0);
     setIsPlaying(true);
+    setIsDrawing(false);
+    setUserStrokePoints([]);
   }
 
   function completeWork() {
@@ -79,6 +86,49 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     setScorePanel(score);
     setIsPlaying(false);
     onComplete?.(score);
+  }
+
+  function startInput(event) {
+    if (scorePanel || paused) {
+      return;
+    }
+
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    const point = getSvgPoint(event, svgRef.current);
+
+    setIsPlaying(false);
+    setIsDrawing(true);
+    setUserStrokePoints([point]);
+    setProgress(0);
+  }
+
+  function moveInput(event) {
+    if (!isDrawing || scorePanel || paused) {
+      return;
+    }
+
+    const point = getSvgPoint(event, svgRef.current);
+
+    setUserStrokePoints((points) => {
+      const lastPoint = points[points.length - 1];
+
+      if (lastPoint && getPointDistance(lastPoint, point) < 1.8) {
+        return points;
+      }
+
+      const nextPoints = [...points, point];
+      setProgress(Math.min(1, nextPoints.length / 42));
+      return nextPoints;
+    });
+  }
+
+  function endInput(event) {
+    if (!isDrawing) {
+      return;
+    }
+
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    setIsDrawing(false);
   }
 
   return (
@@ -94,7 +144,18 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
       </div>
 
       <div className="calligraphy-workspace">
-        <svg className="yong-canvas" viewBox={yongCharacter.viewBox} role="img" aria-label="永字八法笔画路径">
+        <svg
+          ref={svgRef}
+          className="yong-canvas"
+          viewBox={yongCharacter.viewBox}
+          role="img"
+          aria-label="永字八法笔画路径"
+          onPointerDown={startInput}
+          onPointerMove={moveInput}
+          onPointerUp={endInput}
+          onPointerCancel={endInput}
+          onPointerLeave={endInput}
+        >
           <rect x="28" y="28" width="244" height="244" rx="6" />
           <path className="grid-line" d="M150 28 V272 M28 150 H272 M64 64 L236 236 M236 64 L64 236" />
           <text x="150" y="214">永</text>
@@ -118,6 +179,9 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
               <path d="M18 -7 L38 0 L18 7 Z" />
             </g>
           ) : null}
+          {userStrokePoints.length > 1 ? (
+            <polyline className="user-stroke" points={userStrokePoints.map((point) => `${point.x},${point.y}`).join(" ")} />
+          ) : null}
         </svg>
 
         <aside className="stroke-side-panel">
@@ -125,6 +189,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
             <span>当前笔画</span>
             <strong>{currentStroke.label}</strong>
             <p>{activeTip}</p>
+            <small>已记录 {userStrokePoints.length} 个轨迹点</small>
           </div>
           <div className="stroke-pill-grid">
             {yongCharacter.strokes.map((stroke, index) => (
@@ -196,6 +261,32 @@ function getBrushPosition(points, progress) {
     x: interpolate(start[0], end[0], localProgress),
     y: interpolate(start[1], end[1], localProgress)
   };
+}
+
+function getSvgPoint(event, svgElement) {
+  if (!svgElement) {
+    return { x: 150, y: 150, t: performance.now() };
+  }
+
+  const point = svgElement.createSVGPoint();
+  point.x = event.clientX;
+  point.y = event.clientY;
+  const matrix = svgElement.getScreenCTM();
+  const svgPoint = matrix ? point.matrixTransform(matrix.inverse()) : point;
+
+  return {
+    x: roundPoint(svgPoint.x),
+    y: roundPoint(svgPoint.y),
+    t: Math.round(performance.now())
+  };
+}
+
+function getPointDistance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function roundPoint(value) {
+  return Math.round(value * 10) / 10;
 }
 
 function buildScore(completedCount) {

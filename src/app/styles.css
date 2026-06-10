@@ -916,6 +916,8 @@ textarea {
   border: 1px solid rgba(38, 34, 28, 0.1);
   border-radius: 8px;
   background: #efe4d1;
+  cursor: crosshair;
+  touch-action: none;
 }
 
 .yong-canvas rect {
@@ -955,6 +957,15 @@ textarea {
 .standard-stroke.is-done {
   stroke: #2f6f68;
   stroke-opacity: 0.78;
+}
+
+.user-stroke {
+  fill: none;
+  stroke: #2f6f68;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.88;
 }
 
 .virtual-brush line {
@@ -1003,6 +1014,12 @@ textarea {
   color: #62594c;
   font-size: 13px;
   line-height: 1.45;
+}
+
+.current-stroke-card small {
+  color: #766c5d;
+  font-size: 12px;
+  font-weight: 900;
 }
 
 .stroke-pill-grid {
