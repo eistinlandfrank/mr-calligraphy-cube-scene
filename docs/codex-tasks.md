@@ -42,3 +42,4 @@
 - 2026-06-10：完成 P3-08。练习完成后进入 scoring，基于 PracticeSession.practiceData 生成 Report 原型和 score_generated 事件。
 - 2026-06-10：完成 P3-09。report 状态新增报告视图，读取 session.report 展示综合分、分项指标和练习建议。
 - 2026-06-10：完成 P3-10。caregiver_confirm 状态新增护工确认界面，支持确认结束、重新练习和保存报告。
+- 2026-06-10：完成 P3-11。finished 状态会完成 session、写入结束事件并保存到本地，仍可重置或重新开始。

@@ -210,8 +210,10 @@
 
   验收记录：2026-06-10 新增 `CaregiverConfirmView`，`caregiver_confirm` 状态展示报告摘要，并提供确认结束、重新练习、保存报告操作；store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-11：实现 finished 状态**  
+- [x] **P3-11：实现 finished 状态**  
   验收：流程结束，session 保存，用户可重新开始。
+
+  验收记录：2026-06-10 进入 `finished` 会标记 PracticeSession 为 completed、写入 `session_finished` 事件并保存到浏览器 localStorage；finished 保留 reset/restart 操作，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-12：实现暂停逻辑**  
   验收：暂停后计时器、动画、输入采集停止。

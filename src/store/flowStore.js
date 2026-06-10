@@ -5,6 +5,7 @@ import { createPracticeSession, createSessionEvent } from "../session-core/sessi
 
 const defaultFlow = loadDefaultFlow();
 const defaultStateId = defaultFlow.initialState;
+export const SESSION_STORAGE_KEY = "moyin-xinjing-practice-sessions";
 
 export const useFlowStore = create((set, get) => ({
   flowConfig: defaultFlow,
@@ -174,6 +175,27 @@ function buildTransitionSession(session, fromStateId, toStateId, reason, at) {
   ];
 
   if (toStateId !== "practice_game") {
+    if (toStateId === "finished") {
+      const finishedSession = {
+        ...session,
+        currentState: toStateId,
+        endedAt: at,
+        status: "completed",
+        events: [
+          ...baseEvents,
+          createSessionEvent({
+            type: "session_finished",
+            stateId: toStateId,
+            at
+          })
+        ]
+      };
+
+      persistPracticeSession(finishedSession);
+
+      return finishedSession;
+    }
+
     if (toStateId === "scoring") {
       const report = buildSessionReport(session, at);
 
@@ -259,4 +281,22 @@ function buildSessionReport(session, at) {
 
 function clampScore(value) {
   return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function persistPracticeSession(session) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(SESSION_STORAGE_KEY);
+    const sessions = raw ? JSON.parse(raw) : [];
+    const nextSessions = Array.isArray(sessions)
+      ? [...sessions.filter((item) => item?.id !== session.id), session]
+      : [session];
+
+    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(nextSessions));
+  } catch (error) {
+    console.warn("保存 PracticeSession 失败", error);
+  }
 }
