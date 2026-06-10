@@ -1,68 +1,90 @@
-# MR 书法 3D 立方体交互网页
+# 墨韵心境 MR 书法康养演示系统
 
-## 项目介绍
+这是一个面向 MR 书法康养场景的长期开发项目。仓库当前包含新版 React/Vite 前后台系统和旧版根目录静态原型：新版用于真实流程演示、后台配置、书法练习、护工联动、报告生成与 WebXR/MR 增强；旧版继续保留原有 WebGL 立方体房间，方便稳定展示历史原型。
 
-这是一个面向 MR 书法学习场景的长期开发项目。仓库当前同时保留旧版静态原型和新版 React/Vite 前后台系统：旧版用于稳定展示已有 3D 立方体房间，新版用于逐步实现数据驱动的前台演示、后台编辑、书法练习、护工联动和报告生成。
+## 快速启动
 
-旧版静态原型把传统书法教室、AI 书法教练、碑帖学习、笔画拆解、临摹反馈和学习报告整合到一个可拖拽浏览的 3D 空间中，让用户像进入一间虚拟书法教室一样完成从“进入系统”到“复盘总结”的完整学习流程。
-
-项目不依赖后端服务，打开本地网页即可运行。当前版本采用 WebGL 立方体房间方案，通过六面贴图构建清晰的空间背景，并在场景内叠加可编辑的功能面板、热点按钮、步骤导航、3D 家具和场景角色。你可以直接替换六个面的贴图，也可以在网页上修改角色位置、名称、说明和观察视角，用来快速制作不同风格的 MR 教学演示。
-
-适合用于：
-
-- MR / VR 书法教学产品原型展示
-- AI 书法教练交互流程演示
-- 传统文化数字化学习场景汇报
-- 本地静态网页作品集或课堂展示
-
-核心亮点：
-
-- 纯 HTML、CSS、JavaScript 实现，部署和修改都很轻量
-- 支持 10 个学习步骤，包含键盘切换、底部导航和热点跳转
-- 支持六面立方体空间贴图，避免单张低清 360 全景图带来的模糊和违和感
-- 内置网页编辑面板，可自定义六面贴图路径和多个场景角色
-- 保留 Pannellum 文件，后续仍可切回普通 360 全景查看器方案
-
-这是一个纯静态本地项目，使用 HTML、CSS、JavaScript 实现 MR 书法学习演示。当前版本已升级为 WebGL 立方体房间：六张高清贴图分别贴到前后左右、地面、天花板，并叠加桌椅、书架、卷轴、桌面纸笔等 3D 几何内容。
-
-旧的 Pannellum 本地文件仍保留在 `assets/vendor/pannellum/`，方便后续切回普通 360 全景方案；当前运行入口默认使用 WebGL 立方体房间。
-
-## 新旧版本关系
-
-当前阶段采用“双入口保留”策略：
-
-- 旧版静态原型继续保留在项目根目录，入口是 `index.html`，相关文件包括 `script.js`、`style.css`、`room-config.js`、`main-admin.html`、`realistic-demo.html` 和 `assets/`。后续开发不得破坏这个入口。
-- 新版 React/Vite 系统使用 `src/`、`demo/`、`admin/`、`preview/`、`public/` 和 `vite.config.js`，入口分别是 `/demo`、`/admin`、`/preview/:sceneId`。
-- 旧版暂不迁移到 `legacy/static-demo/`。等新版前台、后台和配置系统达到可替代状态后，再单独创建迁移任务并提交。
-
-## 运行方式
-
-### 新版前后台系统
-
-安装依赖后启动开发服务：
+安装依赖：
 
 ```bash
 npm install
+```
+
+启动开发服务：
+
+```bash
 npm run dev -- --port 5173
 ```
 
-然后访问：
+启动后访问：
 
-```text
-http://localhost:5173/demo
-http://localhost:5173/admin
-http://localhost:5173/preview/capsule-product-showcase
-```
+| 页面 | 地址 | 用途 |
+| --- | --- | --- |
+| 前台演示 | `http://localhost:5173/demo` | 主演示流程、老人端、护工端、报告和答辩模式 |
+| 后台编辑 | `http://localhost:5173/admin` | 编辑场景、对象、材质、空间 UI、流程配置并保存版本 |
+| 场景预览 | `http://localhost:5173/preview/capsule-product-showcase` | 单场景预览 |
+| 旧版原型 | `http://localhost:5173/` | 根目录静态 3D 立方体原型 |
 
-构建生产版本：
+生产构建：
 
 ```bash
 npm run build
 ```
 
-### 旧版静态原型
+本地预览生产包：
 
-推荐在项目目录运行本地服务器：
+```bash
+npm run preview -- --port 4173
+```
+
+发布或答辩前建议先运行：
+
+```bash
+npm run test:smoke
+npm run build
+```
+
+`npm run test:smoke` 会覆盖默认流程、评分差异、护工控制、后台保存读取和 JSON 导入导出。当前构建可能出现 Vite chunk-size warning，这是打包体积提示，不影响运行。
+
+## 前台演示
+
+打开 `/demo` 后可以使用右侧演示控制台：
+
+- 点击“一键演示”自动从等待开始进入准备检查、入舱、沉浸导入、书法讲解、书法练习、评分报告、护工确认和完成状态。
+- 点击暂停后，再次点击可从当前节点继续演示。
+- 点击全屏图标进入答辩展示模式，页面会铺满屏幕并隐藏顶部开发导航、选中对象调试标签和 session 细节。
+- “流程状态”区域会显示当前 FlowConfig 状态和可执行动作，可手动推进、暂停、重来、保存报告或呼叫护工。
+- 老人端包含虚拟书法练习，真实鼠标或触控轨迹会写入 PracticeSession；一键演示会注入一组模拟完成数据，仍然走正式报告生成链路。
+- 支持浏览器 WebXR 检测；在支持 `immersive-vr` 的设备上，3D 视窗会显示进入 XR 的入口。
+
+## 后台编辑
+
+打开 `/admin` 后可以进行长期配置：
+
+- 左侧切换默认场景，例如产品展示、老人体验、护工监控、书法游戏和报告场景。
+- 对象树可新增、复制、删除和选择 3D 对象。
+- 属性面板可编辑对象的位置、旋转、缩放、颜色、文本、热点、空间 UI 和交互元数据。
+- “保存到本机”会写入浏览器 localStorage 和 IndexedDB 最新快照；刷新页面后会自动读取。
+- 版本下拉可以加载历史快照，便于回退到已保存版本。
+- 导出会生成项目配置包，包含 ProjectConfig、FlowConfig 和全部 SceneConfig。
+- 导入支持项目配置包、单个 SceneConfig、FlowConfig 和 ProjectConfig JSON。
+- “预览”按钮可以跳到当前场景的 `/preview/:sceneId` 页面检查效果。
+
+## 旧版静态原型
+
+旧版静态入口仍保留在项目根目录，主要文件包括：
+
+```text
+index.html
+script.js
+style.css
+room-config.js
+main-admin.html
+realistic-demo.html
+assets/
+```
+
+如果只想运行旧版原型，也可以使用简单静态服务器：
 
 ```bash
 python -m http.server 8000
@@ -74,11 +96,9 @@ python -m http.server 8000
 http://localhost:8000
 ```
 
-也可以直接双击 `index.html` 打开。由于浏览器通常不允许 `file://` 页面把本地图片上传为 WebGL 纹理，双击模式会自动降级为 CSS 立方体贴图；使用 `python -m http.server` 时会启用完整 WebGL 立方体房间和 3D 家具。
+双击 `index.html` 也能打开，但浏览器通常不允许 `file://` 页面把本地图片作为 WebGL 纹理加载，所以直接双击时会自动降级为 CSS 立方体贴图。使用本地服务器时会启用完整 WebGL 立方体房间和 3D 家具。
 
-## 立方体贴图
-
-当前六面贴图读取：
+旧版六面贴图默认读取：
 
 ```text
 assets/cube/wall-wood-front.png
@@ -89,141 +109,30 @@ assets/cube/ceiling.png
 assets/cube/floor.png
 ```
 
-你可以直接替换这六张图。建议每张保持正方形，例如 `2048x2048` 或 `4096x4096`，并尽量使用同一套 cubemap 渲染出的六面图，空间衔接会更自然。
+建议替换为同尺寸正方形图片，例如 `2048x2048` 或 `4096x4096`。
 
-## 开源 3D 模型
-
-项目内置了一组可再分发的 `.glb` 模型，用来替换原先比较粗糙的几何桌椅和书架：
+## 目录说明
 
 ```text
-assets/models/kenney-furniture-kit/
+src/app/          应用入口、路由、全局样式和错误边界
+src/demo/         前台演示、老人端、护工端、报告和时间线
+src/admin/        后台场景编辑器
+src/preview/      单场景预览
+src/scene-core/   Three.js / React Three Fiber 场景渲染、WebXR、书法游戏
+src/store/        Zustand 场景和流程状态
+src/data/         默认项目、流程、场景和书法数据
+docs/             开发计划、验收清单、测试清单和数据结构文档
+assets/           旧版静态原型资源
 ```
 
-资源来自 Kenney Furniture Kit 2.0，许可为 Creative Commons Zero, CC0：
+## 开发记录
 
-```text
-https://kenney.nl/assets/furniture-kit
-```
+长期开发请优先查看：
 
-当前加载了 Poly Pizza / Quaternius / CreativeTrio / Kenney 的模型，包括书架、桌子、门、窗户、椅子、地毯、边柜和书本。模型摆放配置位于 `script.js` 的 `EXTERNAL_ROOM_MODELS`，可以调整 `src`、`position`、`rotationY`、`scale` 和 `tint` 来替换模型或改变摆放位置。
+- `docs/development-plan.md`：整体开发计划。
+- `docs/implementation-checklist.md`：分阶段验收清单。
+- `docs/codex-tasks.md`：每次功能提交的开发记录。
+- `docs/test-checklist.md`：答辩或发布前的浏览器检查清单。
+- `docs/scene-schema.md`、`docs/flow-schema.md`、`docs/session-report-schema.md`：核心数据结构说明。
 
-装饰模型额外放在：
-
-```text
-assets/models/poly-pizza-kenney-decor/
-```
-
-来源为 Poly Pizza 上的 Kenney CC0 Furniture Kit bundle：
-
-```text
-https://poly.pizza/bundle/Furniture-Kit-NoG1sEUD1z
-```
-
-当前新增了盆栽、小植物、壁灯、桌灯、圆形地毯和衣帽架；书法卷轴、毛笔架、砚台、陶罐等则由 `script.js` 里的 WebGL 几何生成，避免额外依赖不明来源的模型。
-
-## 自定义接口
-
-长期配置请修改项目根目录的：
-
-```text
-room-config.js
-```
-
-六面贴图接口：
-
-```js
-window.MR_ROOM_CONFIG = {
-  textures: {
-    front: "assets/cube/wall-wood-front.png",
-    back: "assets/cube/wall-wood-back.png",
-    left: "assets/cube/wall-wood-left.png",
-    right: "assets/cube/wall-wood-right.png",
-    ceiling: "assets/cube/ceiling.png",
-    floor: "assets/cube/floor.png"
-  }
-};
-```
-
-角色接口：
-
-```js
-roles: [
-  {
-    id: "ai-coach",
-    name: "AI 书法教练",
-    type: "coach",
-    color: "#39b88f",
-    position: [-2.7, -3.02, -5.2],
-    scale: 1.08,
-    view: { yaw: -28, pitch: -6, scale: 1.05 },
-    description: "负责讲解结构评分、笔画拆解和实时改进建议。"
-  }
-]
-```
-
-页面右下角的“场景编辑”面板可以直接编辑：
-
-- 六面贴图路径：在输入框里填相对路径，点击“应用”。
-- 六面贴图预览：点击“替换”上传本地图片，仅当前页面临时预览。
-- 场景角色：点击角色后可编辑名称、类型、颜色、位置、缩放、观察视角和说明。
-- 新增角色：点击“新增角色”，填写参数后点“保存角色”。
-- 删除角色：选中角色后点“删除角色”。
-- 保存配置：点击“保存到本机”，会写入浏览器 localStorage，下次打开网页会自动读取。
-- 恢复默认：点击“恢复默认”，回到 `room-config.js` 的配置。
-
-注意：浏览器不能直接把上传的新图片写回项目文件，所以“替换”上传只用于当前预览；需要长期保存贴图时，请把图片放入项目文件夹，在输入框里填写相对路径，再点击“保存到本机”。
-
-运行时也暴露了 JS API：
-
-```js
-MRRoomAPI.setTextures({ front: "assets/cube/my-front.png" });
-MRRoomAPI.addRole({
-  id: "teacher-2",
-  name: "点评老师",
-  color: "#8e6cff",
-  position: [-4, -3.02, -2.8],
-  scale: 1,
-  view: { yaw: -44, pitch: -8, scale: 1.08 },
-  description: "负责作品点评和学习建议。"
-});
-MRRoomAPI.focusRole("teacher-2");
-```
-
-## 步骤界面图
-
-10 个 MR 学习步骤的参考图默认读取：
-
-```text
-assets/scenes/scene-01.png
-assets/scenes/scene-02.png
-assets/scenes/scene-03.png
-assets/scenes/scene-04.png
-assets/scenes/scene-05.png
-assets/scenes/scene-06.png
-assets/scenes/scene-07.png
-assets/scenes/scene-08.png
-assets/scenes/scene-09.png
-assets/scenes/scene-10.png
-```
-
-如果你的文件名不同，请打开 `script.js`，修改顶部 `SCENES` 数组里的 `image` 字段。
-
-## 已包含功能
-
-- WebGL 立方体房间，六张图分别贴到房间六面。
-- 双击 `index.html` 时自动切换到 CSS 立方体贴图兼容模式。
-- `room-config.js` 自定义六面贴图和多个场景角色。
-- 页面右下角“场景接口”面板可临时试换贴图、切换角色视角。
-- 拖拽旋转视角，滚轮缩放。
-- 3D 桌椅、书架、卷轴、桌面纸笔等场景物件。
-- 10 个学习步骤配置。
-- 左上角当前步骤名称。
-- 中间 AI 书法教练面板，可拖动。
-- 左侧学习路径，右侧实时反馈。
-- 底部 1-10 步骤导航。
-- 上一步、下一步、返回首页快捷按钮。
-- 键盘左右键切换步骤，数字键 1-0 直达对应步骤。
-
-## 清晰度建议
-
-单张 360° equirectangular 图片铺满全屏时容易被拉伸。现在改用六面 cube 贴图，每一面能保留更多局部细节。想继续提升清晰度时，优先替换 `assets/cube/` 下的六张高分辨率正方形图，不要重新压缩图片。
+本项目按“完成一个功能、更新开发文档、中文提交并推送到 GitHub”的方式维护。
