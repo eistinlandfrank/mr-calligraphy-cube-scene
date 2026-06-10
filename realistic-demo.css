@@ -430,6 +430,39 @@ body.admin-page .design-panel {
   color: #ffaf9b;
 }
 
+.realistic-publish-diff {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(255, 249, 237, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.065);
+}
+
+.realistic-publish-diff strong {
+  min-width: 0;
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.realistic-publish-diff ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.realistic-publish-diff li {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 249, 237, 0.58);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .realistic-snapshot-list {
   display: grid;
   gap: 7px;

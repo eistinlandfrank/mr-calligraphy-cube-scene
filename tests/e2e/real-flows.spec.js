@@ -66,12 +66,15 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.locator("#mainNewObjectType").selectOption("box");
   await page.locator("#mainNewObjectAdd").click();
   await expect(page.locator("#mainCustomStatus")).toContainText(`已新增：${objectLabel}`);
+  await expect(page.locator("#mainPublishDiffSummary")).toContainText("尚未发布");
+  await expect(page.locator("#mainPublishDiffList")).toContainText(objectLabel);
 
   const draft = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
   expect(draft.customObjects.some((item) => item.label === objectLabel)).toBe(true);
 
   await page.locator("#mainPublishLayout").click();
   await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
+  await expect(page.locator("#mainPublishDiffSummary")).toContainText("一致");
 
   const published = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
   expect(published.layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);
@@ -96,10 +99,17 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await page.locator("#realisticPublishNote").fill(firstNote);
   await page.locator("#realisticPublishLayout").click();
   await expect(page.locator("#realisticPublishStatus")).toContainText("已发布");
+  await expect(page.locator("#realisticPublishDiffSummary")).toContainText("一致");
+
+  const currentX = Number.parseFloat(await page.locator("#designX").inputValue());
+  await page.locator("#designX").fill((currentX + 0.2).toFixed(2));
+  await page.locator("#designX").blur();
+  await expect(page.locator("#realisticPublishDiffSummary")).toContainText("待发布差异");
 
   await page.locator("#realisticPublishNote").fill(secondNote);
   await page.locator("#realisticPublishLayout").click();
   await expect(page.locator("#realisticPublishStatus")).toContainText("v2");
+  await expect(page.locator("#realisticPublishDiffSummary")).toContainText("一致");
 
   let published = await readJsonLocalStorage(page, REALISTIC_PUBLISHED_KEY);
   expect(published.releaseNumber).toBe(2);

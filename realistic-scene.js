@@ -42,6 +42,8 @@ const openLiveButton = document.getElementById("realisticOpenLive");
 const publishLayoutButton = document.getElementById("realisticPublishLayout");
 const publishStatus = document.getElementById("realisticPublishStatus");
 const publishNoteInput = document.getElementById("realisticPublishNote");
+const publishDiffSummary = document.getElementById("realisticPublishDiffSummary");
+const publishDiffList = document.getElementById("realisticPublishDiffList");
 const publishHistoryList = document.getElementById("realisticPublishHistoryList");
 const snapshotCreateButton = document.getElementById("realisticSnapshotCreate");
 const snapshotRefreshButton = document.getElementById("realisticSnapshotRefresh");
@@ -580,6 +582,7 @@ function saveSceneLayout() {
   }
   try {
     window.localStorage.setItem(SCENE_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeSceneLayout(savedSceneLayout)));
+    renderPublishDiff();
   } catch (error) {
     console.warn("Scene layout could not be saved to localStorage.", error);
   }
@@ -998,12 +1001,14 @@ function renderPublishPanel() {
   const record = loadPublishedLayoutRecord();
   if (!record?.layout) {
     setPublishStatus("尚未发布。写实演示页会临时读取当前草稿。", "normal");
+    renderPublishDiff(record);
     renderPublishHistory(record);
     return;
   }
 
   const note = record.note ? ` · ${record.note}` : "";
   setPublishStatus(`已发布 v${record.releaseNumber || 1}：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(normalizeLayoutStats(record.stats, record.layout))}${note}`, "success");
+  renderPublishDiff(record);
   renderPublishHistory(record);
 }
 
@@ -1013,6 +1018,104 @@ function setPublishStatus(message, tone = "normal") {
   }
   publishStatus.textContent = message;
   publishStatus.dataset.tone = tone;
+}
+
+function renderPublishDiff(record = loadPublishedLayoutRecord()) {
+  if (!publishDiffSummary || !publishDiffList) {
+    return;
+  }
+
+  const diff = createRealisticPublishDiff(normalizeSceneLayout(savedSceneLayout), record?.layout ? normalizeSceneLayout(record.layout) : null);
+  publishDiffSummary.textContent = diff.summary;
+  publishDiffList.innerHTML = "";
+  diff.items.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item;
+    publishDiffList.appendChild(li);
+  });
+}
+
+function createRealisticPublishDiff(draftLayout, publishedLayout) {
+  const draftIndex = createRealisticLayoutDiffIndex(draftLayout);
+  const publishedIndex = publishedLayout ? createRealisticLayoutDiffIndex(publishedLayout) : new Map();
+  const added = [];
+  const changed = [];
+  const removed = [];
+
+  draftIndex.forEach((draftItem, key) => {
+    const publishedItem = publishedIndex.get(key);
+    if (!publishedItem) {
+      added.push(draftItem);
+      return;
+    }
+    if (draftItem.signature !== publishedItem.signature) {
+      changed.push(draftItem);
+    }
+  });
+
+  publishedIndex.forEach((publishedItem, key) => {
+    if (!draftIndex.has(key)) {
+      removed.push(publishedItem);
+    }
+  });
+
+  const total = added.length + changed.length + removed.length;
+  if (!publishedLayout) {
+    return {
+      summary: draftIndex.size ? `尚未发布：将首次发布 ${draftIndex.size} 项写实草稿内容。` : "尚未发布：将发布当前默认写实场景。",
+      items: draftIndex.size ? formatDiffItems("新增", [...draftIndex.values()]) : ["当前没有自定义坐标或导入模型。"]
+    };
+  }
+
+  return {
+    summary: total ? `待发布差异：${added.length} 新增 / ${changed.length} 修改 / ${removed.length} 删除。` : "当前草稿与已发布版本一致。",
+    items: total ? [
+      ...formatDiffItems("新增", added),
+      ...formatDiffItems("修改", changed),
+      ...formatDiffItems("删除", removed)
+    ].slice(0, 8) : ["无需发布新版本。"]
+  };
+}
+
+function createRealisticLayoutDiffIndex(layoutValue) {
+  const normalized = normalizeSceneLayout(layoutValue);
+  const index = new Map();
+  const importedById = new Map((normalized[IMPORTED_MODEL_LIST_KEY] || []).map((item) => [item.id, item]));
+
+  Object.entries(normalized).forEach(([id, state]) => {
+    if (id === IMPORTED_MODEL_LIST_KEY || importedById.has(id)) return;
+    index.set(`object:${id}`, createDiffItem("写实物体", id, id, state));
+  });
+
+  importedById.forEach((item, id) => {
+    const state = normalized[id] || {};
+    index.set(`imported:${id}`, createDiffItem("导入模型", id, item.label || item.fileName || id, { item, state }));
+  });
+
+  return index;
+}
+
+function createDiffItem(kind, id, label, value) {
+  return {
+    kind,
+    id,
+    label,
+    signature: stableStringify(value)
+  };
+}
+
+function formatDiffItems(action, items) {
+  return items.map((item) => `${action}：${item.kind} · ${item.label}`);
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function readPublishNote() {

@@ -1234,6 +1234,39 @@ button {
   background: rgba(201, 63, 47, 0.14);
 }
 
+.main-publish-diff {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.main-publish-diff strong {
+  min-width: 0;
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.main-publish-diff ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.main-publish-diff li {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .main-publish-list {
   display: grid;
   gap: 8px;

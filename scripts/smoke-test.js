@@ -55,7 +55,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainPublishNote", "mainPublishHistoryList", "project-schema-utils.js", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "project-schema-utils.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",
@@ -65,7 +65,7 @@ const PAGE_CHECKS = [
   {
     path: "/realistic-admin.html",
     label: "写实后台",
-    markers: ["MR 书法场景管理页", "designObjectSelect", "realisticPublishNote", "realisticPublishHistoryList", "realistic-scene.js"]
+    markers: ["MR 书法场景管理页", "designObjectSelect", "realisticPublishNote", "realisticPublishDiffSummary", "realisticPublishHistoryList", "realistic-scene.js"]
   }
 ];
 
