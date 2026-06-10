@@ -66,7 +66,7 @@
     }
 
     await validateArchiveAssetHashes(migratedArchive, restoreOptions.dbIds);
-    importLocalStorage(migratedArchive.storage || {}, restoreOptions.storageKeys);
+    importLocalStorage(migratedArchive.storage || {}, restoreOptions.storageKeys, restoreOptions.storageFields);
 
     for (const item of DB_ITEMS) {
       if (restoreOptions.dbIds.includes(item.id)) {
@@ -145,6 +145,7 @@
       incomingBytes: incomingValue ? new Blob([incomingValue]).size : 0,
       fieldDiffSummary: fieldDiff.summary,
       fieldDiffs: fieldDiff.items,
+      fieldSelections: fieldDiff.selections,
       defaultSelected: !migratedMissing,
       migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机内容。` : ""
     };
@@ -154,11 +155,12 @@
     const current = parseJsonForDiff(currentValue);
     const incoming = parseJsonForDiff(incomingValue);
     if (!current.ok || !incoming.ok) {
-      return { summary: "", items: [] };
+      return { summary: "", items: [], selections: [] };
     }
 
     const currentFields = current.value == null ? new Map() : flattenDiffFields(current.value);
     const incomingFields = incoming.value == null ? new Map() : flattenDiffFields(incoming.value);
+    const selections = createTopLevelFieldSelections(current.value, incoming.value);
     const added = [];
     const updated = [];
     const removed = [];
@@ -182,7 +184,7 @@
 
     const total = added.length + updated.length + removed.length;
     if (!total) {
-      return { summary: "字段无变化", items: [] };
+      return { summary: "字段无变化", items: [], selections: [] };
     }
 
     return {
@@ -191,7 +193,60 @@
         ...formatFieldDiffItems("新增", added),
         ...formatFieldDiffItems("修改", updated),
         ...formatFieldDiffItems("删除", removed)
-      ].slice(0, 6)
+      ].slice(0, 6),
+      selections
+    };
+  }
+
+  function createTopLevelFieldSelections(currentValue, incomingValue) {
+    if (incomingValue == null) {
+      return [];
+    }
+
+    const currentFields = getTopLevelFieldMap(currentValue);
+    const incomingFields = getTopLevelFieldMap(incomingValue);
+    const selections = [];
+
+    incomingFields.forEach((incomingField, path) => {
+      const currentField = currentFields.get(path);
+      if (!currentField) {
+        selections.push(createFieldSelection("add", "新增字段", path));
+        return;
+      }
+      if (incomingField.signature !== currentField.signature) {
+        selections.push(createFieldSelection("update", "修改字段", path));
+      }
+    });
+
+    currentFields.forEach((currentField, path) => {
+      if (!incomingFields.has(path)) {
+        selections.push(createFieldSelection("remove", "删除字段", path));
+      }
+    });
+
+    return selections;
+  }
+
+  function getTopLevelFieldMap(value) {
+    const result = new Map();
+    if (value == null) {
+      return result;
+    }
+    if (!Array.isArray(value) && typeof value === "object") {
+      Object.keys(value).sort().forEach((key) => {
+        result.set(key, { path: key, signature: stableStringify(value[key]) });
+      });
+      return result;
+    }
+    result.set("root", { path: "root", signature: stableStringify(value) });
+    return result;
+  }
+
+  function createFieldSelection(action, prefix, path) {
+    return {
+      action,
+      path,
+      label: `${prefix}：${path}`
     };
   }
 
@@ -328,8 +383,40 @@
       : allDbIds.filter((id) => archive?.indexedDb?.[id]?.defaultSelected !== false);
     return {
       storageKeys: [...new Set(storageKeys)],
-      dbIds: [...new Set(dbIds)]
+      dbIds: [...new Set(dbIds)],
+      storageFields: normalizeSelectedStorageFields(options?.storageFields, storageKeys)
     };
+  }
+
+  function normalizeSelectedStorageFields(storageFields, storageKeys) {
+    if (!storageFields || typeof storageFields !== "object") {
+      return {};
+    }
+
+    const selected = new Set(storageKeys);
+    return Object.keys(storageFields).reduce((result, key) => {
+      if (!selected.has(key) || !Array.isArray(storageFields[key])) {
+        return result;
+      }
+      const seen = new Set();
+      const fields = storageFields[key].filter((field) => {
+        const action = field?.action;
+        const path = field?.path;
+        const token = `${action}:${path}`;
+        if (!["add", "update", "remove"].includes(action) || typeof path !== "string" || !path || seen.has(token)) {
+          return false;
+        }
+        seen.add(token);
+        return true;
+      }).map((field) => ({
+        action: field.action,
+        path: field.path
+      }));
+      if (fields.length) {
+        result[key] = fields;
+      }
+      return result;
+    }, {});
   }
 
   function createProjectSchema(archive) {
@@ -370,13 +457,23 @@
     };
   }
 
-  function importLocalStorage(storage, selectedKeys = STORAGE_ITEMS.map((item) => item.key)) {
+  function importLocalStorage(storage, selectedKeys = STORAGE_ITEMS.map((item) => item.key), selectedFields = {}) {
     const selected = new Set(selectedKeys);
     STORAGE_ITEMS.forEach((item) => {
       if (!selected.has(item.key)) {
         return;
       }
       const record = storage[item.key];
+      const fieldSelections = selectedFields[item.key];
+      if (Array.isArray(fieldSelections) && fieldSelections.length) {
+        const merged = mergeStorageJsonFields(item, record?.value ?? null, fieldSelections);
+        if (merged.remove) {
+          window.localStorage.removeItem(item.key);
+        } else {
+          window.localStorage.setItem(item.key, merged.value);
+        }
+        return;
+      }
       if (!record || record.value == null) {
         window.localStorage.removeItem(item.key);
         return;
@@ -386,6 +483,127 @@
       }
       window.localStorage.setItem(item.key, record.value);
     });
+  }
+
+  function mergeStorageJsonFields(item, incomingValue, fieldSelections) {
+    const current = parseJsonForDiff(window.localStorage.getItem(item.key));
+    const incoming = parseJsonForDiff(incomingValue);
+    if (!current.ok || !incoming.ok) {
+      throw new Error(`${item.label} 不是可合并的 JSON 数据，请改用整项恢复。`);
+    }
+
+    let result = cloneJsonValue(current.value);
+    if (result == null || typeof result !== "object") {
+      result = Array.isArray(incoming.value) ? [] : {};
+    }
+
+    fieldSelections.forEach((field) => {
+      if (field.path === "root") {
+        result = field.action === "remove" ? null : cloneJsonValue(incoming.value);
+        return;
+      }
+
+      const tokens = parseDiffPath(field.path);
+      if (!tokens.length) {
+        return;
+      }
+      if (field.action === "remove") {
+        deleteJsonPath(result, tokens);
+        return;
+      }
+
+      const incomingField = readJsonPath(incoming.value, tokens);
+      if (incomingField.exists) {
+        result = ensureMergeRoot(result, tokens);
+        setJsonPath(result, tokens, cloneJsonValue(incomingField.value));
+      }
+    });
+
+    return result == null
+      ? { remove: true, value: "" }
+      : { remove: false, value: JSON.stringify(result) };
+  }
+
+  function cloneJsonValue(value) {
+    return value == null ? value : JSON.parse(JSON.stringify(value));
+  }
+
+  function ensureMergeRoot(value, tokens) {
+    if (value && typeof value === "object") {
+      return value;
+    }
+    return typeof tokens[0] === "number" || tokens[0] === "length" ? [] : {};
+  }
+
+  function parseDiffPath(path) {
+    if (path === "root") {
+      return [];
+    }
+    const tokens = [];
+    path.split(".").forEach((segment) => {
+      const name = segment.match(/^[^\[]+/)?.[0] || "";
+      if (name) {
+        tokens.push(name);
+      }
+      const indexMatches = segment.matchAll(/\[(\d+|\.\.\.)\]/g);
+      for (const match of indexMatches) {
+        if (match[1] !== "...") {
+          tokens.push(Number(match[1]));
+        }
+      }
+    });
+    return tokens;
+  }
+
+  function readJsonPath(value, tokens) {
+    let cursor = value;
+    for (const token of tokens) {
+      if (cursor == null || typeof cursor !== "object" || !(token in cursor)) {
+        return { exists: false, value: undefined };
+      }
+      cursor = cursor[token];
+    }
+    return { exists: true, value: cursor };
+  }
+
+  function setJsonPath(target, tokens, value) {
+    let cursor = target;
+    tokens.forEach((token, index) => {
+      const isLast = index === tokens.length - 1;
+      if (isLast) {
+        cursor[token] = value;
+        return;
+      }
+      const nextToken = tokens[index + 1];
+      if (cursor[token] == null || typeof cursor[token] !== "object") {
+        cursor[token] = typeof nextToken === "number" || nextToken === "length" ? [] : {};
+      }
+      cursor = cursor[token];
+    });
+  }
+
+  function deleteJsonPath(target, tokens) {
+    if (!target || typeof target !== "object" || !tokens.length) {
+      return;
+    }
+    let cursor = target;
+    for (let index = 0; index < tokens.length - 1; index += 1) {
+      const token = tokens[index];
+      if (cursor == null || typeof cursor !== "object" || !(token in cursor)) {
+        return;
+      }
+      cursor = cursor[token];
+    }
+    const lastToken = tokens[tokens.length - 1];
+    if (lastToken === "length" && tokens.length > 1) {
+      deleteJsonPath(target, tokens.slice(0, -1));
+      return;
+    }
+    if (Array.isArray(cursor) && typeof lastToken === "number") {
+      cursor.splice(lastToken, 1);
+      return;
+    }
+    delete cursor[lastToken];
   }
 
   async function exportDbStore(item) {
@@ -919,20 +1137,57 @@
     };
 
     const getRestoreInputs = () => Array.from(previewList?.querySelectorAll("[data-archive-kind][data-archive-id]") || []);
+    const getFieldInputs = () => Array.from(previewList?.querySelectorAll("[data-storage-field-key][data-storage-field-path]") || []);
 
     const getSelectedRestoreOptions = () => {
       const selected = getRestoreInputs().filter((input) => input.checked);
+      const fieldInputs = getFieldInputs();
+      const storageFields = {};
+      const storageKeys = [];
+      const selectedStorageKeys = new Set(selected
+        .filter((input) => input.dataset.archiveKind === "storage")
+        .map((input) => input.dataset.archiveId));
+
+      selectedStorageKeys.forEach((key) => {
+        const fieldsForKey = fieldInputs.filter((input) => input.dataset.storageFieldKey === key);
+        if (!fieldsForKey.length) {
+          storageKeys.push(key);
+          return;
+        }
+
+        const selectedFields = fieldsForKey
+          .filter((input) => input.checked)
+          .map((input) => ({
+            path: input.dataset.storageFieldPath,
+            action: input.dataset.storageFieldAction
+          }));
+        if (selectedFields.length) {
+          storageKeys.push(key);
+          storageFields[key] = selectedFields;
+        }
+      });
+
       return {
-        storageKeys: selected.filter((input) => input.dataset.archiveKind === "storage").map((input) => input.dataset.archiveId),
-        dbIds: selected.filter((input) => input.dataset.archiveKind === "indexedDb").map((input) => input.dataset.archiveId)
+        storageKeys,
+        dbIds: selected.filter((input) => input.dataset.archiveKind === "indexedDb").map((input) => input.dataset.archiveId),
+        storageFields
       };
     };
 
     const updateRestoreSelectionState = () => {
       const inputs = getRestoreInputs();
-      const selectedCount = inputs.filter((input) => input.checked).length;
+      const fieldInputs = getFieldInputs();
+      const restoreOptions = getSelectedRestoreOptions();
+      const selectedCount = restoreOptions.storageKeys.length + restoreOptions.dbIds.length;
+      const selectedFieldCount = Object.values(restoreOptions.storageFields).reduce((sum, fields) => sum + fields.length, 0);
       inputs.forEach((input) => {
         input.disabled = isBusy;
+      });
+      const selectedStorageKeys = new Set(inputs
+        .filter((input) => input.checked && input.dataset.archiveKind === "storage")
+        .map((input) => input.dataset.archiveId));
+      fieldInputs.forEach((input) => {
+        input.disabled = isBusy || !selectedStorageKeys.has(input.dataset.storageFieldKey);
       });
 
       if (selectAllInput) {
@@ -941,8 +1196,9 @@
         selectAllInput.indeterminate = selectedCount > 0 && selectedCount < inputs.length;
       }
       if (selectionStatus) {
+        const fieldText = fieldInputs.length ? `，字段 ${selectedFieldCount}/${fieldInputs.length}` : "";
         selectionStatus.textContent = pendingArchive
-          ? `将恢复 ${selectedCount}/${inputs.length} 项。未勾选的本机内容会保持不变。`
+          ? `将恢复 ${selectedCount}/${inputs.length} 项${fieldText}。未勾选的本机内容会保持不变。`
           : "尚未选择恢复内容。";
       }
       if (confirmButton) {
@@ -997,7 +1253,28 @@
         fieldSummary.textContent = options.fieldDiffSummary;
         body.append(fieldSummary);
       }
-      if (Array.isArray(options.fieldDiffs) && options.fieldDiffs.length) {
+      if (Array.isArray(options.fieldSelections) && options.fieldSelections.length) {
+        const fieldList = document.createElement("ul");
+        fieldList.className = "main-project-field-diffs main-project-field-diffs--selectable";
+        options.fieldSelections.forEach((field) => {
+          const fieldItem = document.createElement("li");
+          const fieldChoice = document.createElement("label");
+          fieldChoice.className = "main-project-field-choice";
+          const fieldInput = document.createElement("input");
+          fieldInput.type = "checkbox";
+          fieldInput.checked = options.defaultSelected !== false;
+          fieldInput.dataset.storageFieldKey = id;
+          fieldInput.dataset.storageFieldPath = field.path;
+          fieldInput.dataset.storageFieldAction = field.action;
+          fieldInput.setAttribute("aria-label", `恢复${label}${field.label}`);
+          const fieldText = document.createElement("span");
+          fieldText.textContent = field.label;
+          fieldChoice.append(fieldInput, fieldText);
+          fieldItem.appendChild(fieldChoice);
+          fieldList.appendChild(fieldItem);
+        });
+        body.append(fieldList);
+      } else if (Array.isArray(options.fieldDiffs) && options.fieldDiffs.length) {
         const fieldList = document.createElement("ul");
         fieldList.className = "main-project-field-diffs";
         options.fieldDiffs.forEach((fieldDiff) => {
@@ -1054,6 +1331,7 @@
         defaultSelected: item.defaultSelected,
         fieldDiffSummary: item.fieldDiffSummary,
         fieldDiffs: item.fieldDiffs,
+        fieldSelections: item.fieldSelections,
         migrationNote: item.migrationNote
       }));
       preview.indexedDb.forEach((item) => appendPreviewLine(fragment, "indexedDb", item.id, item.label, describeDbChange(item), item.change, {
@@ -1141,13 +1419,16 @@
     });
 
     previewList?.addEventListener("change", (event) => {
-      if (event.target.matches("[data-archive-kind][data-archive-id]")) {
+      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path]")) {
         updateRestoreSelectionState();
       }
     });
 
     selectAllInput?.addEventListener("change", () => {
       getRestoreInputs().forEach((input) => {
+        input.checked = selectAllInput.checked;
+      });
+      getFieldInputs().forEach((input) => {
         input.checked = selectAllInput.checked;
       });
       updateRestoreSelectionState();

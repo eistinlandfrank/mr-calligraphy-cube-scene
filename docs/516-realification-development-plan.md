@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要和 localStorage 字段级差异预览已补第一版，仍缺对象 schema 统一、字段级合并迁移和远端发布适配。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 字段级差异预览和字段级选择性恢复已补第一版，仍缺对象 schema 统一、字段冲突策略和远端发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -166,7 +166,7 @@
 
 任务：
 
-- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成；项目档案迁移预检、默认保留旧档案缺项、`projectSchema.migrations` 记录和 localStorage 字段级差异预览已完成第一版。
+- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成；项目档案迁移预检、默认保留旧档案缺项、`projectSchema.migrations` 记录、localStorage 字段级差异预览和字段级选择性恢复已完成第一版。
 - 把主场景 `mr-calligraphy-main-scene-layout-v1`、写实场景 `mr-calligraphy-realistic-layout-v1`、房间配置 `mr-calligraphy-room-config-v3-wood` 纳入统一读写。
 - 新增项目导出 JSON：导出场景配置、学习记录、作品索引和本机导入模型二进制。
 - 新增项目导入 JSON：校验版本，展示差异预览，确认后覆盖同名本机项目状态。
@@ -842,7 +842,7 @@
 已知限制：
 
 - 差异预览已补 localStorage JSON 字段级 diff 第一版，会展示字段新增、修改、删除路径。
-- 已支持条目级选择性恢复；还不能在单个 JSON 内做字段级选择或字段级合并。
+- 已支持条目级选择性恢复和 localStorage JSON 顶层字段级选择性恢复；还不能做深层字段冲突解决。
 - 项目档案仍是浏览器本机文件流转，不是远端多人协作或云端恢复。
 
 ### 2026-06-11：补齐项目档案选择性恢复
@@ -876,7 +876,7 @@
 
 已知限制：
 
-- 选择性恢复粒度仍是条目级；JSON 字段级 diff 已用于预览，但还不能字段级合并恢复。
+- 选择性恢复已从条目级推进到 localStorage JSON 顶层字段级；深层字段合并、冲突提示和可展开 JSON 树仍待补。
 - IndexedDB 模型仓库仍按仓库整体替换，不能只勾选单个模型恢复。
 - 项目档案仍是浏览器本机 JSON 文件流转，不是远端协作或云端版本库。
 
@@ -2325,6 +2325,60 @@
 
 已知限制：
 
-- 字段级差异目前只用于导入前预览，恢复时仍按 localStorage 条目整体覆盖或保留。
-- 还没有可展开 JSON 树、字段勾选、字段级合并和冲突解决策略。
+- 本节只记录字段级差异预览；字段级选择性恢复已在下一节补齐第一版。
+- 还没有可展开 JSON 树、深层字段选择和冲突解决策略。
 - IndexedDB 模型仓库预览仍是数量、哈希和仓库级替换摘要，不展示单模型字段级 diff。
+
+### 2026-06-11：新增项目档案字段级选择性恢复
+
+功能名：主后台项目档案导入时按 localStorage JSON 顶层字段合并恢复。
+
+涉及文件：
+
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 项目档案导入预览会为可合并的 localStorage JSON 条目生成字段复选框，默认勾选有差异的顶层字段。
+- 用户取消某个字段后，恢复时只合并仍勾选的 JSON 顶层字段，未勾选字段保持当前本机值。
+- `restoreProjectArchive()` 新增 `storageFields` 选项；不传该选项时仍保持旧的整项恢复兼容行为。
+- 字段合并支持新增、修改和删除字段；非 JSON 或用户没有字段选择时仍走原来的整项恢复路径。
+- 主后台导入预览状态栏会显示字段选择数量，便于确认这次恢复的粒度。
+- `scripts/archive-migration-check.js` 已验证只恢复 `sessions` 字段时，会更新分数，同时保留未勾选的 `reports`，也不会写入未勾选的 `artworks`。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，选择一个与当前本机状态不同的项目档案。
+- 在预览列表中，学习状态、房间配置或场景布局等 JSON 条目下应出现字段复选框。
+- 取消某个新增或修改字段后点击“恢复所选”，刷新后该字段应保持原本本机值，仍勾选字段应来自档案。
+- 运行 `node scripts/archive-migration-check.js`，应输出项目档案迁移检查通过，并覆盖字段级选择性恢复断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 第一版字段选择以顶层 JSON 字段为粒度，暂不提供任意深层字段树选择。
+- 字段冲突策略仍是“以用户勾选为准”，还没有三方合并、字段冲突解释和批量冲突处理。
+- IndexedDB 模型仓库仍按仓库整体恢复，未做单模型字段级合并。

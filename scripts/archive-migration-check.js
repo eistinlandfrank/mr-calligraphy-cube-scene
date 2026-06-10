@@ -101,6 +101,36 @@ async function main() {
     learningPreview.fieldDiffs.some((item) => item.includes("artworks.length")),
     "学习状态预览应显示 artworks.length 新增变化。"
   );
+  assert(
+    learningPreview.fieldSelections.some((item) => item.path === "sessions" && item.action === "update"),
+    "学习状态预览应允许选择性恢复 sessions 字段。"
+  );
+  assert(
+    learningPreview.fieldSelections.some((item) => item.path === "artworks" && item.action === "add"),
+    "学习状态预览应允许选择性恢复 artworks 字段。"
+  );
+
+  await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
+    storageKeys: ["mr-calligraphy-learning-state-v1"],
+    dbIds: [],
+    storageFields: {
+      "mr-calligraphy-learning-state-v1": [{ path: "sessions", action: "update" }]
+    }
+  });
+  const partiallyRestored = JSON.parse(localValues.get("mr-calligraphy-learning-state-v1"));
+  assert(
+    partiallyRestored.sessions[0].score === 88,
+    "字段级恢复应更新已勾选的 sessions 字段。"
+  );
+  assert(
+    Array.isArray(partiallyRestored.reports),
+    "字段级恢复不应移除未勾选的 reports 字段。"
+  );
+  assert(
+    !partiallyRestored.artworks,
+    "字段级恢复不应写入未勾选的 artworks 字段。"
+  );
+  writtenStorageKeys.length = 0;
 
   await window.MRProjectArchive.importProject({
     ...legacyArchive,

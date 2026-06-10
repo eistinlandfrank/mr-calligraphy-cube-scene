@@ -1043,6 +1043,29 @@ button {
   line-height: 1.4;
 }
 
+.main-project-field-choice {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  min-height: 18px;
+}
+
+.main-project-field-choice input {
+  width: 12px;
+  height: 12px;
+  margin: 2px 0 0;
+  accent-color: #2f8f82;
+}
+
+.main-project-field-choice span {
+  overflow-wrap: anywhere;
+}
+
+.main-project-field-choice input:disabled + span {
+  opacity: 0.52;
+}
+
 .main-project-migration-line,
 .main-project-preview-note {
   display: grid;
