@@ -568,11 +568,14 @@
     return models.map((model) => {
       const currentModel = action === "add" ? null : currentMap.get(model.key);
       const incomingModel = action === "remove" ? null : incomingMap.get(model.key);
+      const conflicts = action === "remove" ? [] : findDbModelNameConflicts(model, currentMap, new Set([model.key]));
+      const conflictSummary = summarizeDbModelNameConflicts(conflicts);
       return {
         action,
         key: model.key,
         label: `${getDbModelActionLabel(action)}：${model.label}`,
         detail: formatDbModelSelectionDetail(model),
+        conflictSummary,
         currentPreview: createDbModelPreview(currentModel, "本机中无此模型"),
         incomingPreview: createDbModelPreview(incomingModel, "档案中无此模型")
       };
@@ -620,6 +623,47 @@
       preview.metrics = model.metrics;
     }
     return createJsonPreview(preview, missingLabel);
+  }
+
+  function findDbModelNameConflicts(model, currentMap, ignoredKeys = new Set()) {
+    const labelToken = normalizeDbModelCompareToken(model.label);
+    const fileToken = normalizeDbModelCompareToken(model.fileName);
+    const conflicts = [];
+    currentMap.forEach((currentModel) => {
+      if (ignoredKeys.has(currentModel.key)) {
+        return;
+      }
+      const reasons = [];
+      if (labelToken && labelToken === normalizeDbModelCompareToken(currentModel.label)) {
+        reasons.push("名称");
+      }
+      if (fileToken && fileToken === normalizeDbModelCompareToken(currentModel.fileName)) {
+        reasons.push("文件名");
+      }
+      if (reasons.length) {
+        conflicts.push({
+          key: currentModel.key,
+          label: currentModel.label,
+          fileName: currentModel.fileName,
+          reasons
+        });
+      }
+    });
+    return conflicts;
+  }
+
+  function summarizeDbModelNameConflicts(conflicts) {
+    if (!conflicts.length) {
+      return "";
+    }
+    const first = conflicts[0];
+    const reasonText = [...new Set(first.reasons)].join("和");
+    const extra = conflicts.length > 1 ? `等 ${conflicts.length} 个模型` : "";
+    return `命名冲突：与本机“${first.label || first.fileName || first.key}”${extra}${reasonText}相同，单独恢复时会自动改名。`;
+  }
+
+  function normalizeDbModelCompareToken(value) {
+    return String(value || "").trim().toLowerCase();
   }
 
   async function readDbStoreRecords(item) {
@@ -978,6 +1022,10 @@
 
   async function importSelectedDbModels(item, db, archiveRecords, selectedModels) {
     const archiveRecordMap = mapArchiveDbRecords(item, archiveRecords);
+    const currentModelMap = mapDbModelRecords(item, await readAllRecords(db, item.storeName), false);
+    const selectedRemoveKeys = new Set(selectedModels
+      .filter((selection) => selection.action === "remove")
+      .map((selection) => selection.key));
     const restoredRecords = new Map();
     for (const selection of selectedModels) {
       if (selection.action === "remove") {
@@ -987,7 +1035,9 @@
       if (!archiveRecord) {
         throw new Error(`${item.label} 中缺少要恢复的模型：${selection.key}。`);
       }
-      restoredRecords.set(selection.key, await deserializeDbRecord(archiveRecord, item.label));
+      const restoredRecord = await deserializeDbRecord(archiveRecord, item.label);
+      resolveDbModelRestoreConflict(item, restoredRecord, currentModelMap, selectedRemoveKeys, restoredRecords);
+      restoredRecords.set(selection.key, restoredRecord);
     }
 
     await new Promise((resolve, reject) => {
@@ -1031,6 +1081,60 @@
       const model = normalizeDbModelRecord(item, record, index, true);
       return selectedKeys.has(model.key);
     });
+  }
+
+  function resolveDbModelRestoreConflict(item, record, currentModelMap, selectedRemoveKeys, pendingRecords) {
+    const model = normalizeDbModelRecord(item, record, 0, false);
+    const ignoredKeys = new Set([...selectedRemoveKeys, model.key]);
+    const conflicts = [
+      ...findDbModelNameConflicts(model, currentModelMap, ignoredKeys),
+      ...findPendingDbModelNameConflicts(model, pendingRecords)
+    ];
+    if (!conflicts.length) {
+      return record;
+    }
+
+    const usedLabels = collectUsedDbModelLabels(currentModelMap, selectedRemoveKeys, model.key, pendingRecords);
+    const originalLabel = String(record.label || model.label || record.fileName || model.key || "导入模型").trim();
+    record.label = createConflictResolvedDbModelLabel(originalLabel, usedLabels);
+    return record;
+  }
+
+  function findPendingDbModelNameConflicts(model, pendingRecords) {
+    const pendingMap = mapDbModelRecords({ keyPath: "key" }, Array.from(pendingRecords.values()), false);
+    return findDbModelNameConflicts(model, pendingMap, new Set([model.key]));
+  }
+
+  function collectUsedDbModelLabels(currentModelMap, selectedRemoveKeys, currentKey, pendingRecords) {
+    const labels = new Set();
+    currentModelMap.forEach((model) => {
+      if (selectedRemoveKeys.has(model.key) || model.key === currentKey) {
+        return;
+      }
+      const token = normalizeDbModelCompareToken(model.label);
+      if (token) {
+        labels.add(token);
+      }
+    });
+    pendingRecords.forEach((record) => {
+      const token = normalizeDbModelCompareToken(record.label);
+      if (token) {
+        labels.add(token);
+      }
+    });
+    return labels;
+  }
+
+  function createConflictResolvedDbModelLabel(label, usedLabels) {
+    const base = String(label || "导入模型").trim() || "导入模型";
+    for (let index = 1; index < 1000; index += 1) {
+      const suffix = index === 1 ? "（档案）" : `（档案 ${index}）`;
+      const candidate = `${base.slice(0, Math.max(1, 60 - suffix.length))}${suffix}`;
+      if (!usedLabels.has(normalizeDbModelCompareToken(candidate))) {
+        return candidate;
+      }
+    }
+    return `${base.slice(0, 48)}（档案）`;
   }
 
   function openDb(item) {
@@ -1790,6 +1894,12 @@
           modelImpact.className = "main-project-model-impact";
           modelImpact.textContent = model.detail;
           modelText.append(modelLabel, modelImpact);
+          if (model.conflictSummary) {
+            const modelConflict = document.createElement("span");
+            modelConflict.className = "main-project-model-conflict";
+            modelConflict.textContent = model.conflictSummary;
+            modelText.appendChild(modelConflict);
+          }
           modelChoice.append(modelInput, modelText);
           modelItem.appendChild(modelChoice);
           if (model.currentPreview || model.incomingPreview) {

@@ -100,6 +100,22 @@ const legacyArchive = {
             }
           },
           bytes: 30
+        },
+        {
+          data: {
+            key: "model-3",
+            id: "model-3",
+            label: "本机旧模型",
+            fileName: "conflict-model.glb",
+            type: "glb",
+            metrics: {
+              fileBytes: 40,
+              meshCount: 4,
+              vertexCount: 48,
+              dimensions: { width: 1, height: 1, depth: 2 }
+            }
+          },
+          bytes: 40
         }
       ]
     }
@@ -184,7 +200,7 @@ async function main() {
   const mainModelPreview = previewResult.preview.indexedDb.find((item) => item.id === "mainModels");
   assert(mainModelPreview, "导入预览应包含主场景模型仓库。");
   assert(
-    mainModelPreview.modelDiffSummary.includes("1 新增模型") &&
+    mainModelPreview.modelDiffSummary.includes("2 新增模型") &&
       mainModelPreview.modelDiffSummary.includes("1 修改模型"),
     "主场景模型仓库预览应显示单模型新增和修改摘要。"
   );
@@ -206,6 +222,7 @@ async function main() {
   );
   const addedModelSelection = mainModelPreview.modelSelections.find((item) => item.key === "model-2");
   const updatedModelSelection = mainModelPreview.modelSelections.find((item) => item.key === "model-1");
+  const conflictingModelSelection = mainModelPreview.modelSelections.find((item) => item.key === "model-3");
   assert(
     addedModelSelection?.currentPreview === "本机中无此模型" &&
       addedModelSelection?.incomingPreview.includes("\"label\": \"档案新增模型\""),
@@ -215,6 +232,11 @@ async function main() {
     updatedModelSelection?.currentPreview.includes("\"label\": \"本机旧模型\"") &&
       updatedModelSelection?.incomingPreview.includes("\"label\": \"档案更新模型\""),
     "主场景模型仓库修改模型预览应显示当前本机和导入档案元数据片段。"
+  );
+  assert(
+    conflictingModelSelection?.conflictSummary.includes("命名冲突") &&
+      conflictingModelSelection?.conflictSummary.includes("本机旧模型"),
+    "主场景模型仓库同名不同 key 模型应显示命名冲突提示。"
   );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
@@ -258,6 +280,23 @@ async function main() {
   assert(
     !modelRecords.some((record) => record.key === "model-1" && record.label === "档案更新模型"),
     "单模型恢复不应恢复未勾选的修改模型。"
+  );
+
+  await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
+    storageKeys: [],
+    dbIds: ["mainModels"],
+    dbRecords: {
+      mainModels: [{ key: "model-3", action: "add" }]
+    }
+  });
+  const conflictModelRecords = indexedDbMock.dump("mr-calligraphy-main-model-store", "models");
+  assert(
+    conflictModelRecords.some((record) => record.key === "model-3" && record.label === "本机旧模型（档案）"),
+    "命名冲突模型单独恢复时应自动追加档案后缀。"
+  );
+  assert(
+    conflictModelRecords.some((record) => record.key === "model-1" && record.label === "本机旧模型"),
+    "命名冲突模型单独恢复时不应覆盖本机旧模型。"
   );
 
   await window.MRProjectArchive.importProject({

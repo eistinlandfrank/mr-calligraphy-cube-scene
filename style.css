@@ -1096,6 +1096,12 @@ button {
   font-weight: 500;
 }
 
+.main-project-model-conflict {
+  color: rgba(255, 228, 170, 0.88);
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .main-project-model-choice input:disabled + span {
   opacity: 0.52;
 }
