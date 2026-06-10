@@ -135,7 +135,8 @@ export function SceneRenderer({
       ) : null}
       <Canvas
         shadows={!xrActive}
-        dpr={[1, 2]}
+        dpr={xrActive ? [1, 1.25] : [1, 2]}
+        gl={{ antialias: !xrActive, powerPreference: "high-performance" }}
         camera={{ position: [4.8, 2.4, 6.4], fov: sceneConfig?.camera?.fov ?? 50 }}
       >
         <Suspense fallback={null}>
@@ -170,7 +171,7 @@ export function SceneRenderer({
               />
             ))}
           {sceneConfig?.uiPanels?.map((panel) => (
-            <SceneUiPanel key={panel.id} panel={panel} />
+            <SceneUiPanel key={panel.id} panel={panel} xrActive={xrActive} />
           ))}
           {showHotspots
             ? sceneConfig?.hotspots?.map((hotspot) => {
@@ -411,18 +412,21 @@ function SceneFloor({ color }) {
   );
 }
 
-function SceneUiPanel({ panel }) {
-  const texture = useMemo(() => createPanelTexture(panel), [panel]);
+function SceneUiPanel({ panel, xrActive }) {
+  const texture = useMemo(() => createPanelTexture(panel, xrActive), [panel, xrActive]);
 
   useEffect(() => () => texture.dispose(), [texture]);
 
   const [width = 0.78, height = 0.38] = panel.size ?? [];
+  const scale = xrActive ? 1.24 : 1;
+  const panelWidth = width * scale;
+  const panelHeight = height * scale;
   const tone = getPanelTone(panel.tone);
 
   return (
     <group position={panel.position} rotation={panel.rotation} userData={{ selectableId: panel.id }}>
       <mesh userData={{ selectableId: panel.id }}>
-        <boxGeometry args={[width, height, 0.028]} />
+        <boxGeometry args={[panelWidth, panelHeight, 0.028]} />
         <meshStandardMaterial
           color={tone.background}
           roughness={0.48}
@@ -434,14 +438,14 @@ function SceneUiPanel({ panel }) {
         />
       </mesh>
       <mesh position={[0, 0, 0.018]} userData={{ selectableId: panel.id }}>
-        <planeGeometry args={[width * 0.9, height * 0.78]} />
+        <planeGeometry args={[panelWidth * 0.9, panelHeight * 0.78]} />
         <meshBasicMaterial map={texture} transparent />
       </mesh>
     </group>
   );
 }
 
-function createPanelTexture(panel) {
+function createPanelTexture(panel, xrActive) {
   if (typeof document === "undefined") {
     return new THREE.Texture();
   }
@@ -454,10 +458,10 @@ function createPanelTexture(panel) {
 
   context.clearRect(0, 0, canvas.width, canvas.height);
   context.fillStyle = tone.text;
-  context.font = "700 46px sans-serif";
-  context.fillText(panel.title, 34, 86);
-  context.font = "500 28px sans-serif";
-  wrapCanvasText(context, panel.body ?? "", 34, 145, 560, 40);
+  context.font = `700 ${xrActive ? 58 : 46}px sans-serif`;
+  context.fillText(panel.title, 34, xrActive ? 96 : 86);
+  context.font = `500 ${xrActive ? 34 : 28}px sans-serif`;
+  wrapCanvasText(context, panel.body ?? "", 34, xrActive ? 162 : 145, 560, xrActive ? 48 : 40);
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;

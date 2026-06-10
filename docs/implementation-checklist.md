@@ -473,16 +473,20 @@
 
   验收记录：2026-06-10 SceneRenderer 在 XR active 时挂载 XrInteractionLayer，为双控制器添加可视射线并在 selectstart 时 raycast 可选节点；Hotspot 和 SceneUiPanel 写入 selectableId，射线可选中热点或空间 UI；同时中心凝视 raycast 同一批 selectable 节点，停留约 1.15 秒触发选择；`npm run build` 通过。
 
-- [ ] **P8-05：适配老人端空间 UI 大字号**  
+- [x] **P8-05：适配老人端空间 UI 大字号**  
   验收：XR 模式下文字可读，按钮尺寸适老。
+
+  验收记录：2026-06-10 SceneUiPanel 接收 xrActive 状态，XR 模式下面板几何放大 1.24 倍，并使用更大的 title/body CanvasTexture 字号与行高，提升头显内空间 UI 可读性；`npm run build` 通过。
 
 - [x] **P8-06：实现 XR 安全退出**  
   验收：XR 模式下可以随时退出回桌面模式。
 
   验收记录：2026-06-10 进入 XR 后控件切换为“退出 XR”，点击会调用 XRSession.end；同时监听 session end 事件恢复桌面状态，避免退出后界面仍停留在 XR active 状态；`npm run build` 通过。
 
-- [ ] **P8-07：性能优化**  
+- [x] **P8-07：性能优化**  
   验收：XR 模式下帧率稳定，无明显卡顿。
+
+  验收记录：2026-06-10 SceneRenderer 在 XR active 时关闭实时阴影、将 dpr 限制到 [1, 1.25]，并使用 high-performance WebGL 偏好；XR 控制器射线退出时释放几何与材质资源，降低重复进入退出后的资源压力；`npm run build` 通过。
 
 ---
 
