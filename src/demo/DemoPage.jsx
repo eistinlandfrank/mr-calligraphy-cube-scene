@@ -8,6 +8,7 @@ import { CaregiverView } from "./CaregiverView.jsx";
 import { DemoTimeline, demoTimelineSteps } from "./DemoTimeline.jsx";
 import { ElderView } from "./ElderView.jsx";
 import { ProductView } from "./ProductView.jsx";
+import { ReportView } from "./ReportView.jsx";
 
 const viewModes = [
   { id: "product", label: "产品视角", icon: Sparkles, sceneId: "capsule-product-showcase" },
@@ -56,6 +57,7 @@ export function DemoPage() {
   const flowState = useFlowStore(getCurrentFlowState);
   const flowHistory = useFlowStore((state) => state.history);
   const flowSession = useFlowStore((state) => state.session);
+  const flowReport = useFlowStore((state) => state.session?.report);
   const flowStateEnteredAt = useFlowStore((state) => state.stateEnteredAt);
   const executableActions = useFlowStore((state) => state.getExecutableActions());
   const executeFlowAction = useFlowStore((state) => state.executeAction);
@@ -119,6 +121,10 @@ export function DemoPage() {
   const currentStroke = mode === "elder" ? calligraphyStroke : ["侧", "勒", "努", "趯", "策", "掠"][Math.min(activeStep, 5)];
 
   const modePanel = useMemo(() => {
+    if (phase.id === "report") {
+      return <ReportView phase={phase} report={flowReport} />;
+    }
+
     if (mode === "elder") {
       return <ElderView phase={phase} onGameProgress={handleGameProgress} onGameComplete={handleGameComplete} />;
     }
@@ -138,7 +144,7 @@ export function DemoPage() {
     }
 
     return <ProductView phase={phase} />;
-  }, [mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
+  }, [flowReport, mode, phase, sceneConfig, practiceProgress, currentStroke, remainingSeconds, isFlowPaused]);
 
   function resetPlayback() {
     setIsPlaying(false);

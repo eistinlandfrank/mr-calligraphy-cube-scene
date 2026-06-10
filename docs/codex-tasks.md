@@ -40,3 +40,4 @@
 - 2026-06-10：完成 P3-06。calligraphy_tutorial 状态在老人端显示当前练习字“永”和八法笔画说明。
 - 2026-06-10：完成 P3-07。practice_game 状态会显示老人端书法练习组件，并在 PracticeSession 中记录练习开始。
 - 2026-06-10：完成 P3-08。练习完成后进入 scoring，基于 PracticeSession.practiceData 生成 Report 原型和 score_generated 事件。
+- 2026-06-10：完成 P3-09。report 状态新增报告视图，读取 session.report 展示综合分、分项指标和练习建议。

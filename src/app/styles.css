@@ -573,6 +573,76 @@ textarea {
   padding: 16px;
 }
 
+.report-panel {
+  grid-template-columns: 220px minmax(0, 1fr) 280px;
+}
+
+.report-score-card,
+.report-metric-grid article,
+.report-suggestions {
+  border: 1px solid rgba(38, 34, 28, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.report-score-card {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 14px;
+}
+
+.report-score-card span,
+.report-score-card small,
+.report-metric-grid span,
+.report-suggestions span {
+  color: #766c5d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.report-score-card strong {
+  color: #2f6f68;
+  font-size: 42px;
+  line-height: 1;
+}
+
+.report-score-card small,
+.report-suggestions p {
+  line-height: 1.45;
+}
+
+.report-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.report-metric-grid article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+}
+
+.report-metric-grid strong {
+  color: #211f1b;
+  font-size: 20px;
+}
+
+.report-suggestions {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+  padding: 12px;
+}
+
+.report-suggestions p,
+.report-empty {
+  margin: 0;
+  color: #4f4a41;
+}
+
 .signal-grid,
 .care-stat-grid {
   display: grid;
@@ -1438,6 +1508,7 @@ textarea {
 
   .signal-grid,
   .care-stat-grid,
+  .report-metric-grid,
   .care-action-row,
   .caregiver-vitals-grid,
   .caregiver-dashboard .caregiver-action-row,
@@ -1453,6 +1524,7 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .report-panel,
   .calligraphy-workspace,
   .calligraphy-tutorial-card,
   .calligraphy-score-panel {

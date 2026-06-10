@@ -200,8 +200,10 @@
 
   验收记录：2026-06-10 `practice_game` 执行 `finish` 会进入 `scoring`，基于 PracticeSession.practiceData 生成 Report 原型并写入 `score_generated` 事件；书法组件完成回调接入状态机，store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-09：实现 report 状态**  
+- [x] **P3-09：实现 report 状态**  
   验收：系统根据 session 数据生成报告页面。
+
+  验收记录：2026-06-10 新增 `ReportView`，`report` 状态读取 PracticeSession.report 展示综合分、分项指标、摘要和建议；store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-10：实现 caregiver_confirm 状态**  
   验收：护工端需要确认结束、重来或保存报告。
