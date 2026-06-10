@@ -133,13 +133,29 @@
       id: String(record.id || makeId("report")),
       createdAt: String(record.createdAt || new Date().toISOString()),
       range: String(record.range || "all"),
+      format: ["json", "html"].includes(record.format) ? record.format : "json",
       summary: String(record.summary || ""),
       sessionCount: normalizeInteger(record.sessionCount, 0, 0, 9999),
       artworkCount: normalizeInteger(record.artworkCount, 0, 0, 9999),
       averageScore: normalizeScore(record.averageScore, 0),
       latestStrokeCount: normalizeInteger(record.latestStrokeCount, 0, 0, 999),
       latestPointCount: normalizeInteger(record.latestPointCount, 0, 0, 99999),
+      latestSessionId: record.latestSessionId ? String(record.latestSessionId) : null,
+      latestArtworkId: record.latestArtworkId ? String(record.latestArtworkId) : null,
+      learningMinutes: normalizeInteger(record.learningMinutes, 0, 0, 99999),
+      scoreBreakdown: normalizeMetrics(record.scoreBreakdown),
+      trend: Array.isArray(record.trend) ? record.trend.map(normalizeReportTrendPoint).filter(Boolean).slice(-8) : [],
       recommendations: Array.isArray(record.recommendations) ? record.recommendations.map(String) : []
+    };
+  }
+
+  function normalizeReportTrendPoint(point) {
+    if (!point || typeof point !== "object") return null;
+    return {
+      label: String(point.label || "记录"),
+      type: String(point.type || "practice"),
+      score: normalizeScore(point.score, 0),
+      createdAt: String(point.createdAt || new Date().toISOString())
     };
   }
 
@@ -559,16 +575,23 @@
 
   function createReport() {
     const stats = getStats();
+    const reportTrend = getReportTrend();
     const report = {
       id: makeId("report"),
       createdAt: new Date().toISOString(),
       range: "all",
+      format: "html",
       summary: `累计 ${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品，平均评分 ${stats.averageScore}。`,
       sessionCount: stats.sessionCount,
       artworkCount: stats.artworkCount,
       averageScore: stats.averageScore,
+      learningMinutes: stats.learningMinutes,
+      latestSessionId: stats.latestSession?.id || null,
+      latestArtworkId: stats.latestArtwork?.id || null,
       latestStrokeCount: stats.latestSession?.strokeCount || 0,
       latestPointCount: stats.latestSession?.pointCount || 0,
+      scoreBreakdown: getReportScoreBreakdown(),
+      trend: reportTrend,
       recommendations: [
         ...stats.latestFeedback,
         "优先补齐结构稳定度和重心控制。",
@@ -579,11 +602,11 @@
     state.reports.push(report);
     addEvent("report", "导出学习报告");
     saveState();
-    downloadJson(report, `mr-calligraphy-report-${report.id}.json`);
+    downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
     return {
       ok: true,
       report: clone(report),
-      message: `学习报告已生成并下载：${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
+      message: `HTML 学习报告已生成并下载：${stats.sessionCount} 次练习、${stats.artworkCount} 幅作品。`
     };
   }
 
@@ -598,6 +621,214 @@
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function downloadHtml(html, filename) {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function getReportScoreBreakdown() {
+    const sessions = state.sessions.filter((session) => session.metrics && (session.status === "saved" || session.endedAt));
+    const source = sessions.length
+      ? sessions.map((session) => session.metrics)
+      : state.sessions.length
+        ? [state.sessions[state.sessions.length - 1].metrics]
+        : [normalizeMetrics(null)];
+    const keys = ["structure", "stroke", "technique", "fluency", "force"];
+    return keys.reduce((result, key) => {
+      const values = source.map((metrics) => normalizeScore(metrics?.[key], 0));
+      result[key] = values.length
+        ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length)
+        : 0;
+      return result;
+    }, {});
+  }
+
+  function getReportTrend() {
+    return [
+      ...state.sessions
+        .filter((session) => Number.isFinite(session.score) && session.score > 0)
+        .map((session) => ({
+          label: `${session.glyph}练习`,
+          type: "practice",
+          score: session.score,
+          createdAt: session.endedAt || session.startedAt
+        })),
+      ...state.artworks
+        .filter((artwork) => Number.isFinite(artwork.score) && artwork.score > 0)
+        .map((artwork) => ({
+          label: artwork.title,
+          type: "artwork",
+          score: artwork.score,
+          createdAt: artwork.createdAt
+        }))
+    ]
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+      .slice(-8);
+  }
+
+  function createReportHtml(report) {
+    const normalizedReport = normalizeReport(report);
+    const metrics = normalizedReport.scoreBreakdown;
+    const trend = normalizedReport.trend.length ? normalizedReport.trend : getReportTrend();
+    const latestArtwork = findReportArtwork(normalizedReport);
+    const latestSession = findReportSession(normalizedReport);
+    const metricLabels = [
+      ["structure", "结构"],
+      ["stroke", "笔画"],
+      ["technique", "笔法"],
+      ["fluency", "流畅"],
+      ["force", "力度"]
+    ];
+    const maxTrendScore = Math.max(100, ...trend.map((item) => item.score));
+    const imageBlock = latestArtwork?.imageData
+      ? `<figure class="artwork"><img src="${escapeAttr(latestArtwork.imageData)}" alt="${escapeAttr(latestArtwork.title)}"><figcaption>${escapeHtml(latestArtwork.title)} · ${latestArtwork.score} 分</figcaption></figure>`
+      : `<div class="empty">暂无可嵌入的作品截图。保存作品时生成截图后，报告会自动带上最近作品。</div>`;
+    const trendBars = trend.length
+      ? trend.map((item) => {
+        const height = Math.max(8, Math.round((item.score / maxTrendScore) * 100));
+        return `<li><span class="bar" style="height:${height}%"></span><strong>${item.score}</strong><small>${escapeHtml(item.label)}</small></li>`;
+      }).join("")
+      : `<li class="trend-empty"><small>暂无分数趋势</small></li>`;
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法学习报告</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; --wash:#eef8f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 46px; }
+    header { display: grid; gap: 12px; padding-bottom: 22px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(30px, 6vw, 56px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 18px; }
+    .meta, .muted { color: var(--muted); }
+    .summary { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+    .stat { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 26px; line-height: 1.1; }
+    section { margin-top: 26px; }
+    .metrics { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+    .metrics li { display: grid; grid-template-columns: 64px 1fr 44px; gap: 10px; align-items: center; }
+    .track { height: 12px; overflow: hidden; border-radius: 99px; background: var(--line); }
+    .fill { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--jade), #80b89d); }
+    .trend { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); align-items: end; gap: 8px; height: 180px; margin: 14px 0 0; padding: 0; list-style: none; }
+    .trend li { display: grid; grid-template-rows: 1fr auto auto; gap: 4px; min-width: 0; height: 100%; text-align: center; }
+    .bar { align-self: end; width: 100%; min-height: 8px; border-radius: 6px 6px 0 0; background: var(--jade); }
+    .trend small { overflow: hidden; color: var(--muted); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+    .trend-empty { grid-column: 1 / -1; place-items: center; border: 1px dashed var(--line); border-radius: 8px; }
+    .artwork { margin: 14px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .artwork img { display: block; width: 100%; max-height: 420px; object-fit: contain; border-radius: 6px; background: var(--wash); }
+    .artwork figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .empty { margin-top: 12px; padding: 16px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); background: #ffffff; }
+    .recommendations { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 20px; }
+    footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { main { width: min(100% - 20px, 960px); padding-top: 20px; } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .trend { grid-template-columns: repeat(4, minmax(0, 1fr)); height: 260px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="meta">MR Calligraphy Report · ${escapeHtml(formatDateTime(normalizedReport.createdAt))}</p>
+      <h1>MR 书法学习报告</h1>
+      <p class="muted">${escapeHtml(normalizedReport.summary || "本报告基于当前浏览器中的真实练习、作品和评分记录生成。")}</p>
+    </header>
+
+    <div class="grid" aria-label="学习统计">
+      <div class="stat"><span>练习次数</span><strong>${normalizedReport.sessionCount}</strong></div>
+      <div class="stat"><span>保存作品</span><strong>${normalizedReport.artworkCount}</strong></div>
+      <div class="stat"><span>平均评分</span><strong>${normalizedReport.averageScore}</strong></div>
+      <div class="stat"><span>学习分钟</span><strong>${normalizedReport.learningMinutes}</strong></div>
+    </div>
+
+    <section class="summary">
+      <h2>最近一次笔迹</h2>
+      <p class="muted">${latestSession ? `${escapeHtml(latestSession.glyph)}字练习，${latestSession.strokeCount || 0} 笔，${latestSession.pointCount || 0} 个采样点。` : "暂无可统计的练习会话。"}</p>
+    </section>
+
+    <section>
+      <h2>能力结构</h2>
+      <ul class="metrics">
+        ${metricLabels.map(([key, label]) => {
+          const value = normalizeScore(metrics[key], 0);
+          return `<li><span>${label}</span><span class="track"><span class="fill" style="width:${value}%"></span></span><strong>${value}</strong></li>`;
+        }).join("")}
+      </ul>
+    </section>
+
+    <section>
+      <h2>最近分数趋势</h2>
+      <ul class="trend">${trendBars}</ul>
+    </section>
+
+    <section>
+      <h2>最近作品</h2>
+      ${imageBlock}
+    </section>
+
+    <section>
+      <h2>练习建议</h2>
+      <ol class="recommendations">
+        ${(normalizedReport.recommendations.length ? normalizedReport.recommendations : ["完成一次书写并保存作品后，会生成更具体的复盘建议。"]).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+      </ol>
+    </section>
+
+    <footer>报告数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。如需迁移项目，请在主后台导出项目档案。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function findReportArtwork(report) {
+    if (report.latestArtworkId) {
+      const artwork = state.artworks.find((item) => item.id === report.latestArtworkId);
+      if (artwork) return artwork;
+    }
+    return state.artworks[state.artworks.length - 1] || null;
+  }
+
+  function findReportSession(report) {
+    if (report.latestSessionId) {
+      const session = state.sessions.find((item) => item.id === report.latestSessionId);
+      if (session) return session;
+    }
+    return state.sessions[state.sessions.length - 1] || null;
+  }
+
+  function formatDateTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "时间未知";
+    }
+
+    const pad = (number) => String(number).padStart(2, "0");
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value).replace(/`/g, "&#96;");
   }
 
   function getReportPreview() {
@@ -626,8 +857,8 @@
     if (!report) {
       return { ok: false, message: "还没有可下载的报告。" };
     }
-    downloadJson(report, `mr-calligraphy-report-${report.id}.json`);
-    return { ok: true, message: "已下载最近的学习报告。" };
+    downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
+    return { ok: true, message: "已下载最近的 HTML 学习报告。" };
   }
 
   function getHistory(options = {}) {
