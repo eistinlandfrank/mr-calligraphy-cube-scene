@@ -1303,7 +1303,7 @@ function normalizePublishRelease(record, index = 0) {
   const layoutValue = normalizeSnapshotLayout(record.layout);
 
   return {
-    id: String(record.id || record.releaseId || fallbackId),
+    id: String(record.id || record.releaseId || record.currentReleaseId || fallbackId),
     releaseNumber: Math.max(1, Math.round(readNumber(record.releaseNumber, index + 1))),
     publishedAt,
     note: String(record.note || "").trim().slice(0, 80),

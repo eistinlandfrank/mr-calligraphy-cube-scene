@@ -371,8 +371,28 @@ body.admin-page .design-panel {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.realistic-publish-note {
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 249, 237, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.realistic-publish-note input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(255, 249, 237, 0.2);
+  border-radius: 8px;
+  color: var(--paper);
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+}
+
 .realistic-panel-actions button,
-.realistic-snapshot-actions button {
+.realistic-snapshot-actions button,
+.realistic-publish-actions button {
   min-height: 34px;
   border: 1px solid rgba(255, 249, 237, 0.26);
   border-radius: 8px;
@@ -386,7 +406,9 @@ body.admin-page .design-panel {
 .realistic-panel-actions button:hover,
 .realistic-panel-actions button:focus-visible,
 .realistic-snapshot-actions button:hover,
-.realistic-snapshot-actions button:focus-visible {
+.realistic-snapshot-actions button:focus-visible,
+.realistic-publish-actions button:hover,
+.realistic-publish-actions button:focus-visible {
   border-color: rgba(217, 184, 132, 0.72);
   outline: none;
   background: rgba(184, 59, 40, 0.82);
@@ -413,6 +435,16 @@ body.admin-page .design-panel {
   gap: 7px;
 }
 
+.realistic-publish-list {
+  display: grid;
+  gap: 7px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-color: rgba(255, 249, 237, 0.36) rgba(0, 0, 0, 0.18);
+  scrollbar-width: thin;
+}
+
 .realistic-snapshot-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -424,25 +456,51 @@ body.admin-page .design-panel {
   background: rgba(255, 255, 255, 0.07);
 }
 
+.realistic-publish-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(255, 249, 237, 0.13);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.realistic-publish-row.is-current {
+  border-color: rgba(217, 184, 132, 0.48);
+  background: rgba(184, 59, 40, 0.22);
+}
+
 .realistic-snapshot-detail {
   display: grid;
   gap: 3px;
   min-width: 0;
 }
 
+.realistic-publish-detail {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
 .realistic-snapshot-detail strong,
-.realistic-snapshot-detail span {
+.realistic-snapshot-detail span,
+.realistic-publish-detail strong,
+.realistic-publish-detail span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.realistic-snapshot-detail strong {
+.realistic-snapshot-detail strong,
+.realistic-publish-detail strong {
   color: #fffaf1;
   font-size: 12px;
 }
 
-.realistic-snapshot-detail span {
+.realistic-snapshot-detail span,
+.realistic-publish-detail span {
   color: rgba(255, 249, 237, 0.58);
   font-size: 11px;
 }
@@ -452,9 +510,21 @@ body.admin-page .design-panel {
   gap: 5px;
 }
 
-.realistic-snapshot-actions button {
+.realistic-publish-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  gap: 5px;
+}
+
+.realistic-snapshot-actions button,
+.realistic-publish-actions button {
   min-height: 30px;
   padding: 0 8px;
+}
+
+.realistic-publish-actions button {
+  min-width: 0;
+  padding: 0 6px;
 }
 
 @media (max-width: 720px) {

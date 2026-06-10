@@ -56,8 +56,8 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256 和主后台发布版本摘要已补第一版，写实后台保存历史和本机发布已补第一版，仍缺对象 schema 统一、字段级迁移和远端发布适配。
-- 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要和写实发布版本摘要已补第一版，仍缺对象 schema 统一、字段级迁移和远端发布适配。
+- 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
 ## 3. 前端假控件真实化原则
@@ -231,7 +231,7 @@
 - 增加项目级“导入/导出/备份/恢复”。第一版已完成，并已补差异预览、二次确认和选择性恢复。
 - 增加保存历史，至少保留最近 10 次布局快照。主后台第一版已完成。
 - 后台页面增加“预览前台”入口，能带当前配置打开 `index.html`。主后台第一版已完成。
-- 明确主后台与写实后台的边界，避免两套编辑器能力割裂。导入模型校验、IndexedDB 读写、项目档案迁移记录、资产哈希、写实保存历史和本机发布已补第一版，后续继续统一对象 schema、字段级迁移和远端发布。
+- 明确主后台与写实后台的边界，避免两套编辑器能力割裂。导入模型校验、IndexedDB 读写、项目档案迁移记录、资产哈希、写实保存历史和发布版本历史已补第一版，后续继续统一对象 schema、字段级迁移和远端发布。
 
 验收：
 
@@ -770,7 +770,7 @@
 已知限制：
 
 - 写实后台的“删除物体”仍是可撤回的隐藏状态，不是永久删除；因此不会在删除时清理 IndexedDB 文件。
-- 主后台和写实后台已共用 `model-import-utils.js` 的导入校验、指标和 IndexedDB 读写；主后台发布版本历史、写实后台历史、本机发布、项目档案迁移记录和资产哈希已补第一版，后续继续统一对象 schema、字段级迁移和远端发布。
+- 主后台和写实后台已共用 `model-import-utils.js` 的导入校验、指标和 IndexedDB 读写；主后台发布版本历史、写实后台保存历史、写实发布版本历史、项目档案迁移记录和资产哈希已补第一版，后续继续统一对象 schema、字段级迁移和远端发布。
 - 模型校验仍没有覆盖外部贴图依赖、动画、骨骼和材质完整性。
 
 ### 2026-06-11：补齐主后台草稿预览和发布边界
@@ -807,7 +807,7 @@
 已知限制：
 
 - 第一版发布仍是浏览器本机发布边界，不是远端服务器发布。
-- 2026-06-11 后主后台已补发布版本列表、发布说明和回滚版本；写实后台仍只有当前本机发布版本。
+- 2026-06-11 后主后台和写实后台都已补发布版本列表、发布说明和回滚版本。
 - 还没有账号权限、审批流和发布差异预览。
 
 ### 2026-06-11：补齐项目档案导入差异预览
@@ -1823,7 +1823,7 @@
 
 已知限制：
 
-- 两套后台已统一导入模型底层工具，并补齐主后台发布版本历史、写实后台本机历史、本机发布、项目档案迁移记录和资产哈希第一版；对象 schema、写实发布说明、字段级迁移和远端资产服务仍未统一。
+- 两套后台已统一导入模型底层工具，并补齐主后台发布版本历史、写实后台本机历史、写实发布版本历史、项目档案迁移记录和资产哈希第一版；对象 schema、字段级迁移、发布差异预览和远端资产服务仍未统一。
 - 当前导入校验仍是浏览器端静态预检，不能替代后端安全扫描和资产管线处理。
 - OBJ 材质仍按后台各自场景策略处理，还没有统一材质映射配置。
 
@@ -1960,7 +1960,7 @@
 已知限制：
 
 - schema 第一版已经能记录项目档案迁移说明；后续仍需补更细的跨版本字段迁移和冲突修复策略。
-- 主后台发布版本、写实后台历史记录和本机发布已进入 schema 摘要；后续仍需补对象 schema 迁移、写实发布版本历史、发布差异预览和远端发布适配。
+- 主后台发布版本、写实后台历史记录和写实发布版本已进入 schema 摘要；后续仍需补对象 schema 迁移、发布差异预览和远端发布适配。
 - 资产清单会检查 IndexedDB 是否存在对应模型二进制，并已写入模型 SHA-256；后续仍需补尺寸/文件名冲突修复和远端资产校验。
 
 ### 2026-06-11：补齐写实后台历史和本机发布
@@ -1987,7 +1987,7 @@
 - 导入写实模型成功后会保存一条导入快照，方便用户回退到导入后的状态。
 - 快照保存或删除写入本机存储失败时，会回到真实存储状态并显示错误提示，不返回假成功。
 - 项目档案新增导出 `mr-calligraphy-realistic-history-v1` 和 `mr-calligraphy-realistic-published-v1`。
-- `projectSchema.realisticScene` 新增 `history` 和 `published` 摘要，`summary.realisticSnapshots` 可统计写实快照数量。
+- `projectSchema.realisticScene` 新增 `history` 和 `published` 摘要，`summary.realisticSnapshots` 可统计写实快照数量；后续发布版本历史已补 `summary.realisticReleases`。
 - 写实后台右侧面板增加滚动约束，避免新增真实控制区后在小屏幕上溢出不可操作。
 
 验收方式：
@@ -2011,7 +2011,7 @@
 
 - 写实发布仍是浏览器本机 localStorage 发布，不是服务器部署，也没有账号权限、审核流和跨设备同步。
 - 写实历史目前是手动快照、导入快照和发布前快照，不是每次拖拽自动形成完整版本流。
-- 写实对象 schema 仍与主后台没有完全统一，后续需要补字段级迁移、写实发布说明、回滚原因和远端发布适配。
+- 写实对象 schema 仍与主后台没有完全统一，后续需要补字段级迁移、发布差异预览和远端发布适配。
 
 ### 2026-06-11：新增项目档案迁移执行记录
 
@@ -2143,7 +2143,7 @@
 - 连续发布两次后，对旧版本点击“回滚为当前版本”，应新增一条类型为回滚的发布记录；正式前台刷新后应读取回滚后的当前版本。
 - 导出项目档案，JSON 中 `projectSchema.sections.mainScene.published.releaseCount` 应大于 0，`projectSchema.summary.mainReleases` 应统计发布版本数量。
 - 运行 `node scripts/project-schema-check.js`，应输出项目 Schema 检查通过。
-- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：14 个脚本，4 个页面。`
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
 
 当前验证结果：
 
@@ -2159,5 +2159,68 @@
 已知限制：
 
 - 发布历史仍是浏览器本机 localStorage 数据，不是云端部署、远端版本库或多人协作发布系统。
-- 当前只补齐主后台发布历史；写实后台仍是单个本机发布版本，后续需要补同样的发布说明、版本列表和回滚记录。
+- 写实后台发布历史也已补齐第一版；后续需要统一两套后台的对象 schema、字段迁移和远端发布策略。
+- 还没有发布差异预览、审批流、账号权限、发布锁和远端资产签名。
+
+### 2026-06-11：新增写实后台发布版本历史
+
+功能名：写实后台本机发布说明、历史列表、删除历史和回滚成新版本。
+
+涉及文件：
+
+- `realistic-admin.html`
+- `realistic-demo.css`
+- `realistic-scene.js`
+- `main-admin-scene.js`
+- `project-schema-utils.js`
+- `project-archive.js`
+- `scripts/project-schema-check.js`
+- `scripts/smoke-test.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 写实后台“预览发布”面板新增发布说明输入框和发布历史列表。
+- 点击“发布到演示”时会生成本机发布版本，记录 `releaseId`、版本号、发布时间、发布说明、发布动作和对象统计。
+- `mr-calligraphy-realistic-published-v1` 保留顶层 `layout`、`publishedAt` 和 `stats` 字段，写实演示页旧读取逻辑继续兼容；同时新增 `releases[]` 保存最近 10 条发布历史。
+- 历史列表可查看当前写实发布版本、发布时间、发布说明、对象统计和发布/回滚类型。
+- 对非当前版本点击“回滚”会生成一条新的回滚发布记录，并记录 `rollbackFrom`，不会静默覆盖历史。
+- 对非当前版本可删除历史记录；当前发布版本不可删除，避免演示页发布来源被清空。
+- 项目 schema 新增 `realisticScene.published.releaseNumber`、`releaseCount`、`latestNote`、`latestAction` 和 `releases[]` 摘要。
+- `projectSchema.summary.realisticReleases` 可统计写实发布版本数量，项目档案预览摘要也能读取该字段。
+- 项目档案资产清单会统计写实发布版本列表中引用的导入模型，不再只统计当前草稿和当前发布顶层布局。
+- `scripts/project-schema-check.js` 已扩展到同时验证主后台发布、写实发布和两类资产哈希。
+- `scripts/smoke-test.js` 已检查写实后台发布说明和历史列表 DOM，避免页面控件丢失后 smoke 仍然通过。
+- `tests/e2e/real-flows.spec.js` 新增写实后台发布历史用例源码，覆盖连续发布、版本列表和回滚动作；本地缺 Playwright 依赖，暂以 smoke 的 `node --check` 校验语法。
+- `scripts/smoke-test.js` 已把 Playwright 测试源码纳入语法检查，基础 smoke 从 14 个脚本增加到 15 个脚本。
+- 修正主后台发布记录归一化：当新版记录只有顶层 `currentReleaseId` 没有顶层 `id` 时，不再额外生成重复历史项。
+
+验收方式：
+
+- 打开 `http://localhost:41496/realistic-admin.html`，在“发布说明”中输入文本后点击“发布到演示”，发布历史应新增一条带版本号和说明的记录。
+- 连续发布两次后，对旧版本点击“回滚”，应新增一条类型为回滚的发布记录；写实演示页刷新后应读取回滚后的当前版本。
+- 导出项目档案，JSON 中 `projectSchema.sections.realisticScene.published.releaseCount` 应大于 0，`projectSchema.summary.realisticReleases` 应统计写实发布版本数量。
+- 运行 `node scripts/project-schema-check.js`，应输出项目 Schema 检查通过，并说明主发布、写实发布和资产哈希已统计。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check project-schema-utils.js`
+- `node --check project-archive.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 写实发布历史仍是浏览器本机 localStorage 数据，不是云端部署、远端版本库或多人协作发布系统。
+- 写实后台和主后台仍有各自对象模型，发布版本历史结构已接近，但对象 schema、字段级迁移和发布 diff 还没有统一。
 - 还没有发布差异预览、审批流、账号权限、发布锁和远端资产签名。

@@ -262,6 +262,7 @@
       mainReleases: Number(summary.mainReleases) || 0,
       realisticObjects: Number(summary.realisticObjects) || 0,
       realisticSnapshots: Number(summary.realisticSnapshots) || 0,
+      realisticReleases: Number(summary.realisticReleases) || 0,
       importedModels: Number(summary.importedModels) || 0,
       missingModelBinaries: Number(summary.missingModelBinaries) || 0,
       missingModelHashes: Number(summary.missingModelHashes) || 0,

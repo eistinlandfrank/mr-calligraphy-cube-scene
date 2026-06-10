@@ -83,7 +83,12 @@
           <button data-feature-state="real-local" id="realisticOpenLive" type="button">打开演示</button>
           <button data-feature-state="real-published-local" id="realisticPublishLayout" type="button">发布到演示</button>
         </div>
+        <label class="realistic-publish-note">
+          <span>发布说明</span>
+          <input id="realisticPublishNote" type="text" maxlength="80" placeholder="例如：更新宣纸摆放，准备样张展示">
+        </label>
         <p id="realisticPublishStatus" class="realistic-panel-status">尚未读取发布状态。</p>
+        <div id="realisticPublishHistoryList" class="realistic-publish-list" aria-live="polite"></div>
       </section>
       <section class="realistic-history-panel" aria-label="写实场景保存历史">
         <div class="realistic-panel-title">
@@ -113,6 +118,6 @@
       }
     }
   </script>
-  <script type="module" src="realistic-scene.js?v=realistic-publish-20260611"></script>
+  <script type="module" src="realistic-scene.js?v=realistic-publish-releases-20260611"></script>
 </body>
 </html>

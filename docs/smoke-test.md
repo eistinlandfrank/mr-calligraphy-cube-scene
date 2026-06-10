@@ -2,11 +2,11 @@
 
 本项目是静态网页项目。基础 smoke test 使用无依赖 Node 脚本完成语法、控件、项目档案、项目 Schema 和页面可访问检查；浏览器级真实交互使用 Playwright 覆盖高风险闭环。
 
-- 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、项目 Schema 检查、前台状态层、书写画布、项目 schema、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
+- 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、项目 Schema 检查、Playwright 测试源码、前台状态层、书写画布、项目 schema、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
 - 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效。
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态。
 - 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
-- 项目 Schema 检查：模拟主后台发布版本列表和导入模型，确认 `projectSchema` 会统计发布版本、发布说明和资产哈希。
+- 项目 Schema 检查：模拟主后台和写实后台发布版本列表及导入模型，确认 `projectSchema` 会统计发布版本、发布说明、回滚动作和资产哈希。
 - 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记。
 
 ## 直接运行
@@ -61,7 +61,7 @@ node scripts/archive-asset-hash-check.js
 node scripts/project-schema-check.js
 ```
 
-该命令会模拟主后台本机发布版本历史和导入模型，验证 schema 摘要能统计 `mainReleases`、当前发布说明和模型 SHA-256。
+该命令会模拟主后台、写实后台本机发布版本历史和导入模型，验证 schema 摘要能统计 `mainReleases`、`realisticReleases`、当前发布说明、回滚动作和模型 SHA-256。
 
 ## 浏览器级验收
 
@@ -82,6 +82,7 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习。
 - 前台点击“导出报告”，确认下载 HTML 报告、写入报告记录，并能通过 `?report=报告ID` 打开站内报告。
 - 主后台新增基础物体后点击“发布到前台”，确认草稿、发布快照和前台读取来源都是真实本机状态。
+- 写实后台连续发布两次后回滚旧版本，确认 `mr-calligraphy-realistic-published-v1` 会记录发布版本列表和回滚动作。
 
 如果项目已经由本地服务器启动，也可以复用当前地址：
 
@@ -94,7 +95,7 @@ PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e
 命令应输出：
 
 ```text
-Smoke test 通过：14 个脚本，4 个页面。
+Smoke test 通过：15 个脚本，4 个页面。
 ```
 
 如果任一脚本语法失败、页面无法访问、HTTP 状态不是 2xx，或页面缺少关键标记，命令会以非 0 状态退出。
@@ -102,5 +103,5 @@ Smoke test 通过：14 个脚本，4 个页面。
 ## 当前边界
 
 - 轻量 smoke test 不会打开真实浏览器，也不会验证 WebGL 是否完成渲染。
-- Playwright 已覆盖首批真实交互闭环，但还没有覆盖所有下载、导入模型、回收站和移动端视口。
+- Playwright 已覆盖首批真实交互闭环和写实发布历史源码，但当前环境缺少依赖，尚未在本机执行；测试仍未覆盖所有下载、导入模型、回收站和移动端视口。
 - 当前 Codex 环境访问 npm registry 会返回 `407 Proxy Authentication Required`，因此本机尚未生成 `package-lock.json`，需要在具备 npm 代理认证的环境里执行 `npm install` 后运行 E2E。

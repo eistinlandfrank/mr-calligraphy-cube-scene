@@ -4,11 +4,22 @@ const LEARNING_KEY = "mr-calligraphy-learning-state-v1";
 const MAIN_LAYOUT_KEY = "mr-calligraphy-main-scene-layout-v1";
 const MAIN_HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
+const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
+const REALISTIC_HISTORY_KEY = "mr-calligraphy-realistic-history-v1";
+const REALISTIC_PUBLISHED_KEY = "mr-calligraphy-realistic-published-v1";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((keys) => {
     keys.forEach((key) => window.localStorage.removeItem(key));
-  }, [LEARNING_KEY, MAIN_LAYOUT_KEY, MAIN_HISTORY_KEY, MAIN_PUBLISHED_KEY]);
+  }, [
+    LEARNING_KEY,
+    MAIN_LAYOUT_KEY,
+    MAIN_HISTORY_KEY,
+    MAIN_PUBLISHED_KEY,
+    REALISTIC_LAYOUT_KEY,
+    REALISTIC_HISTORY_KEY,
+    REALISTIC_PUBLISHED_KEY
+  ]);
 });
 
 test("front practice saves real strokes and exports a report", async ({ page }) => {
@@ -72,6 +83,38 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
     const record = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
     return Boolean(record?.layout?.customObjects?.some((item) => item.label === objectLabel));
   }).toBe(true);
+});
+
+test("realistic admin keeps local publish releases and rollback history", async ({ page }) => {
+  const firstNote = `E2E 写实初版 ${Date.now()}`;
+  const secondNote = `E2E 写实二版 ${Date.now()}`;
+
+  await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#designObjectSelect")).toBeVisible();
+  await expect(page.locator("#realisticPublishNote")).toBeVisible();
+
+  await page.locator("#realisticPublishNote").fill(firstNote);
+  await page.locator("#realisticPublishLayout").click();
+  await expect(page.locator("#realisticPublishStatus")).toContainText("已发布");
+
+  await page.locator("#realisticPublishNote").fill(secondNote);
+  await page.locator("#realisticPublishLayout").click();
+  await expect(page.locator("#realisticPublishStatus")).toContainText("v2");
+
+  let published = await readJsonLocalStorage(page, REALISTIC_PUBLISHED_KEY);
+  expect(published.releaseNumber).toBe(2);
+  expect(published.releases).toHaveLength(2);
+  expect(published.releases[0].note).toBe(secondNote);
+  expect(published.releases[1].note).toBe(firstNote);
+
+  await page.locator("#realisticPublishHistoryList [data-publish-action='rollback']").nth(1).click();
+  await expect(page.locator("#realisticPublishStatus")).toContainText("已回滚");
+
+  published = await readJsonLocalStorage(page, REALISTIC_PUBLISHED_KEY);
+  expect(published.releaseNumber).toBe(3);
+  expect(published.action).toBe("rollback");
+  expect(published.rollbackFrom).toBe(published.releases[2].id);
+  expect(published.releases[0].note).toContain("回滚到 v1");
 });
 
 async function drawPracticeStroke(page) {
