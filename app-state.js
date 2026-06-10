@@ -1902,6 +1902,112 @@
     };
   }
 
+  function getArtworkComparison(glyph = "") {
+    const requestedGlyph = String(glyph || state.selectedGlyph || "").trim();
+    const groups = groupArtworksForComparison();
+    const requestedGroup = requestedGlyph ? groups.find((group) => group.glyph === requestedGlyph) : null;
+    const fallbackGroup = groups.find((group) => group.count >= 2) || null;
+    const group = requestedGroup?.count >= 2 ? requestedGroup : fallbackGroup;
+
+    if (!group) {
+      return {
+        ok: false,
+        glyph: requestedGlyph || groups[0]?.glyph || "",
+        artworkCount: state.artworks.length,
+        groups: groups.map(({ artworks, ...summary }) => summary),
+        message: state.artworks.length
+          ? "同一个字至少保存两幅作品后，这里会显示前后截图、评分和笔迹指标对比。"
+          : "保存两幅同字作品后，这里会显示真实作品对比。"
+      };
+    }
+
+    const previous = group.artworks[group.artworks.length - 2];
+    const latest = group.artworks[group.artworks.length - 1];
+    const previousView = decorateArtworkForComparison(previous);
+    const latestView = decorateArtworkForComparison(latest);
+    const metricDeltas = getArtworkMetricDeltas(previousView.metrics, latestView.metrics);
+    const scoreDelta = latestView.score - previousView.score;
+
+    return {
+      ok: true,
+      glyph: group.glyph,
+      total: group.count,
+      previous: previousView,
+      latest: latestView,
+      scoreDelta,
+      strokeDelta: latestView.strokeCount - previousView.strokeCount,
+      pointDelta: latestView.pointCount - previousView.pointCount,
+      metricDeltas,
+      summary: `${group.glyph}字最近两幅作品评分${scoreDelta >= 0 ? "提升" : "下降"} ${Math.abs(scoreDelta)} 分。`
+    };
+  }
+
+  function groupArtworksForComparison() {
+    const groups = new Map();
+    state.artworks.forEach((artwork) => {
+      const glyph = String(artwork.glyph || "作品").trim() || "作品";
+      if (!groups.has(glyph)) {
+        groups.set(glyph, []);
+      }
+      groups.get(glyph).push(artwork);
+    });
+
+    return [...groups.entries()]
+      .map(([glyph, artworks]) => {
+        const sorted = artworks
+          .slice()
+          .sort((a, b) => Date.parse(a.createdAt || 0) - Date.parse(b.createdAt || 0));
+        const latest = sorted[sorted.length - 1] || null;
+        return {
+          glyph,
+          count: sorted.length,
+          latestAt: latest?.createdAt || "",
+          latestScore: latest?.score || 0,
+          artworks: sorted
+        };
+      })
+      .sort((a, b) => Date.parse(b.latestAt || 0) - Date.parse(a.latestAt || 0));
+  }
+
+  function decorateArtworkForComparison(artwork) {
+    const linkedSession = artwork?.sessionId
+      ? state.sessions.find((session) => session.id === artwork.sessionId) || null
+      : null;
+    const metrics = pickRealMetrics(linkedSession?.metrics) || {};
+    return {
+      id: artwork.id,
+      title: artwork.title,
+      glyph: artwork.glyph,
+      style: artwork.style,
+      score: artwork.score || 0,
+      strokeCount: artwork.strokeCount || 0,
+      pointCount: artwork.pointCount || 0,
+      createdAt: artwork.createdAt,
+      imageData: artwork.imageData || null,
+      feedback: clone(artwork.feedback || linkedSession?.feedback || []),
+      metrics
+    };
+  }
+
+  function getArtworkMetricDeltas(previousMetrics = {}, latestMetrics = {}) {
+    return SCORE_METRICS
+      .map((metric) => {
+        const previous = Number(previousMetrics[metric.key]) || 0;
+        const latest = Number(latestMetrics[metric.key]) || 0;
+        if (!previous && !latest) {
+          return null;
+        }
+        return {
+          key: metric.key,
+          label: metric.label,
+          previous,
+          latest,
+          delta: latest - previous
+        };
+      })
+      .filter(Boolean);
+  }
+
   function getHistoryDailyTrend(entries) {
     const groups = new Map();
     entries.forEach((entry) => {
@@ -2582,6 +2688,7 @@
     getLatestReview,
     getHistory,
     getHistoryDetail,
+    getArtworkComparison,
     getHistoryTrash,
     renameHistoryRecord,
     deleteHistoryRecord,

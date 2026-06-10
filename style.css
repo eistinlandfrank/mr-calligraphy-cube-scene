@@ -4554,6 +4554,196 @@ body.is-model-view .notice-panel {
   font-size: 10px;
 }
 
+.history-artwork-compare {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid rgba(224, 178, 91, 0.24);
+  border-radius: 8px;
+  background: rgba(34, 22, 14, 0.34);
+}
+
+.history-artwork-compare.is-empty {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.history-artwork-compare-head {
+  display: grid;
+  gap: 2px;
+}
+
+.history-artwork-compare-head strong {
+  color: #fffaf1;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.history-artwork-compare-head span {
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.history-artwork-compare-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.68fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.history-artwork-card,
+.history-artwork-delta {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding: 8px;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.history-artwork-card-head {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.history-artwork-card-head span,
+.history-artwork-card-head small {
+  overflow: hidden;
+  color: rgba(255, 250, 241, 0.54);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-artwork-card-head strong {
+  overflow: hidden;
+  color: #ffffff;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-artwork-card img {
+  width: 100%;
+  height: 118px;
+  object-fit: contain;
+  border-radius: 6px;
+  background: #f2e5cb;
+}
+
+.history-artwork-empty {
+  display: grid;
+  min-height: 118px;
+  margin: 0;
+  place-items: center;
+  border-radius: 6px;
+  color: rgba(255, 250, 241, 0.62);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.history-artwork-card-stats,
+.history-artwork-delta-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.history-artwork-card-stats span {
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 6px;
+  color: rgba(255, 250, 241, 0.68);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 10px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.history-artwork-card button {
+  min-height: 28px;
+  border: 1px solid rgba(224, 178, 91, 0.32);
+  border-radius: 6px;
+  color: #fffaf1;
+  background: rgba(142, 89, 52, 0.28);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.history-artwork-card button:hover,
+.history-artwork-card button:focus-visible {
+  outline: none;
+  background: rgba(142, 89, 52, 0.48);
+}
+
+.history-artwork-delta {
+  align-content: start;
+}
+
+.history-artwork-delta > strong {
+  color: rgba(255, 250, 241, 0.76);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.history-artwork-delta-stats {
+  grid-template-columns: 1fr;
+}
+
+.history-artwork-delta-stats span {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 5px;
+  align-items: center;
+  min-width: 0;
+  padding: 5px 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.history-artwork-delta-stats small {
+  color: rgba(255, 250, 241, 0.54);
+  font-size: 10px;
+}
+
+.history-artwork-delta-stats em {
+  color: #ffffff;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  text-align: right;
+}
+
+.history-artwork-delta-stats em[data-tone="up"] {
+  color: #bcf5d9;
+}
+
+.history-artwork-delta-stats em[data-tone="down"] {
+  color: #ffd1a4;
+}
+
+.history-artwork-metric-deltas {
+  display: grid;
+  gap: 4px;
+}
+
+.history-artwork-metric-deltas span,
+.history-artwork-delta p {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .history-list {
   display: grid;
   gap: 6px;
@@ -5107,6 +5297,15 @@ body.is-model-view .notice-panel {
 
   .history-batch {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .history-artwork-compare-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .history-artwork-card img,
+  .history-artwork-empty {
+    height: 140px;
   }
 
   .score-board {

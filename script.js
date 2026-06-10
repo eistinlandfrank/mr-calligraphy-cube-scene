@@ -852,6 +852,7 @@ const els = {
   historyTrashStatus: document.getElementById("historyTrashStatus"),
   historyTrashList: document.getElementById("historyTrashList"),
   historyTrend: document.getElementById("historyTrend"),
+  historyArtworkCompare: document.getElementById("historyArtworkCompare"),
   historyList: document.getElementById("historyList"),
   historyLoadMore: document.getElementById("historyLoadMore"),
   historyDetail: document.getElementById("historyDetail"),
@@ -3554,6 +3555,7 @@ function bindHistoryControls() {
   els.historyRestoreTrash?.addEventListener("click", restoreLatestHistoryTrash);
   els.historyClearTrash?.addEventListener("click", clearHistoryTrash);
   els.historyTrashList?.addEventListener("click", handleHistoryTrashAction);
+  els.historyArtworkCompare?.addEventListener("click", handleArtworkCompareAction);
   els.historyLoadMore?.addEventListener("click", () => {
     activeHistoryLimit += HISTORY_PAGE_SIZE;
     renderHistoryPanel(currentIndex);
@@ -4300,6 +4302,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
   pruneHistorySelection(history.allIds || []);
 
   renderHistoryTrend(history.trend, history.dailyTrend, history.metricTrend);
+  renderHistoryArtworkCompare();
   renderHistoryList(history.entries, history.filteredTotal);
   renderHistoryBatchControls(history);
   renderHistoryDetail();
@@ -4705,6 +4708,140 @@ function renderHistoryTrend(trend = [], dailyTrend = [], metricTrend = []) {
     section.append(title, list);
     els.historyTrend.appendChild(section);
   }
+}
+
+function renderHistoryArtworkCompare() {
+  if (!els.historyArtworkCompare || !window.MRAppState?.getArtworkComparison) return;
+  const activeDetail = getActiveHistoryDetail();
+  const stats = window.MRAppState?.getStats?.();
+  const preferredGlyph = activeDetail?.type === "artwork"
+    ? activeDetail.glyph
+    : stats?.glyph || "";
+  const comparison = window.MRAppState.getArtworkComparison(preferredGlyph);
+  els.historyArtworkCompare.innerHTML = "";
+  els.historyArtworkCompare.classList.toggle("is-empty", !comparison?.ok);
+
+  const head = document.createElement("div");
+  head.className = "history-artwork-compare-head";
+  const title = document.createElement("strong");
+  title.textContent = comparison?.ok
+    ? `${comparison.glyph}字作品对比`
+    : "作品对比";
+  const summary = document.createElement("span");
+  summary.textContent = comparison?.ok
+    ? `${comparison.total} 幅同字作品 · ${comparison.summary}`
+    : comparison?.message || "保存两幅同字作品后会显示前后对比。";
+  head.append(title, summary);
+  els.historyArtworkCompare.appendChild(head);
+
+  if (!comparison?.ok) {
+    return;
+  }
+
+  const grid = document.createElement("div");
+  grid.className = "history-artwork-compare-grid";
+  grid.append(
+    createArtworkCompareCard("较早作品", comparison.previous),
+    createArtworkDeltaPanel(comparison),
+    createArtworkCompareCard("最新作品", comparison.latest)
+  );
+  els.historyArtworkCompare.appendChild(grid);
+}
+
+function createArtworkCompareCard(label, artwork) {
+  const card = document.createElement("div");
+  card.className = "history-artwork-card";
+  const heading = document.createElement("div");
+  heading.className = "history-artwork-card-head";
+  const eyebrow = document.createElement("span");
+  eyebrow.textContent = label;
+  const title = document.createElement("strong");
+  title.textContent = artwork.title || `${artwork.glyph || "作品"}练习`;
+  const meta = document.createElement("small");
+  meta.textContent = `${formatHistoryTime(artwork.createdAt)} / ${artwork.style || "-"} / ${artwork.score || 0}分`;
+  heading.append(eyebrow, title, meta);
+  card.appendChild(heading);
+
+  if (artwork.imageData) {
+    const image = document.createElement("img");
+    image.src = artwork.imageData;
+    image.alt = artwork.title || label;
+    card.appendChild(image);
+  } else {
+    const empty = document.createElement("p");
+    empty.className = "history-artwork-empty";
+    empty.textContent = "这幅作品没有截图，可进入详情回放笔迹。";
+    card.appendChild(empty);
+  }
+
+  const stats = document.createElement("div");
+  stats.className = "history-artwork-card-stats";
+  [
+    ["笔画", artwork.strokeCount || 0],
+    ["采样", artwork.pointCount || 0]
+  ].forEach(([name, value]) => {
+    const item = document.createElement("span");
+    item.textContent = `${name} ${value}`;
+    stats.appendChild(item);
+  });
+  card.appendChild(stats);
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.dataset.featureState = "real-local";
+  button.dataset.compareHistoryId = artwork.id;
+  button.textContent = "查看这幅";
+  card.appendChild(button);
+  return card;
+}
+
+function createArtworkDeltaPanel(comparison) {
+  const panel = document.createElement("div");
+  panel.className = "history-artwork-delta";
+  const title = document.createElement("strong");
+  title.textContent = "变化";
+  panel.appendChild(title);
+
+  const stats = document.createElement("div");
+  stats.className = "history-artwork-delta-stats";
+  [
+    ["评分", comparison.scoreDelta, "分"],
+    ["笔画", comparison.strokeDelta, ""],
+    ["采样", comparison.pointDelta, ""]
+  ].forEach(([label, value, unit]) => {
+    const item = document.createElement("span");
+    const name = document.createElement("small");
+    name.textContent = label;
+    const data = document.createElement("em");
+    data.textContent = formatSignedDelta(value, unit);
+    data.dataset.tone = value > 0 ? "up" : value < 0 ? "down" : "same";
+    item.append(name, data);
+    stats.appendChild(item);
+  });
+  panel.appendChild(stats);
+
+  if (comparison.metricDeltas?.length) {
+    const metrics = document.createElement("div");
+    metrics.className = "history-artwork-metric-deltas";
+    comparison.metricDeltas.slice(0, 5).forEach((metric) => {
+      const row = document.createElement("span");
+      row.textContent = `${metric.label} ${metric.previous || "-"} → ${metric.latest || "-"} (${formatSignedDelta(metric.delta)})`;
+      metrics.appendChild(row);
+    });
+    panel.appendChild(metrics);
+  } else {
+    const empty = document.createElement("p");
+    empty.textContent = "这两幅作品暂无可比较的维度评分。";
+    panel.appendChild(empty);
+  }
+  return panel;
+}
+
+function formatSignedDelta(value, unit = "") {
+  const number = Number(value) || 0;
+  if (number > 0) return `+${number}${unit}`;
+  if (number < 0) return `${number}${unit}`;
+  return `0${unit}`;
 }
 
 function renderHistoryList(entries, filteredTotal) {
@@ -5160,6 +5297,14 @@ function handleHistoryTrashAction(event) {
     refreshAfterHistoryMutation();
     showNotice(result?.message || "已永久删除回收站记录。");
   }
+}
+
+function handleArtworkCompareAction(event) {
+  const button = event.target.closest("[data-compare-history-id]");
+  if (!button) {
+    return;
+  }
+  selectHistoryDetail(button.dataset.compareHistoryId);
 }
 
 function clearHistoryTrash() {

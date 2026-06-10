@@ -14,6 +14,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/archive-migration-check.js", parser: "script" },
   { file: "scripts/archive-asset-hash-check.js", parser: "script" },
   { file: "scripts/project-schema-check.js", parser: "script" },
+  { file: "scripts/learning-state-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
@@ -43,6 +44,10 @@ const COMMAND_CHECKS = [
   {
     label: "项目 Schema 检查",
     command: [process.execPath, "scripts/project-schema-check.js"]
+  },
+  {
+    label: "学习状态检查",
+    command: [process.execPath, "scripts/learning-state-check.js"]
   }
 ];
 
@@ -50,7 +55,7 @@ const PAGE_CHECKS = [
   {
     path: "/",
     label: "前台学习页",
-    markers: ["MR 书法 360° 全景交互演示", "taskPanel", "script.js", "app-state.js"]
+    markers: ["MR 书法 360° 全景交互演示", "taskPanel", "historyArtworkCompare", "script.js", "app-state.js"]
   },
   {
     path: "/main-admin.html",
