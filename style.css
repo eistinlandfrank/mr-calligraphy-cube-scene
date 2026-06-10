@@ -1069,6 +1069,37 @@ button {
   line-height: 1.4;
 }
 
+.main-project-model-choice {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 6px;
+  align-items: start;
+  min-height: 18px;
+}
+
+.main-project-model-choice input {
+  width: 12px;
+  height: 12px;
+  margin: 2px 0 0;
+  accent-color: #2f8f82;
+}
+
+.main-project-model-choice span {
+  display: grid;
+  gap: 1px;
+  overflow-wrap: anywhere;
+}
+
+.main-project-model-impact {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.main-project-model-choice input:disabled + span {
+  opacity: 0.52;
+}
+
 .main-project-field-choice {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr);

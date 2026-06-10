@@ -65,12 +65,12 @@
       throw new Error("请至少选择一项要恢复的项目档案内容。");
     }
 
-    await validateArchiveAssetHashes(migratedArchive, restoreOptions.dbIds);
+    await validateArchiveAssetHashes(migratedArchive, restoreOptions.dbIds, restoreOptions.dbRecords);
     importLocalStorage(migratedArchive.storage || {}, restoreOptions.storageKeys, restoreOptions.storageFields);
 
     for (const item of DB_ITEMS) {
       if (restoreOptions.dbIds.includes(item.id)) {
-        await importDbStore(item, migratedArchive.indexedDb?.[item.id]);
+        await importDbStore(item, migratedArchive.indexedDb?.[item.id], restoreOptions.dbRecords[item.id]);
       }
     }
 
@@ -441,6 +441,7 @@
       missingHashCount: hashSummary.missingHashCount,
       modelDiffSummary: modelDiff.summary,
       modelDiffs: modelDiff.items,
+      modelSelections: modelDiff.selections,
       change: modelDiff.total ? "replace" : "same-count",
       defaultSelected: !migratedMissing,
       migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机模型库。` : ""
@@ -481,7 +482,12 @@
         ...formatDbModelDiffItems("新增模型", added),
         ...formatDbModelDiffItems("修改模型", updated),
         ...formatDbModelDiffItems("删除模型", removed)
-      ].slice(0, 6)
+      ].slice(0, 6),
+      selections: [
+        ...createDbModelSelections("add", added),
+        ...createDbModelSelections("update", updated),
+        ...createDbModelSelections("remove", removed)
+      ]
     };
   }
 
@@ -558,6 +564,30 @@
     });
   }
 
+  function createDbModelSelections(action, models) {
+    return models.map((model) => ({
+      action,
+      key: model.key,
+      label: `${getDbModelActionLabel(action)}：${model.label}`,
+      detail: formatDbModelSelectionDetail(model)
+    }));
+  }
+
+  function getDbModelActionLabel(action) {
+    if (action === "add") return "新增模型";
+    if (action === "remove") return "删除模型";
+    return "修改模型";
+  }
+
+  function formatDbModelSelectionDetail(model) {
+    return [
+      model.fileName || "",
+      model.type ? model.type.toUpperCase() : "",
+      model.bytes ? formatBytes(model.bytes) : "",
+      model.sha256 ? "SHA-256" : ""
+    ].filter(Boolean).join(" · ") || model.key;
+  }
+
   async function readDbStoreRecords(item) {
     const db = await openDb(item);
     const records = await readAllRecords(db, item.storeName);
@@ -617,11 +647,45 @@
     const dbIds = Array.isArray(options?.dbIds)
       ? options.dbIds.filter((id) => allDbIds.includes(id))
       : allDbIds.filter((id) => archive?.indexedDb?.[id]?.defaultSelected !== false);
+    const normalizedStorageKeys = [...new Set(storageKeys)];
+    const normalizedDbIds = [...new Set(dbIds)];
     return {
-      storageKeys: [...new Set(storageKeys)],
-      dbIds: [...new Set(dbIds)],
-      storageFields: normalizeSelectedStorageFields(options?.storageFields, storageKeys)
+      storageKeys: normalizedStorageKeys,
+      dbIds: normalizedDbIds,
+      storageFields: normalizeSelectedStorageFields(options?.storageFields, normalizedStorageKeys),
+      dbRecords: normalizeSelectedDbRecords(options?.dbRecords, normalizedDbIds)
     };
+  }
+
+  function normalizeSelectedDbRecords(dbRecords, dbIds) {
+    if (!dbRecords || typeof dbRecords !== "object") {
+      return {};
+    }
+
+    const selected = new Set(dbIds);
+    return Object.keys(dbRecords).reduce((result, id) => {
+      if (!selected.has(id) || !Array.isArray(dbRecords[id])) {
+        return result;
+      }
+      const seen = new Set();
+      const records = dbRecords[id].filter((record) => {
+        const action = record?.action;
+        const key = String(record?.key || "").trim();
+        const token = `${action}:${key}`;
+        if (!["add", "update", "remove"].includes(action) || !key || seen.has(token)) {
+          return false;
+        }
+        seen.add(token);
+        return true;
+      }).map((record) => ({
+        action: record.action,
+        key: String(record.key).trim()
+      }));
+      if (records.length) {
+        result[id] = records;
+      }
+      return result;
+    }, {});
   }
 
   function normalizeSelectedStorageFields(storageFields, storageKeys) {
@@ -855,9 +919,14 @@
     };
   }
 
-  async function importDbStore(item, pack) {
+  async function importDbStore(item, pack, selectedModels = null) {
     const db = await openDb(item);
     const records = Array.isArray(pack?.records) ? pack.records : [];
+    if (Array.isArray(selectedModels) && selectedModels.length) {
+      await importSelectedDbModels(item, db, records, selectedModels);
+      db.close();
+      return;
+    }
     const restoredRecords = await Promise.all(records.map((record) => deserializeDbRecord(record, item.label)));
 
     await new Promise((resolve, reject) => {
@@ -871,6 +940,63 @@
       transaction.onerror = () => reject(transaction.error || new Error(`无法恢复 ${item.label}。`));
     });
     db.close();
+  }
+
+  async function importSelectedDbModels(item, db, archiveRecords, selectedModels) {
+    const archiveRecordMap = mapArchiveDbRecords(item, archiveRecords);
+    const restoredRecords = new Map();
+    for (const selection of selectedModels) {
+      if (selection.action === "remove") {
+        continue;
+      }
+      const archiveRecord = archiveRecordMap.get(selection.key);
+      if (!archiveRecord) {
+        throw new Error(`${item.label} 中缺少要恢复的模型：${selection.key}。`);
+      }
+      restoredRecords.set(selection.key, await deserializeDbRecord(archiveRecord, item.label));
+    }
+
+    await new Promise((resolve, reject) => {
+      const transaction = db.transaction(item.storeName, "readwrite");
+      const store = transaction.objectStore(item.storeName);
+      selectedModels.forEach((selection) => {
+        if (selection.action === "remove") {
+          store.delete(selection.key);
+          return;
+        }
+        const record = restoredRecords.get(selection.key);
+        if (record) {
+          store.put(record);
+        }
+      });
+      transaction.oncomplete = resolve;
+      transaction.onerror = () => reject(transaction.error || new Error(`无法恢复 ${item.label}。`));
+    });
+  }
+
+  function mapArchiveDbRecords(item, records) {
+    return records.reduce((result, record, index) => {
+      const model = normalizeDbModelRecord(item, record, index, true);
+      result.set(model.key, record);
+      return result;
+    }, new Map());
+  }
+
+  function filterArchiveDbRecordsBySelection(item, records, selectedModels) {
+    if (!Array.isArray(selectedModels) || !selectedModels.length) {
+      return records;
+    }
+
+    const selectedKeys = new Set(selectedModels
+      .filter((selection) => selection.action !== "remove")
+      .map((selection) => selection.key));
+    if (!selectedKeys.size) {
+      return [];
+    }
+    return records.filter((record, index) => {
+      const model = normalizeDbModelRecord(item, record, index, true);
+      return selectedKeys.has(model.key);
+    });
   }
 
   function openDb(item) {
@@ -939,7 +1065,7 @@
     return data;
   }
 
-  async function validateArchiveAssetHashes(archive, selectedDbIds = DB_ITEMS.map((item) => item.id)) {
+  async function validateArchiveAssetHashes(archive, selectedDbIds = DB_ITEMS.map((item) => item.id), selectedDbRecords = {}) {
     const migratedArchive = migrateProjectArchive(archive);
     const selected = new Set(Array.isArray(selectedDbIds) ? selectedDbIds : []);
     const summaries = [];
@@ -951,10 +1077,11 @@
       const records = Array.isArray(migratedArchive.indexedDb?.[item.id]?.records)
         ? migratedArchive.indexedDb[item.id].records
         : [];
+      const selectedRecords = filterArchiveDbRecordsBySelection(item, records, selectedDbRecords[item.id]);
       summaries.push({
         id: item.id,
         label: item.label,
-        ...await summarizeDbPackHashes(records, item.label)
+        ...await summarizeDbPackHashes(selectedRecords, item.label)
       });
     }
 
@@ -1258,11 +1385,18 @@
       .length;
     const modelCount = DB_ITEMS.filter((item) => selectedDbIds.has(item.id)).reduce((sum, item) => {
       const pack = archive.indexedDb?.[item.id];
+      const selectedModels = restoreOptions.dbRecords[item.id];
+      if (Array.isArray(selectedModels) && selectedModels.length) {
+        return sum + selectedModels.length;
+      }
       return sum + (Array.isArray(pack?.records) ? pack.records.length : 0);
     }, 0);
     const modelHashCount = DB_ITEMS.filter((item) => selectedDbIds.has(item.id)).reduce((sum, item) => {
       const records = archive.indexedDb?.[item.id]?.records;
-      return sum + (Array.isArray(records) ? records.filter((record) => normalizeSha256(record?.sha256 || record?.data?.sha256)).length : 0);
+      const selectedRecords = Array.isArray(records)
+        ? filterArchiveDbRecordsBySelection(item, records, restoreOptions.dbRecords[item.id])
+        : [];
+      return sum + selectedRecords.filter((record) => normalizeSha256(record?.sha256 || record?.data?.sha256)).length;
     }, 0);
     const migrationCount = Array.isArray(archive.migrations) ? archive.migrations.length : 0;
     const migrationText = migrationCount ? `，${migrationCount} 条迁移记录` : "";
@@ -1374,14 +1508,20 @@
 
     const getRestoreInputs = () => Array.from(previewList?.querySelectorAll("[data-archive-kind][data-archive-id]") || []);
     const getFieldInputs = () => Array.from(previewList?.querySelectorAll("[data-storage-field-key][data-storage-field-path]") || []);
+    const getModelInputs = () => Array.from(previewList?.querySelectorAll("[data-db-model-id][data-db-model-key]") || []);
 
     const getSelectedRestoreOptions = () => {
       const selected = getRestoreInputs().filter((input) => input.checked);
       const fieldInputs = getFieldInputs();
+      const modelInputs = getModelInputs();
       const storageFields = {};
       const storageKeys = [];
+      const dbRecords = {};
       const selectedStorageKeys = new Set(selected
         .filter((input) => input.dataset.archiveKind === "storage")
+        .map((input) => input.dataset.archiveId));
+      const selectedDbIds = new Set(selected
+        .filter((input) => input.dataset.archiveKind === "indexedDb")
         .map((input) => input.dataset.archiveId));
 
       selectedStorageKeys.forEach((key) => {
@@ -1403,21 +1543,46 @@
         }
       });
 
+      const dbIds = [];
+      selectedDbIds.forEach((id) => {
+        const modelsForDb = modelInputs.filter((input) => input.dataset.dbModelId === id);
+        if (!modelsForDb.length) {
+          dbIds.push(id);
+          return;
+        }
+
+        const selectedModels = modelsForDb
+          .filter((input) => input.checked)
+          .map((input) => ({
+            key: input.dataset.dbModelKey,
+            action: input.dataset.dbModelAction
+          }));
+        if (selectedModels.length) {
+          dbIds.push(id);
+          dbRecords[id] = selectedModels;
+        }
+      });
+
       return {
         storageKeys,
-        dbIds: selected.filter((input) => input.dataset.archiveKind === "indexedDb").map((input) => input.dataset.archiveId),
-        storageFields
+        dbIds,
+        storageFields,
+        dbRecords
       };
     };
 
     const updateRestoreSelectionState = () => {
       const inputs = getRestoreInputs();
       const fieldInputs = getFieldInputs();
+      const modelInputs = getModelInputs();
       const restoreOptions = getSelectedRestoreOptions();
       const selectedCount = restoreOptions.storageKeys.length + restoreOptions.dbIds.length;
-      const selectedControlCount = inputs.filter((input) => input.checked).length + fieldInputs.filter((input) => input.checked).length;
-      const totalControlCount = inputs.length + fieldInputs.length;
+      const selectedControlCount = inputs.filter((input) => input.checked).length +
+        fieldInputs.filter((input) => input.checked).length +
+        modelInputs.filter((input) => input.checked).length;
+      const totalControlCount = inputs.length + fieldInputs.length + modelInputs.length;
       const selectedFieldCount = Object.values(restoreOptions.storageFields).reduce((sum, fields) => sum + fields.length, 0);
+      const selectedModelCount = Object.values(restoreOptions.dbRecords).reduce((sum, models) => sum + models.length, 0);
       inputs.forEach((input) => {
         input.disabled = isBusy;
       });
@@ -1427,6 +1592,12 @@
       fieldInputs.forEach((input) => {
         input.disabled = isBusy || !selectedStorageKeys.has(input.dataset.storageFieldKey);
       });
+      const checkedDbIds = new Set(inputs
+        .filter((input) => input.checked && input.dataset.archiveKind === "indexedDb")
+        .map((input) => input.dataset.archiveId));
+      modelInputs.forEach((input) => {
+        input.disabled = isBusy || !checkedDbIds.has(input.dataset.dbModelId);
+      });
 
       if (selectAllInput) {
         selectAllInput.disabled = isBusy || !pendingArchive || inputs.length === 0;
@@ -1435,8 +1606,9 @@
       }
       if (selectionStatus) {
         const fieldText = fieldInputs.length ? `，字段 ${selectedFieldCount}/${fieldInputs.length}` : "";
+        const modelText = modelInputs.length ? `，模型 ${selectedModelCount}/${modelInputs.length}` : "";
         selectionStatus.textContent = pendingArchive
-          ? `将恢复 ${selectedCount}/${inputs.length} 项${fieldText}。未勾选的本机内容会保持不变。`
+          ? `将恢复 ${selectedCount}/${inputs.length} 项${fieldText}${modelText}。未勾选的本机内容会保持不变。`
           : "尚未选择恢复内容。";
       }
       if (confirmButton) {
@@ -1562,7 +1734,34 @@
         });
         body.append(fieldList);
       }
-      if (Array.isArray(options.modelDiffs) && options.modelDiffs.length) {
+      if (Array.isArray(options.modelSelections) && options.modelSelections.length) {
+        const modelList = document.createElement("ul");
+        modelList.className = "main-project-model-diffs main-project-model-diffs--selectable";
+        options.modelSelections.forEach((model) => {
+          const modelItem = document.createElement("li");
+          modelItem.dataset.modelAction = model.action;
+          const modelChoice = document.createElement("label");
+          modelChoice.className = "main-project-model-choice";
+          const modelInput = document.createElement("input");
+          modelInput.type = "checkbox";
+          modelInput.checked = options.defaultSelected !== false;
+          modelInput.dataset.dbModelId = id;
+          modelInput.dataset.dbModelKey = model.key;
+          modelInput.dataset.dbModelAction = model.action;
+          modelInput.setAttribute("aria-label", `恢复${label}${model.label}`);
+          const modelText = document.createElement("span");
+          const modelLabel = document.createElement("span");
+          modelLabel.textContent = model.label;
+          const modelImpact = document.createElement("span");
+          modelImpact.className = "main-project-model-impact";
+          modelImpact.textContent = model.detail;
+          modelText.append(modelLabel, modelImpact);
+          modelChoice.append(modelInput, modelText);
+          modelItem.appendChild(modelChoice);
+          modelList.appendChild(modelItem);
+        });
+        body.append(modelList);
+      } else if (Array.isArray(options.modelDiffs) && options.modelDiffs.length) {
         const modelList = document.createElement("ul");
         modelList.className = "main-project-model-diffs";
         options.modelDiffs.forEach((modelDiff) => {
@@ -1627,6 +1826,7 @@
         defaultSelected: item.defaultSelected,
         modelDiffSummary: item.modelDiffSummary,
         modelDiffs: item.modelDiffs,
+        modelSelections: item.modelSelections,
         migrationNote: item.migrationNote
       }));
 
@@ -1710,7 +1910,7 @@
     });
 
     previewList?.addEventListener("change", (event) => {
-      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path]")) {
+      if (event.target.matches("[data-archive-kind][data-archive-id], [data-storage-field-key][data-storage-field-path], [data-db-model-id][data-db-model-key]")) {
         updateRestoreSelectionState();
       }
     });
@@ -1720,6 +1920,9 @@
         input.checked = selectAllInput.checked;
       });
       getFieldInputs().forEach((input) => {
+        input.checked = selectAllInput.checked;
+      });
+      getModelInputs().forEach((input) => {
         input.checked = selectAllInput.checked;
       });
       updateRestoreSelectionState();

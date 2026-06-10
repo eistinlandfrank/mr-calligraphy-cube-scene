@@ -27,7 +27,7 @@ global.localStorage = {
     localValues.delete(key);
   }
 };
-global.indexedDB = createIndexedDbMock({
+const indexedDbMock = createIndexedDbMock({
   "mr-calligraphy-main-model-store": {
     models: [{
       key: "model-1",
@@ -45,6 +45,7 @@ global.indexedDB = createIndexedDbMock({
     }]
   }
 });
+global.indexedDB = indexedDbMock;
 
 require("../project-schema-utils.js");
 require("../project-archive.js");
@@ -195,6 +196,14 @@ async function main() {
     mainModelPreview.modelDiffs.some((item) => item.includes("新增模型：档案新增模型")),
     "主场景模型仓库预览应显示新增的单个模型。"
   );
+  assert(
+    mainModelPreview.modelSelections.some((item) => item.key === "model-2" && item.action === "add"),
+    "主场景模型仓库预览应允许勾选单个新增模型。"
+  );
+  assert(
+    mainModelPreview.modelSelections.some((item) => item.key === "model-1" && item.action === "update"),
+    "主场景模型仓库预览应允许勾选单个修改模型。"
+  );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
     storageKeys: ["mr-calligraphy-learning-state-v1"],
@@ -217,6 +226,27 @@ async function main() {
     "字段级恢复不应写入未勾选的 artworks 字段。"
   );
   writtenStorageKeys.length = 0;
+
+  await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
+    storageKeys: [],
+    dbIds: ["mainModels"],
+    dbRecords: {
+      mainModels: [{ key: "model-2", action: "add" }]
+    }
+  });
+  const modelRecords = indexedDbMock.dump("mr-calligraphy-main-model-store", "models");
+  assert(
+    modelRecords.some((record) => record.key === "model-2" && record.label === "档案新增模型"),
+    "单模型恢复应写入已勾选的新增模型。"
+  );
+  assert(
+    modelRecords.some((record) => record.key === "model-1" && record.label === "本机旧模型"),
+    "单模型恢复不应覆盖未勾选的本机旧模型。"
+  );
+  assert(
+    !modelRecords.some((record) => record.key === "model-1" && record.label === "档案更新模型"),
+    "单模型恢复不应恢复未勾选的修改模型。"
+  );
 
   await window.MRProjectArchive.importProject({
     ...legacyArchive,
@@ -256,7 +286,8 @@ function createIndexedDbMock(initialStores = {}) {
         request.onsuccess?.();
       });
       return request;
-    }
+    },
+    dump: (dbName, storeName) => (dbStores.get(dbName)?.get(storeName) || []).slice()
   };
 }
 
@@ -301,7 +332,25 @@ function createObjectStoreMock(records) {
       records.length = 0;
     },
     put: (record) => {
+      const key = getRecordKey(record);
+      if (key) {
+        const index = records.findIndex((item) => getRecordKey(item) === key);
+        if (index >= 0) {
+          records.splice(index, 1, record);
+          return;
+        }
+      }
       records.push(record);
+    },
+    delete: (key) => {
+      const index = records.findIndex((item) => getRecordKey(item) === key);
+      if (index >= 0) {
+        records.splice(index, 1);
+      }
     }
   };
+}
+
+function getRecordKey(record) {
+  return String(record?.key || record?.id || record?.dbKey || "").trim();
 }

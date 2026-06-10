@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览和导入模型单模型差异预览已补第一版，仍缺对象 schema 统一、三方字段合并、单模型选择恢复和远端发布适配。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览和单模型选择恢复已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树、模型命名冲突修复和远端发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -166,7 +166,7 @@
 
 任务：
 
-- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成；项目档案迁移预检、默认保留旧档案缺项、`projectSchema.migrations` 记录、localStorage 字段级差异预览和字段级选择性恢复已完成第一版。
+- 新增统一项目 schema / storage 模块，集中描述 localStorage、IndexedDB、schema version 和迁移。第一版 `project-schema-utils.js` 已完成；项目档案迁移预检、默认保留旧档案缺项、`projectSchema.migrations` 记录、localStorage 字段级差异预览、字段级选择性恢复和 IndexedDB 单模型选择恢复已完成第一版。
 - 把主场景 `mr-calligraphy-main-scene-layout-v1`、写实场景 `mr-calligraphy-realistic-layout-v1`、房间配置 `mr-calligraphy-room-config-v3-wood` 纳入统一读写。
 - 新增项目导出 JSON：导出场景配置、学习记录、作品索引和本机导入模型二进制。
 - 新增项目导入 JSON：校验版本，展示差异预览，确认后覆盖同名本机项目状态。
@@ -877,7 +877,7 @@
 已知限制：
 
 - 选择性恢复已从条目级推进到 localStorage JSON 深层字段级，并已补当前/档案值摘要、覆盖/新增/删除提示和字段片段展开预览；三方合并和完整 JSON 树仍待补。
-- IndexedDB 模型仓库仍按仓库整体替换，不能只勾选单个模型恢复。
+- IndexedDB 模型仓库已补单模型选择恢复第一版；更复杂的三方合并、模型命名冲突修复和远端资产服务仍未完成。
 - 项目档案仍是浏览器本机 JSON 文件流转，不是远端协作或云端版本库。
 
 ### 2026-06-11：升级学习报告为 HTML 文件
@@ -2327,7 +2327,7 @@
 
 - 本节只记录字段级差异预览；字段级选择性恢复已在下一节补齐第一版。
 - 还没有可展开 JSON 树、深层字段选择和冲突解决策略。
-- IndexedDB 模型仓库已补单模型新增/修改/删除预览；恢复粒度仍是仓库整体替换。
+- IndexedDB 模型仓库已补单模型新增/修改/删除预览和单模型选择恢复第一版；仍缺模型 JSON 片段、命名冲突修复和远端资产服务。
 
 ### 2026-06-11：新增项目档案字段级选择性恢复
 
@@ -2381,7 +2381,7 @@
 
 - 本节第一版字段选择以顶层 JSON 字段为粒度；深层字段选择已在后续补齐第一版。
 - 字段冲突策略仍是“以用户勾选为准”，已有当前/档案值摘要提示，但还没有三方合并和批量冲突处理。
-- IndexedDB 模型仓库已补单模型差异预览；仍按仓库整体恢复，未做单模型选择恢复。
+- IndexedDB 模型仓库已补单模型差异预览和单模型选择恢复第一版；仍缺模型 JSON 片段、命名冲突修复和远端资产服务。
 
 ### 2026-06-11：新增项目档案字段恢复影响提示
 
@@ -2434,7 +2434,7 @@
 
 - 当前值摘要已可展开查看字段片段，但还不是完整深层 JSON 树或逐字段详情面板。
 - 字段冲突仍按用户勾选合并，没有三方 base、冲突自动分类和批量解决策略。
-- IndexedDB 模型仓库已补单模型差异提示；恢复粒度仍是仓库整体替换。
+- IndexedDB 模型仓库已补单模型差异提示和单模型选择恢复第一版；仍缺模型 JSON 片段、命名冲突修复和远端资产服务。
 
 ### 2026-06-11：新增项目档案字段片段展开预览
 
@@ -2539,7 +2539,7 @@
 
 - 深层选择第一版仍依赖当前 flatten 深度和数组前 8 项预览；大数组结构变化会回退到顶层选择。
 - 还没有三方 base、自动冲突分类、批量冲突解决或完整可递归 JSON 树。
-- IndexedDB 模型仓库已补单模型差异预览；仍按仓库整体恢复，未做单模型选择恢复。
+- IndexedDB 模型仓库已补单模型差异预览和单模型选择恢复第一版；仍缺模型 JSON 片段、命名冲突修复和远端资产服务。
 
 ### 2026-06-11：新增项目档案单模型差异预览
 
@@ -2590,6 +2590,60 @@
 
 已知限制：
 
-- 第一版只做单模型差异预览，恢复时仍按 IndexedDB 仓库整体替换。
+- 第一版已从单模型差异预览推进到单模型选择恢复；恢复时可只写入、更新或删除勾选模型。
 - 单模型差异签名不会解码模型二进制，也不做三维内容结构对比。
-- 还没有单模型选择恢复、模型命名冲突修复和远端资产签名校验。
+- 还没有模型命名冲突修复、三方合并策略和远端资产签名校验。
+
+### 2026-06-11：新增项目档案单模型选择恢复
+
+功能名：主后台项目档案导入时按 IndexedDB 模型差异子项选择恢复。
+
+涉及文件：
+
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 项目档案模型仓库差异预览从纯文本列表升级为可勾选子项，新增、修改、删除模型都会生成独立恢复选项。
+- “全选”、条目禁用、选择状态统计和恢复按钮会同时识别模型子项；取消某个模型子项后，恢复时不会写入该模型。
+- `restoreProjectArchive()` 新增 `dbRecords` 选择参数，只有传入模型子项时才走增量 IndexedDB 合并；没有子项选择的仓库仍保留原有整库恢复行为。
+- 单模型恢复支持写入新增模型、覆盖已勾选修改模型、删除已勾选本机模型；未勾选模型保持当前本机状态。
+- 资产哈希校验和恢复完成摘要会按勾选模型过滤，不再因为未勾选模型的哈希问题误拦截恢复，也不会把整库模型数误报为本次恢复数量。
+- `scripts/archive-migration-check.js` 已验证只恢复档案新增模型 `model-2` 时，本机旧模型 `model-1` 不会被档案里的修改版本覆盖。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，选择一个导入模型仓库与当前本机不同的项目档案。
+- 模型仓库条目下应显示可勾选的“新增模型 / 修改模型 / 删除模型”子项。
+- 取消某个修改模型，只保留新增模型后点击“恢复所选”，应只新增勾选模型，未勾选本机模型保持原值。
+- 运行 `node scripts/archive-migration-check.js`，应输出项目档案迁移检查通过，并覆盖单模型选择恢复断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 单模型选择恢复仍以模型 key / id 为主键，不处理同名不同 key、同 key 不同来源的人工冲突修复。
+- 单模型差异只展示名称、文件名、类型、大小、哈希和导入指标摘要，不展示完整模型 JSON 或三维结构差异。
+- 项目档案仍是浏览器本机 JSON 文件流转，不是远端多人协作、云端版本库或资产 CDN。
