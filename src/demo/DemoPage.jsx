@@ -1,5 +1,6 @@
-import { CircleGauge, HeartPulse, Monitor, Pause, Play, RotateCcw, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { CircleGauge, FastForward, HeartPulse, Maximize2, Minimize2, Monitor, Pause, RotateCcw, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import yongCharacter from "../data/calligraphy/yongCharacter.json" assert { type: "json" };
 import { loadDefaultProject } from "../data/configLoader.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { getCurrentFlowState, useFlowStore } from "../store/flowStore.js";
@@ -45,10 +46,35 @@ const flowViewHints = {
   finished: { mode: "product", step: 1 }
 };
 
+const demoAutoAdvanceActions = {
+  idle: "start",
+  ready_check: "next",
+  enter_experience: "next",
+  immersive_intro: "next",
+  calligraphy_tutorial: "next",
+  scoring: "next",
+  report: "next",
+  caregiver_confirm: "confirm"
+};
+
+const demoAutoAdvanceDelays = {
+  idle: 500,
+  ready_check: 1400,
+  enter_experience: 1400,
+  immersive_intro: 1600,
+  calligraphy_tutorial: 1600,
+  practice_game: 2200,
+  scoring: 1400,
+  report: 1800,
+  caregiver_confirm: 1600
+};
+
 export function DemoPage() {
+  const demoAppRef = useRef(null);
   const [mode, setMode] = useState("product");
   const [activeStep, setActiveStep] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [isFlowPaused, setIsFlowPaused] = useState(false);
   const [caregiverNotice, setCaregiverNotice] = useState("");
   const [elderHelpRequest, setElderHelpRequest] = useState(null);
@@ -69,6 +95,7 @@ export function DemoPage() {
   const recordPracticeStroke = useFlowStore((state) => state.recordPracticeStroke);
   const completePracticeData = useFlowStore((state) => state.completePracticeData);
   const recordSessionEvent = useFlowStore((state) => state.recordSessionEvent);
+  const resetFlow = useFlowStore((state) => state.resetFlow);
   const [flowClock, setFlowClock] = useState(Date.now());
   const phase = useMemo(() => ({
     id: flowState?.id ?? "idle",
@@ -98,26 +125,59 @@ export function DemoPage() {
   }, []);
 
   useEffect(() => {
+    function syncFullscreenState() {
+      setIsFullscreen(document.fullscreenElement === demoAppRef.current);
+    }
+
+    document.addEventListener("fullscreenchange", syncFullscreenState);
+    syncFullscreenState();
+
+    return () => document.removeEventListener("fullscreenchange", syncFullscreenState);
+  }, []);
+
+  useEffect(() => {
     if (!isPlaying || isFlowPaused || flowIsPaused) {
       return undefined;
     }
 
-    const timer = window.setInterval(() => {
-      setActiveStep((current) => {
-        const next = current + 1;
+    if (phase.id === "finished") {
+      setIsPlaying(false);
+      setCaregiverNotice("一键演示已完成，本次体验记录已保存。");
+      return undefined;
+    }
 
-        if (next >= demoTimelineSteps.length) {
-          setIsPlaying(false);
-          return current;
-        }
+    const timer = window.setTimeout(() => {
+      const store = useFlowStore.getState();
+      const currentStateId = store.currentStateId;
+      const currentActions = store.getExecutableActions();
 
-        setMode(demoTimelineSteps[next].mode);
-        return next;
-      });
-    }, 2200);
+      if (currentStateId === "practice_game") {
+        const result = createDemoPracticeResult();
+        store.completePracticeData(result);
+        store.executeAction("finish");
+        setCalligraphyProgress(100);
+        setCalligraphyStroke("磔");
+        setCaregiverNotice(`一键演示已完成书法练习，护工端收到 ${result.total} 分评分报告。`);
+        return;
+      }
 
-    return () => window.clearInterval(timer);
-  }, [flowIsPaused, isPlaying, isFlowPaused]);
+      if (currentStateId === "report" && currentActions.includes("saveReport")) {
+        store.executeAction("saveReport");
+      }
+
+      if (currentStateId === "caregiver_confirm" && currentActions.includes("saveReport")) {
+        store.executeAction("saveReport");
+      }
+
+      const actionId = demoAutoAdvanceActions[currentStateId];
+
+      if (actionId && currentActions.includes(actionId)) {
+        store.executeAction(actionId);
+      }
+    }, demoAutoAdvanceDelays[phase.id] ?? 1600);
+
+    return () => window.clearTimeout(timer);
+  }, [flowIsPaused, isPlaying, isFlowPaused, phase.id]);
 
   const practiceProgress = Math.max(
     Math.min(100, Math.round((activeStep / (demoTimelineSteps.length - 1)) * 100)),
@@ -189,6 +249,11 @@ export function DemoPage() {
     setIsFlowPaused(false);
     setActiveStep(0);
     setMode("product");
+    setCaregiverNotice("");
+    setElderHelpRequest(null);
+    setCalligraphyProgress(0);
+    setCalligraphyStroke("侧");
+    resetFlow();
   }
 
   function selectStep(index) {
@@ -255,8 +320,62 @@ export function DemoPage() {
     }
   }
 
+  function handlePresentationPlayback() {
+    if (isPlaying) {
+      setIsPlaying(false);
+      setCaregiverNotice("一键演示已暂停，可从当前节点继续。");
+      return;
+    }
+
+    if (phase.id === "idle" || phase.id === "finished") {
+      startOneClickDemo();
+      return;
+    }
+
+    setIsFlowPaused(false);
+    if (useFlowStore.getState().isPaused) {
+      useFlowStore.getState().executeAction("resume");
+    }
+    setIsPlaying(true);
+    setCaregiverNotice("一键演示继续推进。");
+  }
+
+  function startOneClickDemo() {
+    resetFlow();
+    setIsPlaying(true);
+    setIsFlowPaused(false);
+    setActiveStep(0);
+    setMode("product");
+    setElderHelpRequest(null);
+    setCalligraphyProgress(0);
+    setCalligraphyStroke("侧");
+    setSelectedObjectId("capsule-shell");
+    setCaregiverNotice("一键演示已启动，将自动推进入舱、书法练习、评分报告和护工确认。");
+    window.setTimeout(() => {
+      useFlowStore.getState().executeAction("start");
+    }, 0);
+  }
+
+  async function toggleFullscreen() {
+    if (!demoAppRef.current || !document.fullscreenEnabled) {
+      setCaregiverNotice("当前浏览器不支持全屏展示，可使用系统全屏快捷键。");
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+        return;
+      }
+
+      await demoAppRef.current.requestFullscreen();
+    } catch (error) {
+      setCaregiverNotice("浏览器未允许进入全屏展示，请检查页面权限。");
+    }
+  }
+
   return (
-    <main className="demo-app">
+    <main ref={demoAppRef} className={`demo-app ${isFullscreen ? "is-presentation-fullscreen" : ""}`}>
       <header className="demo-topbar">
         <a className="brand-mark" href="/demo" aria-label={`${defaultProject.name}前台演示端`}>
           <span>{defaultProject.name}</span>
@@ -322,12 +441,15 @@ export function DemoPage() {
           </div>
 
           <div className="playback-row">
-            <button className="primary-action" type="button" onClick={() => setIsPlaying((value) => !value)}>
-              {isPlaying ? <Pause size={18} strokeWidth={2.2} /> : <Play size={18} strokeWidth={2.2} />}
-              <span>{isPlaying ? "暂停流程" : "播放完整流程"}</span>
+            <button className="primary-action" type="button" onClick={handlePresentationPlayback}>
+              {isPlaying ? <Pause size={18} strokeWidth={2.2} /> : <FastForward size={18} strokeWidth={2.2} />}
+              <span>{isPlaying ? "暂停演示" : phase.id === "idle" || phase.id === "finished" ? "一键演示" : "继续演示"}</span>
             </button>
             <button className="icon-action" type="button" onClick={resetPlayback} aria-label="重置流程">
               <RotateCcw size={18} strokeWidth={2.2} />
+            </button>
+            <button className="icon-action" type="button" onClick={toggleFullscreen} aria-label={isFullscreen ? "退出全屏展示" : "进入全屏展示"}>
+              {isFullscreen ? <Minimize2 size={18} strokeWidth={2.2} /> : <Maximize2 size={18} strokeWidth={2.2} />}
             </button>
           </div>
 
@@ -340,4 +462,59 @@ export function DemoPage() {
       </section>
     </main>
   );
+}
+
+function createDemoPracticeResult() {
+  const completedAt = new Date().toISOString();
+  const strokeRecords = yongCharacter.strokes.map((stroke, index) => {
+    const expectedDurationMs = Math.round((stroke.duration ?? 1.2) * 1000);
+    const actualDurationMs = expectedDurationMs + (index % 3) * 28 - 36;
+    const startedAt = new Date(Date.now() - expectedDurationMs - (yongCharacter.strokes.length - index) * 120).toISOString();
+    const pointStep = Math.max(1, stroke.points.length - 1);
+
+    return {
+      strokeId: stroke.id,
+      label: stroke.label,
+      status: "completed",
+      startedAt,
+      completedAt,
+      pointCount: stroke.points.length,
+      points: stroke.points.map(([x, y], pointIndex) => ({
+        x,
+        y,
+        t: Math.round((expectedDurationMs / pointStep) * pointIndex)
+      })),
+      averageDeviation: 3.8 + (index % 3) * 0.6,
+      maxDeviation: 8 + index,
+      pathAccuracy: 93 - (index % 4),
+      actualDurationMs,
+      expectedDurationMs,
+      durationRatio: Number((actualDurationMs / expectedDurationMs).toFixed(2)),
+      rhythmStability: 92 - (index % 3)
+    };
+  });
+
+  return {
+    total: 91,
+    metrics: {
+      pathAccuracy: 91,
+      strokeOrder: 96,
+      rhythm: 92,
+      focus: 94
+    },
+    suggestion: "演示数据表现稳定，可在报告页查看路径、节奏和专注度指标。",
+    practiceState: "completed",
+    completedAt,
+    completedStrokeCount: strokeRecords.length,
+    totalStrokeCount: yongCharacter.strokes.length,
+    strokeRecords,
+    practiceData: {
+      character: yongCharacter.character,
+      completedAt,
+      strokes: strokeRecords,
+      rewriteCount: 0,
+      interruptionCount: 0,
+      strokeOrderWarnings: 0
+    }
+  };
 }

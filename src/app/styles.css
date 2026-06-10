@@ -188,6 +188,15 @@ textarea {
     #f5f1ea;
 }
 
+.demo-app.is-presentation-fullscreen {
+  width: 100vw;
+  min-height: 100vh;
+  overflow: auto;
+  background:
+    linear-gradient(120deg, rgba(239, 233, 221, 0.99), rgba(244, 247, 241, 0.99) 52%, rgba(227, 236, 229, 0.99)),
+    #f5f1ea;
+}
+
 .demo-topbar {
   display: flex;
   align-items: center;
@@ -246,6 +255,36 @@ textarea {
   height: calc(100vh - 244px);
   min-height: 520px;
   padding: 18px 28px 0;
+}
+
+.demo-app.is-presentation-fullscreen .demo-topbar {
+  min-height: 56px;
+  padding: 0 22px;
+}
+
+.demo-app.is-presentation-fullscreen .demo-topbar nav,
+.demo-app.is-presentation-fullscreen .selected-object-chip,
+.demo-app.is-presentation-fullscreen .flow-state-card small {
+  display: none;
+}
+
+.demo-app.is-presentation-fullscreen .brand-mark span {
+  font-size: 11px;
+}
+
+.demo-app.is-presentation-fullscreen .brand-mark strong {
+  font-size: 17px;
+}
+
+.demo-app.is-presentation-fullscreen .demo-stage {
+  height: calc(100vh - 204px);
+  min-height: 0;
+  padding-top: 14px;
+}
+
+.demo-app.is-presentation-fullscreen .mode-panel-band {
+  padding-top: 14px;
+  padding-bottom: 18px;
 }
 
 .stage-viewport,
@@ -556,7 +595,7 @@ textarea {
 
 .playback-row {
   display: grid;
-  grid-template-columns: 1fr 44px;
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
   gap: 10px;
 }
 
@@ -570,6 +609,20 @@ textarea {
   color: #ffffff;
   background: #8f6a45;
   font-weight: 900;
+}
+
+.primary-action {
+  min-width: 0;
+}
+
+.primary-action span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.primary-action svg,
+.icon-action svg {
+  flex: 0 0 auto;
 }
 
 .icon-action {
