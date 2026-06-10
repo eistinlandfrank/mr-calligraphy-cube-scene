@@ -265,6 +265,68 @@ textarea {
   inset: 0;
 }
 
+.loading-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 220px;
+  max-width: min(360px, calc(100% - 32px));
+  min-height: 64px;
+  padding: 12px 14px;
+  border: 1px solid rgba(38, 34, 28, 0.12);
+  border-radius: 8px;
+  color: #25231f;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 16px 38px rgba(51, 42, 32, 0.12);
+  backdrop-filter: blur(16px);
+}
+
+.loading-state span:last-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.loading-state strong,
+.loading-state small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.loading-state strong {
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.loading-state small {
+  color: #6f6659;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.loading-spinner {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 3px solid rgba(47, 111, 104, 0.18);
+  border-top-color: #2f6f68;
+  border-radius: 50%;
+  animation: loading-spin 0.8s linear infinite;
+}
+
+.scene-loading-state {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 4;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .scene-renderer canvas {
   display: block;
 }

@@ -91,8 +91,10 @@
 
   验收记录：2026-06-10 新增 `src/app/ErrorBoundary.jsx` 并在 `src/main.jsx` 包裹 App；错误时显示统一恢复界面，`npm run build` 通过。
 
-- [ ] **P1-09：建立加载状态组件**  
+- [x] **P1-09：建立加载状态组件**  
   验收：3D 场景、配置、资源加载期间有统一 loading 状态。
+
+  验收记录：2026-06-10 新增 `src/app/LoadingState.jsx`，并接入 `SceneRenderer` 的 3D 首帧加载状态；`npm run build` 通过。
 
 ---
 

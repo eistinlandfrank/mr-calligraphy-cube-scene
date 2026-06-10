@@ -1,6 +1,7 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useMemo } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
+import { LoadingState } from "../app/LoadingState.jsx";
 import { CapsulePod } from "./CapsulePod.jsx";
 import { Hotspot } from "./Hotspot.jsx";
 import { SceneObject } from "./SceneObject.jsx";
@@ -41,53 +42,83 @@ export function SceneRenderer({
   showHotspots = true,
   className = ""
 }) {
+  const [isReady, setIsReady] = useState(false);
   const backgroundColor = sceneConfig?.environment?.fog ? "#d8ded4" : "#ebe2d4";
 
+  useEffect(() => {
+    setIsReady(false);
+  }, [sceneConfig?.id, mode]);
+
   return (
-    <div className={`scene-renderer ${className}`}>
+    <div className={`scene-renderer ${className}`} aria-busy={!isReady}>
+      {!isReady ? (
+        <LoadingState
+          className="scene-loading-state"
+          label="正在加载 3D 场景"
+          detail={sceneConfig?.name ?? "读取场景配置"}
+        />
+      ) : null}
       <Canvas
         shadows
         dpr={[1, 2]}
         camera={{ position: [4.8, 2.4, 6.4], fov: sceneConfig?.camera?.fov ?? 50 }}
       >
-        <color attach="background" args={[backgroundColor]} />
-        {sceneConfig?.environment?.fog ? <fog attach="fog" args={[backgroundColor, 5, 12]} /> : null}
-        <ambientLight color={sceneConfig?.environment?.ambientColor ?? "#f2e4d0"} intensity={1.55} />
-        <directionalLight
-          castShadow
-          color="#fff7ec"
-          intensity={2.2}
-          position={[3.5, 6.5, 4.5]}
-          shadow-mapSize={[1024, 1024]}
-        />
-        <pointLight color="#bfe9dc" intensity={0.85} position={[-2.6, 2.2, 1.4]} />
-        <SceneCameraRig mode={mode} phaseIndex={phaseIndex} />
-        <SceneFloor color={sceneConfig?.environment?.floorColor ?? "#d8c7aa"} />
-        <CapsulePod
-          mode={mode}
-          phaseIndex={phaseIndex}
-          sceneConfig={sceneConfig}
-          selectedObjectId={selectedObjectId}
-          onSelectObject={onSelectObject}
-        />
-        {sceneConfig?.objects
-          ?.filter((object) => !capsuleObjectIds.has(object.id))
-          .map((object) => (
-            <SceneObject
-              key={object.id}
-              object={object}
-              selected={selectedObjectId === object.id}
-              onSelect={() => onSelectObject?.(object.id)}
-            />
-          ))}
-        {showHotspots
-          ? sceneConfig?.hotspots?.map((hotspot) => (
-              <Hotspot key={hotspot.id} hotspot={hotspot} onSelect={() => onSelectObject?.(hotspot.target)} />
-            ))
-          : null}
+        <Suspense fallback={null}>
+          <color attach="background" args={[backgroundColor]} />
+          {sceneConfig?.environment?.fog ? <fog attach="fog" args={[backgroundColor, 5, 12]} /> : null}
+          <ambientLight color={sceneConfig?.environment?.ambientColor ?? "#f2e4d0"} intensity={1.55} />
+          <directionalLight
+            castShadow
+            color="#fff7ec"
+            intensity={2.2}
+            position={[3.5, 6.5, 4.5]}
+            shadow-mapSize={[1024, 1024]}
+          />
+          <pointLight color="#bfe9dc" intensity={0.85} position={[-2.6, 2.2, 1.4]} />
+          <SceneCameraRig mode={mode} phaseIndex={phaseIndex} />
+          <SceneFloor color={sceneConfig?.environment?.floorColor ?? "#d8c7aa"} />
+          <CapsulePod
+            mode={mode}
+            phaseIndex={phaseIndex}
+            sceneConfig={sceneConfig}
+            selectedObjectId={selectedObjectId}
+            onSelectObject={onSelectObject}
+          />
+          {sceneConfig?.objects
+            ?.filter((object) => !capsuleObjectIds.has(object.id))
+            .map((object) => (
+              <SceneObject
+                key={object.id}
+                object={object}
+                selected={selectedObjectId === object.id}
+                onSelect={() => onSelectObject?.(object.id)}
+              />
+            ))}
+          {showHotspots
+            ? sceneConfig?.hotspots?.map((hotspot) => (
+                <Hotspot key={hotspot.id} hotspot={hotspot} onSelect={() => onSelectObject?.(hotspot.target)} />
+              ))
+            : null}
+          <SceneReadySignal key={`${sceneConfig?.id ?? "scene"}-${mode}`} onReady={() => setIsReady(true)} />
+        </Suspense>
       </Canvas>
     </div>
   );
+}
+
+function SceneReadySignal({ onReady }) {
+  const hasReported = useRef(false);
+
+  useFrame(() => {
+    if (hasReported.current) {
+      return;
+    }
+
+    hasReported.current = true;
+    onReady?.();
+  });
+
+  return null;
 }
 
 function SceneCameraRig({ mode, phaseIndex }) {
