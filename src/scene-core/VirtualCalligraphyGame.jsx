@@ -153,6 +153,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     }
 
     const deviation = calculatePathDeviation(points, currentStroke.points);
+    const rhythm = calculateRhythmStability(points, currentStroke.duration);
     const strokeRecord = {
       strokeId: currentStroke.id,
       label: currentStroke.label,
@@ -160,6 +161,10 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
       averageDeviation: deviation.averageDeviation,
       maxDeviation: deviation.maxDeviation,
       pathAccuracy: deviation.pathAccuracy,
+      actualDurationMs: rhythm.actualDurationMs,
+      expectedDurationMs: rhythm.expectedDurationMs,
+      durationRatio: rhythm.durationRatio,
+      rhythmStability: rhythm.rhythmStability,
       completedAt: new Date().toISOString()
     };
 
@@ -238,7 +243,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
             <small>已记录 {userStrokePoints.length} 个轨迹点</small>
             {latestStrokeRecord ? (
               <small className="stroke-metric-line">
-                最近一笔偏差 {latestStrokeRecord.averageDeviation} 点 · 路径准确 {latestStrokeRecord.pathAccuracy}
+                最近一笔偏差 {latestStrokeRecord.averageDeviation} 点 · 节奏稳定 {latestStrokeRecord.rhythmStability}
               </small>
             ) : null}
             {strokeOrderWarnings ? <small>笔顺提醒 {strokeOrderWarnings} 次</small> : null}
@@ -358,6 +363,22 @@ function calculatePathDeviation(userPoints, standardPoints) {
     averageDeviation: roundMetric(averageDeviation),
     maxDeviation: roundMetric(maxDeviation),
     pathAccuracy: clamp(Math.round(100 - averageDeviation * 2.4), 0, 100)
+  };
+}
+
+function calculateRhythmStability(userPoints, expectedDurationSeconds) {
+  const expectedDurationMs = Math.round((expectedDurationSeconds ?? 1.2) * 1000);
+  const firstPoint = userPoints[0];
+  const lastPoint = userPoints[userPoints.length - 1] ?? firstPoint;
+  const actualDurationMs = Math.max(120, Math.round((lastPoint?.t ?? 0) - (firstPoint?.t ?? 0)));
+  const durationRatio = expectedDurationMs ? actualDurationMs / expectedDurationMs : 1;
+  const deviationRatio = expectedDurationMs ? Math.abs(actualDurationMs - expectedDurationMs) / expectedDurationMs : 0;
+
+  return {
+    actualDurationMs,
+    expectedDurationMs,
+    durationRatio: roundMetric(durationRatio),
+    rhythmStability: clamp(Math.round(100 - deviationRatio * 70), 0, 100)
   };
 }
 
