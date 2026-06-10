@@ -3,6 +3,19 @@ import { useMemo } from "react";
 import * as THREE from "three";
 import { CapsulePod } from "./CapsulePod.jsx";
 import { Hotspot } from "./Hotspot.jsx";
+import { SceneObject } from "./SceneObject.jsx";
+
+const capsuleObjectIds = new Set([
+  "capsule-shell",
+  "capsule-door",
+  "recliner-chair",
+  "immersive-screen",
+  "observation-window",
+  "caregiver-screen",
+  "caregiver-dashboard",
+  "emergency-button",
+  "virtual-brush"
+]);
 
 const cameraPresets = {
   product: {
@@ -57,6 +70,16 @@ export function SceneRenderer({
           selectedObjectId={selectedObjectId}
           onSelectObject={onSelectObject}
         />
+        {sceneConfig?.objects
+          ?.filter((object) => !capsuleObjectIds.has(object.id))
+          .map((object) => (
+            <SceneObject
+              key={object.id}
+              object={object}
+              selected={selectedObjectId === object.id}
+              onSelect={() => onSelectObject?.(object.id)}
+            />
+          ))}
         {showHotspots
           ? sceneConfig?.hotspots?.map((hotspot) => (
               <Hotspot key={hotspot.id} hotspot={hotspot} onSelect={() => onSelectObject?.(hotspot.target)} />

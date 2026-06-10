@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { sceneConfigById as baseSceneConfigById, sceneConfigs as baseSceneConfigs } from "../data/scenes/index.js";
-import { cloneSceneConfig } from "../scene-core/sceneSchema.js";
+import { cloneSceneConfig, createSceneObject, validateSceneConfig } from "../scene-core/sceneSchema.js";
 
 export const SCENE_STORAGE_KEY = "moyin-xinjing-scene-configs";
 
@@ -47,10 +47,111 @@ export const useSceneStore = create((set, get) => ({
     }));
   },
 
+  addObject: (sceneId, type = "box") => {
+    const { scenes } = get();
+    const scene = scenes.find((item) => item.id === sceneId);
+
+    if (!scene) {
+      return;
+    }
+
+    const id = makeUniqueObjectId(scene, type);
+    const object = createSceneObject({
+      id,
+      type,
+      name: getObjectTypeLabel(type),
+      position: [0, 1.1, 0.85],
+      scale: type === "plane" ? [1.2, 0.8, 1] : [1, 1, 1],
+      material: {
+        color: type === "sphere" ? "#d7aa72" : "#2f6f68",
+        opacity: type === "plane" ? 0.82 : 1,
+        emissiveColor: type === "plane" ? "#173c38" : "#000000"
+      }
+    });
+
+    set((state) => ({
+      scenes: state.scenes.map((item) => (
+        item.id === sceneId
+          ? { ...item, objects: [...item.objects, object] }
+          : item
+      )),
+      selectedObjectId: id
+    }));
+  },
+
+  duplicateObject: (sceneId, objectId) => {
+    const scene = get().scenes.find((item) => item.id === sceneId);
+    const source = scene?.objects.find((object) => object.id === objectId);
+
+    if (!scene || !source) {
+      return;
+    }
+
+    const id = makeUniqueObjectId(scene, `${source.id}-copy`);
+    const copy = {
+      ...cloneSceneConfig(source),
+      id,
+      name: `${source.name} 副本`,
+      position: [
+        source.position[0] + 0.24,
+        source.position[1],
+        source.position[2] + 0.24
+      ]
+    };
+
+    set((state) => ({
+      scenes: state.scenes.map((item) => (
+        item.id === sceneId
+          ? { ...item, objects: [...item.objects, copy] }
+          : item
+      )),
+      selectedObjectId: id
+    }));
+  },
+
+  deleteObject: (sceneId, objectId) => {
+    set((state) => {
+      const scene = state.scenes.find((item) => item.id === sceneId);
+      const nextObjects = scene?.objects.filter((object) => object.id !== objectId) ?? [];
+
+      return {
+        scenes: state.scenes.map((item) => (
+          item.id === sceneId
+            ? { ...item, objects: nextObjects }
+            : item
+        )),
+        selectedObjectId: nextObjects[0]?.id ?? ""
+      };
+    });
+  },
+
   replaceScene: (sceneConfig) => {
     set((state) => ({
       scenes: state.scenes.map((scene) => (scene.id === sceneConfig.id ? cloneSceneConfig(sceneConfig) : scene))
     }));
+  },
+
+  importScene: (sceneConfig) => {
+    const result = validateSceneConfig(sceneConfig);
+
+    if (!result.valid) {
+      return result;
+    }
+
+    const nextScene = cloneSceneConfig(sceneConfig);
+
+    set((state) => {
+      const exists = state.scenes.some((scene) => scene.id === nextScene.id);
+      return {
+        scenes: exists
+          ? state.scenes.map((scene) => (scene.id === nextScene.id ? nextScene : scene))
+          : [...state.scenes, nextScene],
+        activeSceneId: nextScene.id,
+        selectedObjectId: nextScene.objects[0]?.id ?? ""
+      };
+    });
+
+    return result;
   },
 
   saveScenes: () => {
@@ -129,4 +230,29 @@ function mergeObjectPatch(object, patch) {
       ...patch.material
     }
   };
+}
+
+function makeUniqueObjectId(scene, baseId) {
+  const normalized = String(baseId)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "object";
+  const used = new Set(scene.objects.map((object) => object.id));
+  let index = scene.objects.length + 1;
+  let nextId = `${normalized}-${index}`;
+
+  while (used.has(nextId)) {
+    index += 1;
+    nextId = `${normalized}-${index}`;
+  }
+
+  return nextId;
+}
+
+function getObjectTypeLabel(type) {
+  return {
+    box: "立方体对象",
+    sphere: "球体对象",
+    plane: "面板对象"
+  }[type] ?? "新对象";
 }

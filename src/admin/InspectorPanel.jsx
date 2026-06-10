@@ -1,4 +1,4 @@
-import { SlidersHorizontal } from "lucide-react";
+import { Box, Circle, Copy, PanelTop, Plus, SlidersHorizontal, Trash2 } from "lucide-react";
 import { useSceneStore } from "../store/sceneStore.js";
 
 const vectorFields = [
@@ -9,6 +9,9 @@ const vectorFields = [
 
 export function InspectorPanel({ sceneId, object }) {
   const updateObject = useSceneStore((state) => state.updateObject);
+  const addObject = useSceneStore((state) => state.addObject);
+  const duplicateObject = useSceneStore((state) => state.duplicateObject);
+  const deleteObject = useSceneStore((state) => state.deleteObject);
 
   if (!object) {
     return (
@@ -42,6 +45,37 @@ export function InspectorPanel({ sceneId, object }) {
         <strong>{object.name}</strong>
         <SlidersHorizontal size={18} strokeWidth={2.2} />
       </div>
+
+      <section className="inspector-section">
+        <div className="inspector-section-title">Object Actions</div>
+        <div className="object-action-grid">
+          <button type="button" onClick={() => addObject(sceneId, "box")}>
+            <Plus size={15} strokeWidth={2.2} />
+            <Box size={15} strokeWidth={2.2} />
+            <span>立方体</span>
+          </button>
+          <button type="button" onClick={() => addObject(sceneId, "sphere")}>
+            <Plus size={15} strokeWidth={2.2} />
+            <Circle size={15} strokeWidth={2.2} />
+            <span>球体</span>
+          </button>
+          <button type="button" onClick={() => addObject(sceneId, "plane")}>
+            <Plus size={15} strokeWidth={2.2} />
+            <PanelTop size={15} strokeWidth={2.2} />
+            <span>面板</span>
+          </button>
+        </div>
+        <div className="object-action-grid secondary">
+          <button type="button" onClick={() => duplicateObject(sceneId, object.id)}>
+            <Copy size={15} strokeWidth={2.2} />
+            <span>复制对象</span>
+          </button>
+          <button type="button" className="danger-action" onClick={() => deleteObject(sceneId, object.id)}>
+            <Trash2 size={15} strokeWidth={2.2} />
+            <span>删除对象</span>
+          </button>
+        </div>
+      </section>
 
       <label className="field-block">
         <span>名称</span>

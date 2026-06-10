@@ -20,6 +20,9 @@ export const sceneObjectTypes = [
   "ui-panel",
   "light",
   "decor",
+  "box",
+  "sphere",
+  "plane",
   "model"
 ];
 

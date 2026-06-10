@@ -1,4 +1,5 @@
-import { Download, Eye, RotateCcw, Save } from "lucide-react";
+import { Download, Eye, RotateCcw, Save, Upload } from "lucide-react";
+import { useRef, useState } from "react";
 import { CaregiverDashboard } from "../scene-core/CaregiverDashboard.jsx";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
@@ -15,6 +16,9 @@ export function SceneEditor() {
   const setSelectedObjectId = useSceneStore((state) => state.setSelectedObjectId);
   const saveScenes = useSceneStore((state) => state.saveScenes);
   const resetScene = useSceneStore((state) => state.resetScene);
+  const importScene = useSceneStore((state) => state.importScene);
+  const fileInputRef = useRef(null);
+  const [importStatus, setImportStatus] = useState("");
   const sceneConfig = selectSceneConfigById(scenes, activeSceneId);
   const selectedObject = sceneConfig.objects.find((object) => object.id === selectedObjectId) ?? sceneConfig.objects[0];
   const mode = getSceneMode(sceneConfig.type);
@@ -29,6 +33,31 @@ export function SceneEditor() {
     anchor.download = `${sceneConfig.id}.json`;
     anchor.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function importSceneConfig(event) {
+    const file = event.target.files?.[0];
+
+    if (!file) {
+      return;
+    }
+
+    try {
+      const sceneConfigText = await file.text();
+      const importedScene = JSON.parse(sceneConfigText);
+      const result = importScene(importedScene);
+
+      if (!result.valid) {
+        setImportStatus(`导入失败：${result.errors[0]}`);
+        return;
+      }
+
+      setImportStatus(`已导入：${importedScene.name}`);
+    } catch (error) {
+      setImportStatus(`导入失败：${error.message}`);
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (
@@ -47,6 +76,11 @@ export function SceneEditor() {
             <Download size={17} strokeWidth={2.2} />
             <span>导出 JSON</span>
           </button>
+          <button type="button" onClick={() => fileInputRef.current?.click()}>
+            <Upload size={17} strokeWidth={2.2} />
+            <span>导入 JSON</span>
+          </button>
+          <input ref={fileInputRef} className="admin-file-input" type="file" accept="application/json,.json" onChange={importSceneConfig} />
           <button type="button" onClick={() => resetScene(sceneConfig.id)}>
             <RotateCcw size={17} strokeWidth={2.2} />
             <span>恢复默认</span>
@@ -57,6 +91,7 @@ export function SceneEditor() {
           </a>
         </div>
       </header>
+      {importStatus ? <div className="admin-import-status">{importStatus}</div> : null}
 
       <section className="admin-workspace">
         <aside className="admin-left-rail">

@@ -1283,6 +1283,26 @@ textarea {
   outline: none;
 }
 
+.admin-file-input {
+  display: none;
+}
+
+.admin-import-status {
+  position: fixed;
+  right: 18px;
+  top: 76px;
+  z-index: 20;
+  max-width: min(420px, calc(100vw - 36px));
+  padding: 10px 12px;
+  border: 1px solid rgba(47, 111, 104, 0.24);
+  border-radius: 8px;
+  color: #24534e;
+  background: rgba(245, 250, 246, 0.94);
+  box-shadow: 0 14px 36px rgba(51, 42, 32, 0.14);
+  font-size: 13px;
+  font-weight: 850;
+}
+
 .admin-workspace {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr) 340px;
@@ -1523,6 +1543,46 @@ textarea {
 .inspector-section-title {
   color: #211f1b;
   font-weight: 900;
+}
+
+.object-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.object-action-grid.secondary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.object-action-grid button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 38px;
+  border: 1px solid rgba(38, 34, 28, 0.12);
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.object-action-grid.secondary button {
+  background: #3c3933;
+}
+
+.object-action-grid .danger-action {
+  background: #b64a3a;
+}
+
+.object-action-grid button:hover,
+.object-action-grid button:focus-visible {
+  border-color: rgba(38, 34, 28, 0.28);
+  filter: brightness(1.05);
+  outline: none;
 }
 
 .axis-grid {
