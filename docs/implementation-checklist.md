@@ -180,8 +180,10 @@
 
   验收记录：2026-06-10 从 `ready_check` 执行 `next` 会进入 `enter_experience`，并向 PracticeSession 写入 action、state_exited、state_entered 事件；store 脚本和 `npm run build` 通过。
 
-- [ ] **P3-05：实现 immersive_intro 状态**  
+- [x] **P3-05：实现 immersive_intro 状态**  
   验收：进入沉浸导入阶段，计时器和场景说明同步更新。
+
+  验收记录：2026-06-10 flowStore 增加状态进入时间、已用时和剩余时间计算；Demo 根据 `immersive_intro` 同步切换老人视角与阶段说明，并使用 FlowConfig duration 计算剩余时间，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-06：实现 calligraphy_tutorial 状态**  
   验收：进入书法讲解阶段，前台显示当前练习字与笔画说明。

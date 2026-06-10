@@ -8,6 +8,7 @@ const defaultStateId = defaultFlow.initialState;
 export const useFlowStore = create((set, get) => ({
   flowConfig: defaultFlow,
   currentStateId: defaultStateId,
+  stateEnteredAt: Date.now(),
   history: [createHistoryItem(defaultStateId, "init")],
   isPaused: false,
   session: null,
@@ -15,6 +16,18 @@ export const useFlowStore = create((set, get) => ({
   getCurrentState: () => getFlowState(get().flowConfig, get().currentStateId),
 
   getExecutableActions: () => getFlowState(get().flowConfig, get().currentStateId)?.actions ?? [],
+
+  getStateElapsedSeconds: () => Math.max(0, Math.floor((Date.now() - get().stateEnteredAt) / 1000)),
+
+  getRemainingSeconds: () => {
+    const state = getFlowState(get().flowConfig, get().currentStateId);
+
+    if (!state?.duration) {
+      return 0;
+    }
+
+    return Math.max(0, state.duration - get().getStateElapsedSeconds());
+  },
 
   canExecute: (actionId) => {
     const state = getFlowState(get().flowConfig, get().currentStateId);
@@ -32,6 +45,7 @@ export const useFlowStore = create((set, get) => ({
 
     set((state) => ({
       currentStateId: stateId,
+      stateEnteredAt: Date.parse(enteredAt),
       isPaused: false,
       session: state.session
         ? {
@@ -98,6 +112,7 @@ export const useFlowStore = create((set, get) => ({
 
       set((current) => ({
         currentStateId: state.next,
+        stateEnteredAt: Date.parse(startedAt),
         isPaused: false,
         session,
         history: [...current.history, createHistoryItem(state.next, actionId)]
@@ -136,6 +151,7 @@ export const useFlowStore = create((set, get) => ({
   resetFlow: () => {
     set({
       currentStateId: defaultStateId,
+      stateEnteredAt: Date.now(),
       history: [createHistoryItem(defaultStateId, "reset")],
       isPaused: false,
       session: null

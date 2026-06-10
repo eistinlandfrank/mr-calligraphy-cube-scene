@@ -30,6 +30,19 @@ const flowActionLabels = {
   reset: "重置"
 };
 
+const flowViewHints = {
+  idle: { mode: "product", step: 0 },
+  ready_check: { mode: "caregiver", step: 0 },
+  enter_experience: { mode: "product", step: 2 },
+  immersive_intro: { mode: "elder", step: 3 },
+  calligraphy_tutorial: { mode: "elder", step: 3 },
+  practice_game: { mode: "elder", step: 4 },
+  scoring: { mode: "caregiver", step: 5 },
+  report: { mode: "caregiver", step: 5 },
+  caregiver_confirm: { mode: "caregiver", step: 5 },
+  finished: { mode: "product", step: 1 }
+};
+
 export function DemoPage() {
   const [mode, setMode] = useState("product");
   const [activeStep, setActiveStep] = useState(0);
@@ -43,8 +56,10 @@ export function DemoPage() {
   const flowState = useFlowStore(getCurrentFlowState);
   const flowHistory = useFlowStore((state) => state.history);
   const flowSession = useFlowStore((state) => state.session);
+  const flowStateEnteredAt = useFlowStore((state) => state.stateEnteredAt);
   const executableActions = useFlowStore((state) => state.getExecutableActions());
   const executeFlowAction = useFlowStore((state) => state.executeAction);
+  const [flowClock, setFlowClock] = useState(Date.now());
   const phase = useMemo(() => ({
     id: flowState?.id ?? "idle",
     label: flowState?.title ?? "等待开始",
@@ -52,6 +67,25 @@ export function DemoPage() {
   }), [flowState]);
   const activeMode = viewModes.find((item) => item.id === mode) ?? viewModes[0];
   const sceneConfig = selectSceneConfigById(storedScenes, activeMode.sceneId);
+
+  useEffect(() => {
+    const hint = flowViewHints[phase.id];
+
+    if (!hint) {
+      return;
+    }
+
+    setMode(hint.mode);
+    setActiveStep(hint.step);
+  }, [phase.id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setFlowClock(Date.now());
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!isPlaying || isFlowPaused) {
@@ -79,7 +113,9 @@ export function DemoPage() {
     Math.min(100, Math.round((activeStep / (demoTimelineSteps.length - 1)) * 100)),
     calligraphyProgress
   );
-  const remainingSeconds = Math.max(0, 900 - activeStep * 118);
+  const flowElapsedSeconds = Math.max(0, Math.floor((flowClock - flowStateEnteredAt) / 1000));
+  const flowRemainingSeconds = flowState?.duration ? Math.max(0, flowState.duration - flowElapsedSeconds) : 0;
+  const remainingSeconds = flowState?.duration ? flowRemainingSeconds : Math.max(0, 900 - activeStep * 118);
   const currentStroke = mode === "elder" ? calligraphyStroke : ["侧", "勒", "努", "趯", "策", "掠"][Math.min(activeStep, 5)];
 
   const modePanel = useMemo(() => {

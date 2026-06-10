@@ -36,3 +36,4 @@
 - 2026-06-10：完成 P3-01、P3-02。新增 flowStore，`/demo` 默认进入 idle，并在演示控制台显示当前流程状态、历史和可执行操作。
 - 2026-06-10：完成 P3-03。开始体验动作会进入 ready_check，并创建 PracticeSession 与初始事件。
 - 2026-06-10：完成 P3-04。ready_check 的下一步会进入 enter_experience，并把状态切换事件写入 session。
+- 2026-06-10：完成 P3-05。immersive_intro 会同步老人视角、阶段说明和基于 FlowConfig 的剩余时间。
