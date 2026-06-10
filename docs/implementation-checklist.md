@@ -110,8 +110,10 @@
 
   验收记录：2026-06-10 默认场景 JSON 均补充 `uiPanels`，`sceneSchema.js` 增加 `uiPanels` 校验，`docs/scene-schema.md` 同步结构说明；全部默认场景通过校验。
 
-- [ ] **P2-03：定义 FlowConfig 数据结构**  
+- [x] **P2-03：定义 FlowConfig 数据结构**  
   验收：流程配置包含 states、actions、next、duration 等字段。
+
+  验收记录：2026-06-10 新增 `src/flow-core/flowSchema.js`、`src/utils/validateFlowConfig.js` 和 `docs/flow-schema.md`，定义 FlowConfig 字段、标准状态与校验方法；示例 FlowConfig 校验通过。
 
 - [ ] **P2-04：定义 PracticeSession 数据结构**  
   验收：session 可记录开始时间、结束时间、当前状态、事件列表、练习数据、护工操作。
