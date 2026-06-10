@@ -190,8 +190,10 @@
 
   验收记录：2026-06-10 老人端在 `calligraphy_tutorial` 状态显示“永”字教程卡片和八法笔画说明，其他阶段保留书法练习组件；`npm run build` 通过。
 
-- [ ] **P3-07：实现 practice_game 状态**  
+- [x] **P3-07：实现 practice_game 状态**  
   验收：进入真实书法练习组件，开始采集用户输入。
+
+  验收记录：2026-06-10 从 `calligraphy_tutorial` 进入 `practice_game` 时，Demo 同步老人端书法练习组件，PracticeSession 写入 `practice_started` 事件并记录 `practiceData.startedAt`；真实鼠标/触控轨迹采集继续在 P4-03 至 P4-05 完成。
 
 - [ ] **P3-08：实现 scoring 状态**  
   验收：练习结束后进入评分阶段，根据练习数据计算分数。

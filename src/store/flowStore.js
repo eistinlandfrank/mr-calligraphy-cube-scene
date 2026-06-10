@@ -47,31 +47,7 @@ export const useFlowStore = create((set, get) => ({
       currentStateId: stateId,
       stateEnteredAt: Date.parse(enteredAt),
       isPaused: false,
-      session: state.session
-        ? {
-            ...state.session,
-            currentState: stateId,
-            events: [
-              ...state.session.events,
-              createSessionEvent({
-                type: "action_triggered",
-                stateId: state.currentStateId,
-                at: enteredAt,
-                payload: { actionId: reason }
-              }),
-              createSessionEvent({
-                type: "state_exited",
-                stateId: state.currentStateId,
-                at: enteredAt
-              }),
-              createSessionEvent({
-                type: "state_entered",
-                stateId,
-                at: enteredAt
-              })
-            ]
-          }
-        : null,
+      session: state.session ? buildTransitionSession(state.session, state.currentStateId, stateId, reason, enteredAt) : null,
       history: [...state.history, createHistoryItem(stateId, reason)]
     }));
 
@@ -172,5 +148,53 @@ function createHistoryItem(stateId, reason) {
     stateId,
     reason,
     enteredAt: new Date().toISOString()
+  };
+}
+
+function buildTransitionSession(session, fromStateId, toStateId, reason, at) {
+  const baseEvents = [
+    ...session.events,
+    createSessionEvent({
+      type: "action_triggered",
+      stateId: fromStateId,
+      at,
+      payload: { actionId: reason }
+    }),
+    createSessionEvent({
+      type: "state_exited",
+      stateId: fromStateId,
+      at
+    }),
+    createSessionEvent({
+      type: "state_entered",
+      stateId: toStateId,
+      at
+    })
+  ];
+
+  if (toStateId !== "practice_game") {
+    return {
+      ...session,
+      currentState: toStateId,
+      events: baseEvents
+    };
+  }
+
+  return {
+    ...session,
+    currentState: toStateId,
+    events: [
+      ...baseEvents,
+      createSessionEvent({
+        type: "practice_started",
+        stateId: toStateId,
+        at,
+        payload: { character: session.practiceData.character }
+      })
+    ],
+    practiceData: {
+      ...session.practiceData,
+      startedAt: session.practiceData.startedAt ?? at
+    }
   };
 }
