@@ -94,6 +94,9 @@ export function SceneRenderer({
                 onSelect={() => onSelectObject?.(object.id)}
               />
             ))}
+          {sceneConfig?.uiPanels?.map((panel) => (
+            <SceneUiPanel key={panel.id} panel={panel} />
+          ))}
           {showHotspots
             ? sceneConfig?.hotspots?.map((hotspot) => (
                 <Hotspot key={hotspot.id} hotspot={hotspot} onSelect={() => onSelectObject?.(hotspot.target)} />
@@ -153,4 +156,89 @@ function SceneFloor({ color }) {
       </mesh>
     </group>
   );
+}
+
+function SceneUiPanel({ panel }) {
+  const texture = useMemo(() => createPanelTexture(panel), [panel]);
+
+  useEffect(() => () => texture.dispose(), [texture]);
+
+  const [width = 0.78, height = 0.38] = panel.size ?? [];
+  const tone = getPanelTone(panel.tone);
+
+  return (
+    <group position={panel.position} rotation={panel.rotation}>
+      <mesh>
+        <boxGeometry args={[width, height, 0.028]} />
+        <meshStandardMaterial
+          color={tone.background}
+          roughness={0.48}
+          metalness={0.08}
+          transparent
+          opacity={0.92}
+          emissive={tone.emissive}
+          emissiveIntensity={0.18}
+        />
+      </mesh>
+      <mesh position={[0, 0, 0.018]}>
+        <planeGeometry args={[width * 0.9, height * 0.78]} />
+        <meshBasicMaterial map={texture} transparent />
+      </mesh>
+    </group>
+  );
+}
+
+function createPanelTexture(panel) {
+  if (typeof document === "undefined") {
+    return new THREE.Texture();
+  }
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 320;
+  const context = canvas.getContext("2d");
+  const tone = getPanelTone(panel.tone);
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = tone.text;
+  context.font = "700 46px sans-serif";
+  context.fillText(panel.title, 34, 86);
+  context.font = "500 28px sans-serif";
+  wrapCanvasText(context, panel.body ?? "", 34, 145, 560, 40);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.needsUpdate = true;
+  return texture;
+}
+
+function wrapCanvasText(context, text, x, y, maxWidth, lineHeight) {
+  const characters = Array.from(text);
+  let line = "";
+  let offsetY = y;
+
+  characters.forEach((character) => {
+    const nextLine = `${line}${character}`;
+
+    if (context.measureText(nextLine).width > maxWidth && line) {
+      context.fillText(line, x, offsetY);
+      line = character;
+      offsetY += lineHeight;
+      return;
+    }
+
+    line = nextLine;
+  });
+
+  if (line) {
+    context.fillText(line, x, offsetY);
+  }
+}
+
+function getPanelTone(tone) {
+  if (tone === "dark") {
+    return { background: "#17302d", emissive: "#2f6f68", text: "#f5efe5" };
+  }
+
+  return { background: "#f4efe2", emissive: "#d7aa72", text: "#251f18" };
 }

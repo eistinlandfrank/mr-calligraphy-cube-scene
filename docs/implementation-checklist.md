@@ -434,8 +434,10 @@
 - [ ] **P7-06：实现配置错误提示**  
   验收：配置缺字段或格式错误时，前台显示明确错误。
 
-- [ ] **P7-07：实现 UI 面板配置驱动**  
+- [x] **P7-07：实现 UI 面板配置驱动**  
   验收：前台空间 UI 的标题、内容、位置来自配置。
+
+  验收记录：2026-06-10 SceneRenderer 新增 SceneUiPanel 渲染器，直接读取 SceneConfig.uiPanels 的 title、body、position、rotation、size 和 tone；面板文字通过 CanvasTexture 绘制，前台、预览和后台视窗共用配置驱动空间 UI；`npm run build` 通过。
 
 - [x] **P7-08：实现热点配置驱动**  
   验收：前台热点位置、名称、动作来自配置。

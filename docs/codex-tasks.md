@@ -62,3 +62,4 @@
 - 2026-06-10：完成 P6-05。后台 Scene Tree 按 Objects、Lights、UI Panels、Hotspots 分组显示当前场景配置节点。
 - 2026-06-10：完成 P6-15。后台保存场景配置时写入 IndexedDB 最新快照，并保留 localStorage 兼容读取。
 - 2026-06-10：P6 后台 3D 场景编辑器 MVP 阶段全部完成，阶段总表已更新为完成。
+- 2026-06-10：完成 P7-07。前台、预览和后台视窗根据 SceneConfig.uiPanels 渲染空间 UI 标题、内容、位置、旋转和尺寸。
