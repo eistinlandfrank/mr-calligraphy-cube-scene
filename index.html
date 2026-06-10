@@ -142,6 +142,25 @@
             <button id="reviewDownloadReport" type="button">下载报告</button>
           </div>
         </section>
+
+        <section id="historyPanel" class="history-panel" aria-label="学习档案" hidden>
+          <div class="history-head">
+            <div>
+              <div class="panel-eyebrow">学习档案</div>
+              <strong id="historySummary">暂无记录</strong>
+            </div>
+            <button id="historyDownloadArchive" type="button">导出档案</button>
+          </div>
+          <div class="history-filters" aria-label="历史筛选">
+            <button class="is-active" type="button" data-history-filter="all">全部</button>
+            <button type="button" data-history-filter="practice">练习</button>
+            <button type="button" data-history-filter="artwork">作品</button>
+            <button type="button" data-history-filter="report">报告</button>
+            <button type="button" data-history-filter="excellent">优秀</button>
+          </div>
+          <div id="historyTrend" class="history-trend" aria-label="分数趋势"></div>
+          <div id="historyList" class="history-list"></div>
+        </section>
       </section>
 
       <aside class="insight-stack" aria-label="实时反馈">

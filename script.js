@@ -780,6 +780,12 @@ const els = {
   reviewReplay: document.getElementById("reviewReplay"),
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
+  historyPanel: document.getElementById("historyPanel"),
+  historySummary: document.getElementById("historySummary"),
+  historyDownloadArchive: document.getElementById("historyDownloadArchive"),
+  historyFilterButtons: Array.from(document.querySelectorAll("[data-history-filter]")),
+  historyTrend: document.getElementById("historyTrend"),
+  historyList: document.getElementById("historyList"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -831,6 +837,7 @@ let roomRenderer = null;
 let activeRoleId = null;
 let activeMainObjectId = null;
 let mainImportDbPromise = null;
+let activeHistoryFilter = "all";
 const mainSceneUndoStack = [];
 
 document.addEventListener("DOMContentLoaded", init);
@@ -1301,6 +1308,7 @@ function init() {
   bindQuickControls();
   bindLearningControls();
   bindReviewControls();
+  bindHistoryControls();
   initPracticeCanvas();
   initInfoPanelDrag();
   installRoomApi();
@@ -3270,12 +3278,28 @@ function bindReviewControls() {
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
 }
 
+function bindHistoryControls() {
+  els.historyFilterButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      activeHistoryFilter = button.dataset.historyFilter || "all";
+      renderHistoryPanel(currentIndex);
+    });
+  });
+  els.historyDownloadArchive?.addEventListener("click", () => {
+    const result = window.MRAppState?.downloadArchive?.();
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  });
+}
+
 function renderLearningState() {
   renderLearningStateSummary();
   updateSceneText(currentIndex);
   updateInteractionPanel(currentIndex, activePointIndex);
   updatePathPanel(currentIndex);
   renderReviewPanel(currentIndex);
+  renderHistoryPanel(currentIndex);
 }
 
 function renderLearningStateSummary() {
@@ -3398,6 +3422,97 @@ function sanitizeFilename(name) {
     .slice(0, 64) || "mr-calligraphy-artwork";
 }
 
+function renderHistoryPanel(sceneIndex = currentIndex) {
+  if (!els.historyPanel || !window.MRAppState?.getHistory) {
+    return;
+  }
+
+  const history = window.MRAppState.getHistory({ filter: activeHistoryFilter, limit: 8 });
+  const shouldShow = history.total > 0 || sceneIndex >= 6;
+  els.historyPanel.hidden = !shouldShow;
+  if (!shouldShow) {
+    return;
+  }
+
+  els.historyFilterButtons.forEach((button) => {
+    const isActive = button.dataset.historyFilter === activeHistoryFilter;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+
+  const summary = history.summary;
+  els.historySummary.textContent = history.total
+    ? `${summary.practiceCount} 次练习 / ${summary.artworkCount} 幅作品 / ${summary.reportCount} 份报告 / 平均 ${summary.averageScore} 分`
+    : "暂无记录";
+  els.historyDownloadArchive.disabled = history.total === 0;
+
+  renderHistoryTrend(history.trend);
+  renderHistoryList(history.entries, history.filteredTotal);
+}
+
+function renderHistoryTrend(trend) {
+  if (!els.historyTrend) return;
+  els.historyTrend.innerHTML = "";
+
+  if (!trend.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "保存作品后会显示分数趋势。";
+    els.historyTrend.appendChild(empty);
+    return;
+  }
+
+  trend.forEach((item) => {
+    const bar = document.createElement("span");
+    const height = clamp(Number(item.score) || 0, 8, 100);
+    bar.className = `history-trend-bar is-${item.type}`;
+    bar.style.height = `${height}%`;
+    bar.title = `${item.label} ${item.score}分`;
+    bar.setAttribute("aria-label", `${item.label} ${item.score}分`);
+    els.historyTrend.appendChild(bar);
+  });
+}
+
+function renderHistoryList(entries, filteredTotal) {
+  if (!els.historyList) return;
+  els.historyList.innerHTML = "";
+
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "history-empty";
+    empty.textContent = filteredTotal ? "没有更多记录。" : "当前筛选下暂无记录。";
+    els.historyList.appendChild(empty);
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const item = document.createElement("article");
+    item.className = `history-item is-${entry.type}`;
+    const body = document.createElement("div");
+    const title = document.createElement("strong");
+    const meta = document.createElement("span");
+    const score = document.createElement("em");
+
+    title.textContent = entry.title;
+    meta.textContent = `${formatHistoryTime(entry.createdAt)} / ${entry.meta}`;
+    score.textContent = entry.score ? `${entry.score}分` : entry.status;
+    body.append(title, meta);
+    item.append(body, score);
+    els.historyList.appendChild(item);
+  });
+}
+
+function formatHistoryTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "未知时间";
+  }
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${month}-${day} ${hour}:${minute}`;
+}
+
 function focusModelView() {
   cubeYaw = 0;
   cubePitch = 2;
@@ -3443,6 +3558,7 @@ function loadScene(index) {
   updateStepNavigation(index);
   updateInteractionPanel(index, 0);
   renderReviewPanel(index);
+  renderHistoryPanel(index);
   hideError();
   hideNotice();
 }
@@ -3721,6 +3837,7 @@ function runAction(action) {
   updateSceneText(currentIndex);
   updatePathPanel(currentIndex);
   renderReviewPanel(currentIndex);
+  renderHistoryPanel(currentIndex);
 }
 
 function getLearningActionHint(sceneIndex) {
@@ -3805,6 +3922,8 @@ function runLearningAction(action) {
     case "打开历史记录":
       return { message: appState.getReportPreview(), target: 6 };
     case "筛选优秀记录":
+      activeHistoryFilter = "excellent";
+      renderHistoryPanel(6);
       return appState.filterExcellentRecords();
     case "导出学习报告":
     case "导出报告":

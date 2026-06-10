@@ -630,6 +630,111 @@
     return { ok: true, message: "已下载最近的学习报告。" };
   }
 
+  function getHistory(options = {}) {
+    const filter = String(options.filter || "all");
+    const limit = normalizeInteger(options.limit, 8, 1, 50);
+    const entries = [
+      ...state.sessions.map(sessionToHistoryEntry),
+      ...state.artworks.map(artworkToHistoryEntry),
+      ...state.reports.map(reportToHistoryEntry)
+    ]
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    const filteredEntries = entries.filter((entry) => {
+      if (filter === "all") return true;
+      if (filter === "excellent") return entry.score >= 88;
+      return entry.type === filter;
+    });
+    const scoreEntries = entries
+      .filter((entry) => Number.isFinite(entry.score) && entry.score > 0)
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt))
+      .slice(-8);
+    return {
+      filter,
+      entries: filteredEntries.slice(0, limit).map(clone),
+      total: entries.length,
+      filteredTotal: filteredEntries.length,
+      summary: getHistorySummary(entries),
+      trend: scoreEntries.map((entry) => ({
+        id: entry.id,
+        type: entry.type,
+        label: entry.shortLabel,
+        score: entry.score,
+        createdAt: entry.createdAt
+      }))
+    };
+  }
+
+  function sessionToHistoryEntry(session) {
+    return {
+      id: session.id,
+      type: "practice",
+      title: `${session.glyph}字${session.trainingMode === "compare" ? "对比" : "示范"}练习`,
+      shortLabel: session.glyph,
+      createdAt: session.endedAt || session.startedAt,
+      score: session.score,
+      meta: `${session.strokeCount || 0} 笔 / ${session.pointCount || 0} 点`,
+      status: session.status === "saved" ? "已保存" : "进行中",
+      sessionId: session.id
+    };
+  }
+
+  function artworkToHistoryEntry(artwork) {
+    return {
+      id: artwork.id,
+      type: "artwork",
+      title: artwork.title,
+      shortLabel: artwork.glyph,
+      createdAt: artwork.createdAt,
+      score: artwork.score,
+      meta: `${artwork.style} / ${artwork.strokeCount || 0} 笔`,
+      status: artwork.imageData ? "有截图" : "无截图",
+      sessionId: artwork.sessionId
+    };
+  }
+
+  function reportToHistoryEntry(report) {
+    return {
+      id: report.id,
+      type: "report",
+      title: "学习报告",
+      shortLabel: "报告",
+      createdAt: report.createdAt,
+      score: report.averageScore,
+      meta: `${report.sessionCount} 次练习 / ${report.artworkCount} 幅作品`,
+      status: "可下载",
+      reportId: report.id
+    };
+  }
+
+  function getHistorySummary(entries) {
+    const practiceCount = entries.filter((entry) => entry.type === "practice").length;
+    const artworkCount = entries.filter((entry) => entry.type === "artwork").length;
+    const reportCount = entries.filter((entry) => entry.type === "report").length;
+    const scored = entries.filter((entry) => entry.score > 0);
+    const average = scored.length
+      ? Math.round(scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length)
+      : 0;
+    return {
+      total: entries.length,
+      practiceCount,
+      artworkCount,
+      reportCount,
+      averageScore: average
+    };
+  }
+
+  function downloadArchive() {
+    const archive = {
+      exportedAt: new Date().toISOString(),
+      version: VERSION,
+      state: clone(state),
+      history: getHistory({ limit: 50 })
+    };
+    downloadJson(archive, `mr-calligraphy-archive-${Date.now()}.json`);
+    return { ok: true, message: "已导出完整学习档案。" };
+  }
+
   window.MRAppState = {
     storageKey: STORAGE_KEY,
     modes: clone(MODE_CONFIG),
@@ -639,6 +744,7 @@
     getModeConfig,
     getReportPreview,
     getLatestReview,
+    getHistory,
     setMode,
     selectDailyGlyph,
     rotateCopybook,
@@ -652,6 +758,7 @@
     filterExcellentRecords,
     createPlan,
     createReport,
-    downloadReport
+    downloadReport,
+    downloadArchive
   };
 })();
