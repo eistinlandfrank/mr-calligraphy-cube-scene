@@ -699,18 +699,35 @@ button {
 
 .main-layer-row {
   display: grid;
-  grid-template-columns: 18px minmax(0, 1fr) 34px 34px;
+  grid-template-columns: 26px 18px minmax(0, 1fr) 34px 34px;
   gap: 6px;
   align-items: center;
+  position: relative;
 }
 
 .main-layer-select,
-.main-layer-icon {
+.main-layer-icon,
+.main-layer-drag {
   border: 1px solid rgba(255, 255, 255, 0.13);
   border-radius: 6px;
   color: #ffffff;
   background: rgba(255, 255, 255, 0.075);
   cursor: pointer;
+}
+
+.main-layer-drag {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  min-height: 34px;
+  color: rgba(255, 255, 255, 0.58);
+  cursor: grab;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.main-layer-drag:active {
+  cursor: grabbing;
 }
 
 .main-layer-select {
@@ -759,6 +776,30 @@ button {
   background: rgba(63, 152, 101, 0.24);
 }
 
+.main-layer-row.is-dragging {
+  opacity: 0.54;
+}
+
+.main-layer-row.is-drop-before::before,
+.main-layer-row.is-drop-after::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: #74ffdb;
+  box-shadow: 0 0 12px rgba(116, 255, 219, 0.58);
+}
+
+.main-layer-row.is-drop-before::before {
+  top: -4px;
+}
+
+.main-layer-row.is-drop-after::after {
+  bottom: -4px;
+}
+
 .main-layer-row.is-hidden .main-layer-select,
 .main-layer-row.is-locked .main-layer-select {
   color: rgba(255, 255, 255, 0.64);
@@ -777,7 +818,8 @@ button {
 }
 
 .main-layer-select:hover,
-.main-layer-icon:hover {
+.main-layer-icon:hover,
+.main-layer-drag:hover {
   border-color: rgba(116, 255, 219, 0.44);
   background: rgba(47, 111, 104, 0.28);
 }

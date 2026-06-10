@@ -185,6 +185,7 @@ const selectedLayerIds = new Set();
 let importDbPromise = null;
 let selectedEntry = null;
 let dragStart = null;
+let draggedLayerId = null;
 let inputStart = null;
 
 const materials = createMaterials();
@@ -987,6 +988,49 @@ function readNumber(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function normalizeLayerOrder(value, validIds = null) {
+  const valid = Array.isArray(validIds) ? new Set(validIds.map(String)) : null;
+  const seen = new Set();
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((id) => String(id || "").trim())
+    .filter((id) => {
+      if (!id || seen.has(id) || (valid && !valid.has(id))) {
+        return false;
+      }
+      seen.add(id);
+      return true;
+    });
+}
+
+function getLayerOrderIds() {
+  const currentIds = [...objects.keys()];
+  const ordered = normalizeLayerOrder(layout.layerOrder, currentIds);
+  const orderedSet = new Set(ordered);
+  return [
+    ...ordered,
+    ...currentIds.filter((id) => !orderedSet.has(id))
+  ];
+}
+
+function sortLayerEntries(entries) {
+  const order = getLayerOrderIds();
+  const orderIndex = new Map(order.map((id, index) => [id, index]));
+  return [...entries].sort((a, b) => {
+    const left = orderIndex.has(a.id) ? orderIndex.get(a.id) : Number.MAX_SAFE_INTEGER;
+    const right = orderIndex.has(b.id) ? orderIndex.get(b.id) : Number.MAX_SAFE_INTEGER;
+    return left - right;
+  });
+}
+
+function saveLayerOrder(order = getLayerOrderIds()) {
+  layout.layerOrder = normalizeLayerOrder(order, [...objects.keys()]);
+  saveLayout();
+}
+
 function applyState(object, state) {
   const scaleFactor = object.userData.scaleFactor || 1;
 
@@ -1021,6 +1065,7 @@ function loadLayout() {
     const parsed = raw ? JSON.parse(raw) : {};
     return {
       objects: parsed && typeof parsed.objects === "object" && parsed.objects ? parsed.objects : {},
+      layerOrder: normalizeLayerOrder(parsed?.layerOrder),
       customObjects: Array.isArray(parsed.customObjects)
         ? parsed.customObjects.map(normalizeCustomObject)
         : [],
@@ -1031,7 +1076,7 @@ function loadLayout() {
     };
   } catch (error) {
     console.warn("Main scene layout could not be loaded.", error);
-    return { objects: {}, customObjects: [], importedModels: [], lighting: { ...DEFAULT_LIGHTING } };
+    return { objects: {}, layerOrder: [], customObjects: [], importedModels: [], lighting: { ...DEFAULT_LIGHTING } };
   }
 }
 
@@ -1094,6 +1139,7 @@ function normalizeSnapshotLayout(value = {}) {
     objects: value && typeof value.objects === "object" && value.objects
       ? clonePlain(value.objects)
       : {},
+    layerOrder: normalizeLayerOrder(value.layerOrder),
     customObjects: Array.isArray(value.customObjects)
       ? value.customObjects.map(normalizeCustomObject)
       : [],
@@ -1477,7 +1523,7 @@ function renderLayerPanel() {
     return;
   }
 
-  const entries = [...objects.values()];
+  const entries = sortLayerEntries([...objects.values()]);
   const query = String(layerSearchInput?.value || "").trim().toLowerCase();
   const visibleCount = entries.filter((entry) => !isEntryHidden(entry)).length;
   const hiddenCount = entries.length - visibleCount;
@@ -1599,6 +1645,16 @@ function createLayerRow(entry) {
   row.classList.toggle("is-locked", isEntryLocked(entry));
   row.dataset.layerId = entry.id;
 
+  const dragHandle = document.createElement("button");
+  dragHandle.type = "button";
+  dragHandle.className = "main-layer-drag";
+  dragHandle.dataset.featureState = "real";
+  dragHandle.dataset.layerDragHandle = entry.id;
+  dragHandle.draggable = true;
+  dragHandle.textContent = "≡";
+  dragHandle.title = "拖拽调整图层顺序";
+  dragHandle.setAttribute("aria-label", `拖拽排序：${entry.label}`);
+
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
   checkbox.className = "main-layer-checkbox";
@@ -1639,7 +1695,7 @@ function createLayerRow(entry) {
   lockButton.title = isEntryLocked(entry) ? "解锁对象" : "锁定对象";
   lockButton.setAttribute("aria-label", lockButton.title);
 
-  row.append(checkbox, selectButton, visibilityButton, lockButton);
+  row.append(dragHandle, checkbox, selectButton, visibilityButton, lockButton);
   return row;
 }
 
@@ -1666,6 +1722,118 @@ function handleLayerClick(event) {
   }
 }
 
+function handleLayerDragStart(event) {
+  const handle = event.target.closest("[data-layer-drag-handle]");
+  if (!handle) {
+    return;
+  }
+
+  const id = handle.dataset.layerDragHandle;
+  if (!objects.has(id)) {
+    event.preventDefault();
+    return;
+  }
+
+  draggedLayerId = id;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", id);
+  handle.closest("[data-layer-id]")?.classList.add("is-dragging");
+}
+
+function handleLayerDragOver(event) {
+  if (!draggedLayerId) {
+    return;
+  }
+
+  const row = event.target.closest("[data-layer-id]");
+  if (!row || row.dataset.layerId === draggedLayerId) {
+    clearLayerDropMarkers();
+    return;
+  }
+
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  const position = getLayerDropPosition(event, row);
+  clearLayerDropMarkers(row);
+  row.classList.toggle("is-drop-before", position === "before");
+  row.classList.toggle("is-drop-after", position === "after");
+}
+
+function handleLayerDragLeave(event) {
+  const row = event.target.closest("[data-layer-id]");
+  if (!row || row.contains(event.relatedTarget)) {
+    return;
+  }
+  row.classList.remove("is-drop-before", "is-drop-after");
+}
+
+function handleLayerDrop(event) {
+  if (!draggedLayerId) {
+    return;
+  }
+
+  const sourceId = draggedLayerId;
+  const row = event.target.closest("[data-layer-id]");
+  if (!row || row.dataset.layerId === sourceId) {
+    draggedLayerId = null;
+    clearLayerDropMarkers();
+    return;
+  }
+
+  event.preventDefault();
+  const position = getLayerDropPosition(event, row);
+  moveLayerInOrder(sourceId, row.dataset.layerId, position);
+  draggedLayerId = null;
+  clearLayerDropMarkers();
+}
+
+function handleLayerDragEnd() {
+  draggedLayerId = null;
+  clearLayerDropMarkers();
+}
+
+function getLayerDropPosition(event, row) {
+  const rect = row.getBoundingClientRect();
+  return event.clientY > rect.top + rect.height / 2 ? "after" : "before";
+}
+
+function clearLayerDropMarkers(except = null) {
+  layerList?.querySelectorAll(".main-layer-row.is-drop-before, .main-layer-row.is-drop-after, .main-layer-row.is-dragging")
+    .forEach((row) => {
+      if (row !== except) {
+        row.classList.remove("is-drop-before", "is-drop-after");
+      }
+      if (!draggedLayerId || row.dataset.layerId !== draggedLayerId) {
+        row.classList.remove("is-dragging");
+      }
+    });
+}
+
+function moveLayerInOrder(sourceId, targetId, position = "before") {
+  if (!objects.has(sourceId) || !objects.has(targetId) || sourceId === targetId) {
+    return false;
+  }
+
+  const beforeOrder = getLayerOrderIds();
+  const nextOrder = beforeOrder.filter((id) => id !== sourceId);
+  const targetIndex = nextOrder.indexOf(targetId);
+  if (targetIndex < 0) {
+    return false;
+  }
+
+  nextOrder.splice(position === "after" ? targetIndex + 1 : targetIndex, 0, sourceId);
+  if (beforeOrder.join("\u0001") === nextOrder.join("\u0001")) {
+    return false;
+  }
+
+  pushUndo({ kind: "layer-order", order: beforeOrder, label: "图层排序" });
+  saveLayerOrder(nextOrder);
+  renderLayerPanel();
+  createLayoutSnapshot("调整图层顺序", { notice: false });
+  showNotice("图层顺序已保存到本机布局。");
+  return true;
+}
+
 function handleLayerSelectionChange(event) {
   const checkbox = event.target.closest("[data-layer-check]");
   if (!checkbox) return;
@@ -1681,7 +1849,7 @@ function handleLayerSelectionChange(event) {
 
 function getFilteredLayerEntries() {
   const query = String(layerSearchInput?.value || "").trim().toLowerCase();
-  return [...objects.values()].filter((entry) => {
+  return sortLayerEntries([...objects.values()]).filter((entry) => {
     if (!query) return true;
     return [
       entry.id,
@@ -2053,6 +2221,14 @@ async function undo() {
     return;
   }
 
+  if (item.kind === "layer-order") {
+    saveLayerOrder(item.order || []);
+    renderLayerPanel();
+    createLayoutSnapshot("撤回图层排序", { notice: false });
+    showNotice("已撤回图层排序。");
+    return;
+  }
+
   applySnapshot(item);
 }
 
@@ -2070,6 +2246,7 @@ function saveEntry(entry) {
     hidden: state.hidden,
     locked: state.locked
   };
+  layout.layerOrder = getLayerOrderIds();
   saveLayout();
 }
 
@@ -2355,6 +2532,7 @@ function removeCustomEntry(entry, options = {}) {
   scene.remove(entry.object);
   objects.delete(entry.id);
   layout.customObjects = layout.customObjects.filter((item) => item.id !== entry.id);
+  layout.layerOrder = normalizeLayerOrder(layout.layerOrder).filter((id) => id !== entry.id);
   delete layout.objects[entry.id];
 
   if (options.save !== false) {
@@ -2398,6 +2576,7 @@ function removeImportedEntry(entry, options = {}) {
   scene.remove(entry.object);
   objects.delete(entry.id);
   layout.importedModels = layout.importedModels.filter((item) => item.id !== entry.id);
+  layout.layerOrder = normalizeLayerOrder(layout.layerOrder).filter((id) => id !== entry.id);
   delete layout.objects[entry.id];
 
   if (options.deleteStorage !== false && isImportedModelReferencedByHistory(importRecord)) {
@@ -2519,6 +2698,7 @@ function resetAll() {
   createLayoutSnapshot("恢复全部默认前", { notice: false });
   undoStack.length = 0;
   layout.objects = {};
+  layout.layerOrder = [];
   layout.customObjects = [];
   layout.importedModels = [];
   [...objects.values()].forEach((entry) => {
@@ -2611,6 +2791,11 @@ function bindUi() {
   layerSearchInput?.addEventListener("input", renderLayerPanel);
   layerList?.addEventListener("click", handleLayerClick);
   layerList?.addEventListener("change", handleLayerSelectionChange);
+  layerList?.addEventListener("dragstart", handleLayerDragStart);
+  layerList?.addEventListener("dragover", handleLayerDragOver);
+  layerList?.addEventListener("dragleave", handleLayerDragLeave);
+  layerList?.addEventListener("drop", handleLayerDrop);
+  layerList?.addEventListener("dragend", handleLayerDragEnd);
   layerSelectVisibleInput?.addEventListener("change", handleLayerSelectVisibleChange);
   layerBatchHideButton?.addEventListener("click", () => applyLayerBatchVisibility(true));
   layerBatchShowButton?.addEventListener("click", () => applyLayerBatchVisibility(false));
