@@ -3207,6 +3207,68 @@ body.is-model-view .notice-panel {
   background: rgba(63, 152, 101, 0.72);
 }
 
+.history-batch {
+  display: grid;
+  grid-template-columns: minmax(96px, auto) minmax(66px, 1fr) repeat(2, minmax(70px, auto));
+  gap: 6px;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.history-batch label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  color: rgba(255, 250, 241, 0.76);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-batch input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #3f9865;
+}
+
+.history-batch span {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-batch button,
+.history-load-more {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-batch button:hover,
+.history-batch button:focus-visible,
+.history-load-more:hover,
+.history-load-more:focus-visible {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  background: rgba(47, 111, 104, 0.58);
+}
+
+.history-batch button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .history-trend {
   display: flex;
   align-items: end;
@@ -3244,6 +3306,24 @@ body.is-model-view .notice-panel {
   display: grid;
   gap: 6px;
   margin-top: 8px;
+}
+
+.history-list-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: 7px;
+  align-items: center;
+}
+
+.history-list-row.is-selected .history-item {
+  background: rgba(63, 152, 101, 0.32);
+}
+
+.history-select {
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+  accent-color: #3f9865;
 }
 
 .history-item {
@@ -3301,6 +3381,15 @@ body.is-model-view .notice-panel {
   font-size: 12px;
   font-style: normal;
   font-weight: 900;
+}
+
+.history-load-more {
+  width: 100%;
+  margin-top: 7px;
+}
+
+.history-load-more[hidden] {
+  display: none;
 }
 
 .history-empty {
@@ -3665,6 +3754,10 @@ body.is-model-view .notice-panel {
 
   .coach-workspace {
     grid-template-columns: 1fr;
+  }
+
+  .history-batch {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .score-board {

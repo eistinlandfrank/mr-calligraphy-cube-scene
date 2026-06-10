@@ -1578,6 +1578,10 @@
       entries: filteredEntries.slice(0, limit).map(clone),
       total: entries.length,
       filteredTotal: filteredEntries.length,
+      allIds: entries.map((entry) => entry.id),
+      filteredIds: filteredEntries.map((entry) => entry.id),
+      limit,
+      hasMore: filteredEntries.length > limit,
       summary: getHistorySummary(entries),
       trend: scoreEntries.map((entry) => ({
         id: entry.id,
@@ -1808,6 +1812,104 @@
     return { ok: false, message: "未找到要删除的记录。" };
   }
 
+  function normalizeHistoryIds(ids) {
+    return [...new Set((Array.isArray(ids) ? ids : [ids])
+      .map((id) => String(id || "").trim())
+      .filter(Boolean))];
+  }
+
+  function getHistoryExportPayload(ids) {
+    const selectedIds = normalizeHistoryIds(ids);
+    const selected = new Set(selectedIds);
+    const sessions = state.sessions.filter((session) => selected.has(session.id));
+    const artworks = state.artworks.filter((artwork) => selected.has(artwork.id));
+    const reports = state.reports.filter((report) => selected.has(report.id));
+    const history = [
+      ...sessions.map(sessionToHistoryEntry),
+      ...artworks.map(artworkToHistoryEntry),
+      ...reports.map(reportToHistoryEntry)
+    ]
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    return {
+      exportedAt: new Date().toISOString(),
+      version: VERSION,
+      selectedIds,
+      summary: getHistorySummary(history),
+      records: {
+        sessions: sessions.map(clone),
+        artworks: artworks.map(clone),
+        reports: reports.map(clone)
+      },
+      history: history.map((entry) => getHistoryDetail(entry.id)).filter(Boolean)
+    };
+  }
+
+  function downloadHistoryRecords(ids) {
+    const payload = getHistoryExportPayload(ids);
+    if (!payload.history.length) {
+      return { ok: false, message: "请选择要导出的学习档案记录。" };
+    }
+    downloadJson(payload, `mr-calligraphy-history-selection-${Date.now()}.json`);
+    return { ok: true, count: payload.history.length, message: `已导出 ${payload.history.length} 条所选学习档案。` };
+  }
+
+  function deleteHistoryRecords(ids) {
+    const selectedIds = normalizeHistoryIds(ids);
+    if (!selectedIds.length) {
+      return { ok: false, message: "请选择要删除的学习档案记录。" };
+    }
+
+    const selected = new Set(selectedIds);
+    const deleted = {
+      practice: state.sessions.filter((session) => selected.has(session.id)),
+      artwork: state.artworks.filter((artwork) => selected.has(artwork.id)),
+      report: state.reports.filter((report) => selected.has(report.id))
+    };
+    const deletedCount = deleted.practice.length + deleted.artwork.length + deleted.report.length;
+
+    if (!deletedCount) {
+      return { ok: false, message: "未找到要删除的学习档案记录。" };
+    }
+
+    const deletedSessionIds = new Set(deleted.practice.map((session) => session.id));
+    const deletedArtworkIds = new Set(deleted.artwork.map((artwork) => artwork.id));
+    state.sessions = state.sessions.filter((session) => !selected.has(session.id));
+    state.artworks = state.artworks.filter((artwork) => !selected.has(artwork.id));
+    state.reports = state.reports.filter((report) => !selected.has(report.id));
+
+    if (deletedSessionIds.has(state.currentSessionId)) {
+      state.currentSessionId = null;
+    }
+
+    state.artworks.forEach((artwork) => {
+      if (deletedSessionIds.has(artwork.sessionId)) {
+        artwork.sessionId = null;
+      }
+    });
+    state.reports.forEach((report) => {
+      if (deletedSessionIds.has(report.latestSessionId)) {
+        report.latestSessionId = null;
+      }
+      if (deletedArtworkIds.has(report.latestArtworkId)) {
+        report.latestArtworkId = null;
+      }
+    });
+
+    addEvent("history-batch-delete", `批量删除学习档案：${deletedCount} 条`);
+    saveState();
+    return {
+      ok: true,
+      deletedCount,
+      deleted: {
+        practice: deleted.practice.length,
+        artwork: deleted.artwork.length,
+        report: deleted.report.length
+      },
+      message: `已删除 ${deletedCount} 条学习档案记录。`
+    };
+  }
+
   function downloadArchive() {
     const archive = {
       exportedAt: new Date().toISOString(),
@@ -1838,6 +1940,8 @@
     getHistoryDetail,
     renameHistoryRecord,
     deleteHistoryRecord,
+    deleteHistoryRecords,
+    downloadHistoryRecords,
     setMode,
     selectDailyGlyph,
     rotateCopybook,

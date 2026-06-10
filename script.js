@@ -830,8 +830,13 @@ const els = {
   historySummary: document.getElementById("historySummary"),
   historyDownloadArchive: document.getElementById("historyDownloadArchive"),
   historyFilterButtons: Array.from(document.querySelectorAll("[data-history-filter]")),
+  historySelectVisible: document.getElementById("historySelectVisible"),
+  historySelectionStatus: document.getElementById("historySelectionStatus"),
+  historyExportSelected: document.getElementById("historyExportSelected"),
+  historyDeleteSelected: document.getElementById("historyDeleteSelected"),
   historyTrend: document.getElementById("historyTrend"),
   historyList: document.getElementById("historyList"),
+  historyLoadMore: document.getElementById("historyLoadMore"),
   historyDetail: document.getElementById("historyDetail"),
   historyDetailType: document.getElementById("historyDetailType"),
   historyDetailTitle: document.getElementById("historyDetailTitle"),
@@ -901,6 +906,9 @@ let activeMainObjectId = null;
 let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
+let activeHistoryLimit = 8;
+const selectedHistoryIds = new Set();
+const HISTORY_PAGE_SIZE = 8;
 let isReplayVideoExporting = false;
 let lecturePlaybackTimer = null;
 const LECTURE_PLAYBACK_STEP_MS = 1200;
@@ -3447,10 +3455,21 @@ function bindHistoryControls() {
   els.historyFilterButtons.forEach((button) => {
     button.addEventListener("click", () => {
       activeHistoryFilter = button.dataset.historyFilter || "all";
+      activeHistoryLimit = HISTORY_PAGE_SIZE;
+      activeHistoryDetailId = null;
+      selectedHistoryIds.clear();
       renderHistoryPanel(currentIndex);
     });
   });
   els.historyList?.addEventListener("click", handleHistoryListClick);
+  els.historyList?.addEventListener("change", handleHistorySelectionChange);
+  els.historySelectVisible?.addEventListener("change", handleHistorySelectVisible);
+  els.historyExportSelected?.addEventListener("click", exportSelectedHistoryRecords);
+  els.historyDeleteSelected?.addEventListener("click", deleteSelectedHistoryRecords);
+  els.historyLoadMore?.addEventListener("click", () => {
+    activeHistoryLimit += HISTORY_PAGE_SIZE;
+    renderHistoryPanel(currentIndex);
+  });
   els.historyDetailClose?.addEventListener("click", () => {
     activeHistoryDetailId = null;
     renderHistoryDetail();
@@ -3892,7 +3911,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
     return;
   }
 
-  const history = window.MRAppState.getHistory({ filter: activeHistoryFilter, limit: 8 });
+  const history = window.MRAppState.getHistory({ filter: activeHistoryFilter, limit: activeHistoryLimit });
   const shouldShow = history.total > 0 || sceneIndex >= 6;
   els.historyPanel.hidden = !shouldShow;
   if (!shouldShow) {
@@ -3910,10 +3929,51 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
     ? `${summary.practiceCount} 次练习 / ${summary.artworkCount} 幅作品 / ${summary.reportCount} 份报告 / 平均 ${summary.averageScore} 分`
     : "暂无记录";
   els.historyDownloadArchive.disabled = history.total === 0;
+  pruneHistorySelection(history.allIds || []);
 
   renderHistoryTrend(history.trend);
   renderHistoryList(history.entries, history.filteredTotal);
+  renderHistoryBatchControls(history);
   renderHistoryDetail();
+}
+
+function pruneHistorySelection(allIds) {
+  const validIds = new Set(allIds);
+  selectedHistoryIds.forEach((id) => {
+    if (!validIds.has(id)) {
+      selectedHistoryIds.delete(id);
+    }
+  });
+}
+
+function renderHistoryBatchControls(history) {
+  const visibleIds = (history.entries || []).map((entry) => entry.id);
+  const selectedCount = selectedHistoryIds.size;
+  const selectableCount = visibleIds.length;
+  const selectedVisibleCount = visibleIds.filter((id) => selectedHistoryIds.has(id)).length;
+
+  if (els.historySelectVisible) {
+    els.historySelectVisible.checked = selectableCount > 0 && selectedVisibleCount === selectableCount;
+    els.historySelectVisible.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < selectableCount;
+    els.historySelectVisible.disabled = selectableCount === 0;
+  }
+  if (els.historySelectionStatus) {
+    els.historySelectionStatus.textContent = selectedCount
+      ? `已选 ${selectedCount} 条`
+      : `本页 ${selectableCount} 条`;
+  }
+  if (els.historyExportSelected) {
+    els.historyExportSelected.disabled = selectedCount === 0;
+  }
+  if (els.historyDeleteSelected) {
+    els.historyDeleteSelected.disabled = selectedCount === 0;
+  }
+  if (els.historyLoadMore) {
+    els.historyLoadMore.hidden = !history.hasMore;
+    els.historyLoadMore.textContent = history.hasMore
+      ? `加载更多记录（${history.entries.length}/${history.filteredTotal}）`
+      : "已显示全部记录";
+  }
 }
 
 function renderPlanPanel(sceneIndex = currentIndex) {
@@ -4000,6 +4060,17 @@ function renderHistoryList(entries, filteredTotal) {
   }
 
   entries.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "history-list-row";
+    row.classList.toggle("is-selected", selectedHistoryIds.has(entry.id));
+
+    const selector = document.createElement("input");
+    selector.type = "checkbox";
+    selector.className = "history-select";
+    selector.checked = selectedHistoryIds.has(entry.id);
+    selector.dataset.historySelectId = entry.id;
+    selector.setAttribute("aria-label", `选择记录：${entry.title}`);
+
     const item = document.createElement("button");
     item.type = "button";
     item.className = `history-item is-${entry.type}`;
@@ -4017,7 +4088,8 @@ function renderHistoryList(entries, filteredTotal) {
     score.textContent = entry.score ? `${entry.score}分` : entry.status;
     body.append(title, meta);
     item.append(body, score);
-    els.historyList.appendChild(item);
+    row.append(selector, item);
+    els.historyList.appendChild(row);
   });
 }
 
@@ -4026,6 +4098,72 @@ function handleHistoryListClick(event) {
   if (!item) return;
   activeHistoryDetailId = item.dataset.historyId;
   renderHistoryPanel(currentIndex);
+}
+
+function handleHistorySelectionChange(event) {
+  const input = event.target.closest("[data-history-select-id]");
+  if (!input) return;
+  const recordId = input.dataset.historySelectId;
+  if (input.checked) {
+    selectedHistoryIds.add(recordId);
+  } else {
+    selectedHistoryIds.delete(recordId);
+  }
+  renderHistoryPanel(currentIndex);
+}
+
+function handleHistorySelectVisible(event) {
+  const history = window.MRAppState?.getHistory?.({ filter: activeHistoryFilter, limit: activeHistoryLimit });
+  const visibleIds = (history?.entries || []).map((entry) => entry.id);
+  if (event.target.checked) {
+    visibleIds.forEach((id) => selectedHistoryIds.add(id));
+  } else {
+    visibleIds.forEach((id) => selectedHistoryIds.delete(id));
+  }
+  renderHistoryPanel(currentIndex);
+}
+
+function exportSelectedHistoryRecords() {
+  if (!selectedHistoryIds.size) {
+    showNotice("请先选择要导出的学习档案。");
+    return;
+  }
+  const result = window.MRAppState?.downloadHistoryRecords?.([...selectedHistoryIds]);
+  if (result?.ok) {
+    showNotice(result.message);
+    return;
+  }
+  showNotice(result?.message || "导出所选档案失败。");
+}
+
+function deleteSelectedHistoryRecords() {
+  const count = selectedHistoryIds.size;
+  if (!count) {
+    showNotice("请先选择要删除的学习档案。");
+    return;
+  }
+
+  const confirmed = window.confirm(`确定删除已选择的 ${count} 条学习档案吗？此操作会更新本机记录。`);
+  if (!confirmed) {
+    return;
+  }
+
+  const ids = [...selectedHistoryIds];
+  const result = window.MRAppState?.deleteHistoryRecords?.(ids);
+  if (result?.ok) {
+    ids.forEach((id) => selectedHistoryIds.delete(id));
+    if (activeHistoryDetailId && ids.includes(activeHistoryDetailId)) {
+      activeHistoryDetailId = null;
+    }
+    renderLearningStateSummary();
+    renderReviewPanel(currentIndex);
+    renderHistoryPanel(currentIndex);
+    updatePathPanel(currentIndex);
+    updateSceneText(currentIndex);
+    showNotice(result.message);
+    return;
+  }
+  showNotice(result?.message || "批量删除失败。");
 }
 
 function renderHistoryDetail() {
@@ -4184,6 +4322,7 @@ function deleteHistoryDetail() {
 
   const result = window.MRAppState?.deleteHistoryRecord?.(detail.id);
   if (result?.ok) {
+    selectedHistoryIds.delete(detail.id);
     activeHistoryDetailId = null;
     renderLearningStateSummary();
     renderReviewPanel(currentIndex);
