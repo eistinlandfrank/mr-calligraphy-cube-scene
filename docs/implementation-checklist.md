@@ -130,8 +130,10 @@
 
   验收记录：2026-06-10 新增 `src/data/defaultProject.json`，包含项目 ID、名称、默认场景、默认流程、场景列表、主题和功能开关；前台 Demo 已读取该配置用于项目名称展示，JSON 解析通过。
 
-- [ ] **P2-07：建立默认流程配置**  
+- [x] **P2-07：建立默认流程配置**  
   验收：`src/data/defaultFlow.json` 存在，覆盖 idle 到 finished 的主演示流程。
+
+  验收记录：2026-06-10 新增 `src/data/defaultFlow.json`，覆盖 `idle`、`ready_check`、`enter_experience`、`immersive_intro`、`calligraphy_tutorial`、`practice_game`、`scoring`、`report`、`caregiver_confirm`、`finished`，并通过 FlowConfig 校验。
 
 - [x] **P2-08：建立默认场景配置**  
   验收：至少包含产品视角、老人视角、护工视角三个默认场景配置。

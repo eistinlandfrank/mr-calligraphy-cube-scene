@@ -1,0 +1,108 @@
+{
+  "id": "main-demo-flow",
+  "name": "MR书法康养主演示流程",
+  "version": "0.1.0",
+  "initialState": "idle",
+  "states": [
+    {
+      "id": "idle",
+      "title": "等待开始",
+      "description": "体验尚未开始，等待护工或演示人员启动。",
+      "actions": ["start"],
+      "next": "ready_check",
+      "duration": 0,
+      "enterActions": ["resetSessionDraft"],
+      "exitActions": ["createPracticeSession"]
+    },
+    {
+      "id": "ready_check",
+      "title": "准备检查",
+      "description": "确认老人状态、座椅角度、舱门安全和护工监护面板。",
+      "actions": ["next", "pause", "finish"],
+      "next": "enter_experience",
+      "duration": 45,
+      "enterActions": ["recordReadyCheckStarted"],
+      "exitActions": ["recordReadyCheckCompleted"]
+    },
+    {
+      "id": "enter_experience",
+      "title": "入舱启动",
+      "description": "关闭舱门并切换到舱内沉浸视角。",
+      "actions": ["next", "pause", "finish"],
+      "next": "immersive_intro",
+      "duration": 35,
+      "enterActions": ["closeCapsuleDoor", "recordStateEvent"],
+      "exitActions": ["syncCaregiverDashboard"]
+    },
+    {
+      "id": "immersive_intro",
+      "title": "沉浸导入",
+      "description": "播放呼吸引导和水墨空间说明，让用户进入平稳状态。",
+      "actions": ["next", "pause", "finish", "callCaregiver"],
+      "next": "calligraphy_tutorial",
+      "duration": 90,
+      "enterActions": ["startStateTimer", "showBreathingGuide"],
+      "exitActions": ["saveIntroMetrics"]
+    },
+    {
+      "id": "calligraphy_tutorial",
+      "title": "书法讲解",
+      "description": "讲解永字八法、笔画顺序和描摹方式。",
+      "actions": ["next", "pause", "finish", "callCaregiver"],
+      "next": "practice_game",
+      "duration": 120,
+      "enterActions": ["showStrokeTutorial"],
+      "exitActions": ["recordTutorialCompleted"]
+    },
+    {
+      "id": "practice_game",
+      "title": "书法练习",
+      "description": "采集用户鼠标、触控或后续 XR 输入轨迹，完成永字八法练习。",
+      "actions": ["pause", "resume", "restart", "finish", "callCaregiver"],
+      "next": "scoring",
+      "duration": 300,
+      "enterActions": ["startPracticeCapture"],
+      "exitActions": ["savePracticeData"]
+    },
+    {
+      "id": "scoring",
+      "title": "评分生成",
+      "description": "根据轨迹偏差、笔顺、节奏和中断情况生成综合分。",
+      "actions": ["next", "pause", "finish"],
+      "next": "report",
+      "duration": 30,
+      "enterActions": ["calculatePracticeScore"],
+      "exitActions": ["saveReportDraft"]
+    },
+    {
+      "id": "report",
+      "title": "体验报告",
+      "description": "展示综合分、分项指标、动态建议和本次作品。",
+      "actions": ["next", "saveReport", "finish"],
+      "next": "caregiver_confirm",
+      "duration": 90,
+      "enterActions": ["renderReport"],
+      "exitActions": ["notifyCaregiverReportReady"]
+    },
+    {
+      "id": "caregiver_confirm",
+      "title": "护工确认",
+      "description": "护工确认保存报告、重新练习或结束本次体验。",
+      "actions": ["confirm", "restart", "saveReport", "finish"],
+      "next": "finished",
+      "duration": 0,
+      "enterActions": ["waitForCaregiverConfirm"],
+      "exitActions": ["persistSession"]
+    },
+    {
+      "id": "finished",
+      "title": "流程完成",
+      "description": "体验结束，session 已保存，可重新开始。",
+      "actions": ["reset", "restart"],
+      "next": null,
+      "duration": 0,
+      "enterActions": ["openCapsuleDoor", "markSessionCompleted"],
+      "exitActions": []
+    }
+  ]
+}
