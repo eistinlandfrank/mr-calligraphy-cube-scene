@@ -72,9 +72,9 @@
         </div>
 
         <div class="mode-tabs" aria-label="学习模式">
-          <button class="is-active" type="button" data-learning-mode="single">单字学习</button>
-          <button type="button" data-learning-mode="phrase">集字练习</button>
-          <button type="button" data-learning-mode="creation">创作</button>
+          <button data-feature-state="real" class="is-active" type="button" data-learning-mode="single">单字学习</button>
+          <button data-feature-state="real" type="button" data-learning-mode="phrase">集字练习</button>
+          <button data-feature-state="real" type="button" data-learning-mode="creation">创作</button>
         </div>
         <p id="learningStateSummary" class="learning-state-summary">本机学习记录载入中...</p>
 
@@ -102,9 +102,9 @@
             <i class="corner lb"></i>
             <i class="corner rb"></i>
             <div class="practice-toolbar" aria-label="书写工具">
-              <button id="practiceUndo" type="button" title="撤销上一笔" aria-label="撤销上一笔">↶</button>
-              <button id="practiceClear" type="button" title="清空练习" aria-label="清空练习">清</button>
-              <button id="practiceReplay" type="button" title="回放笔迹" aria-label="回放笔迹">▶</button>
+              <button data-feature-state="real" id="practiceUndo" type="button" title="撤销上一笔" aria-label="撤销上一笔">↶</button>
+              <button data-feature-state="real" id="practiceClear" type="button" title="清空练习" aria-label="清空练习">清</button>
+              <button data-feature-state="real" id="practiceReplay" type="button" title="回放笔迹" aria-label="回放笔迹">▶</button>
             </div>
             <p id="practiceCanvasStatus" class="practice-canvas-status">在米字格中书写，保存作品时会记录笔迹和截图。</p>
           </div>
@@ -167,9 +167,9 @@
           </div>
           <ul id="reviewFeedback" class="review-feedback"></ul>
           <div class="review-actions">
-            <button id="reviewReplay" type="button">回放作品</button>
-            <button id="reviewDownloadImage" type="button">下载图片</button>
-            <button id="reviewDownloadReport" type="button">下载报告</button>
+            <button data-feature-state="real" id="reviewReplay" type="button">回放作品</button>
+            <button data-feature-state="real" id="reviewDownloadImage" type="button">下载图片</button>
+            <button data-feature-state="real" id="reviewDownloadReport" type="button">下载报告</button>
           </div>
         </section>
 
@@ -179,14 +179,14 @@
               <div class="panel-eyebrow">学习档案</div>
               <strong id="historySummary">暂无记录</strong>
             </div>
-            <button id="historyDownloadArchive" type="button">导出档案</button>
+            <button data-feature-state="real" id="historyDownloadArchive" type="button">导出档案</button>
           </div>
           <div class="history-filters" aria-label="历史筛选">
-            <button class="is-active" type="button" data-history-filter="all">全部</button>
-            <button type="button" data-history-filter="practice">练习</button>
-            <button type="button" data-history-filter="artwork">作品</button>
-            <button type="button" data-history-filter="report">报告</button>
-            <button type="button" data-history-filter="excellent">优秀</button>
+            <button data-feature-state="real" class="is-active" type="button" data-history-filter="all">全部</button>
+            <button data-feature-state="real" type="button" data-history-filter="practice">练习</button>
+            <button data-feature-state="real" type="button" data-history-filter="artwork">作品</button>
+            <button data-feature-state="real" type="button" data-history-filter="report">报告</button>
+            <button data-feature-state="real" type="button" data-history-filter="excellent">优秀</button>
           </div>
           <div id="historyTrend" class="history-trend" aria-label="分数趋势"></div>
           <div id="historyList" class="history-list"></div>
@@ -196,15 +196,15 @@
                 <span id="historyDetailType">记录详情</span>
                 <strong id="historyDetailTitle">选择一条记录</strong>
               </div>
-              <button id="historyDetailClose" type="button">收起</button>
+              <button data-feature-state="real" id="historyDetailClose" type="button">收起</button>
             </div>
             <div id="historyDetailBody" class="history-detail-body"></div>
             <div class="history-detail-actions">
-              <button id="historyDetailRename" type="button">重命名</button>
-              <button id="historyDetailReplay" type="button">回放笔迹</button>
-              <button id="historyDetailDownloadImage" type="button">下载图片</button>
-              <button id="historyDetailDownloadReport" type="button">下载报告</button>
-              <button id="historyDetailDelete" type="button">删除记录</button>
+              <button data-feature-state="real" id="historyDetailRename" type="button">重命名</button>
+              <button data-feature-state="real" id="historyDetailReplay" type="button">回放笔迹</button>
+              <button data-feature-state="real" id="historyDetailDownloadImage" type="button">下载图片</button>
+              <button data-feature-state="real" id="historyDetailDownloadReport" type="button">下载报告</button>
+              <button data-feature-state="real" id="historyDetailDelete" type="button">删除记录</button>
             </div>
           </div>
         </section>
@@ -245,8 +245,8 @@
         <summary>场景编辑</summary>
         <div class="api-content">
           <div class="api-toolbar" aria-label="配置操作">
-            <button id="saveRoomConfig" type="button">保存到本机</button>
-            <button id="resetRoomConfig" type="button">恢复默认</button>
+            <button data-feature-state="real" id="saveRoomConfig" type="button">保存到本机</button>
+            <button data-feature-state="real" id="resetRoomConfig" type="button">恢复默认</button>
           </div>
           <section class="api-section" aria-label="六面贴图接口">
             <div class="api-section-title">
@@ -275,9 +275,9 @@
               </div>
               <label class="editor-wide">说明<textarea id="roleDescriptionInput" rows="2"></textarea></label>
               <div class="editor-actions">
-                <button id="newRoleButton" type="button">新增角色</button>
-                <button id="saveRoleButton" type="submit">保存角色</button>
-                <button id="deleteRoleButton" type="button">删除角色</button>
+                <button data-feature-state="real" id="newRoleButton" type="button">新增角色</button>
+                <button data-feature-state="real" id="saveRoleButton" type="submit">保存角色</button>
+                <button data-feature-state="real" id="deleteRoleButton" type="button">删除角色</button>
               </div>
             </form>
             <div id="roleControls" class="role-controls"></div>
@@ -285,7 +285,7 @@
         </div>
       </details>
 
-      <a class="realistic-link" href="realistic-demo.html">写实 3D 样张</a>
+      <a data-feature-state="real" class="realistic-link" href="realistic-demo.html">写实 3D 样张</a>
 
       <div id="loadingState" class="status-panel" hidden>场景加载中...</div>
       <div id="errorState" class="status-panel error-panel" hidden></div>
@@ -293,10 +293,10 @@
     </section>
 
     <div class="quick-controls" aria-label="快速切换">
-      <button id="quickPrev" type="button" aria-label="上一步">‹</button>
-      <button id="quickHome" type="button" aria-label="返回首页">⌂</button>
-      <button id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型">模型</button>
-      <button id="quickNext" type="button" aria-label="下一步">›</button>
+      <button data-feature-state="real" id="quickPrev" type="button" aria-label="上一步">‹</button>
+      <button data-feature-state="real" id="quickHome" type="button" aria-label="返回首页">⌂</button>
+      <button data-feature-state="real" id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型">模型</button>
+      <button data-feature-state="real" id="quickNext" type="button" aria-label="下一步">›</button>
     </div>
 
     <nav id="stepNav" class="step-nav" aria-label="步骤导航"></nav>

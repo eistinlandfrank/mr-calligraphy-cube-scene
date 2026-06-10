@@ -10,6 +10,8 @@ const ROOT = path.resolve(__dirname, "..");
 const TIMEOUT_MS = 5000;
 
 const SCRIPT_CHECKS = [
+  { file: "scripts/control-inventory.js", parser: "script" },
+  { file: "scripts/smoke-test.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
   { file: "practice-canvas.js", parser: "script" },
   { file: "project-archive.js", parser: "script" },
@@ -17,6 +19,13 @@ const SCRIPT_CHECKS = [
   { file: "script.js", parser: "module" },
   { file: "main-admin-scene.js", parser: "module" },
   { file: "realistic-scene.js", parser: "module" }
+];
+
+const COMMAND_CHECKS = [
+  {
+    label: "控件状态清单",
+    command: [process.execPath, "scripts/control-inventory.js", "--check"]
+  }
 ];
 
 const PAGE_CHECKS = [
@@ -73,6 +82,7 @@ async function main() {
 
   const failures = [];
   runScriptChecks(failures);
+  runCommandChecks(failures);
   await runPageChecks(baseUrl, failures);
 
   if (staticServer) {
@@ -150,6 +160,22 @@ function runScriptChecks(failures) {
     }
 
     console.log(`✓ 语法检查：${check.file}`);
+  });
+}
+
+function runCommandChecks(failures) {
+  COMMAND_CHECKS.forEach((check) => {
+    const result = spawnSync(check.command[0], check.command.slice(1), {
+      cwd: ROOT,
+      encoding: "utf8"
+    });
+
+    if (result.status !== 0) {
+      failures.push(`${check.label}失败：${(result.stderr || result.stdout || "").trim()}`);
+      return;
+    }
+
+    console.log(`✓ ${check.label}`);
   });
 }
 

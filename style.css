@@ -1617,6 +1617,7 @@ button {
 
 .point-button,
 .action-button {
+  position: relative;
   min-height: 34px;
   padding: 7px 10px;
   border: 1px solid rgba(255, 255, 255, 0.16);
@@ -1624,6 +1625,40 @@ button {
   color: #fffaf1;
   background: rgba(255, 255, 255, 0.1);
   cursor: pointer;
+}
+
+button[data-feature-state="demo"],
+a[data-feature-state="demo"] {
+  border-color: rgba(245, 190, 107, 0.42);
+}
+
+button[data-feature-state="disabled"],
+a[data-feature-state="disabled"] {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.action-button::after {
+  content: attr(data-feature-label);
+  flex: 0 0 auto;
+  max-width: 72px;
+  padding: 2px 5px;
+  overflow: hidden;
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.82);
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .point-button:hover,

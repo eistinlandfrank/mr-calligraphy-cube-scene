@@ -275,6 +275,17 @@ body.model-error #brushModel::part(default-progress-bar) {
   cursor: pointer;
 }
 
+button[data-feature-state="demo"],
+a[data-feature-state="demo"] {
+  border-color: rgba(217, 184, 132, 0.58);
+}
+
+button[data-feature-state="disabled"],
+a[data-feature-state="disabled"] {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
 .design-panel select:focus-visible,
 .design-panel input:focus-visible,
 .design-actions button:hover,

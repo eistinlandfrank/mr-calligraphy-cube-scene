@@ -55,6 +55,12 @@ node scripts/smoke-test.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
+单独检查四个入口页面的控件状态标注：
+
+```bash
+node scripts/control-inventory.js --check
+```
+
 更多说明见 [docs/smoke-test.md](docs/smoke-test.md)。
 
 ## 立方体贴图

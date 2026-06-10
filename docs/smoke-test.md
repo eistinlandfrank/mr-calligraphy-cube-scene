@@ -2,7 +2,8 @@
 
 本项目是静态网页项目，第一版 smoke test 使用无依赖 Node 脚本完成两类检查：
 
-- 静态语法检查：覆盖前台状态层、书写画布、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
+- 静态语法检查：覆盖 smoke test、控件清单、前台状态层、书写画布、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
+- 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效。
 - 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记。
 
 ## 直接运行
@@ -27,12 +28,20 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 SMOKE_BASE_URL=http://localhost:41496/ node scripts/smoke-test.js
 ```
 
+## 单独检查控件状态
+
+```bash
+node scripts/control-inventory.js --check
+```
+
+该命令会列出四个入口页面中 `real`、`demo`、`disabled`、缺失和非法状态的数量。
+
 ## 通过标准
 
 命令应输出：
 
 ```text
-Smoke test 通过：7 个脚本，4 个页面。
+Smoke test 通过：9 个脚本，4 个页面。
 ```
 
 如果任一脚本语法失败、页面无法访问、HTTP 状态不是 2xx，或页面缺少关键标记，命令会以非 0 状态退出。

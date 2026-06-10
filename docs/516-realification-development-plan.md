@@ -144,11 +144,11 @@
 
 任务：
 
-- 建立控件清单，覆盖 `index.html`、`main-admin.html`、`realistic-admin.html`。
-- 给每个按钮标记 `data-feature-state="real|demo|disabled"`。
+- 建立控件清单，覆盖 `index.html`、`main-admin.html`、`realistic-demo.html`、`realistic-admin.html`。第一版已完成。
+- 给每个按钮标记 `data-feature-state="real|demo|disabled"`。第一版已完成。
 - 对未实现按钮加禁用态或演示态标识。
 - 模式 tabs 接入真实 active state，至少能切换“单字学习 / 集字练习 / 创作”的内容范围。
-- 将 `SCENES.actions.response` 里的“已保存、已导出、已生成”等假结果改成真实执行或明确演示。
+- 将 `SCENES.actions.response` 里的“已保存、已导出、已生成”等假结果改成真实执行或明确演示。第一版已完成，后续继续审计新增动作。
 
 验收：
 
@@ -241,7 +241,7 @@
 
 任务：
 
-- 增加静态语法检查命令，覆盖 `script.js`、`main-admin-scene.js`、`realistic-scene.js`。第一版已完成。
+- 增加静态语法检查命令，覆盖 `script.js`、`main-admin-scene.js`、`realistic-scene.js`。第一版已完成，并已纳入控件清单脚本。
 - 增加页面可访问 smoke test：`/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`。第一版已完成。
 - 增加浏览器手工验收清单。
 - 后续如引入 Playwright，优先覆盖：
@@ -260,8 +260,8 @@
 
 ### P0：先止血
 
-- 标记或禁用假控件。
-- 修正所有虚假成功文案。
+- 标记或禁用假控件。第一版已完成。
+- 修正所有虚假成功文案。第一版已完成，后续新增动作默认禁用，避免静态 response 伪成功。
 - 给后台入口加明显导航：前台可以进入 `main-admin.html`，主后台可回到前台。
 - 写清楚本地数据保存位置和清空风险。
 
@@ -287,7 +287,7 @@
 
 ## 7. 近期可执行任务清单
 
-1. 新增控件状态规范，并在所有按钮上标注真实/演示/未实现。
+1. 新增控件状态规范，并在所有按钮上标注真实/演示/未实现。第一版已完成。
 2. 实现模式 tabs 的真实切换，不再只是视觉 active。
 3. 新建统一 storage 模块，迁移现有 localStorage key。
 4. 实现 `PracticeSession` 的创建、保存和读取。
@@ -1105,14 +1105,15 @@
 - 新增无依赖 Node 脚本 `scripts/smoke-test.js`。
 - 默认运行时会启动临时静态服务器，完成检查后自动关闭。
 - 支持 `--base-url=http://localhost:41496/` 检查正在运行的本地服务。
-- 静态语法检查覆盖 `app-state.js`、`practice-canvas.js`、`project-archive.js`、`room-config.js`、`script.js`、`main-admin-scene.js`、`realistic-scene.js`。
+- 静态语法检查覆盖 `scripts/control-inventory.js`、`scripts/smoke-test.js`、`app-state.js`、`practice-canvas.js`、`project-archive.js`、`room-config.js`、`script.js`、`main-admin-scene.js`、`realistic-scene.js`。
+- Smoke test 已纳入控件状态清单检查。
 - 页面可访问检查覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`。
 - 每个页面会校验关键标题、DOM id 或脚本引用，避免只返回空壳 HTML。
 - README 和 `docs/smoke-test.md` 增加运行方式与通过标准。
 
 验收方式：
 
-- 在项目根目录运行 `node scripts/smoke-test.js`，应输出 `Smoke test 通过：7 个脚本，4 个页面。`
+- 在项目根目录运行 `node scripts/smoke-test.js`，应输出 `Smoke test 通过：9 个脚本，4 个页面。`
 - 在项目服务器运行时，执行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应同样通过。
 - 任一核心脚本语法错误、入口页面返回非 2xx 或缺少关键标记时，命令应以非 0 状态退出。
 
@@ -1121,3 +1122,46 @@
 - 第一版 smoke test 不启动真实浏览器，不验证 WebGL 是否完成绘制。
 - 交互级验收仍依赖开发文档中的人工步骤。
 - 后续如引入 Playwright，应优先覆盖主场景不白屏、后台编辑保存、前台保存作品和导出报告。
+
+### 2026-06-11：补齐控件状态规范和清单检查
+
+功能名：可点击控件真实/演示/禁用状态标注与清单检查。
+
+涉及文件：
+
+- `index.html`
+- `main-admin.html`
+- `realistic-demo.html`
+- `realistic-admin.html`
+- `script.js`
+- `main-admin-scene.js`
+- `style.css`
+- `realistic-demo.css`
+- `scripts/control-inventory.js`
+- `scripts/smoke-test.js`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 四个入口 HTML 的静态按钮和导航链接均添加 `data-feature-state="real"`。
+- 前台动态生成的步骤导航、学习路径、热点、任务、历史、贴图和角色按钮会带有功能状态。
+- 主后台动态生成的图层按钮和快照恢复/删除按钮会带有功能状态。
+- 前台学习动作新增显式白名单 `LEARNING_ACTION_FEATURES`，未知动作默认禁用，不再显示静态成功文案。
+- 操作反馈不再默认回退到 `action.response`，避免未接入动作伪装成功。
+- 前台操作按钮显示“真实可用 / 演示能力 / 暂不可用”状态标签。
+- 新增 `scripts/control-inventory.js --check`，静态检查四个入口页面的按钮和链接状态标注。
+- `scripts/smoke-test.js` 纳入控件状态清单，提交前 smoke test 会同时检查脚本语法、控件状态和四个入口页面。
+
+验收方式：
+
+- 运行 `node scripts/control-inventory.js --check`，四个入口页面应显示 missing 0、invalid 0。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应通过 9 个脚本、控件状态清单和 4 个页面入口。
+- 在前台查看学习操作按钮，应看到状态标签；未知动作若后续加入但未登记，会在 UI 中禁用。
+- 静态 HTML 中新增按钮或链接时，若缺少 `data-feature-state`，控件清单脚本应失败。
+
+已知限制：
+
+- 第一版状态标注以 `real` 为主，当前没有保留演示态按钮；后续新增云端、分享、TTS 等未完成能力时应标记为 `demo` 或 `disabled`。
+- 控件清单是静态 HTML 检查加运行时兜底，不等同于浏览器级交互测试。
+- 动态生成控件仍需开发者在创建时显式标注，MutationObserver 只作为兜底。
