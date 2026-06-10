@@ -20,6 +20,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   const [strokeFeedback, setStrokeFeedback] = useState("");
   const [strokeOrderWarnings, setStrokeOrderWarnings] = useState(0);
   const [completedStrokeIds, setCompletedStrokeIds] = useState([]);
+  const [completedStrokeRecords, setCompletedStrokeRecords] = useState([]);
   const [scorePanel, setScorePanel] = useState(null);
   const currentStroke = yongCharacter.strokes[currentStrokeIndex];
 
@@ -65,6 +66,7 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
 
   const brushPosition = useMemo(() => getBrushPosition(currentStroke.points, progress), [currentStroke, progress]);
   const activeTip = scorePanel ? "作品已生成，可查看鼓励式评分。" : currentStroke.tip;
+  const latestStrokeRecord = completedStrokeRecords[completedStrokeRecords.length - 1];
 
   function nextStroke() {
     setCompletedStrokeIds((ids) => (ids.includes(currentStroke.id) ? ids : [...ids, currentStroke.id]));
@@ -150,8 +152,20 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
       return;
     }
 
+    const deviation = calculatePathDeviation(points, currentStroke.points);
+    const strokeRecord = {
+      strokeId: currentStroke.id,
+      label: currentStroke.label,
+      pointCount: points.length,
+      averageDeviation: deviation.averageDeviation,
+      maxDeviation: deviation.maxDeviation,
+      pathAccuracy: deviation.pathAccuracy,
+      completedAt: new Date().toISOString()
+    };
+
+    setCompletedStrokeRecords((records) => [...records.filter((record) => record.strokeId !== currentStroke.id), strokeRecord]);
     setCompletedStrokeIds((ids) => (ids.includes(currentStroke.id) ? ids : [...ids, currentStroke.id]));
-    setStrokeFeedback(`「${currentStroke.label}」已完成，系统已进入下一笔。`);
+    setStrokeFeedback(`「${currentStroke.label}」已完成，平均偏差 ${deviation.averageDeviation} 点。`);
 
     if (currentStrokeIndex >= yongCharacter.strokes.length - 1) {
       completeWork();
@@ -222,6 +236,11 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
             <strong>{currentStroke.label}</strong>
             <p>{strokeFeedback || activeTip}</p>
             <small>已记录 {userStrokePoints.length} 个轨迹点</small>
+            {latestStrokeRecord ? (
+              <small className="stroke-metric-line">
+                最近一笔偏差 {latestStrokeRecord.averageDeviation} 点 · 路径准确 {latestStrokeRecord.pathAccuracy}
+              </small>
+            ) : null}
             {strokeOrderWarnings ? <small>笔顺提醒 {strokeOrderWarnings} 次</small> : null}
           </div>
           <div className="stroke-pill-grid">
@@ -319,11 +338,68 @@ function getExpectedStartPoint(stroke) {
   return { x, y };
 }
 
+function calculatePathDeviation(userPoints, standardPoints) {
+  const standardPath = standardPoints.map(([x, y]) => ({ x, y }));
+
+  if (!userPoints.length || standardPath.length < 2) {
+    return {
+      averageDeviation: 0,
+      maxDeviation: 0,
+      pathAccuracy: 100
+    };
+  }
+
+  const distances = userPoints.map((point) => getDistanceToPolyline(point, standardPath));
+  const totalDistance = distances.reduce((sum, distance) => sum + distance, 0);
+  const averageDeviation = totalDistance / distances.length;
+  const maxDeviation = Math.max(...distances);
+
+  return {
+    averageDeviation: roundMetric(averageDeviation),
+    maxDeviation: roundMetric(maxDeviation),
+    pathAccuracy: clamp(Math.round(100 - averageDeviation * 2.4), 0, 100)
+  };
+}
+
+function getDistanceToPolyline(point, polyline) {
+  let shortestDistance = Number.POSITIVE_INFINITY;
+
+  for (let index = 0; index < polyline.length - 1; index += 1) {
+    const distance = getDistanceToSegment(point, polyline[index], polyline[index + 1]);
+    shortestDistance = Math.min(shortestDistance, distance);
+  }
+
+  return shortestDistance;
+}
+
+function getDistanceToSegment(point, start, end) {
+  const segmentX = end.x - start.x;
+  const segmentY = end.y - start.y;
+  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+
+  if (!segmentLengthSquared) {
+    return getPointDistance(point, start);
+  }
+
+  const projection = ((point.x - start.x) * segmentX + (point.y - start.y) * segmentY) / segmentLengthSquared;
+  const clampedProjection = clamp(projection, 0, 1);
+  const projectedPoint = {
+    x: start.x + segmentX * clampedProjection,
+    y: start.y + segmentY * clampedProjection
+  };
+
+  return getPointDistance(point, projectedPoint);
+}
+
 function getPointDistance(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function roundPoint(value) {
+  return Math.round(value * 10) / 10;
+}
+
+function roundMetric(value) {
   return Math.round(value * 10) / 10;
 }
 

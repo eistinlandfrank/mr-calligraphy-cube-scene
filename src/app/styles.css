@@ -1022,6 +1022,10 @@ textarea {
   font-weight: 900;
 }
 
+.current-stroke-card .stroke-metric-line {
+  color: #2f6f68;
+}
+
 .stroke-pill-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
