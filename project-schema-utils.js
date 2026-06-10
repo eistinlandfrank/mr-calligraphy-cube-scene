@@ -115,6 +115,7 @@
     const latestSnapshotAt = snapshots.map((item) => normalizeDate(item?.createdAt)).filter(Boolean).sort().pop() || null;
     const publishedLayout = normalizeMainLayout(published?.layout);
     const publishedAt = normalizeDate(published?.publishedAt);
+    const releases = normalizePublishReleases(published?.releases, published);
 
     return {
       schema: "main-scene-layout-v1",
@@ -131,10 +132,59 @@
       },
       published: {
         status: published?.layout ? "published-local" : "not-published",
+        currentReleaseId: String(published?.currentReleaseId || releases[0]?.id || ""),
+        releaseNumber: normalizeCount(published?.releaseNumber || releases[0]?.releaseNumber || 0),
+        releaseCount: releases.length,
+        latestNote: String(published?.note || releases[0]?.note || "").slice(0, 80),
+        latestAction: String(published?.action || releases[0]?.action || ""),
         publishedAt,
         stats: normalizeStats(published?.stats),
-        layout: publishedLayout
+        layout: publishedLayout,
+        releases: releases.map((release) => ({
+          id: release.id,
+          releaseNumber: release.releaseNumber,
+          action: release.action,
+          note: release.note,
+          publishedAt: release.publishedAt,
+          importedIds: release.importedIds
+        }))
       }
+    };
+  }
+
+  function normalizePublishReleases(records, currentRecord) {
+    const list = Array.isArray(records) ? records.slice() : [];
+    if (currentRecord?.layout && !list.some((item) => item?.id === currentRecord.currentReleaseId)) {
+      list.unshift(currentRecord);
+    }
+
+    const seen = new Set();
+    return list.map((record, index) => normalizePublishRelease(record, index))
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+      .filter((release) => {
+        if (seen.has(release.id)) {
+          return false;
+        }
+        seen.add(release.id);
+        return true;
+      });
+  }
+
+  function normalizePublishRelease(record, index = 0) {
+    if (!record || typeof record !== "object" || !record.layout) {
+      return null;
+    }
+
+    const publishedAt = normalizeDate(record.publishedAt);
+    const layout = normalizeMainLayout(record.layout);
+    return {
+      id: String(record.id || record.releaseId || record.currentReleaseId || `main-release-${index + 1}`),
+      releaseNumber: normalizeCount(record.releaseNumber || index + 1),
+      action: record.action === "rollback" ? "rollback" : "publish",
+      note: String(record.note || "").slice(0, 80),
+      publishedAt,
+      importedIds: layout.importedIds
     };
   }
 
@@ -224,8 +274,17 @@
   function createAssetManifest(mainScene, realisticScene, indexedDb) {
     const mainDbKeys = new Set(getDbRecords(indexedDb?.mainModels).map((record) => String(record?.data?.key || record?.data?.id || "")));
     const realisticDbKeys = new Set(getDbRecords(indexedDb?.realisticModels).map((record) => String(record?.data?.id || record?.data?.dbKey || "")));
-    const mainAssets = collectImportedAssets("main", mainScene?.draft?.importedIds || [], getStorageImportedRecords(indexedDb, "mainModels"), mainDbKeys);
-    const realisticAssets = collectImportedAssets("realistic", realisticScene?.draft?.importedIds || [], getStorageImportedRecords(indexedDb, "realisticModels"), realisticDbKeys);
+    const mainLayoutIds = uniqueStrings([
+      ...(mainScene?.draft?.importedIds || []),
+      ...(mainScene?.published?.layout?.importedIds || []),
+      ...flattenImportedIds(mainScene?.published?.releases)
+    ]);
+    const realisticLayoutIds = uniqueStrings([
+      ...(realisticScene?.draft?.importedIds || []),
+      ...(realisticScene?.published?.layout?.importedIds || [])
+    ]);
+    const mainAssets = collectImportedAssets("main", mainLayoutIds, getStorageImportedRecords(indexedDb, "mainModels"), mainDbKeys);
+    const realisticAssets = collectImportedAssets("realistic", realisticLayoutIds, getStorageImportedRecords(indexedDb, "realisticModels"), realisticDbKeys);
     const assets = [...mainAssets, ...realisticAssets];
 
     return {
@@ -275,11 +334,22 @@
     });
   }
 
+  function flattenImportedIds(records) {
+    return Array.isArray(records)
+      ? records.flatMap((record) => Array.isArray(record?.importedIds) ? record.importedIds : [])
+      : [];
+  }
+
+  function uniqueStrings(values) {
+    return [...new Set(values.map((value) => String(value || "")).filter(Boolean))];
+  }
+
   function createSummary(sections, assetManifest) {
     return {
       learningRecords: (sections.learning.sessionCount || 0) + (sections.learning.artworkCount || 0) + (sections.learning.reportCount || 0),
       mainDraftObjects: (sections.mainScene.draft.objectStateCount || 0) + (sections.mainScene.draft.customCount || 0) + (sections.mainScene.draft.importedCount || 0),
       mainSnapshots: sections.mainScene.history.snapshotCount || 0,
+      mainReleases: sections.mainScene.published.releaseCount || 0,
       realisticObjects: (sections.realisticScene.draft.objectStateCount || 0) + (sections.realisticScene.draft.importedCount || 0),
       realisticSnapshots: sections.realisticScene.history.snapshotCount || 0,
       roomRoles: sections.room.roleCount || 0,

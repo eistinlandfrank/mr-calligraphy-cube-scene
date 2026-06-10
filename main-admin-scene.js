@@ -82,6 +82,8 @@ const previewDraftButton = document.getElementById("mainPreviewDraft");
 const openLiveButton = document.getElementById("mainOpenLive");
 const publishLayoutButton = document.getElementById("mainPublishLayout");
 const publishStatus = document.getElementById("mainPublishStatus");
+const publishNoteInput = document.getElementById("mainPublishNote");
+const publishHistoryList = document.getElementById("mainPublishHistoryList");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
@@ -90,6 +92,7 @@ const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const IMPORT_DB_STORE = "models";
 const MAX_UNDO_STEPS = 256;
 const MAX_HISTORY_SNAPSHOTS = 10;
+const MAX_PUBLISH_RELEASES = 10;
 const DEFAULT_LIGHTING = {
   ambient: 0.55,
   environment: 0.55,
@@ -1104,7 +1107,7 @@ function createSnapshotRow(snapshot) {
   restoreButton.dataset.featureState = "real-local";
   restoreButton.dataset.snapshotAction = "restore";
   restoreButton.dataset.snapshotId = snapshot.id;
-  restoreButton.textContent = "恢复";
+  restoreButton.textContent = "回滚";
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
@@ -1194,26 +1197,29 @@ function clonePlain(value) {
 function loadPublishedLayoutRecord() {
   try {
     const raw = window.localStorage.getItem(PUBLISHED_KEY);
-    return raw ? JSON.parse(raw) : null;
+    return normalizePublishedRecord(raw ? JSON.parse(raw) : null);
   } catch (error) {
     console.warn("Published main scene layout could not be loaded.", error);
-    return null;
+    return normalizePublishedRecord(null);
   }
 }
 
 function publishLayoutToFront() {
-  const record = {
-    version: 1,
-    publishedAt: new Date().toISOString(),
-    layout: normalizeSnapshotLayout(layout),
-    stats: getLayoutStats(layout)
-  };
+  const currentRecord = loadPublishedLayoutRecord();
+  const release = createPublishRelease({
+    note: readPublishNote(),
+    sourceLayout: layout,
+    action: "publish",
+    existingReleases: currentRecord.releases
+  });
+  const record = buildPublishedRecord(release, [release, ...currentRecord.releases]);
 
   try {
     createLayoutSnapshot("发布前快照", { notice: false, status: false });
     window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(record));
+    if (publishNoteInput) publishNoteInput.value = "";
     renderPublishPanel();
-    showNotice("当前主场景草稿已发布到前台。");
+    showNotice(`当前主场景草稿已发布到前台：v${release.releaseNumber}。`);
   } catch (error) {
     console.warn("Published main scene layout could not be saved.", error);
     setPublishStatus("发布失败，可能是浏览器本机存储空间不足。", "error");
@@ -1225,11 +1231,14 @@ function renderPublishPanel() {
 
   if (!record?.layout) {
     setPublishStatus("尚未发布。正式前台会临时读取当前草稿布局。", "normal");
+    renderPublishHistory(record);
     return;
   }
 
   const stats = normalizeSnapshotStats(record.stats, normalizeSnapshotLayout(record.layout));
-  setPublishStatus(`已发布：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(stats)}`, "success");
+  const note = record.note ? ` · ${record.note}` : "";
+  setPublishStatus(`已发布 v${record.releaseNumber || 1}：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(stats)}${note}`, "success");
+  renderPublishHistory(record);
 }
 
 function setPublishStatus(message, tone = "normal") {
@@ -1239,6 +1248,251 @@ function setPublishStatus(message, tone = "normal") {
 
   publishStatus.textContent = message;
   publishStatus.dataset.tone = tone;
+}
+
+function normalizePublishedRecord(record) {
+  const source = record && typeof record === "object" ? record : {};
+  const releases = Array.isArray(source.releases)
+    ? source.releases.map(normalizePublishRelease).filter(Boolean)
+    : [];
+  const currentFromRoot = normalizePublishRelease(source, 0);
+
+  if (currentFromRoot && !releases.some((item) => item.id === currentFromRoot.id)) {
+    releases.unshift(currentFromRoot);
+  }
+
+  const normalizedReleases = normalizePublishReleaseList(releases);
+  const currentReleaseId = String(source.currentReleaseId || currentFromRoot?.id || normalizedReleases[0]?.id || "");
+  const current = normalizedReleases.find((item) => item.id === currentReleaseId) || normalizedReleases[0] || null;
+
+  if (!current) {
+    return {
+      version: 1,
+      currentReleaseId: "",
+      releaseNumber: 0,
+      publishedAt: "",
+      note: "",
+      action: "",
+      layout: null,
+      stats: normalizeSnapshotStats({}, normalizeSnapshotLayout({})),
+      releases: []
+    };
+  }
+
+  return {
+    version: 1,
+    currentReleaseId: current.id,
+    releaseNumber: current.releaseNumber,
+    publishedAt: current.publishedAt,
+    note: current.note,
+    action: current.action,
+    rollbackFrom: current.rollbackFrom,
+    layout: current.layout,
+    stats: current.stats,
+    releases: normalizedReleases
+  };
+}
+
+function normalizePublishRelease(record, index = 0) {
+  if (!record || typeof record !== "object" || !record.layout) {
+    return null;
+  }
+
+  const publishedAt = Number.isFinite(Date.parse(record.publishedAt)) ? record.publishedAt : new Date().toISOString();
+  const fallbackId = `main-release-${Date.parse(publishedAt) || Date.now()}-${index}`;
+  const layoutValue = normalizeSnapshotLayout(record.layout);
+
+  return {
+    id: String(record.id || record.releaseId || fallbackId),
+    releaseNumber: Math.max(1, Math.round(readNumber(record.releaseNumber, index + 1))),
+    publishedAt,
+    note: String(record.note || "").trim().slice(0, 80),
+    action: record.action === "rollback" ? "rollback" : "publish",
+    rollbackFrom: record.rollbackFrom ? String(record.rollbackFrom) : "",
+    layout: layoutValue,
+    stats: normalizeSnapshotStats(record.stats, layoutValue)
+  };
+}
+
+function normalizePublishReleaseList(releases) {
+  const seen = new Set();
+  return releases.filter(Boolean)
+    .sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt))
+    .filter((release) => {
+      if (seen.has(release.id)) {
+        return false;
+      }
+      seen.add(release.id);
+      return true;
+    })
+    .slice(0, MAX_PUBLISH_RELEASES);
+}
+
+function readPublishNote() {
+  return String(publishNoteInput?.value || "").trim().slice(0, 80);
+}
+
+function createPublishRelease({ note, sourceLayout, action = "publish", rollbackFrom = "", existingReleases = [] }) {
+  const maxNumber = existingReleases.reduce((max, item) => Math.max(max, Number(item.releaseNumber) || 0), 0);
+  const releaseNumber = maxNumber + 1;
+  const publishedAt = new Date().toISOString();
+  const layoutValue = normalizeSnapshotLayout(sourceLayout);
+  const normalizedNote = String(note || "").trim().slice(0, 80);
+
+  return {
+    id: `main-release-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    releaseNumber,
+    publishedAt,
+    note: normalizedNote || (action === "rollback" ? `回滚到发布版本` : "未填写发布说明"),
+    action: action === "rollback" ? "rollback" : "publish",
+    rollbackFrom: rollbackFrom ? String(rollbackFrom) : "",
+    layout: layoutValue,
+    stats: getLayoutStats(layoutValue)
+  };
+}
+
+function buildPublishedRecord(currentRelease, releases) {
+  const normalizedReleases = normalizePublishReleaseList(releases);
+  const current = currentRelease || normalizedReleases[0];
+
+  return {
+    version: 1,
+    currentReleaseId: current?.id || "",
+    releaseNumber: current?.releaseNumber || 0,
+    publishedAt: current?.publishedAt || "",
+    note: current?.note || "",
+    action: current?.action || "publish",
+    rollbackFrom: current?.rollbackFrom || "",
+    layout: current?.layout || normalizeSnapshotLayout({}),
+    stats: current?.stats || normalizeSnapshotStats({}, current?.layout || normalizeSnapshotLayout({})),
+    releases: normalizedReleases
+  };
+}
+
+function renderPublishHistory(record = loadPublishedLayoutRecord()) {
+  if (!publishHistoryList) {
+    return;
+  }
+
+  publishHistoryList.innerHTML = "";
+  if (!record?.releases?.length) {
+    const empty = document.createElement("p");
+    empty.className = "main-history-empty";
+    empty.textContent = "暂无发布历史。发布到前台后会保留最近 10 个本机版本。";
+    publishHistoryList.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  record.releases.forEach((release) => {
+    fragment.appendChild(createPublishReleaseRow(release, record.currentReleaseId));
+  });
+  publishHistoryList.appendChild(fragment);
+}
+
+function createPublishReleaseRow(release, currentReleaseId) {
+  const row = document.createElement("div");
+  row.className = "main-publish-row";
+  row.classList.toggle("is-current", release.id === currentReleaseId);
+
+  const detail = document.createElement("div");
+  detail.className = "main-publish-detail";
+
+  const title = document.createElement("strong");
+  const actionLabel = release.action === "rollback" ? "回滚" : "发布";
+  title.textContent = `v${release.releaseNumber} · ${actionLabel}${release.id === currentReleaseId ? " · 当前" : ""}`;
+
+  const meta = document.createElement("span");
+  meta.textContent = `${formatDateTime(release.publishedAt)} · ${formatSnapshotStats(release.stats)} · ${release.note || "无说明"}`;
+
+  detail.append(title, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "main-publish-actions-inline";
+
+  const restoreButton = document.createElement("button");
+  restoreButton.type = "button";
+  restoreButton.dataset.featureState = "real-local";
+  restoreButton.dataset.publishAction = "restore";
+  restoreButton.dataset.releaseId = release.id;
+  restoreButton.disabled = release.id === currentReleaseId;
+  restoreButton.textContent = "恢复";
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.dataset.featureState = "real-local";
+  deleteButton.dataset.publishAction = "delete";
+  deleteButton.dataset.releaseId = release.id;
+  deleteButton.disabled = release.id === currentReleaseId;
+  deleteButton.textContent = "删除";
+
+  actions.append(restoreButton, deleteButton);
+  row.append(detail, actions);
+  return row;
+}
+
+function handlePublishHistoryClick(event) {
+  const button = event.target.closest("[data-publish-action]");
+  if (!button) {
+    return;
+  }
+
+  const record = loadPublishedLayoutRecord();
+  const release = record.releases.find((item) => item.id === button.dataset.releaseId);
+  if (!release) {
+    setPublishStatus("未找到该发布版本。", "error");
+    renderPublishHistory(record);
+    return;
+  }
+
+  if (button.dataset.publishAction === "restore") {
+    restorePublishedRelease(record, release);
+    return;
+  }
+
+  if (button.dataset.publishAction === "delete") {
+    deletePublishedRelease(record, release.id);
+  }
+}
+
+function restorePublishedRelease(record, release) {
+  const rollbackRelease = createPublishRelease({
+    note: `回滚到 v${release.releaseNumber}：${release.note || "无说明"}`,
+    sourceLayout: release.layout,
+    action: "rollback",
+    rollbackFrom: release.id,
+    existingReleases: record.releases
+  });
+  const nextRecord = buildPublishedRecord(rollbackRelease, [rollbackRelease, ...record.releases]);
+
+  try {
+    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(nextRecord));
+    renderPublishPanel();
+    showNotice(`已回滚发布到 v${release.releaseNumber}，生成新版本 v${rollbackRelease.releaseNumber}。`);
+  } catch (error) {
+    console.warn("Published main scene release could not be restored.", error);
+    setPublishStatus("回滚发布版本失败，可能是浏览器本机存储空间不足。", "error");
+  }
+}
+
+function deletePublishedRelease(record, releaseId) {
+  if (record.currentReleaseId === releaseId) {
+    setPublishStatus("当前发布版本不能删除。请先恢复到其他版本。", "error");
+    return;
+  }
+
+  const nextReleases = record.releases.filter((release) => release.id !== releaseId);
+  const current = nextReleases.find((release) => release.id === record.currentReleaseId);
+  const nextRecord = buildPublishedRecord(current, nextReleases);
+
+  try {
+    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(nextRecord));
+    renderPublishPanel();
+    setPublishStatus("已删除发布历史记录。", "success");
+  } catch (error) {
+    console.warn("Published main scene release could not be deleted.", error);
+    setPublishStatus("删除发布版本失败，可能是浏览器本机存储空间不足。", "error");
+  }
 }
 
 function openFrontPreview(url) {
@@ -2555,6 +2809,7 @@ function bindUi() {
   previewDraftButton?.addEventListener("click", () => openFrontPreview("index.html?mainScenePreview=draft"));
   openLiveButton?.addEventListener("click", () => openFrontPreview("index.html"));
   publishLayoutButton?.addEventListener("click", publishLayoutToFront);
+  publishHistoryList?.addEventListener("click", handlePublishHistoryClick);
   renderPublishPanel();
   snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
   snapshotRefreshButton?.addEventListener("click", () => {

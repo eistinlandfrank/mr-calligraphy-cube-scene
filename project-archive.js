@@ -259,6 +259,7 @@
       learningRecords: Number(summary.learningRecords) || 0,
       mainDraftObjects: Number(summary.mainDraftObjects) || 0,
       mainSnapshots: Number(summary.mainSnapshots) || 0,
+      mainReleases: Number(summary.mainReleases) || 0,
       realisticObjects: Number(summary.realisticObjects) || 0,
       realisticSnapshots: Number(summary.realisticSnapshots) || 0,
       importedModels: Number(summary.importedModels) || 0,

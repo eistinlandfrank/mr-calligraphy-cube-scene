@@ -13,6 +13,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/control-inventory.js", parser: "script" },
   { file: "scripts/archive-migration-check.js", parser: "script" },
   { file: "scripts/archive-asset-hash-check.js", parser: "script" },
+  { file: "scripts/project-schema-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
   { file: "practice-canvas.js", parser: "script" },
@@ -37,6 +38,10 @@ const COMMAND_CHECKS = [
   {
     label: "项目档案资产哈希检查",
     command: [process.execPath, "scripts/archive-asset-hash-check.js"]
+  },
+  {
+    label: "项目 Schema 检查",
+    command: [process.execPath, "scripts/project-schema-check.js"]
   }
 ];
 
@@ -49,7 +54,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "project-schema-utils.js", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainPublishNote", "mainPublishHistoryList", "project-schema-utils.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",

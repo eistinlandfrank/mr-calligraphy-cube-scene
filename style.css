@@ -1191,6 +1191,25 @@ button {
   background: rgba(47, 111, 104, 0.56);
 }
 
+.main-publish-note {
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.main-publish-note input {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
 .main-publish-status {
   min-height: 34px;
   margin: 0;
@@ -1213,6 +1232,84 @@ button {
   color: #ffd5cb;
   border-color: rgba(255, 120, 94, 0.34);
   background: rgba(201, 63, 47, 0.14);
+}
+
+.main-publish-list {
+  display: grid;
+  gap: 8px;
+  max-height: 220px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-color: rgba(255, 255, 255, 0.34) rgba(0, 0, 0, 0.16);
+  scrollbar-width: thin;
+}
+
+.main-publish-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.main-publish-row.is-current {
+  border-color: rgba(116, 255, 219, 0.36);
+  background: rgba(47, 111, 104, 0.18);
+}
+
+.main-publish-detail {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.main-publish-detail strong,
+.main-publish-detail span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-publish-detail strong {
+  font-size: 13px;
+}
+
+.main-publish-detail span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+}
+
+.main-publish-actions-inline {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  gap: 6px;
+}
+
+.main-publish-actions-inline button {
+  min-width: 0;
+  min-height: 34px;
+  padding: 0 6px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.main-publish-actions-inline button:hover {
+  border-color: rgba(116, 255, 219, 0.56);
+  background: rgba(47, 111, 104, 0.56);
+}
+
+.main-publish-actions-inline button:disabled {
+  cursor: not-allowed;
+  opacity: 0.44;
 }
 
 .main-light-title {

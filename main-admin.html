@@ -180,7 +180,12 @@
             <button data-feature-state="real-local" id="mainOpenLive" type="button">打开前台</button>
             <button data-feature-state="real-published-local" id="mainPublishLayout" type="button">发布到前台</button>
           </div>
+          <label class="main-publish-note">
+            <span>发布说明</span>
+            <input id="mainPublishNote" type="text" maxlength="80" placeholder="例如：调好桌面布局，准备课堂演示">
+          </label>
           <p id="mainPublishStatus" class="main-publish-status">尚未读取发布状态。</p>
+          <div id="mainPublishHistoryList" class="main-publish-list" aria-live="polite"></div>
         </section>
 
         <section class="main-history-panel" aria-label="保存历史">
@@ -238,6 +243,6 @@
   </script>
   <script src="project-schema-utils.js?v=archive-asset-hash-20260611"></script>
   <script src="project-archive.js?v=archive-asset-hash-20260611"></script>
-  <script type="module" src="main-admin-scene.js?v=shared-import-utils-20260611"></script>
+  <script type="module" src="main-admin-scene.js?v=publish-releases-20260611"></script>
 </body>
 </html>
