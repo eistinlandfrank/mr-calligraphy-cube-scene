@@ -27,7 +27,24 @@ global.localStorage = {
     localValues.delete(key);
   }
 };
-global.indexedDB = createIndexedDbMock();
+global.indexedDB = createIndexedDbMock({
+  "mr-calligraphy-main-model-store": {
+    models: [{
+      key: "model-1",
+      id: "model-1",
+      label: "本机旧模型",
+      fileName: "old-model.glb",
+      type: "glb",
+      metrics: {
+        fileBytes: 10,
+        meshCount: 1,
+        vertexCount: 12,
+        dimensions: { width: 1, height: 1, depth: 1 }
+      },
+      arrayBuffer: new Uint8Array([1, 2, 3]).buffer
+    }]
+  }
+});
 
 require("../project-schema-utils.js");
 require("../project-archive.js");
@@ -50,7 +67,40 @@ const legacyArchive = {
   indexedDb: {
     mainModels: {
       label: "主场景导入模型",
-      records: []
+      records: [
+        {
+          data: {
+            key: "model-1",
+            id: "model-1",
+            label: "档案更新模型",
+            fileName: "updated-model.glb",
+            type: "glb",
+            metrics: {
+              fileBytes: 20,
+              meshCount: 2,
+              vertexCount: 24,
+              dimensions: { width: 2, height: 1, depth: 1 }
+            }
+          },
+          bytes: 20
+        },
+        {
+          data: {
+            key: "model-2",
+            id: "model-2",
+            label: "档案新增模型",
+            fileName: "new-model.obj",
+            type: "obj",
+            metrics: {
+              fileBytes: 30,
+              meshCount: 3,
+              vertexCount: 36,
+              dimensions: { width: 1, height: 2, depth: 1 }
+            }
+          },
+          bytes: 30
+        }
+      ]
     }
   }
 };
@@ -130,6 +180,21 @@ async function main() {
     learningPreview.fieldSelections.some((item) => item.path === "artworks" && item.action === "add"),
     "学习状态预览应允许选择性恢复 artworks 字段。"
   );
+  const mainModelPreview = previewResult.preview.indexedDb.find((item) => item.id === "mainModels");
+  assert(mainModelPreview, "导入预览应包含主场景模型仓库。");
+  assert(
+    mainModelPreview.modelDiffSummary.includes("1 新增模型") &&
+      mainModelPreview.modelDiffSummary.includes("1 修改模型"),
+    "主场景模型仓库预览应显示单模型新增和修改摘要。"
+  );
+  assert(
+    mainModelPreview.modelDiffs.some((item) => item.includes("修改模型：档案更新模型")),
+    "主场景模型仓库预览应显示被修改的单个模型。"
+  );
+  assert(
+    mainModelPreview.modelDiffs.some((item) => item.includes("新增模型：档案新增模型")),
+    "主场景模型仓库预览应显示新增的单个模型。"
+  );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
     storageKeys: ["mr-calligraphy-learning-state-v1"],
@@ -175,8 +240,11 @@ function assert(condition, message) {
   }
 }
 
-function createIndexedDbMock() {
-  const dbStores = new Map();
+function createIndexedDbMock(initialStores = {}) {
+  const dbStores = new Map(Object.entries(initialStores).map(([dbName, stores]) => [
+    dbName,
+    new Map(Object.entries(stores).map(([storeName, records]) => [storeName, records.slice()]))
+  ]));
 
   return {
     open: (dbName) => {

@@ -1032,6 +1032,11 @@ button {
   font-weight: 700;
 }
 
+.main-project-model-summary {
+  color: rgba(188, 245, 217, 0.9);
+  font-weight: 700;
+}
+
 .main-project-field-diffs {
   display: grid;
   gap: 2px;
@@ -1041,6 +1046,22 @@ button {
 }
 
 .main-project-field-diffs li {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.main-project-model-diffs {
+  display: grid;
+  gap: 2px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.main-project-model-diffs li {
   min-width: 0;
   overflow-wrap: anywhere;
   color: rgba(255, 255, 255, 0.56);

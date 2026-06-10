@@ -56,7 +56,7 @@
 - 任务系统已有第一版本机任务库和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、练习次数、作品数、报告数和完成百分比可写入并刷新读取；仍缺云端课程库、逐步骤评分规则和教师端任务下发。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 字段级差异预览、深层字段选择性恢复、字段恢复影响提示和字段 JSON 片段展开预览已补第一版，仍缺对象 schema 统一、三方字段合并和远端发布适配。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览和导入模型单模型差异预览已补第一版，仍缺对象 schema 统一、三方字段合并、单模型选择恢复和远端发布适配。
 - 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
@@ -826,7 +826,7 @@
 - 主后台“项目备份”面板新增待导入档案预览区。
 - 选择项目 JSON 后只会解析、校验并生成差异预览，不会立即覆盖本机项目。
 - 差异预览会展示学习状态、房间配置、主场景布局、保存历史、发布版本、写实场景布局等 localStorage 项的新增、覆盖、清空或不变状态。
-- 差异预览会展示主场景导入模型和写实场景导入模型的当前数量与档案数量。
+- 差异预览会展示主场景导入模型和写实场景导入模型的当前数量、档案数量和单模型新增/修改/删除摘要。
 - 新增“恢复所选”和“取消”按钮，只有确认后才会写入所选 localStorage 和 IndexedDB 条目。
 - `MRProjectArchive` 新增 `prepareImportProject()` 与 `restoreProjectArchive()`，保留原有 `importProject()` 兼容入口。
 - 导入失败、取消导入、正在预检和正在恢复都有明确状态提示。
@@ -2327,7 +2327,7 @@
 
 - 本节只记录字段级差异预览；字段级选择性恢复已在下一节补齐第一版。
 - 还没有可展开 JSON 树、深层字段选择和冲突解决策略。
-- IndexedDB 模型仓库预览仍是数量、哈希和仓库级替换摘要，不展示单模型字段级 diff。
+- IndexedDB 模型仓库已补单模型新增/修改/删除预览；恢复粒度仍是仓库整体替换。
 
 ### 2026-06-11：新增项目档案字段级选择性恢复
 
@@ -2381,7 +2381,7 @@
 
 - 本节第一版字段选择以顶层 JSON 字段为粒度；深层字段选择已在后续补齐第一版。
 - 字段冲突策略仍是“以用户勾选为准”，已有当前/档案值摘要提示，但还没有三方合并和批量冲突处理。
-- IndexedDB 模型仓库仍按仓库整体恢复，未做单模型字段级合并。
+- IndexedDB 模型仓库已补单模型差异预览；仍按仓库整体恢复，未做单模型选择恢复。
 
 ### 2026-06-11：新增项目档案字段恢复影响提示
 
@@ -2434,7 +2434,7 @@
 
 - 当前值摘要已可展开查看字段片段，但还不是完整深层 JSON 树或逐字段详情面板。
 - 字段冲突仍按用户勾选合并，没有三方 base、冲突自动分类和批量解决策略。
-- IndexedDB 模型仓库仍按仓库整体恢复，未做单模型字段级提示。
+- IndexedDB 模型仓库已补单模型差异提示；恢复粒度仍是仓库整体替换。
 
 ### 2026-06-11：新增项目档案字段片段展开预览
 
@@ -2487,7 +2487,7 @@
 
 - 第一版展示的是顶层字段 JSON 片段，不是完整可递归展开的 JSON 树。
 - 预览片段只用于导入前人工判断，不提供三方 base 对比和自动冲突分类。
-- IndexedDB 模型仓库仍按仓库级摘要展示，不展示单模型 JSON 片段。
+- IndexedDB 模型仓库已补单模型差异摘要，但不展示单模型 JSON 片段。
 
 ### 2026-06-11：新增项目档案深层字段选择恢复
 
@@ -2539,4 +2539,57 @@
 
 - 深层选择第一版仍依赖当前 flatten 深度和数组前 8 项预览；大数组结构变化会回退到顶层选择。
 - 还没有三方 base、自动冲突分类、批量冲突解决或完整可递归 JSON 树。
-- IndexedDB 模型仓库仍按仓库整体恢复，未做单模型字段级合并。
+- IndexedDB 模型仓库已补单模型差异预览；仍按仓库整体恢复，未做单模型选择恢复。
+
+### 2026-06-11：新增项目档案单模型差异预览
+
+功能名：主后台项目档案导入时展示 IndexedDB 模型仓库的单模型新增、修改和删除。
+
+涉及文件：
+
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `compareDbItem()` 新增模型级差异计算，会按主后台 `key` 和写实后台 `id` 识别同一个模型。
+- 单模型签名会比较名称、文件名、类型、字节数、SHA-256 和导入指标，能识别同 key 模型内容变化。
+- 项目档案导入预览会在模型仓库条目下展示“新增模型 / 修改模型 / 删除模型”摘要和最多 6 条模型差异。
+- 模型仓库 `change` 不再只按数量判断；同数量但模型内容不同也会标记为需要替换。
+- `scripts/archive-migration-check.js` 已模拟本机旧模型、档案更新模型和档案新增模型，并断言预览能展示单模型修改和新增。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，选择一个导入模型仓库与当前本机不同的项目档案。
+- 模型仓库条目下应显示类似 `1 新增模型 / 1 修改模型 / 0 删除模型` 的摘要。
+- 差异列表应列出具体模型名称、文件名、类型和大小。
+- 运行 `node scripts/archive-migration-check.js`，应输出项目档案迁移检查通过，并覆盖单模型差异断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：15 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 第一版只做单模型差异预览，恢复时仍按 IndexedDB 仓库整体替换。
+- 单模型差异签名不会解码模型二进制，也不做三维内容结构对比。
+- 还没有单模型选择恢复、模型命名冲突修复和远端资产签名校验。

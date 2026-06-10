@@ -429,6 +429,7 @@
     const currentRecords = await readDbStoreRecords(item);
     const migratedMissing = pack?.migratedMissing === true;
     const hashSummary = await summarizeDbPackHashes(records, item.label);
+    const modelDiff = createDbModelDiff(item, currentRecords, records);
 
     return {
       id: item.id,
@@ -438,10 +439,123 @@
       incomingBinaryCount: hashSummary.binaryCount,
       incomingHashCount: hashSummary.hashCount,
       missingHashCount: hashSummary.missingHashCount,
-      change: currentRecords.length === records.length ? "same-count" : "replace",
+      modelDiffSummary: modelDiff.summary,
+      modelDiffs: modelDiff.items,
+      change: modelDiff.total ? "replace" : "same-count",
       defaultSelected: !migratedMissing,
       migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机模型库。` : ""
     };
+  }
+
+  function createDbModelDiff(item, currentRecords, incomingRecords) {
+    const currentMap = mapDbModelRecords(item, currentRecords, false);
+    const incomingMap = mapDbModelRecords(item, incomingRecords, true);
+    const added = [];
+    const updated = [];
+    const removed = [];
+
+    incomingMap.forEach((incomingRecord, key) => {
+      const currentRecord = currentMap.get(key);
+      if (!currentRecord) {
+        added.push(incomingRecord);
+        return;
+      }
+      if (incomingRecord.signature !== currentRecord.signature) {
+        updated.push(incomingRecord);
+      }
+    });
+
+    currentMap.forEach((currentRecord, key) => {
+      if (!incomingMap.has(key)) {
+        removed.push(currentRecord);
+      }
+    });
+
+    const total = added.length + updated.length + removed.length;
+    return {
+      total,
+      summary: total
+        ? `${added.length} 新增模型 / ${updated.length} 修改模型 / ${removed.length} 删除模型`
+        : "模型无变化",
+      items: [
+        ...formatDbModelDiffItems("新增模型", added),
+        ...formatDbModelDiffItems("修改模型", updated),
+        ...formatDbModelDiffItems("删除模型", removed)
+      ].slice(0, 6)
+    };
+  }
+
+  function mapDbModelRecords(item, records, isArchiveRecord) {
+    return records.reduce((result, record, index) => {
+      const model = normalizeDbModelRecord(item, record, index, isArchiveRecord);
+      result.set(model.key, model);
+      return result;
+    }, new Map());
+  }
+
+  function normalizeDbModelRecord(item, record, index, isArchiveRecord) {
+    const data = isArchiveRecord && record?.data && typeof record.data === "object"
+      ? record.data
+      : record || {};
+    const key = String(
+      data[item.keyPath] ||
+      data.key ||
+      data.dbKey ||
+      data.id ||
+      data.fileName ||
+      data.label ||
+      `model-${index + 1}`
+    ).trim();
+    const label = String(data.label || data.fileName || key || `模型 ${index + 1}`).trim();
+    const bytes = Number(record?.bytes || data.metrics?.fileBytes || data.fileBytes || record?.arrayBuffer?.byteLength || data.arrayBuffer?.byteLength || 0);
+    const model = {
+      key: key || `model-${index + 1}`,
+      label: label || `模型 ${index + 1}`,
+      fileName: String(data.fileName || "").trim(),
+      type: String(data.type || "").trim(),
+      bytes: Number.isFinite(bytes) ? bytes : 0,
+      sha256: normalizeSha256(record?.sha256 || data.sha256),
+      metrics: normalizeModelMetricsForDiff(data.metrics)
+    };
+    model.signature = stableStringify({
+      label: model.label,
+      fileName: model.fileName,
+      type: model.type,
+      bytes: model.bytes,
+      sha256: model.sha256,
+      metrics: model.metrics
+    });
+    return model;
+  }
+
+  function normalizeModelMetricsForDiff(metrics) {
+    if (!metrics || typeof metrics !== "object") {
+      return {};
+    }
+    return {
+      fileBytes: Number(metrics.fileBytes || 0),
+      meshCount: Number(metrics.meshCount || 0),
+      vertexCount: Number(metrics.vertexCount || 0),
+      dimensions: metrics.dimensions && typeof metrics.dimensions === "object"
+        ? {
+            width: Number(metrics.dimensions.width || 0),
+            height: Number(metrics.dimensions.height || 0),
+            depth: Number(metrics.dimensions.depth || 0)
+          }
+        : {}
+    };
+  }
+
+  function formatDbModelDiffItems(action, models) {
+    return models.map((model) => {
+      const details = [
+        model.fileName || "",
+        model.type ? model.type.toUpperCase() : "",
+        model.bytes ? formatBytes(model.bytes) : "",
+        model.sha256 ? "SHA-256" : ""
+      ].filter(Boolean).join(" · ");
+      return `${action}：${model.label}${details ? `（${details}）` : ""}`;
+    });
   }
 
   async function readDbStoreRecords(item) {
@@ -1383,6 +1497,12 @@
         impactSummary.textContent = options.fieldImpactSummary;
         body.append(impactSummary);
       }
+      if (options.modelDiffSummary) {
+        const modelSummary = document.createElement("span");
+        modelSummary.className = "main-project-model-summary";
+        modelSummary.textContent = options.modelDiffSummary;
+        body.append(modelSummary);
+      }
       if (Array.isArray(options.fieldSelections) && options.fieldSelections.length) {
         const fieldList = document.createElement("ul");
         fieldList.className = "main-project-field-diffs main-project-field-diffs--selectable";
@@ -1442,6 +1562,16 @@
         });
         body.append(fieldList);
       }
+      if (Array.isArray(options.modelDiffs) && options.modelDiffs.length) {
+        const modelList = document.createElement("ul");
+        modelList.className = "main-project-model-diffs";
+        options.modelDiffs.forEach((modelDiff) => {
+          const modelItem = document.createElement("li");
+          modelItem.textContent = modelDiff;
+          modelList.appendChild(modelItem);
+        });
+        body.append(modelList);
+      }
       if (options.migrationNote) {
         const note = document.createElement("span");
         note.className = "main-project-preview-note";
@@ -1495,6 +1625,8 @@
       }));
       preview.indexedDb.forEach((item) => appendPreviewLine(fragment, "indexedDb", item.id, item.label, describeDbChange(item), item.change, {
         defaultSelected: item.defaultSelected,
+        modelDiffSummary: item.modelDiffSummary,
+        modelDiffs: item.modelDiffs,
         migrationNote: item.migrationNote
       }));
 
