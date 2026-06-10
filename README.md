@@ -41,6 +41,22 @@ http://localhost:8000
 
 也可以直接双击 `index.html` 打开。由于浏览器通常不允许 `file://` 页面把本地图片上传为 WebGL 纹理，双击模式会自动降级为 CSS 立方体贴图；使用 `python -m http.server` 时会启用完整 WebGL 立方体房间和 3D 家具。
 
+## Smoke Test
+
+提交前可运行轻量冒烟检查。脚本会检查核心 JS 语法，并访问前台、主后台、写实样张和写实后台四个入口：
+
+```bash
+node scripts/smoke-test.js
+```
+
+如果项目已经在本地服务器运行，也可以指定当前地址：
+
+```bash
+node scripts/smoke-test.js --base-url=http://localhost:41496/
+```
+
+更多说明见 [docs/smoke-test.md](docs/smoke-test.md)。
+
 ## 立方体贴图
 
 当前六面贴图读取：

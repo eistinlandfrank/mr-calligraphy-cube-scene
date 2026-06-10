@@ -241,8 +241,8 @@
 
 任务：
 
-- 增加静态语法检查命令，覆盖 `script.js`、`main-admin-scene.js`、`realistic-scene.js`。
-- 增加页面可访问 smoke test：`/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`。
+- 增加静态语法检查命令，覆盖 `script.js`、`main-admin-scene.js`、`realistic-scene.js`。第一版已完成。
+- 增加页面可访问 smoke test：`/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`。第一版已完成。
 - 增加浏览器手工验收清单。
 - 后续如引入 Playwright，优先覆盖：
   - 主场景加载不白屏。
@@ -298,7 +298,7 @@
 9. 给主后台补齐自定义几何体新增和编辑 UI，连接现有 `addCustomObject()` 与本机布局保存链路。第一版已完成。
 10. 给前台补齐本机任务库、任务面板和字帖选择。第一版已完成。
 11. 给前台补齐按任务推导的完成进度。第一版已完成。
-12. 增加 smoke test 文档和命令。
+12. 增加 smoke test 文档和命令。第一版已完成。
 13. 每完成一个功能，中文提交并同步更新开发文档。
 
 ## 8. 开发纪律
@@ -1088,3 +1088,36 @@
 - 当前完成度只有“练习 / 保存作品 / 导出报告”三个里程碑，不是每个任务步骤逐条评分。
 - 报告仍是本机 HTML 文件，不是云端课程报告。
 - 任务进度由本机记录推导，没有教师端审核、远端同步和多人协作状态。
+
+### 2026-06-11：补齐 smoke test 命令和文档
+
+功能名：本地轻量 smoke test 与验收文档。
+
+涉及文件：
+
+- `scripts/smoke-test.js`
+- `docs/smoke-test.md`
+- `README.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 新增无依赖 Node 脚本 `scripts/smoke-test.js`。
+- 默认运行时会启动临时静态服务器，完成检查后自动关闭。
+- 支持 `--base-url=http://localhost:41496/` 检查正在运行的本地服务。
+- 静态语法检查覆盖 `app-state.js`、`practice-canvas.js`、`project-archive.js`、`room-config.js`、`script.js`、`main-admin-scene.js`、`realistic-scene.js`。
+- 页面可访问检查覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`。
+- 每个页面会校验关键标题、DOM id 或脚本引用，避免只返回空壳 HTML。
+- README 和 `docs/smoke-test.md` 增加运行方式与通过标准。
+
+验收方式：
+
+- 在项目根目录运行 `node scripts/smoke-test.js`，应输出 `Smoke test 通过：7 个脚本，4 个页面。`
+- 在项目服务器运行时，执行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应同样通过。
+- 任一核心脚本语法错误、入口页面返回非 2xx 或缺少关键标记时，命令应以非 0 状态退出。
+
+已知限制：
+
+- 第一版 smoke test 不启动真实浏览器，不验证 WebGL 是否完成绘制。
+- 交互级验收仍依赖开发文档中的人工步骤。
+- 后续如引入 Playwright，应优先覆盖主场景不白屏、后台编辑保存、前台保存作品和导出报告。
