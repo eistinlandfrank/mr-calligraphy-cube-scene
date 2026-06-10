@@ -3421,6 +3421,81 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.history-trash-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.history-trash-list[hidden] {
+  display: none;
+}
+
+.history-trash-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(78, 61, 45, 0.32);
+}
+
+.history-trash-body {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.history-trash-body strong,
+.history-trash-body span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-trash-body strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.history-trash-body span {
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-trash-actions {
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(54px, auto));
+  gap: 5px;
+}
+
+.history-trash-actions button {
+  min-height: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.09);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.history-trash-actions button:hover,
+.history-trash-actions button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  background: rgba(47, 111, 104, 0.46);
+}
+
+.history-trash-actions button:last-child {
+  border-color: rgba(255, 123, 123, 0.22);
+  color: #ffe0dc;
+  background: rgba(135, 47, 47, 0.18);
+}
+
 .history-trend {
   display: flex;
   align-items: end;

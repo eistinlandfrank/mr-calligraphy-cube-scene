@@ -2206,6 +2206,25 @@
     return { ok: true, count, recordCount, message: `已清空回收站：${recordCount} 条学习档案。` };
   }
 
+  function deleteHistoryTrashEntry(trashId) {
+    const targetId = String(trashId || "");
+    const trash = state.historyTrash.find((entry) => entry.id === targetId);
+    if (!trash) {
+      return { ok: false, message: "未找到这条回收站记录。" };
+    }
+
+    const recordCount = decorateHistoryTrashEntry(trash)?.recordCount || 0;
+    state.historyTrash = state.historyTrash.filter((entry) => entry.id !== trash.id);
+    addEvent("history-trash-delete", `永久删除回收站记录：${trash.title}`);
+    saveState();
+    return {
+      ok: true,
+      deletedId: trash.id,
+      recordCount,
+      message: `已永久删除回收站记录：${trash.title}。`
+    };
+  }
+
   function downloadArchive() {
     const archive = {
       exportedAt: new Date().toISOString(),
@@ -2242,6 +2261,7 @@
     deleteHistoryRecords,
     restoreHistoryTrash,
     clearHistoryTrash,
+    deleteHistoryTrashEntry,
     downloadHistoryRecords,
     setMode,
     selectDailyGlyph,

@@ -837,6 +837,7 @@ const els = {
   historyRestoreTrash: document.getElementById("historyRestoreTrash"),
   historyClearTrash: document.getElementById("historyClearTrash"),
   historyTrashStatus: document.getElementById("historyTrashStatus"),
+  historyTrashList: document.getElementById("historyTrashList"),
   historyTrend: document.getElementById("historyTrend"),
   historyList: document.getElementById("historyList"),
   historyLoadMore: document.getElementById("historyLoadMore"),
@@ -3474,6 +3475,7 @@ function bindHistoryControls() {
   els.historyDeleteSelected?.addEventListener("click", deleteSelectedHistoryRecords);
   els.historyRestoreTrash?.addEventListener("click", restoreLatestHistoryTrash);
   els.historyClearTrash?.addEventListener("click", clearHistoryTrash);
+  els.historyTrashList?.addEventListener("click", handleHistoryTrashAction);
   els.historyLoadMore?.addEventListener("click", () => {
     activeHistoryLimit += HISTORY_PAGE_SIZE;
     renderHistoryPanel(currentIndex);
@@ -4005,12 +4007,57 @@ function renderHistoryBatchControls(history) {
       ? `回收站 ${trash.recordCount} 条`
       : "回收站 0 条";
   }
+  renderHistoryTrashList(trash);
   if (els.historyLoadMore) {
     els.historyLoadMore.hidden = !history.hasMore;
     els.historyLoadMore.textContent = history.hasMore
       ? `加载更多记录（${history.entries.length}/${history.filteredTotal}）`
       : "已显示全部记录";
   }
+}
+
+function renderHistoryTrashList(trash = { entries: [] }) {
+  if (!els.historyTrashList) {
+    return;
+  }
+
+  const entries = trash.entries || [];
+  els.historyTrashList.hidden = entries.length === 0;
+  els.historyTrashList.innerHTML = "";
+  if (!entries.length) {
+    return;
+  }
+
+  entries.forEach((entry) => {
+    const row = document.createElement("div");
+    row.className = "history-trash-row";
+
+    const body = document.createElement("div");
+    body.className = "history-trash-body";
+    const title = document.createElement("strong");
+    title.textContent = entry.title;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatHistoryTime(entry.deletedAt)} / ${entry.recordCount} 条 / 练习 ${entry.counts.practice} / 作品 ${entry.counts.artwork} / 报告 ${entry.counts.report}`;
+    body.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "history-trash-actions";
+    [
+      ["restore", "恢复"],
+      ["delete", "永久删除"]
+    ].forEach(([action, text]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real";
+      button.dataset.trashAction = action;
+      button.dataset.trashId = entry.id;
+      button.textContent = text;
+      actions.appendChild(button);
+    });
+
+    row.append(body, actions);
+    els.historyTrashList.appendChild(row);
+  });
 }
 
 function renderPlanPanel(sceneIndex = currentIndex) {
@@ -4356,6 +4403,38 @@ function restoreLatestHistoryTrash() {
     return;
   }
   showNotice(result?.message || "恢复失败。");
+}
+
+function handleHistoryTrashAction(event) {
+  const button = event.target.closest("[data-trash-action]");
+  if (!button) {
+    return;
+  }
+
+  const trashId = button.dataset.trashId;
+  if (button.dataset.trashAction === "restore") {
+    const result = window.MRAppState?.restoreHistoryTrash?.(trashId);
+    if (result?.ok) {
+      activeHistoryLimit = Math.max(activeHistoryLimit, HISTORY_PAGE_SIZE);
+      refreshAfterHistoryMutation();
+      showNotice(result.message);
+      return;
+    }
+    showNotice(result?.message || "恢复失败。");
+    return;
+  }
+
+  if (button.dataset.trashAction === "delete") {
+    const trash = window.MRAppState?.getHistoryTrash?.();
+    const entry = (trash?.entries || []).find((item) => item.id === trashId);
+    const label = entry ? `“${entry.title}”中的 ${entry.recordCount} 条学习档案` : "这条回收站记录";
+    if (!window.confirm(`确定永久删除${label}吗？此操作不能恢复。`)) {
+      return;
+    }
+    const result = window.MRAppState?.deleteHistoryTrashEntry?.(trashId);
+    refreshAfterHistoryMutation();
+    showNotice(result?.message || "已永久删除回收站记录。");
+  }
 }
 
 function clearHistoryTrash() {
