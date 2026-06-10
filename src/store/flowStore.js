@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { loadDefaultFlow } from "../data/configLoader.js";
+import { createPracticeSession, createSessionEvent } from "../session-core/sessionSchema.js";
 
 const defaultFlow = loadDefaultFlow();
 const defaultStateId = defaultFlow.initialState;
@@ -41,6 +42,41 @@ export const useFlowStore = create((set, get) => ({
 
     if (!state?.actions?.includes(actionId)) {
       return false;
+    }
+
+    if (actionId === "start" && state.next) {
+      const startedAt = new Date().toISOString();
+      const session = createPracticeSession({
+        currentState: state.next,
+        startedAt,
+        events: [
+          createSessionEvent({
+            type: "session_started",
+            stateId: state.id,
+            at: startedAt
+          }),
+          createSessionEvent({
+            type: "action_triggered",
+            stateId: state.id,
+            at: startedAt,
+            payload: { actionId }
+          }),
+          createSessionEvent({
+            type: "state_entered",
+            stateId: state.next,
+            at: startedAt
+          })
+        ]
+      });
+
+      set((current) => ({
+        currentStateId: state.next,
+        isPaused: false,
+        session,
+        history: [...current.history, createHistoryItem(state.next, actionId)]
+      }));
+
+      return true;
     }
 
     if (actionId === "pause") {

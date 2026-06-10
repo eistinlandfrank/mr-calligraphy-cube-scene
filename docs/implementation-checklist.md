@@ -170,8 +170,10 @@
 
   验收记录：2026-06-10 新增 `src/store/flowStore.js`，默认读取 `defaultFlow.json` 并进入 `idle`；Demo 控制台展示当前状态、历史数量和可执行 actions，`npm run build` 通过。
 
-- [ ] **P3-03：实现 ready_check 状态**  
+- [x] **P3-03：实现 ready_check 状态**  
   验收：开始体验后进入准备检查状态，并创建 PracticeSession。
+
+  验收记录：2026-06-10 `flowStore.executeAction("start")` 会从 `idle` 进入 `ready_check` 并创建 PracticeSession；Demo 控制台显示 session 标识，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-04：实现 enter_experience 状态**  
   验收：系统进入体验启动状态，开始记录 session 事件。

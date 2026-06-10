@@ -42,6 +42,7 @@ export function DemoPage() {
   const storedScenes = useSceneStore((state) => state.scenes);
   const flowState = useFlowStore(getCurrentFlowState);
   const flowHistory = useFlowStore((state) => state.history);
+  const flowSession = useFlowStore((state) => state.session);
   const executableActions = useFlowStore((state) => state.getExecutableActions());
   const executeFlowAction = useFlowStore((state) => state.executeAction);
   const phase = useMemo(() => ({
@@ -195,7 +196,7 @@ export function DemoPage() {
             <div>
               <span>Flow State</span>
               <strong>{phase.id}</strong>
-              <small>历史 {flowHistory.length} 条</small>
+              <small>{flowSession ? `Session ${flowSession.id.slice(0, 18)}` : `历史 ${flowHistory.length} 条`}</small>
             </div>
             <div className="flow-action-row">
               {executableActions.map((actionId) => (
