@@ -3,6 +3,7 @@
   const VERSION = 1;
   const MAX_EVENTS = 120;
   const MAX_HISTORY_TRASH = 12;
+  const MAX_ARTWORK_TAGS = 8;
 
   const MODE_CONFIG = {
     single: {
@@ -250,6 +251,7 @@
       strokeCount: normalizeInteger(record.strokeCount, 0, 0, 999),
       pointCount: normalizeInteger(record.pointCount, 0, 0, 99999),
       feedback,
+      tags: Array.isArray(record.tags) ? normalizeArtworkTags(record.tags) : getDefaultArtworkTags(record),
       imageData: typeof record.imageData === "string" && record.imageData.startsWith("data:image/")
         ? record.imageData
         : null,
@@ -500,6 +502,28 @@
 
   function normalizeStringList(value) {
     return Array.isArray(value) ? value.map(String).filter(Boolean).slice(0, 8) : [];
+  }
+
+  function normalizeArtworkTags(value) {
+    const source = Array.isArray(value) ? value : String(value || "").split(/[,，、\s]+/);
+    const tags = [];
+    source.forEach((item) => {
+      const tag = String(item || "").trim().replace(/\s+/g, " ").slice(0, 18);
+      if (tag && !tags.includes(tag)) {
+        tags.push(tag);
+      }
+    });
+    return tags.slice(0, MAX_ARTWORK_TAGS);
+  }
+
+  function getDefaultArtworkTags(record = {}) {
+    const modeLabel = MODE_CONFIG[record.mode]?.label || "";
+    return normalizeArtworkTags([
+      record.glyph,
+      record.style,
+      record.copybook,
+      modeLabel
+    ]);
   }
 
   function normalizePracticeResult(result = {}) {
@@ -1169,6 +1193,12 @@
       strokeCount: session.strokeCount || practice?.strokeCount || 0,
       pointCount: session.pointCount || practice?.pointCount || 0,
       feedback: session.feedback || practice?.feedback || [],
+      tags: getDefaultArtworkTags({
+        glyph: session.glyph,
+        style: state.artworkStyle,
+        copybook: session.copybook,
+        mode: session.mode
+      }),
       imageData: practice?.imageData || null,
       createdAt: now
     };
@@ -1902,6 +1932,121 @@
     };
   }
 
+  function getArtworkGallery(options = {}) {
+    const query = String(options.query || "").trim().toLowerCase();
+    const tag = String(options.tag || "").trim();
+    const limit = normalizeInteger(options.limit, 12, 1, 60);
+    const items = state.artworks
+      .map(decorateArtworkGalleryItem)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+    const filteredItems = items.filter((item) => {
+      const matchesQuery = query ? getArtworkSearchText(item).includes(query) : true;
+      const matchesTag = tag ? item.tags.includes(tag) : true;
+      return matchesQuery && matchesTag;
+    });
+
+    return {
+      query,
+      tag,
+      total: items.length,
+      filteredTotal: filteredItems.length,
+      hasMore: filteredItems.length > limit,
+      items: filteredItems.slice(0, limit).map(clone),
+      tags: getArtworkTagCloud(items),
+      glyphs: getArtworkGlyphCloud(items),
+      summary: items.length
+        ? `作品集共 ${items.length} 幅，当前显示 ${Math.min(filteredItems.length, limit)} 幅。`
+        : "保存作品后会在这里形成可搜索、可打标签的本机作品集。"
+    };
+  }
+
+  function decorateArtworkGalleryItem(artwork) {
+    const linkedSession = artwork.sessionId
+      ? state.sessions.find((session) => session.id === artwork.sessionId) || null
+      : null;
+    const tags = Array.isArray(artwork.tags) ? normalizeArtworkTags(artwork.tags) : getDefaultArtworkTags(artwork);
+    return {
+      id: artwork.id,
+      type: "artwork",
+      title: artwork.title,
+      glyph: artwork.glyph,
+      mode: artwork.mode,
+      copybook: artwork.copybook,
+      style: artwork.style,
+      score: artwork.score || 0,
+      strokeCount: artwork.strokeCount || 0,
+      pointCount: artwork.pointCount || 0,
+      createdAt: artwork.createdAt,
+      imageData: artwork.imageData || null,
+      tags,
+      feedback: clone(artwork.feedback || linkedSession?.feedback || []),
+      sessionId: artwork.sessionId,
+      hasStrokes: Boolean(linkedSession?.strokes?.length)
+    };
+  }
+
+  function getArtworkSearchText(item) {
+    return [
+      item.title,
+      item.glyph,
+      item.style,
+      item.copybook,
+      item.mode,
+      `${item.score}`,
+      ...(item.tags || []),
+      ...(item.feedback || [])
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+  }
+
+  function getArtworkTagCloud(items) {
+    const counts = new Map();
+    items.forEach((item) => {
+      (item.tags || []).forEach((tag) => {
+        counts.set(tag, (counts.get(tag) || 0) + 1);
+      });
+    });
+    return [...counts.entries()]
+      .map(([tag, count]) => ({ tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag, "zh-Hans-CN"))
+      .slice(0, 18);
+  }
+
+  function getArtworkGlyphCloud(items) {
+    const counts = new Map();
+    items.forEach((item) => {
+      const glyph = String(item.glyph || "").trim();
+      if (glyph) {
+        counts.set(glyph, (counts.get(glyph) || 0) + 1);
+      }
+    });
+    return [...counts.entries()]
+      .map(([glyph, count]) => ({ glyph, count }))
+      .sort((a, b) => b.count - a.count || a.glyph.localeCompare(b.glyph, "zh-Hans-CN"));
+  }
+
+  function updateArtworkTags(id, tags) {
+    const recordId = String(id || "").trim();
+    const artwork = state.artworks.find((item) => item.id === recordId);
+    if (!artwork) {
+      return { ok: false, message: "未找到这幅作品。" };
+    }
+
+    artwork.tags = normalizeArtworkTags(tags);
+    addEvent("artwork-tags", `更新作品标签：${artwork.title}`);
+    saveState();
+    return {
+      ok: true,
+      artwork: decorateArtworkGalleryItem(artwork),
+      detail: getHistoryDetail(artwork.id),
+      message: artwork.tags.length
+        ? `已更新作品标签：${artwork.tags.join("、")}。`
+        : "已清空这幅作品的自定义标签。"
+    };
+  }
+
   function getArtworkComparison(glyph = "") {
     const requestedGlyph = String(glyph || state.selectedGlyph || "").trim();
     const groups = groupArtworksForComparison();
@@ -2249,7 +2394,9 @@
         status: artwork.imageData ? "有截图" : "无截图",
         summary: `${artwork.style} / ${artwork.strokeCount || 0} 笔 / ${artwork.pointCount || 0} 个采样点`,
         glyph: artwork.glyph,
+        copybook: artwork.copybook,
         style: artwork.style,
+        tags: clone(artwork.tags || []),
         strokeCount: artwork.strokeCount || 0,
         pointCount: artwork.pointCount || 0,
         feedback: clone(artwork.feedback || linkedSession?.feedback || []),
@@ -2688,9 +2835,11 @@
     getLatestReview,
     getHistory,
     getHistoryDetail,
+    getArtworkGallery,
     getArtworkComparison,
     getHistoryTrash,
     renameHistoryRecord,
+    updateArtworkTags,
     deleteHistoryRecord,
     deleteHistoryRecords,
     restoreHistoryTrash,

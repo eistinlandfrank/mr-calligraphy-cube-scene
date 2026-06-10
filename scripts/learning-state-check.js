@@ -70,7 +70,27 @@ assert(
 const fallback = window.MRAppState.getArtworkComparison("和");
 assert(fallback.ok && fallback.glyph === "永", "请求的字不足两幅时应回退到最近可对比同字作品。");
 
-console.log("学习状态检查通过：同字作品对比已生成。");
+let gallery = window.MRAppState.getArtworkGallery({ query: "作品 2" });
+assert(gallery.filteredTotal === 1 && gallery.items[0].id === "artwork-2", "作品集应支持按标题搜索作品。");
+
+gallery = window.MRAppState.getArtworkGallery({ tag: "永" });
+assert(gallery.filteredTotal === 2, "作品集应支持按默认字标签筛选作品。");
+
+const tagUpdate = window.MRAppState.updateArtworkTags("artwork-3", "集字、口部 复盘");
+assert(tagUpdate.ok, "作品标签应可写回本机状态。");
+assert(tagUpdate.artwork.tags.includes("口部"), "作品标签更新结果应包含新标签。");
+
+gallery = window.MRAppState.getArtworkGallery({ tag: "口部" });
+assert(gallery.filteredTotal === 1 && gallery.items[0].id === "artwork-3", "作品集应支持按自定义标签筛选作品。");
+
+const detail = window.MRAppState.getHistoryDetail("artwork-3");
+assert(detail.tags.includes("复盘"), "作品详情应返回自定义标签。");
+
+const persisted = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+const persistedArtwork = persisted.artworks.find((item) => item.id === "artwork-3");
+assert(persistedArtwork.tags.includes("集字"), "作品标签应持久化到 localStorage。");
+
+console.log("学习状态检查通过：同字作品对比和作品集检索已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

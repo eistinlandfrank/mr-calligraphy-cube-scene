@@ -223,6 +223,20 @@
           <div id="historyTrashList" class="history-trash-list" hidden></div>
           <div id="historyTrend" class="history-trend" aria-label="分数趋势"></div>
           <div id="historyArtworkCompare" class="history-artwork-compare" aria-label="作品对比"></div>
+          <section id="historyArtworkGallery" class="artwork-gallery" aria-label="作品集">
+            <div class="artwork-gallery-head">
+              <div>
+                <div class="panel-eyebrow">作品集</div>
+                <strong id="artworkGalleryStatus">暂无作品</strong>
+              </div>
+              <label class="artwork-search">
+                <span>搜索</span>
+                <input id="artworkSearch" type="search" placeholder="字、标题、风格或标签" autocomplete="off">
+              </label>
+            </div>
+            <div id="artworkTagList" class="artwork-tag-list" aria-label="作品标签"></div>
+            <div id="artworkGalleryGrid" class="artwork-gallery-grid"></div>
+          </section>
           <div id="historyList" class="history-list"></div>
           <button data-feature-state="real-local" id="historyLoadMore" class="history-load-more" type="button" hidden>加载更多记录</button>
           <div id="historyDetail" class="history-detail" hidden>

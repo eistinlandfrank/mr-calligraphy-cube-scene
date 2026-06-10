@@ -7,7 +7,7 @@
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态，并验证 localStorage JSON 导入预览会显示字段级差异、字段恢复影响提示、字段 JSON 片段且支持深层字段选择性恢复；同时验证 IndexedDB 模型仓库会显示单模型新增/修改差异、当前/档案元数据片段、完整模型 JSON 安全预览、命名冲突提示，并支持只恢复勾选模型、冲突自动改名、替换本机同名模型和自定义档案模型名称。
 - 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
 - 项目 Schema 检查：模拟主后台和写实后台发布版本列表及导入模型，确认 `projectSchema` 会统计发布版本、发布说明、回滚动作和资产哈希。
-- 学习状态检查：模拟同字两幅作品，确认 `MRAppState.getArtworkComparison()` 会生成前后作品、评分差、笔画差、采样差、截图和维度差。
+- 学习状态检查：模拟同字两幅作品，确认 `MRAppState.getArtworkComparison()` 会生成前后作品、评分差、笔画差、采样差、截图和维度差，并验证作品集搜索、标签筛选、标签编辑和 localStorage 持久化。
 - 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记。
 
 ## 直接运行
@@ -70,7 +70,7 @@ node scripts/project-schema-check.js
 node scripts/learning-state-check.js
 ```
 
-该命令会模拟同一个字的两幅作品和关联练习，验证学习状态层能生成真实作品对比数据，包括较早作品、最新作品、评分差、笔画差、采样差、截图和维度差。
+该命令会模拟同一个字的两幅作品和关联练习，验证学习状态层能生成真实作品对比数据，包括较早作品、最新作品、评分差、笔画差、采样差、截图和维度差；同时验证 `MRAppState.getArtworkGallery()` 能按标题搜索、按默认字标签筛选，并验证 `MRAppState.updateArtworkTags()` 会把自定义标签写回 localStorage。
 
 ## 浏览器级验收
 

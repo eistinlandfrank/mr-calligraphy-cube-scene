@@ -853,6 +853,11 @@ const els = {
   historyTrashList: document.getElementById("historyTrashList"),
   historyTrend: document.getElementById("historyTrend"),
   historyArtworkCompare: document.getElementById("historyArtworkCompare"),
+  historyArtworkGallery: document.getElementById("historyArtworkGallery"),
+  artworkGalleryStatus: document.getElementById("artworkGalleryStatus"),
+  artworkSearch: document.getElementById("artworkSearch"),
+  artworkTagList: document.getElementById("artworkTagList"),
+  artworkGalleryGrid: document.getElementById("artworkGalleryGrid"),
   historyList: document.getElementById("historyList"),
   historyLoadMore: document.getElementById("historyLoadMore"),
   historyDetail: document.getElementById("historyDetail"),
@@ -930,12 +935,15 @@ let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
 let activeReportDetailId = null;
+let activeArtworkSearch = "";
+let activeArtworkTag = "";
 let activeReportMetricKey = "structure";
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
 const HISTORY_DETAIL_QUERY_KEY = "history";
 const REPORT_DETAIL_QUERY_KEY = "report";
+const ARTWORK_DETAIL_QUERY_KEY = "artwork";
 const REPORT_DETAIL_SCENE_INDEX = 8;
 const REPORT_METRIC_LABELS = [
   ["structure", "结构"],
@@ -1487,9 +1495,12 @@ function init() {
   renderTaskPanel();
 
   const routedReportId = getReportDetailRouteId();
+  const routedArtworkId = getArtworkDetailRouteId();
   const routedHistoryId = getHistoryDetailRouteId();
   if (routedReportId) {
     openReportDetailRoute(routedReportId, { updateUrl: false, showMissing: true });
+  } else if (routedArtworkId) {
+    openArtworkDetailRoute(routedArtworkId, { updateUrl: false, showMissing: true });
   } else if (routedHistoryId) {
     openHistoryDetailRoute(routedHistoryId, { updateUrl: false, showMissing: true });
   } else {
@@ -3544,6 +3555,7 @@ function bindHistoryControls() {
       activeHistoryDetailId = null;
       selectedHistoryIds.clear();
       clearHistoryDetailRoute();
+      clearArtworkDetailRoute();
       renderHistoryPanel(currentIndex);
     });
   });
@@ -3556,6 +3568,12 @@ function bindHistoryControls() {
   els.historyClearTrash?.addEventListener("click", clearHistoryTrash);
   els.historyTrashList?.addEventListener("click", handleHistoryTrashAction);
   els.historyArtworkCompare?.addEventListener("click", handleArtworkCompareAction);
+  els.artworkSearch?.addEventListener("input", () => {
+    activeArtworkSearch = els.artworkSearch.value;
+    renderHistoryArtworkGallery();
+  });
+  els.artworkTagList?.addEventListener("click", handleArtworkTagClick);
+  els.artworkGalleryGrid?.addEventListener("click", handleArtworkGalleryAction);
   els.historyLoadMore?.addEventListener("click", () => {
     activeHistoryLimit += HISTORY_PAGE_SIZE;
     renderHistoryPanel(currentIndex);
@@ -3563,6 +3581,7 @@ function bindHistoryControls() {
   els.historyDetailClose?.addEventListener("click", () => {
     activeHistoryDetailId = null;
     clearHistoryDetailRoute();
+    clearArtworkDetailRoute();
     renderHistoryDetail();
     renderHistoryPanel(currentIndex);
   });
@@ -4303,6 +4322,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
 
   renderHistoryTrend(history.trend, history.dailyTrend, history.metricTrend);
   renderHistoryArtworkCompare();
+  renderHistoryArtworkGallery();
   renderHistoryList(history.entries, history.filteredTotal);
   renderHistoryBatchControls(history);
   renderHistoryDetail();
@@ -4748,6 +4768,154 @@ function renderHistoryArtworkCompare() {
   els.historyArtworkCompare.appendChild(grid);
 }
 
+function renderHistoryArtworkGallery() {
+  if (!els.historyArtworkGallery || !window.MRAppState?.getArtworkGallery) return;
+  let gallery = window.MRAppState.getArtworkGallery({
+    query: activeArtworkSearch,
+    tag: activeArtworkTag,
+    limit: 9
+  });
+  const knownTags = new Set((gallery.tags || []).map((item) => item.tag));
+  if (activeArtworkTag && !knownTags.has(activeArtworkTag)) {
+    activeArtworkTag = "";
+    gallery = window.MRAppState.getArtworkGallery({
+      query: activeArtworkSearch,
+      tag: activeArtworkTag,
+      limit: 9
+    });
+  }
+
+  els.historyArtworkGallery.classList.toggle("is-empty", gallery.total === 0);
+  if (els.artworkSearch && document.activeElement !== els.artworkSearch) {
+    els.artworkSearch.value = activeArtworkSearch;
+  }
+  if (els.artworkGalleryStatus) {
+    els.artworkGalleryStatus.textContent = gallery.total
+      ? `${gallery.filteredTotal}/${gallery.total} 幅作品${activeArtworkTag ? ` · ${activeArtworkTag}` : ""}`
+      : "暂无作品";
+  }
+  renderArtworkTagList(gallery.tags || []);
+  renderArtworkGalleryGrid(gallery);
+}
+
+function renderArtworkTagList(tags = []) {
+  if (!els.artworkTagList) return;
+  els.artworkTagList.innerHTML = "";
+
+  const allButton = document.createElement("button");
+  allButton.type = "button";
+  allButton.dataset.featureState = "real-local";
+  allButton.dataset.artworkTag = "";
+  allButton.classList.toggle("is-active", !activeArtworkTag);
+  allButton.textContent = "全部标签";
+  els.artworkTagList.appendChild(allButton);
+
+  tags.slice(0, 14).forEach((item) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.artworkTag = item.tag;
+    button.classList.toggle("is-active", activeArtworkTag === item.tag);
+    button.textContent = `${item.tag} ${item.count}`;
+    els.artworkTagList.appendChild(button);
+  });
+}
+
+function renderArtworkGalleryGrid(gallery) {
+  if (!els.artworkGalleryGrid) return;
+  els.artworkGalleryGrid.innerHTML = "";
+  const items = gallery.items || [];
+
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "artwork-gallery-empty";
+    empty.textContent = gallery.total
+      ? "当前搜索或标签下没有匹配作品。"
+      : "保存作品后，这里会出现可搜索、可打标签、可复制直达链接的作品集。";
+    els.artworkGalleryGrid.appendChild(empty);
+    return;
+  }
+
+  items.forEach((artwork) => {
+    els.artworkGalleryGrid.appendChild(createArtworkGalleryCard(artwork));
+  });
+}
+
+function createArtworkGalleryCard(artwork) {
+  const card = document.createElement("article");
+  card.className = "artwork-gallery-card";
+
+  const media = document.createElement("button");
+  media.type = "button";
+  media.className = "artwork-gallery-media";
+  media.dataset.featureState = "real-local";
+  media.dataset.artworkAction = "open";
+  media.dataset.artworkId = artwork.id;
+  media.setAttribute("aria-label", `打开作品：${artwork.title}`);
+  if (artwork.imageData) {
+    const image = document.createElement("img");
+    image.src = artwork.imageData;
+    image.alt = artwork.title;
+    media.appendChild(image);
+  } else {
+    const empty = document.createElement("span");
+    empty.textContent = artwork.glyph || "作品";
+    media.appendChild(empty);
+  }
+
+  const body = document.createElement("div");
+  body.className = "artwork-gallery-body";
+  const title = document.createElement("strong");
+  title.textContent = artwork.title;
+  const meta = document.createElement("span");
+  meta.textContent = `${formatHistoryTime(artwork.createdAt)} / ${artwork.glyph || "-"} / ${artwork.style || "-"} / ${artwork.score || 0}分`;
+  body.append(title, meta);
+
+  const tags = document.createElement("div");
+  tags.className = "artwork-gallery-tags";
+  (artwork.tags?.length ? artwork.tags : ["未标记"]).slice(0, 5).forEach((tag) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.dataset.featureState = "real-local";
+    item.dataset.artworkTag = tag === "未标记" ? "" : tag;
+    item.textContent = tag;
+    tags.appendChild(item);
+  });
+  body.appendChild(tags);
+
+  const stats = document.createElement("div");
+  stats.className = "artwork-gallery-stats";
+  [
+    ["笔画", artwork.strokeCount || 0],
+    ["采样", artwork.pointCount || 0]
+  ].forEach(([label, value]) => {
+    const item = document.createElement("span");
+    item.textContent = `${label} ${value}`;
+    stats.appendChild(item);
+  });
+  body.appendChild(stats);
+
+  const actions = document.createElement("div");
+  actions.className = "artwork-gallery-actions";
+  [
+    ["open", "详情"],
+    ["copy", "复制链接"],
+    ["tags", "标签"]
+  ].forEach(([action, label]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.artworkAction = action;
+    button.dataset.artworkId = artwork.id;
+    button.textContent = label;
+    actions.appendChild(button);
+  });
+  body.appendChild(actions);
+
+  card.append(media, body);
+  return card;
+}
+
 function createArtworkCompareCard(label, artwork) {
   const card = document.createElement("div");
   card.className = "history-artwork-card";
@@ -4936,6 +5104,7 @@ function openHistoryDetailRoute(recordId, options = {}) {
     setHistoryDetailRoute(detailId);
   }
   clearReportDetailRoute();
+  clearArtworkDetailRoute();
   loadScene(6);
 
   if (detail) {
@@ -4953,6 +5122,7 @@ function openHistoryDetailRoute(recordId, options = {}) {
 function getHistoryDetailUrl(recordId) {
   const url = new URL(window.location.href);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
+  url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId || "").trim());
   return url.toString();
 }
@@ -4964,9 +5134,10 @@ function setHistoryDetailRoute(recordId) {
 
   const url = new URL(window.location.href);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
+  url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId));
   window.history.replaceState(
-    { ...(window.history.state || {}), historyDetailId: String(recordId), reportDetailId: null },
+    { ...(window.history.state || {}), historyDetailId: String(recordId), reportDetailId: null, artworkDetailId: null },
     "",
     url.toString()
   );
@@ -4984,6 +5155,89 @@ function clearHistoryDetailRoute() {
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
   window.history.replaceState(
     { ...(window.history.state || {}), historyDetailId: null },
+    "",
+    url.toString()
+  );
+}
+
+function getArtworkDetailRouteId() {
+  try {
+    return new URLSearchParams(window.location.search).get(ARTWORK_DETAIL_QUERY_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function openArtworkDetailRoute(artworkId, options = {}) {
+  const detailId = String(artworkId || "").trim();
+  if (!detailId) {
+    return false;
+  }
+
+  const detail = window.MRAppState?.getHistoryDetail?.(detailId) || null;
+  activeHistoryFilter = "artwork";
+  activeHistoryLimit = 50;
+  selectedHistoryIds.clear();
+  activeReportDetailId = null;
+  activeHistoryDetailId = detail?.type === "artwork" ? detail.id : null;
+
+  if (activeHistoryDetailId) {
+    if (options.updateUrl !== false) {
+      setArtworkDetailRoute(activeHistoryDetailId);
+    }
+    clearHistoryDetailRoute();
+    clearReportDetailRoute();
+    loadScene(6);
+    showNotice(`已打开作品集详情：${detail.title}`);
+    return true;
+  }
+
+  clearArtworkDetailRoute();
+  clearHistoryDetailRoute();
+  clearReportDetailRoute();
+  loadScene(6);
+  if (options.showMissing) {
+    showNotice("未找到这幅作品，已打开作品集列表。");
+  }
+  return false;
+}
+
+function getArtworkDetailUrl(artworkId) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
+  url.searchParams.set(ARTWORK_DETAIL_QUERY_KEY, String(artworkId || "").trim());
+  return url.toString();
+}
+
+function setArtworkDetailRoute(artworkId) {
+  if (!window.history?.replaceState || !artworkId) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
+  url.searchParams.set(ARTWORK_DETAIL_QUERY_KEY, String(artworkId));
+  window.history.replaceState(
+    { ...(window.history.state || {}), historyDetailId: null, reportDetailId: null, artworkDetailId: String(artworkId) },
+    "",
+    url.toString()
+  );
+}
+
+function clearArtworkDetailRoute() {
+  if (!window.history?.replaceState) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(ARTWORK_DETAIL_QUERY_KEY)) {
+    return;
+  }
+  url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
+  window.history.replaceState(
+    { ...(window.history.state || {}), artworkDetailId: null },
     "",
     url.toString()
   );
@@ -5057,6 +5311,7 @@ function openReportDetailRoute(reportId, options = {}) {
       setReportDetailRoute(detail.id);
     }
     clearHistoryDetailRoute();
+    clearArtworkDetailRoute();
     loadScene(REPORT_DETAIL_SCENE_INDEX);
     showNotice(`已打开站内学习报告：${detail.title}`);
     return true;
@@ -5064,6 +5319,7 @@ function openReportDetailRoute(reportId, options = {}) {
 
   clearReportDetailRoute();
   clearHistoryDetailRoute();
+  clearArtworkDetailRoute();
   loadScene(REPORT_DETAIL_SCENE_INDEX);
   if (options.showMissing) {
     showNotice("未找到这份学习报告，已打开报告页空状态。");
@@ -5074,6 +5330,7 @@ function openReportDetailRoute(reportId, options = {}) {
 function getReportDetailUrl(reportId) {
   const url = new URL(window.location.href);
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(REPORT_DETAIL_QUERY_KEY, String(reportId || "").trim());
   return url.toString();
 }
@@ -5085,9 +5342,10 @@ function setReportDetailRoute(reportId) {
 
   const url = new URL(window.location.href);
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(REPORT_DETAIL_QUERY_KEY, String(reportId));
   window.history.replaceState(
-    { ...(window.history.state || {}), reportDetailId: String(reportId), historyDetailId: null },
+    { ...(window.history.state || {}), reportDetailId: String(reportId), historyDetailId: null, artworkDetailId: null },
     "",
     url.toString()
   );
@@ -5176,6 +5434,7 @@ function openReportHistoryRecord() {
   selectedHistoryIds.clear();
   setHistoryDetailRoute(detail.id);
   clearReportDetailRoute();
+  clearArtworkDetailRoute();
   loadScene(6);
   showNotice(`已打开报告档案记录：${detail.title}`);
 }
@@ -5244,6 +5503,7 @@ function deleteSelectedHistoryRecords() {
     if (activeHistoryDetailId && ids.includes(activeHistoryDetailId)) {
       activeHistoryDetailId = null;
       clearHistoryDetailRoute();
+      clearArtworkDetailRoute();
     }
     if (activeReportDetailId && ids.includes(activeReportDetailId)) {
       activeReportDetailId = null;
@@ -5304,7 +5564,77 @@ function handleArtworkCompareAction(event) {
   if (!button) {
     return;
   }
-  selectHistoryDetail(button.dataset.compareHistoryId);
+  openArtworkDetailRoute(button.dataset.compareHistoryId);
+}
+
+function handleArtworkTagClick(event) {
+  const button = event.target.closest("[data-artwork-tag]");
+  if (!button) return;
+  activeArtworkTag = button.dataset.artworkTag || "";
+  renderHistoryArtworkGallery();
+}
+
+function handleArtworkGalleryAction(event) {
+  const tagButton = event.target.closest(".artwork-gallery-tags [data-artwork-tag]");
+  if (tagButton) {
+    activeArtworkTag = tagButton.dataset.artworkTag || "";
+    renderHistoryArtworkGallery();
+    return;
+  }
+
+  const button = event.target.closest("[data-artwork-action]");
+  if (!button) return;
+  const artworkId = button.dataset.artworkId;
+  const action = button.dataset.artworkAction;
+
+  if (action === "open") {
+    openArtworkDetailRoute(artworkId);
+  } else if (action === "copy") {
+    copyArtworkLink(artworkId);
+  } else if (action === "tags") {
+    editArtworkTags(artworkId);
+  }
+}
+
+function copyArtworkLink(artworkId) {
+  const detail = window.MRAppState?.getHistoryDetail?.(artworkId);
+  if (detail?.type !== "artwork") {
+    showNotice("未找到这幅作品，无法复制链接。");
+    return;
+  }
+
+  const url = getArtworkDetailUrl(detail.id);
+  setArtworkDetailRoute(detail.id);
+  copyText(url)
+    .then((ok) => {
+      showNotice(ok
+        ? "已复制这幅作品的作品集直达链接。"
+        : "已把这幅作品的直达链接写入地址栏，可手动复制。");
+    });
+}
+
+function editArtworkTags(artworkId) {
+  const detail = window.MRAppState?.getHistoryDetail?.(artworkId);
+  if (detail?.type !== "artwork") {
+    showNotice("请选择一幅作品后再编辑标签。");
+    return;
+  }
+
+  const currentTags = (detail.tags || []).join("、");
+  const value = window.prompt("作品标签（用空格、逗号或顿号分隔）", currentTags);
+  if (value === null) {
+    return;
+  }
+
+  const result = window.MRAppState?.updateArtworkTags?.(detail.id, value);
+  if (result?.ok) {
+    activeHistoryDetailId = detail.id;
+    renderHistoryPanel(currentIndex);
+    renderReviewPanel(currentIndex);
+    showNotice(result.message);
+    return;
+  }
+  showNotice(result?.message || "作品标签更新失败。");
 }
 
 function clearHistoryTrash() {
@@ -5378,6 +5708,17 @@ function renderHistoryDetailBody(detail) {
     stats.appendChild(item);
   });
   els.historyDetailBody.appendChild(stats);
+
+  if (detail.type === "artwork" && detail.tags?.length) {
+    const tags = document.createElement("div");
+    tags.className = "history-detail-tags";
+    detail.tags.slice(0, 8).forEach((tag) => {
+      const item = document.createElement("span");
+      item.textContent = tag;
+      tags.appendChild(item);
+    });
+    els.historyDetailBody.appendChild(tags);
+  }
 
   if (detail.imageData) {
     const image = document.createElement("img");
@@ -5496,6 +5837,7 @@ function deleteHistoryDetail() {
     }
     activeHistoryDetailId = null;
     clearHistoryDetailRoute();
+    clearArtworkDetailRoute();
     refreshAfterHistoryMutation();
     showNotice(result.message);
     return;
@@ -5593,6 +5935,10 @@ function loadScene(index) {
   if (index !== 6 && getHistoryDetailRouteId()) {
     activeHistoryDetailId = null;
     clearHistoryDetailRoute();
+  }
+  if (index !== 6 && getArtworkDetailRouteId()) {
+    activeHistoryDetailId = null;
+    clearArtworkDetailRoute();
   }
   if (index !== REPORT_DETAIL_SCENE_INDEX && getReportDetailRouteId()) {
     activeReportDetailId = null;
@@ -6025,7 +6371,7 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
       },
       {
         body: stats.latestArtwork
-          ? `中心可对比最近作品“${latestArtworkTitle}”和当前练习状态，后续应补多作品对比路由。`
+          ? `中心可对比最近作品“${latestArtworkTitle}”和当前练习状态，也可从作品集复制直达链接继续复盘。`
           : "暂无作品可做前后对比。保存作品后，这里会显示真实成果变化。",
         tags: ["前后对比", latestArtworkTitle, "保持"]
       },
@@ -6067,6 +6413,10 @@ function applyActionResult(result = {}, action = {}) {
   if (result.report?.id) {
     activeReportDetailId = result.report.id;
     setReportDetailRoute(result.report.id);
+  }
+  if (result.openArtworkId) {
+    openArtworkDetailRoute(result.openArtworkId);
+    return;
   }
   renderLearningStateSummary();
   renderTaskPanel();
@@ -6431,7 +6781,12 @@ function runLearningAction(action) {
       recordLivePracticeIfAvailable();
       return { ...appState.createReport(), target: action.target };
     case "查看作品":
-      return { message: appState.getStats().latestArtwork ? "已打开最近保存的作品复盘页。" : "还没有保存作品，请先完成一次保存作品。", target: action.target };
+      {
+        const latestArtwork = appState.getStats().latestArtwork;
+        return latestArtwork
+          ? { message: `已打开最近保存的作品：${latestArtwork.title}。`, openArtworkId: latestArtwork.id }
+          : { ok: false, message: "还没有保存作品，请先完成一次保存作品。" };
+      }
     case "生成视频":
       return exportPracticeReplayVideo();
     case "制定计划":
