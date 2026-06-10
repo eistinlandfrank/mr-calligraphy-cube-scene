@@ -850,6 +850,7 @@ const els = {
   historyDetailReplay: document.getElementById("historyDetailReplay"),
   historyDetailDownloadImage: document.getElementById("historyDetailDownloadImage"),
   historyDetailDownloadReport: document.getElementById("historyDetailDownloadReport"),
+  historyDetailCopyLink: document.getElementById("historyDetailCopyLink"),
   historyDetailDelete: document.getElementById("historyDetailDelete"),
   planPanel: document.getElementById("planPanel"),
   planTitle: document.getElementById("planTitle"),
@@ -916,6 +917,7 @@ let activeHistoryDetailId = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
+const HISTORY_DETAIL_QUERY_KEY = "history";
 let activePlanId = null;
 let isReplayVideoExporting = false;
 let lecturePlaybackTimer = null;
@@ -1435,7 +1437,12 @@ function init() {
   renderLearningStateSummary();
   renderTaskPanel();
 
-  loadScene(0);
+  const routedHistoryId = getHistoryDetailRouteId();
+  if (routedHistoryId) {
+    openHistoryDetailRoute(routedHistoryId, { updateUrl: false, showMissing: true });
+  } else {
+    loadScene(0);
+  }
   if (new URLSearchParams(window.location.search).has("modelView")) {
     window.setTimeout(focusModelView, 900);
   }
@@ -3471,6 +3478,7 @@ function bindHistoryControls() {
       activeHistoryLimit = HISTORY_PAGE_SIZE;
       activeHistoryDetailId = null;
       selectedHistoryIds.clear();
+      clearHistoryDetailRoute();
       renderHistoryPanel(currentIndex);
     });
   });
@@ -3488,6 +3496,7 @@ function bindHistoryControls() {
   });
   els.historyDetailClose?.addEventListener("click", () => {
     activeHistoryDetailId = null;
+    clearHistoryDetailRoute();
     renderHistoryDetail();
     renderHistoryPanel(currentIndex);
   });
@@ -3495,6 +3504,7 @@ function bindHistoryControls() {
   els.historyDetailReplay?.addEventListener("click", replayHistoryDetail);
   els.historyDetailDownloadImage?.addEventListener("click", downloadHistoryDetailImage);
   els.historyDetailDownloadReport?.addEventListener("click", downloadHistoryDetailReport);
+  els.historyDetailCopyLink?.addEventListener("click", copyHistoryDetailLink);
   els.historyDetailDelete?.addEventListener("click", deleteHistoryDetail);
   els.historyDownloadArchive?.addEventListener("click", () => {
     const result = window.MRAppState?.downloadArchive?.();
@@ -4418,8 +4428,139 @@ function renderHistoryList(entries, filteredTotal) {
 function handleHistoryListClick(event) {
   const item = event.target.closest("[data-history-id]");
   if (!item) return;
-  activeHistoryDetailId = item.dataset.historyId;
+  selectHistoryDetail(item.dataset.historyId);
+}
+
+function selectHistoryDetail(recordId, options = {}) {
+  const detailId = String(recordId || "").trim();
+  if (!detailId) {
+    return false;
+  }
+
+  activeHistoryDetailId = detailId;
+  if (options.updateUrl !== false) {
+    setHistoryDetailRoute(detailId);
+  }
   renderHistoryPanel(currentIndex);
+  return true;
+}
+
+function getHistoryDetailRouteId() {
+  try {
+    return new URLSearchParams(window.location.search).get(HISTORY_DETAIL_QUERY_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function openHistoryDetailRoute(recordId, options = {}) {
+  const detailId = String(recordId || "").trim();
+  if (!detailId) {
+    return false;
+  }
+
+  activeHistoryFilter = "all";
+  activeHistoryLimit = 50;
+  selectedHistoryIds.clear();
+
+  const detail = window.MRAppState?.getHistoryDetail?.(detailId) || null;
+  activeHistoryDetailId = detail ? detailId : null;
+  if (options.updateUrl !== false) {
+    setHistoryDetailRoute(detailId);
+  }
+  loadScene(6);
+
+  if (detail) {
+    showNotice(`已打开学习档案详情：${detail.title}`);
+    return true;
+  }
+
+  clearHistoryDetailRoute();
+  if (options.showMissing) {
+    showNotice("未找到这条学习档案，已打开学习档案列表。");
+  }
+  return false;
+}
+
+function getHistoryDetailUrl(recordId) {
+  const url = new URL(window.location.href);
+  url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId || "").trim());
+  return url.toString();
+}
+
+function setHistoryDetailRoute(recordId) {
+  if (!window.history?.replaceState || !recordId) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId));
+  window.history.replaceState(
+    { ...(window.history.state || {}), historyDetailId: String(recordId) },
+    "",
+    url.toString()
+  );
+}
+
+function clearHistoryDetailRoute() {
+  if (!window.history?.replaceState) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(HISTORY_DETAIL_QUERY_KEY)) {
+    return;
+  }
+  url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  window.history.replaceState(
+    { ...(window.history.state || {}), historyDetailId: null },
+    "",
+    url.toString()
+  );
+}
+
+function copyHistoryDetailLink() {
+  const detail = getActiveHistoryDetail();
+  if (!detail) {
+    showNotice("请选择一条记录后再复制链接。");
+    return;
+  }
+
+  const url = getHistoryDetailUrl(detail.id);
+  setHistoryDetailRoute(detail.id);
+  copyText(url)
+    .then((ok) => {
+      showNotice(ok
+        ? "已复制这条学习档案的直达链接。"
+        : "已把这条学习档案的直达链接写入地址栏，可手动复制。");
+    });
+}
+
+function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text)
+      .then(() => true)
+      .catch(() => fallbackCopyText(text));
+  }
+  return Promise.resolve(fallbackCopyText(text));
+}
+
+function fallbackCopyText(text) {
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.left = "-9999px";
+  document.body.appendChild(field);
+  field.select();
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch (error) {
+    ok = false;
+  }
+  field.remove();
+  return ok;
 }
 
 function handleHistorySelectionChange(event) {
@@ -4476,6 +4617,7 @@ function deleteSelectedHistoryRecords() {
     ids.forEach((id) => selectedHistoryIds.delete(id));
     if (activeHistoryDetailId && ids.includes(activeHistoryDetailId)) {
       activeHistoryDetailId = null;
+      clearHistoryDetailRoute();
     }
     refreshAfterHistoryMutation();
     showNotice(result.message);
@@ -4659,6 +4801,7 @@ function setHistoryDetailActions(detail) {
   if (els.historyDetailReplay) els.historyDetailReplay.disabled = !hasStrokes;
   if (els.historyDetailDownloadImage) els.historyDetailDownloadImage.disabled = !hasImage;
   if (els.historyDetailDownloadReport) els.historyDetailDownloadReport.disabled = !hasReport;
+  if (els.historyDetailCopyLink) els.historyDetailCopyLink.disabled = !hasDetail;
   if (els.historyDetailDelete) els.historyDetailDelete.disabled = !hasDetail;
 }
 
@@ -4708,6 +4851,7 @@ function deleteHistoryDetail() {
   if (result?.ok) {
     selectedHistoryIds.delete(detail.id);
     activeHistoryDetailId = null;
+    clearHistoryDetailRoute();
     refreshAfterHistoryMutation();
     showNotice(result.message);
     return;
@@ -4802,6 +4946,10 @@ function loadScene(index) {
 
   currentIndex = index;
   activePointIndex = 0;
+  if (index !== 6 && getHistoryDetailRouteId()) {
+    activeHistoryDetailId = null;
+    clearHistoryDetailRoute();
+  }
 
   updateSceneText(index);
   updateStepNavigation(index);
