@@ -98,6 +98,61 @@ textarea {
   background: rgba(255, 255, 255, 0.48);
 }
 
+.route-actions button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(32, 32, 29, 0.16);
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.app-error-page {
+  display: grid;
+  min-height: 100vh;
+  padding: 32px;
+  color: #20201d;
+  background:
+    linear-gradient(120deg, rgba(238, 231, 218, 0.96), rgba(246, 247, 242, 0.98) 54%, rgba(225, 236, 228, 0.96)),
+    #f5f1ea;
+}
+
+.app-error-panel {
+  align-self: center;
+  width: min(720px, 100%);
+}
+
+.app-error-panel h1 {
+  margin: 0 0 16px;
+  color: #181714;
+  font-size: 42px;
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.app-error-panel p {
+  max-width: 640px;
+  margin: 0 0 18px;
+  color: #4f4a41;
+  font-size: 18px;
+  line-height: 1.7;
+}
+
+.app-error-panel pre {
+  max-width: 100%;
+  margin: 22px 0 0;
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid rgba(97, 44, 44, 0.18);
+  border-radius: 8px;
+  color: #6f2d2d;
+  background: rgba(255, 255, 255, 0.62);
+}
+
 @media (max-width: 720px) {
   .app-page {
     padding: 24px;
@@ -113,6 +168,14 @@ textarea {
 
   .page-hero h1 {
     font-size: 40px;
+  }
+
+  .app-error-page {
+    padding: 24px;
+  }
+
+  .app-error-panel h1 {
+    font-size: 34px;
   }
 }
 
