@@ -56,6 +56,7 @@ const layerList = document.getElementById("mainLayerList");
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const IMPORT_DB_STORE = "models";
+const MAX_IMPORT_MODEL_BYTES = 50 * 1024 * 1024;
 const MAX_UNDO_STEPS = 256;
 const DEFAULT_LIGHTING = {
   ambient: 0.55,
@@ -447,28 +448,27 @@ async function handleImportModel(event) {
     return;
   }
 
-  const type = getImportFileType(file.name);
-  if (!type) {
-    showImportStatus("Please choose a .glb or .obj model.");
-    event.target.value = "";
-    return;
-  }
-
-  const label = importModelNameInput.value.trim() || stripModelExtension(file.name);
-  const record = normalizeImportedModel({
-    id: `imported-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    dbKey: `imported-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-    label,
-    fileName: file.name,
-    type,
-    position: [0, -1.05, -3.2],
-    rotation: [0, 0, 0],
-    scale: 1
-  }, layout.importedModels.length);
-
   try {
-    showImportStatus(`Importing ${file.name}...`);
+    const type = getImportFileType(file.name);
+    const label = normalizeImportLabel(importModelNameInput?.value, file.name);
+
+    validateImportFile(file, type, label);
+
+    const record = normalizeImportedModel({
+      id: `imported-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      dbKey: `imported-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      label,
+      fileName: file.name,
+      type,
+      position: [0, -1.05, -3.2],
+      rotation: [0, 0, 0],
+      scale: 1
+    }, layout.importedModels.length);
+
+    showImportStatus(`正在校验 ${file.name}...`);
     const arrayBuffer = await file.arrayBuffer();
+    validateImportBuffer(type, arrayBuffer, file.name);
+    showImportStatus(`正在解析 ${file.name}...`);
     const entry = await createImportedModel(record, arrayBuffer, { select: true, updateLayout: false });
 
     const importedRecord = entry.object.userData.importRecord;
@@ -480,11 +480,11 @@ async function handleImportModel(event) {
     populateObjectSelect();
     selectObject(entry.id);
     importModelNameInput.value = "";
-    showImportStatus(`Imported: ${entry.label}`);
-    showNotice(`Imported model: ${entry.label}`);
+    showImportStatus(`已导入：${entry.label} · ${formatImportMetrics(importedRecord.metrics)}`);
+    showNotice(`已导入模型：${entry.label}`);
   } catch (error) {
     console.error(error);
-    showImportStatus(`Import failed: ${error.message || file.name}`);
+    showImportStatus(`导入失败：${error.message || file.name}`);
   } finally {
     event.target.value = "";
   }
@@ -493,7 +493,10 @@ async function handleImportModel(event) {
 async function createImportedModel(record, arrayBuffer, options = {}) {
   const normalized = normalizeImportedModel(record);
   const model = await parseImportedModel(normalized, arrayBuffer);
+  const metrics = measureImportedModel(model);
 
+  validateImportedModelMetrics(metrics);
+  normalized.metrics = createImportMetrics(metrics, arrayBuffer.byteLength);
   normalizeImportedModelPivot(model, normalized);
   prepareImportedModel(model);
 
@@ -531,22 +534,152 @@ function parseImportedModel(record, arrayBuffer) {
   });
 }
 
-function normalizeImportedModelPivot(model, record) {
+function normalizeImportLabel(value, fileName) {
+  const fallback = stripModelExtension(fileName) || "导入模型";
+  const label = String(value || "").trim() || fallback;
+  return label.slice(0, 48);
+}
+
+function validateImportFile(file, type, label) {
+  if (!type) {
+    throw new Error("请选择 .glb 或 .obj 模型文件。");
+  }
+  if (!file.size) {
+    throw new Error("模型文件为空。");
+  }
+  if (file.size > MAX_IMPORT_MODEL_BYTES) {
+    throw new Error(`模型文件不能超过 ${formatBytes(MAX_IMPORT_MODEL_BYTES)}。`);
+  }
+
+  const duplicate = layout.importedModels.find((item) => {
+    return String(item.fileName || "").toLowerCase() === file.name.toLowerCase() ||
+      String(item.label || "").toLowerCase() === label.toLowerCase();
+  });
+
+  if (duplicate) {
+    throw new Error(`已存在导入模型“${duplicate.label}”，请先删除旧模型或修改名称。`);
+  }
+}
+
+function validateImportBuffer(type, arrayBuffer, fileName) {
+  if (!arrayBuffer?.byteLength) {
+    throw new Error("模型文件没有可读取内容。");
+  }
+
+  if (type === "glb") {
+    if (arrayBuffer.byteLength < 12) {
+      throw new Error("GLB 文件头不完整。");
+    }
+    const magic = new DataView(arrayBuffer).getUint32(0, true);
+    if (magic !== 0x46546c67) {
+      throw new Error(`${fileName} 不是有效的 GLB 文件。`);
+    }
+    return;
+  }
+
+  const text = new TextDecoder("utf-8").decode(arrayBuffer.slice(0, Math.min(arrayBuffer.byteLength, 512 * 1024)));
+  if (!/^\s*v\s+[-+0-9.]/m.test(text)) {
+    throw new Error(`${fileName} 没有可读取的 OBJ 顶点数据。`);
+  }
+}
+
+function measureImportedModel(model) {
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model);
-  if (box.isEmpty()) {
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  let meshCount = 0;
+  let vertexCount = 0;
+
+  model.traverse((child) => {
+    if (!child.isMesh) {
+      return;
+    }
+
+    const count = Number(child.geometry?.attributes?.position?.count || 0);
+    if (count > 0) {
+      meshCount += 1;
+      vertexCount += count;
+    }
+  });
+
+  if (!box.isEmpty()) {
+    box.getSize(size);
+    box.getCenter(center);
+  }
+
+  return {
+    box,
+    center,
+    minY: box.isEmpty() ? 0 : box.min.y,
+    meshCount,
+    vertexCount,
+    width: size.x,
+    height: size.y,
+    depth: size.z,
+    longestSide: Math.max(size.x, size.y, size.z)
+  };
+}
+
+function validateImportedModelMetrics(metrics) {
+  if (!metrics.meshCount || !metrics.vertexCount || metrics.box.isEmpty()) {
+    throw new Error("模型没有可读取的网格，请检查文件是否包含实体几何。");
+  }
+
+  if (!Number.isFinite(metrics.longestSide) || metrics.longestSide <= 0) {
+    throw new Error("模型尺寸无效，无法自动摆放。");
+  }
+}
+
+function createImportMetrics(metrics, byteLength) {
+  return {
+    fileBytes: Number(byteLength || 0),
+    meshCount: metrics.meshCount,
+    vertexCount: metrics.vertexCount,
+    dimensions: {
+      width: Number(metrics.width.toFixed(4)),
+      height: Number(metrics.height.toFixed(4)),
+      depth: Number(metrics.depth.toFixed(4))
+    }
+  };
+}
+
+function formatImportMetrics(metrics = {}) {
+  const dimensions = metrics.dimensions
+    ? `${formatMetricNumber(metrics.dimensions.width)}×${formatMetricNumber(metrics.dimensions.height)}×${formatMetricNumber(metrics.dimensions.depth)}`
+    : "尺寸未知";
+
+  return `${metrics.meshCount || 0} 个网格，${dimensions}，${formatBytes(metrics.fileBytes || 0)}`;
+}
+
+function formatMetricNumber(value) {
+  return Number(value || 0).toFixed(2);
+}
+
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value >= 1024 * 1024) {
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  }
+  if (value >= 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+  return `${value} B`;
+}
+
+function normalizeImportedModelPivot(model, record) {
+  const metrics = measureImportedModel(model);
+  if (metrics.box.isEmpty()) {
     record.baseScale = record.baseScale || 1;
     return;
   }
 
-  const center = box.getCenter(new THREE.Vector3());
-  const size = box.getSize(new THREE.Vector3());
-  const offset = new THREE.Vector3(center.x, box.min.y, center.z);
+  const offset = new THREE.Vector3(metrics.center.x, metrics.minY, metrics.center.z);
 
   model.position.sub(offset);
 
   if (!Number.isFinite(Number(record.baseScale)) || Number(record.baseScale) <= 0) {
-    const longestSide = Math.max(size.x, size.y, size.z, 0.001);
+    const longestSide = Math.max(metrics.longestSide, 0.001);
     record.baseScale = Number((1.35 / longestSide).toFixed(6));
   }
 }
@@ -758,7 +891,24 @@ function normalizeImportedModel(record = {}, index = 0) {
       readNumber(rotation[2], 0)
     ],
     scale: readNumber(record.scale, 1),
-    baseScale: Number.isFinite(baseScale) && baseScale > 0 ? baseScale : undefined
+    baseScale: Number.isFinite(baseScale) && baseScale > 0 ? baseScale : undefined,
+    metrics: normalizeImportMetrics(record.metrics)
+  };
+}
+
+function normalizeImportMetrics(metrics = {}) {
+  const source = metrics && typeof metrics === "object" ? metrics : {};
+  const dimensions = source.dimensions && typeof source.dimensions === "object" ? source.dimensions : {};
+
+  return {
+    fileBytes: Math.max(0, Math.round(readNumber(source.fileBytes, 0))),
+    meshCount: Math.max(0, Math.round(readNumber(source.meshCount, 0))),
+    vertexCount: Math.max(0, Math.round(readNumber(source.vertexCount, 0))),
+    dimensions: {
+      width: readNumber(dimensions.width, 0),
+      height: readNumber(dimensions.height, 0),
+      depth: readNumber(dimensions.depth, 0)
+    }
   };
 }
 
@@ -908,6 +1058,7 @@ async function storeImportedModel(record, arrayBuffer) {
       label: record.label,
       fileName: record.fileName,
       type: record.type,
+      metrics: record.metrics,
       arrayBuffer: arrayBuffer.slice(0)
     });
 
@@ -927,6 +1078,24 @@ async function readImportedModel(record) {
 
     request.onsuccess = () => resolve(request.result || null);
     request.onerror = () => reject(request.error || new Error("Could not read imported model."));
+  });
+}
+
+async function deleteImportedModelData(record) {
+  if (!record?.dbKey) {
+    return;
+  }
+
+  const db = await openImportDb();
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(IMPORT_DB_STORE, "readwrite");
+    const store = transaction.objectStore(IMPORT_DB_STORE);
+    const request = store.delete(record.dbKey);
+
+    request.onerror = () => reject(request.error || new Error("Could not delete imported model."));
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error || new Error("Could not delete imported model."));
   });
 }
 
@@ -1296,11 +1465,14 @@ async function undo() {
   }
 
   if (item.kind === "import-delete") {
-    const stored = await readImportedModel(item.record);
+    const stored = item.arrayBuffer
+      ? { arrayBuffer: item.arrayBuffer.slice(0) }
+      : await readImportedModel(item.record);
     if (!stored?.arrayBuffer) {
       showImportStatus(`Missing model file: ${item.record.label || item.record.fileName}`);
       return;
     }
+    await storeImportedModel(item.record, stored.arrayBuffer);
     layout.importedModels.push(item.record);
     const entry = await createImportedModel(item.record, stored.arrayBuffer, { select: true, updateLayout: true });
     applySnapshot(item.snapshot);
@@ -1495,6 +1667,7 @@ function removeImportedEntry(entry, options = {}) {
     return;
   }
 
+  const importRecord = { ...entry.object.userData.importRecord };
   transformControls.detach();
   entry.object.traverse((child) => {
     if (!child.isMesh) {
@@ -1516,6 +1689,15 @@ function removeImportedEntry(entry, options = {}) {
   objects.delete(entry.id);
   layout.importedModels = layout.importedModels.filter((item) => item.id !== entry.id);
   delete layout.objects[entry.id];
+
+  if (options.deleteStorage !== false) {
+    deleteImportedModelData(importRecord)
+      .then(() => showImportStatus(`已清理模型文件：${importRecord.label || importRecord.fileName}`))
+      .catch((error) => {
+        console.warn("Imported model file could not be deleted.", error);
+        showImportStatus(`模型已从布局移除，但文件清理失败：${importRecord.label || importRecord.fileName}`);
+      });
+  }
 
   if (options.save !== false) {
     saveLayout();
@@ -1547,13 +1729,18 @@ function applyInputValues() {
   syncInputs();
 }
 
-function deleteSelected() {
+async function deleteSelected() {
   if (!selectedEntry || selectedEntry.object.userData.deleted || isEntryLocked(selectedEntry)) return;
   if (selectedEntry.object.userData.isImported === true) {
+    const stored = await readImportedModel(selectedEntry.object.userData.importRecord).catch((error) => {
+      console.warn("Imported model file could not be prepared for undo.", error);
+      return null;
+    });
     pushUndo({
       kind: "import-delete",
       record: { ...selectedEntry.object.userData.importRecord },
-      snapshot: snapshot(selectedEntry)
+      snapshot: snapshot(selectedEntry),
+      arrayBuffer: stored?.arrayBuffer ? stored.arrayBuffer.slice(0) : null
     });
     const label = selectedEntry.label;
     removeImportedEntry(selectedEntry);
