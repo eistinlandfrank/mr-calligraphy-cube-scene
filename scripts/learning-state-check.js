@@ -90,7 +90,16 @@ const persisted = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 const persistedArtwork = persisted.artworks.find((item) => item.id === "artwork-3");
 assert(persistedArtwork.tags.includes("集字"), "作品标签应持久化到 localStorage。");
 
-console.log("学习状态检查通过：同字作品对比和作品集检索已生成。");
+const sharePackage = window.MRAppState.getArtworkSharePackage("artwork-2");
+assert(sharePackage.ok, "作品分享页应能基于指定作品生成。");
+assert(sharePackage.filename.includes("mr-calligraphy-share"), "作品分享页应返回可下载文件名。");
+assert(sharePackage.html.includes("MR 书法作品分享"), "作品分享页 HTML 应包含分享页标题。");
+assert(sharePackage.html.includes("永字作品 2"), "作品分享页 HTML 应包含作品标题。");
+assert(sharePackage.html.includes("data:image/png"), "作品分享页 HTML 应嵌入作品截图。");
+assert(sharePackage.html.includes("不是云端公开链接"), "作品分享页应明确本机导出边界。");
+assert(sharePackage.html.includes("结构"), "作品分享页应包含能力维度。");
+
+console.log("学习状态检查通过：同字作品对比、作品集检索和分享页已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

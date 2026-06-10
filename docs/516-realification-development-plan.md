@@ -46,7 +46,7 @@
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出 | 还没有服务端分页和跨设备归档 |
 | 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由和字段级交互图表 | 还没有程序直接生成的原生 PDF 文件，也没有跨报告对比和更深的悬浮筛选 |
-| 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交分享、MP4/GIF、公开作品集和跨设备作品集 |
+| 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度和刷新后可读取的当前段落 | 还没有真实音频、视频流、语音合成和云端生成内容 |
 
 ### 2.3 明显缺失
@@ -3051,3 +3051,67 @@
 - 第一版作品集仍是本机浏览器作品集，不是公开作品页、云端班级作品墙或跨设备同步作品库。
 - 标签是人工输入和默认标签组合，没有自动识别章法、缺陷类型或教师批注标签。
 - 搜索在本机数组中完成，适合当前静态项目；未来服务端分页后需要替换为远端查询接口。
+
+### 2026-06-11：新增作品 HTML 分享页导出
+
+功能名：前台作品复盘导出可离线打开的本机分享页。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `MRAppState.getArtworkSharePackage()` 新增作品分享页数据源，支持按作品 ID 或最近作品生成分享包。
+- `MRAppState.downloadArtworkSharePage()` 新增真实文件导出，会下载 `mr-calligraphy-share-*.html`。
+- 分享页 HTML 包含作品图、标题、评分、练习字、笔画、采样、标签、反馈建议、能力维度、来源说明、水印和“打印 / 保存 PDF”入口。
+- 分享页明确写明“不是云端公开链接”，避免把本机 HTML 文件伪装成微信、社群或课堂云端分享。
+- 作品复盘区新增“导出分享页”按钮，标记为 `real-export`；没有作品时按钮禁用。
+- “复盘总结 / 分享成果”场景新增“导出分享页”操作，复用同一个真实导出函数。
+- `scripts/learning-state-check.js` 已验证分享包文件名、HTML 标题、作品标题、作品截图、边界说明和能力维度。
+- smoke test 前台页面标记新增 `reviewDownloadShare`，避免分享页导出入口被误删。
+
+验收方式：
+
+- 在前台完成一次真实书写并保存作品。
+- 打开“复盘总结 / 分享成果”或作品复盘面板，点击“导出分享页”。
+- 浏览器应下载一个 `mr-calligraphy-share-*.html` 文件。
+- 打开该 HTML 文件，应看到作品图、评分、标签、反馈建议、水印和“打印 / 保存 PDF”按钮。
+- 没有作品时，“导出分享页”不应提示分享成功，而应禁用或提示先保存作品。
+- 运行 `node scripts/learning-state-check.js`，应输出学习状态检查通过，并覆盖作品分享页 HTML 断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：16 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 这是本机 HTML 分享页，不是公网链接、微信分享接口、班级作品墙或跨设备同步。
+- PDF 仍依赖浏览器打印保存，不是程序直接生成的 PDF 二进制文件。
+- 分享页使用最近作品和关联练习数据；如果作品没有截图或关联练习，页面会显示空图或空维度，不补假内容。

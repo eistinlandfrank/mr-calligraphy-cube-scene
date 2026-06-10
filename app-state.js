@@ -1776,6 +1776,202 @@
     return state.sessions[state.sessions.length - 1] || null;
   }
 
+  function getArtworkSharePackage(artworkId = null) {
+    const artwork = findArtworkForShare(artworkId);
+    if (!artwork) {
+      return {
+        ok: false,
+        message: "还没有可导出的作品分享页。请先完成书写并保存作品。"
+      };
+    }
+
+    const session = findArtworkSession(artwork);
+    const metrics = pickRealMetrics(session?.metrics) || {};
+    const exportedAt = new Date().toISOString();
+    const share = {
+      exportedAt,
+      version: VERSION,
+      storageKey: STORAGE_KEY,
+      title: `${artwork.title || `${artwork.glyph}字作品`}分享页`,
+      artwork: decorateArtworkGalleryItem(artwork),
+      session: session
+        ? {
+            id: session.id,
+            title: session.title || `${session.glyph}字练习`,
+            glyph: session.glyph,
+            copybook: session.copybook,
+            trainingMode: session.trainingMode,
+            score: session.score || 0,
+            strokeCount: session.strokeCount || 0,
+            pointCount: session.pointCount || 0,
+            createdAt: session.endedAt || session.snapshotAt || session.startedAt,
+            feedback: clone(session.feedback || []),
+            metrics
+          }
+        : null,
+      metrics,
+      report: state.reports[state.reports.length - 1]
+        ? {
+            id: state.reports[state.reports.length - 1].id,
+            title: state.reports[state.reports.length - 1].title || "学习报告",
+            averageScore: state.reports[state.reports.length - 1].averageScore || 0,
+            createdAt: state.reports[state.reports.length - 1].createdAt
+          }
+        : null
+    };
+
+    return {
+      ok: true,
+      share: clone(share),
+      html: createArtworkShareHtml(share),
+      filename: `mr-calligraphy-share-${makeDownloadSlug(artwork.glyph || artwork.id)}-${artwork.id}.html`,
+      message: `已生成“${artwork.title}”的本机分享页，包含作品图、评分、标签、反馈和打印样式。`
+    };
+  }
+
+  function findArtworkForShare(artworkId = null) {
+    const recordId = String(artworkId || "").trim();
+    if (recordId) {
+      return state.artworks.find((item) => item.id === recordId) || null;
+    }
+    return state.artworks[state.artworks.length - 1] || null;
+  }
+
+  function findArtworkSession(artwork) {
+    if (!artwork?.sessionId) return null;
+    return state.sessions.find((item) => item.id === artwork.sessionId) || null;
+  }
+
+  function downloadArtworkSharePage(artworkId = null) {
+    const result = getArtworkSharePackage(artworkId);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      message: `${result.message} 已下载：${result.filename}。`
+    };
+  }
+
+  function createArtworkShareHtml(share) {
+    const artwork = share.artwork;
+    const metrics = share.metrics || {};
+    const feedback = artwork.feedback?.length
+      ? artwork.feedback
+      : share.session?.feedback?.length
+        ? share.session.feedback
+        : ["这幅作品暂无自动反馈，可继续保存更多练习形成复盘。"];
+    const tags = artwork.tags?.length ? artwork.tags : [artwork.glyph, artwork.style].filter(Boolean);
+    const metricRows = SCORE_METRICS.map((metric) => {
+      const value = normalizeScore(metrics[metric.key], 0);
+      return `<li><span>${escapeHtml(metric.label)}</span><b><i style="width:${value}%"></i></b><strong>${value || "-"}</strong></li>`;
+    }).join("");
+    const artworkImage = artwork.imageData
+      ? `<figure class="artwork"><img src="${escapeAttr(artwork.imageData)}" alt="${escapeAttr(artwork.title)}"><figcaption>${escapeHtml(artwork.title)} · ${artwork.score || 0} 分</figcaption></figure>`
+      : `<div class="artwork-empty">${escapeHtml(artwork.glyph || "作品")}</div>`;
+    const watermarkText = `MR 书法本机作品分享 · ${artwork.id} · ${formatDateTime(share.exportedAt)}`;
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(artwork.title)} · MR 书法作品分享</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#5f6f69; --line:#d9e6df; --jade:#257861; --gold:#bb8138; --paper:#fbf7ee; --wash:#eef8f3; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { position: relative; z-index: 1; width: min(880px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 40px; }
+    .watermark { position: fixed; inset: 0; z-index: 0; display: grid; place-items: center; pointer-events: none; color: rgba(37, 120, 97, 0.08); font-size: clamp(26px, 6vw, 64px); font-weight: 900; text-align: center; transform: rotate(-26deg); }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; margin-bottom: 14px; padding: 9px 0; background: var(--paper); }
+    button { min-height: 38px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 8px; color: #fff; background: var(--ink); font: inherit; cursor: pointer; }
+    button:hover { background: var(--jade); }
+    header { display: grid; gap: 9px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p, figure { margin: 0; }
+    h1 { font-size: clamp(30px, 7vw, 58px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 18px; }
+    .meta, .muted { color: var(--muted); }
+    .layout { display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(250px, 0.92fr); gap: 18px; align-items: start; margin-top: 18px; }
+    .artwork { padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .artwork img { display: block; width: 100%; max-height: 560px; object-fit: contain; border-radius: 6px; background: var(--wash); }
+    .artwork figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .artwork-empty { display: grid; min-height: 360px; place-items: center; border: 1px dashed var(--line); border-radius: 8px; color: rgba(23, 34, 31, 0.62); background: #fff; font-size: 88px; font-weight: 900; }
+    .panel { display: grid; gap: 14px; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .stat, .box { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 28px; line-height: 1.1; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tags span { min-height: 26px; padding: 3px 9px; border-radius: 99px; color: var(--ink); background: #edf5ef; font-size: 12px; font-weight: 800; }
+    .metrics, .feedback { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+    .metrics li { display: grid; grid-template-columns: 56px 1fr 38px; gap: 9px; align-items: center; }
+    .metrics b { height: 11px; overflow: hidden; border-radius: 99px; background: var(--line); }
+    .metrics i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--jade), var(--gold)); }
+    .metrics strong { text-align: right; }
+    .feedback li { padding-left: 10px; border-left: 3px solid rgba(37, 120, 97, 0.28); color: var(--muted); }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media print {
+      @page { size: A4; margin: 14mm; }
+      body { background: #fff; font-size: 12px; }
+      main { width: 100%; padding: 0; }
+      .toolbar { display: none; }
+      .watermark { color: rgba(37, 120, 97, 0.08); font-size: 40px; }
+      header, .artwork, .panel, .box, .stat { break-inside: avoid; page-break-inside: avoid; }
+      .artwork img { max-height: 430px; }
+    }
+    @media (max-width: 760px) { main { width: min(100% - 20px, 880px); padding-top: 18px; } .layout, .stats { grid-template-columns: 1fr; } .artwork-empty { min-height: 260px; } }
+  </style>
+</head>
+<body>
+  <div class="watermark" aria-hidden="true">${escapeHtml(watermarkText)}</div>
+  <main>
+    <div class="toolbar"><button type="button" onclick="window.print()">打印 / 保存 PDF</button></div>
+    <header>
+      <p class="meta">MR Calligraphy Artwork · ${escapeHtml(formatDateTime(artwork.createdAt))}</p>
+      <h1>${escapeHtml(artwork.title)}</h1>
+      <p class="muted">这是一份本机导出的作品分享页，包含作品图、基础评分、标签和复盘建议；不是云端公开链接。</p>
+      <div class="tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
+    </header>
+    <section class="layout">
+      ${artworkImage}
+      <div class="panel">
+        <div class="stats">
+          <div class="stat"><span>评分</span><strong>${artwork.score || 0}</strong></div>
+          <div class="stat"><span>练习字</span><strong>${escapeHtml(artwork.glyph || "-")}</strong></div>
+          <div class="stat"><span>笔画</span><strong>${artwork.strokeCount || 0}</strong></div>
+          <div class="stat"><span>采样</span><strong>${artwork.pointCount || 0}</strong></div>
+        </div>
+        <section class="box">
+          <h2>能力维度</h2>
+          <ul class="metrics">${metricRows}</ul>
+        </section>
+        <section class="box">
+          <h2>复盘建议</h2>
+          <ol class="feedback">${feedback.slice(0, 6).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
+        </section>
+        <section class="box">
+          <h2>学习来源</h2>
+          <p class="muted">${share.session ? `${escapeHtml(share.session.copybook || "本机练习")} / ${share.session.trainingMode === "compare" ? "对比模式" : "示范模式"} / ${escapeHtml(formatDateTime(share.session.createdAt))}` : "这幅作品没有关联练习会话。"}</p>
+          <p class="muted">${share.report ? `最近报告平均 ${share.report.averageScore || 0} 分，生成于 ${escapeHtml(formatDateTime(share.report.createdAt))}。` : "暂无关联学习报告。"}</p>
+        </section>
+      </div>
+    </section>
+    <footer>分享页数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。导出时间：${escapeHtml(formatDateTime(share.exportedAt))}。迁移项目请在主后台导出项目档案。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function makeDownloadSlug(value) {
+    return String(value || "artwork")
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, "-")
+      .slice(0, 48) || "artwork";
+  }
+
   function formatDateTime(value) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -2832,6 +3028,7 @@
     getLatestPlan,
     getReportPreview,
     getReportDetail,
+    getArtworkSharePackage,
     getLatestReview,
     getHistory,
     getHistoryDetail,
@@ -2868,6 +3065,7 @@
     deletePlanItem,
     createReport,
     downloadReport,
+    downloadArtworkSharePage,
     downloadArchive
   };
 })();

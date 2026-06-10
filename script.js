@@ -298,6 +298,7 @@ const SCENES = [
     actions: [
       { label: "再写一遍", target: 3, response: "回到临摹场景，带着复盘结论再练一次。" },
       { label: "生成视频", response: "将根据真实书写笔迹导出 WebM 回放视频。" },
+      { label: "导出分享页", response: "将最近作品导出为可离线打开的 HTML 分享页。" },
       { label: "保存作品", response: "作品已保存到作品集，可继续分享或导出。" }
     ],
     points: [
@@ -434,6 +435,7 @@ const LEARNING_ACTION_FEATURES = {
   查看作品: ["real-local", "打开最近保存作品的复盘区域。"],
   再写一遍: ["real-local", "回到临摹训练并继续当前任务。"],
   生成视频: ["real-export", "用真实笔迹导出 WebM 回放视频文件。"],
+  导出分享页: ["real-export", "用最近作品生成可离线打开的本机 HTML 分享页。"],
   继续学习: ["real-local", "回到临摹训练并继续当前任务。"],
   制定计划: ["real-local", "按当前任务和本机评分生成可勾选计划。"],
   导出报告: ["real-export", "用本机练习和作品记录生成 HTML 报告文件。"],
@@ -826,6 +828,7 @@ const els = {
   reviewReplay: document.getElementById("reviewReplay"),
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
+  reviewDownloadShare: document.getElementById("reviewDownloadShare"),
   reportPanel: document.getElementById("reportPanel"),
   reportTitle: document.getElementById("reportTitle"),
   reportStatus: document.getElementById("reportStatus"),
@@ -3532,6 +3535,7 @@ function bindReviewControls() {
   els.reviewReplay?.addEventListener("click", replayLatestArtwork);
   els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
+  els.reviewDownloadShare?.addEventListener("click", downloadLatestArtworkSharePage);
 }
 
 function bindReportControls() {
@@ -3909,6 +3913,7 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   els.reviewReplay.disabled = !hasStrokes;
   els.reviewDownloadImage.disabled = !hasImage;
   els.reviewDownloadReport.disabled = !report;
+  if (els.reviewDownloadShare) els.reviewDownloadShare.disabled = !artwork;
 }
 
 function replayLatestArtwork() {
@@ -3938,6 +3943,15 @@ function downloadLatestReport() {
   if (result?.message) {
     showNotice(result.message);
   }
+}
+
+function downloadLatestArtworkSharePage() {
+  const result = window.MRAppState?.downloadArtworkSharePage?.();
+  if (result?.message) {
+    showNotice(result.message);
+    return;
+  }
+  showNotice("还没有可导出的作品分享页。请先保存作品。");
 }
 
 function renderReportPanel(sceneIndex = currentIndex) {
@@ -6789,6 +6803,8 @@ function runLearningAction(action) {
       }
     case "生成视频":
       return exportPracticeReplayVideo();
+    case "导出分享页":
+      return appState.downloadArtworkSharePage();
     case "制定计划":
       return appState.createPlan();
     case "查看成就":
