@@ -55,7 +55,7 @@
 - 历史记录仍需扩展：已有记录列表、筛选、趋势和档案导出，但还没有独立详情页和复杂趋势分析。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型；仍缺版本历史、差异预览和远端协作。
 - 没有统一配置层：主场景、写实场景、前台学习流程各自保存，缺少统一 schema 和版本迁移。
-- 没有权限/发布边界：后台页面没有保护；主后台已有第一版“保存历史 / 回滚”，但还没有“预览 / 发布”流程。
+- 没有权限保护；主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 回滚”，但还没有账号权限和远端发布流程。
 - 没有系统化测试：目前只能靠人工访问页面，缺少 smoke test、交互验收和数据迁移验证。
 
 ## 3. 前端假控件真实化原则
@@ -226,12 +226,12 @@
 - 导入模型增加校验：尺寸、中心点、文件类型、加载失败、重复导入。主后台和写实后台第一版已完成。
 - 增加项目级“导入/导出/备份/恢复”。第一版已完成，后续补差异预览。
 - 增加保存历史，至少保留最近 10 次布局快照。主后台第一版已完成。
-- 后台页面增加“预览前台”入口，能带当前配置打开 `index.html`。
+- 后台页面增加“预览前台”入口，能带当前配置打开 `index.html`。主后台第一版已完成。
 - 明确主后台与写实后台的边界，避免两套编辑器能力割裂。
 
 验收：
 
-- 非开发人员可以通过后台完成一次物体导入、摆放、保存、预览、回滚。
+- 非开发人员可以通过后台完成一次物体导入、摆放、保存、草稿预览、发布、回滚。
 - 删除导入模型后，布局索引和 IndexedDB 数据不会出现悬挂引用。主后台第一版已完成。
 - 自定义几何体能从 UI 新增、编辑、删除、撤销。
 
@@ -486,7 +486,7 @@
 已完成：
 
 - 新增 `MRProjectArchive` 项目档案模块，统一导出项目关键本机状态。
-- 导出范围包含学习状态 `mr-calligraphy-learning-state-v1`、房间配置 `mr-calligraphy-room-config-v3-wood`、主场景布局 `mr-calligraphy-main-scene-layout-v1`、主场景保存历史 `mr-calligraphy-main-scene-history-v1`、写实场景布局 `mr-calligraphy-realistic-layout-v1`。
+- 导出范围包含学习状态 `mr-calligraphy-learning-state-v1`、房间配置 `mr-calligraphy-room-config-v3-wood`、主场景布局 `mr-calligraphy-main-scene-layout-v1`、主场景保存历史 `mr-calligraphy-main-scene-history-v1`、主场景发布版本 `mr-calligraphy-main-scene-published-v1`、写实场景布局 `mr-calligraphy-realistic-layout-v1`。
 - 导出范围包含主场景导入模型 IndexedDB `mr-calligraphy-main-model-store` 和写实场景导入模型 IndexedDB `mr-calligraphy-model-store`。
 - 主后台新增“项目备份”面板，提供真实“导出项目档案”和“导入项目档案”入口。
 - 导入时校验档案类型和版本，恢复后刷新页面，让布局和导入模型重新加载。
@@ -687,3 +687,40 @@
 - 写实后台的“删除物体”仍是可撤回的隐藏状态，不是永久删除；因此不会在删除时清理 IndexedDB 文件。
 - 主后台和写实后台目前仍各自维护导入校验函数，后续应抽出统一导入模块。
 - 模型校验仍没有覆盖外部贴图依赖、动画、骨骼和材质完整性。
+
+### 2026-06-11：补齐主后台草稿预览和发布边界
+
+功能名：主场景草稿预览、正式发布和前台读取边界。
+
+涉及文件：
+
+- `main-admin.html`
+- `main-admin-scene.js`
+- `script.js`
+- `project-archive.js`
+- `style.css`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 主后台新增“预览发布”面板。
+- “预览草稿”会打开 `index.html?mainScenePreview=draft`，前台读取当前后台草稿布局 `mr-calligraphy-main-scene-layout-v1`。
+- “打开前台”会打开正式 `index.html`，前台默认读取发布版本。
+- “发布到前台”会把当前草稿布局复制到 `mr-calligraphy-main-scene-published-v1`，并记录发布时间和对象统计。
+- 如果尚未发布，正式前台兼容回退读取当前草稿，避免旧项目首次打开空白。
+- 发布前会自动保存“发布前快照”，便于误发布后回滚。
+- 项目档案导出范围已加入 `mr-calligraphy-main-scene-published-v1`，项目备份可以带走正式发布版本。
+- 前台暴露 `window.MR_MAIN_SCENE_SOURCE`，便于调试当前读取的是 `published`、`draft-preview` 还是 `draft-fallback`。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html`，点击“预览草稿”，应打开带 `?mainScenePreview=draft` 的前台页面。
+- 修改后台草稿但不发布时，正式 `http://localhost:41496/` 应继续读取已发布版本。
+- 点击“发布到前台”后，正式前台刷新应读取最新发布版本。
+- 点击“导出项目档案”，JSON 的 `storage` 中应包含 `mr-calligraphy-main-scene-published-v1`。
+
+已知限制：
+
+- 第一版发布仍是浏览器本机发布边界，不是远端服务器发布。
+- 发布记录只有当前正式版本，没有多版本发布列表；完整版本历史仍依赖保存历史快照。
+- 还没有账号权限、审批流和发布差异预览。

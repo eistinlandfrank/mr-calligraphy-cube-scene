@@ -6,6 +6,7 @@
     { key: "mr-calligraphy-room-config-v3-wood", label: "房间与角色配置" },
     { key: "mr-calligraphy-main-scene-layout-v1", label: "主场景布局" },
     { key: "mr-calligraphy-main-scene-history-v1", label: "主场景保存历史" },
+    { key: "mr-calligraphy-main-scene-published-v1", label: "主场景发布版本" },
     { key: "mr-calligraphy-realistic-layout-v1", label: "写实场景布局" }
   ];
   const DB_ITEMS = [

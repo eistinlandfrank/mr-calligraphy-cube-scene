@@ -56,9 +56,14 @@ const snapshotCreateButton = document.getElementById("mainSnapshotCreate");
 const snapshotRefreshButton = document.getElementById("mainSnapshotRefresh");
 const historyStatus = document.getElementById("mainHistoryStatus");
 const snapshotList = document.getElementById("mainSnapshotList");
+const previewDraftButton = document.getElementById("mainPreviewDraft");
+const openLiveButton = document.getElementById("mainOpenLive");
+const publishLayoutButton = document.getElementById("mainPublishLayout");
+const publishStatus = document.getElementById("mainPublishStatus");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
+const PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const IMPORT_DB_STORE = "models";
 const MAX_IMPORT_MODEL_BYTES = 50 * 1024 * 1024;
@@ -1278,6 +1283,63 @@ function clonePlain(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function loadPublishedLayoutRecord() {
+  try {
+    const raw = window.localStorage.getItem(PUBLISHED_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (error) {
+    console.warn("Published main scene layout could not be loaded.", error);
+    return null;
+  }
+}
+
+function publishLayoutToFront() {
+  const record = {
+    version: 1,
+    publishedAt: new Date().toISOString(),
+    layout: normalizeSnapshotLayout(layout),
+    stats: getLayoutStats(layout)
+  };
+
+  try {
+    createLayoutSnapshot("发布前快照", { notice: false, status: false });
+    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(record));
+    renderPublishPanel();
+    showNotice("当前主场景草稿已发布到前台。");
+  } catch (error) {
+    console.warn("Published main scene layout could not be saved.", error);
+    setPublishStatus("发布失败，可能是浏览器本机存储空间不足。", "error");
+  }
+}
+
+function renderPublishPanel() {
+  const record = loadPublishedLayoutRecord();
+
+  if (!record?.layout) {
+    setPublishStatus("尚未发布。正式前台会临时读取当前草稿布局。", "normal");
+    return;
+  }
+
+  const stats = normalizeSnapshotStats(record.stats, normalizeSnapshotLayout(record.layout));
+  setPublishStatus(`已发布：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(stats)}`, "success");
+}
+
+function setPublishStatus(message, tone = "normal") {
+  if (!publishStatus) {
+    return;
+  }
+
+  publishStatus.textContent = message;
+  publishStatus.dataset.tone = tone;
+}
+
+function openFrontPreview(url) {
+  const target = window.open(url, "_blank", "noopener");
+  if (!target) {
+    window.location.href = url;
+  }
+}
+
 function openImportDb() {
   if (importDbPromise) {
     return importDbPromise;
@@ -2147,6 +2209,10 @@ function bindUi() {
     showNotice("已保存，正常主场景页面会读取这些参数。");
   });
   resetAllButton.addEventListener("click", resetAll);
+  previewDraftButton?.addEventListener("click", () => openFrontPreview("index.html?mainScenePreview=draft"));
+  openLiveButton?.addEventListener("click", () => openFrontPreview("index.html"));
+  publishLayoutButton?.addEventListener("click", publishLayoutToFront);
+  renderPublishPanel();
   snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
   snapshotRefreshButton?.addEventListener("click", () => {
     layoutHistory = loadLayoutHistory();

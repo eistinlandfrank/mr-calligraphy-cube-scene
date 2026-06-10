@@ -412,6 +412,7 @@ const WRAP_STEPS = false;
 const IS_FILE_MODE = window.location.protocol === "file:";
 const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v3-wood";
 const MAIN_SCENE_STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
+const MAIN_SCENE_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const MAIN_IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const MAIN_IMPORT_DB_STORE = "models";
 const MAIN_SCENE_MAX_UNDO = 256;
@@ -844,12 +845,37 @@ document.addEventListener("DOMContentLoaded", init);
 
 function loadMainSceneLayout() {
   try {
-    const stored = window.localStorage.getItem(MAIN_SCENE_STORAGE_KEY);
-    return normalizeMainSceneLayout(stored ? JSON.parse(stored) : null);
+    return normalizeMainSceneLayout(readMainSceneLayoutSource());
   } catch (error) {
     console.warn("无法读取主场景物体布局", error);
     return normalizeMainSceneLayout(null);
   }
+}
+
+function readMainSceneLayoutSource() {
+  const params = new URLSearchParams(window.location.search);
+  const isDraftPreview = params.get("mainScenePreview") === "draft";
+  const draft = readStoredJson(MAIN_SCENE_STORAGE_KEY);
+
+  if (isDraftPreview) {
+    window.MR_MAIN_SCENE_SOURCE = "draft-preview";
+    return draft;
+  }
+
+  const published = readStoredJson(MAIN_SCENE_PUBLISHED_KEY);
+  if (published?.layout) {
+    window.MR_MAIN_SCENE_SOURCE = "published";
+    window.MR_MAIN_SCENE_PUBLISHED_AT = published.publishedAt || "";
+    return published.layout;
+  }
+
+  window.MR_MAIN_SCENE_SOURCE = "draft-fallback";
+  return draft;
+}
+
+function readStoredJson(key) {
+  const raw = window.localStorage.getItem(key);
+  return raw ? JSON.parse(raw) : null;
 }
 
 function normalizeMainSceneLayout(layout) {

@@ -466,6 +466,7 @@ button {
 .main-add-panel,
 .main-layer-panel,
 .main-history-panel,
+.main-publish-panel,
 .main-project-panel {
   display: grid;
   gap: 10px;
@@ -899,6 +900,50 @@ button {
   padding: 0 6px;
   font-size: 12px;
   font-weight: 800;
+}
+
+.main-publish-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-publish-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+}
+
+.main-publish-actions button:hover {
+  border-color: rgba(116, 255, 219, 0.56);
+  background: rgba(47, 111, 104, 0.56);
+}
+
+.main-publish-status {
+  min-height: 34px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  color: rgba(255, 255, 255, 0.66);
+  background: rgba(255, 255, 255, 0.055);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.main-publish-status[data-tone="success"] {
+  color: #bcf5d9;
+  border-color: rgba(116, 255, 219, 0.28);
+  background: rgba(47, 111, 104, 0.18);
+}
+
+.main-publish-status[data-tone="error"] {
+  color: #ffd5cb;
+  border-color: rgba(255, 120, 94, 0.34);
+  background: rgba(201, 63, 47, 0.14);
 }
 
 .main-light-title {
