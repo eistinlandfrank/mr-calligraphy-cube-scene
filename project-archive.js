@@ -161,7 +161,6 @@
 
     const currentFields = current.value == null ? new Map() : flattenDiffFields(current.value);
     const incomingFields = incoming.value == null ? new Map() : flattenDiffFields(incoming.value);
-    const selections = createTopLevelFieldSelections(current.value, incoming.value);
     const added = [];
     const updated = [];
     const removed = [];
@@ -188,45 +187,85 @@
       return { summary: "字段无变化", impactSummary: "", items: [], selections: [] };
     }
 
-    return {
-      summary: `${added.length} 新增字段 / ${updated.length} 修改字段 / ${removed.length} 删除字段`,
-      impactSummary: summarizeFieldSelectionImpact(selections),
-      items: [
-        ...formatFieldDiffItems("新增", added),
-        ...formatFieldDiffItems("修改", updated),
-        ...formatFieldDiffItems("删除", removed)
-      ].slice(0, 6),
-      selections
-    };
+    const selections = createDeepFieldSelections(current.value, incoming.value, { added, updated, removed });
+    return finalizeStorageFieldDiffSummary(added, updated, removed, selections);
   }
 
-  function createTopLevelFieldSelections(currentValue, incomingValue) {
+  function createDeepFieldSelections(currentValue, incomingValue, diff) {
     if (incomingValue == null) {
       return [];
     }
 
-    const currentFields = getTopLevelFieldMap(currentValue);
-    const incomingFields = getTopLevelFieldMap(incomingValue);
+    const currentTopFields = getTopLevelFieldMap(currentValue);
+    const incomingTopFields = getTopLevelFieldMap(incomingValue);
+    const currentFields = currentValue == null ? new Map() : flattenDiffFields(currentValue);
+    const incomingFields = incomingValue == null ? new Map() : flattenDiffFields(incomingValue);
     const selections = [];
+    const wholeFieldKeys = new Set();
+    const pushed = new Set();
 
-    incomingFields.forEach((incomingField, path) => {
-      const currentField = currentFields.get(path);
-      if (!currentField) {
-        selections.push(createFieldSelection("add", "新增字段", path, currentField, incomingField));
+    const pushSelection = (action, path, currentField, incomingField) => {
+      const key = `${action}:${path}`;
+      if (pushed.has(key)) {
         return;
       }
-      if (incomingField.signature !== currentField.signature) {
-        selections.push(createFieldSelection("update", "修改字段", path, currentField, incomingField));
+      pushed.add(key);
+      selections.push(createFieldSelection(action, getFieldActionLabel(action), path, currentField, incomingField));
+    };
+
+    const pushWholeFieldSelection = (action, path) => {
+      const topPath = getDiffTopLevelPath(path);
+      if (wholeFieldKeys.has(topPath)) {
+        return;
       }
+      wholeFieldKeys.add(topPath);
+      pushSelection(action, topPath, currentTopFields.get(topPath), incomingTopFields.get(topPath));
+    };
+
+    diff.added.forEach((field) => {
+      const topPath = getDiffTopLevelPath(field.path);
+      if (!currentTopFields.has(topPath) || isStructuralDiffPath(field.path)) {
+        pushWholeFieldSelection("add", field.path);
+        return;
+      }
+      pushSelection("add", field.path, null, incomingFields.get(field.path));
     });
 
-    currentFields.forEach((currentField, path) => {
-      if (!incomingFields.has(path)) {
-        selections.push(createFieldSelection("remove", "删除字段", path, currentField, null));
+    diff.updated.forEach((field) => {
+      if (isStructuralDiffPath(field.path)) {
+        pushWholeFieldSelection("update", field.path);
+        return;
       }
+      pushSelection("update", field.path, currentFields.get(field.path), incomingFields.get(field.path));
     });
 
-    return selections;
+    diff.removed.forEach((field) => {
+      const topPath = getDiffTopLevelPath(field.path);
+      if (!incomingTopFields.has(topPath) || isStructuralDiffPath(field.path)) {
+        pushWholeFieldSelection("remove", field.path);
+        return;
+      }
+      pushSelection("remove", field.path, currentFields.get(field.path), null);
+    });
+
+    return selections.filter((field) => !wholeFieldKeys.has(getDiffTopLevelPath(field.path)) || field.path === getDiffTopLevelPath(field.path));
+  }
+
+  function getFieldActionLabel(action) {
+    if (action === "add") return "新增字段";
+    if (action === "remove") return "删除字段";
+    return "修改字段";
+  }
+
+  function getDiffTopLevelPath(path) {
+    if (path === "root") {
+      return "root";
+    }
+    return path.match(/^[^.[\]]+/)?.[0] || path;
+  }
+
+  function isStructuralDiffPath(path) {
+    return path.endsWith(".length") || path.includes("[...]");
   }
 
   function getTopLevelFieldMap(value) {
@@ -253,6 +292,19 @@
       impact: getFieldSelectionImpact(action),
       currentPreview: currentField ? createJsonPreview(currentField.value, "本机中无此字段") : "本机中无此字段",
       incomingPreview: incomingField ? createJsonPreview(incomingField.value, "档案中无此字段") : "档案中无此字段"
+    };
+  }
+
+  function finalizeStorageFieldDiffSummary(added, updated, removed, selections) {
+    return {
+      summary: `${added.length} 新增字段 / ${updated.length} 修改字段 / ${removed.length} 删除字段`,
+      impactSummary: summarizeFieldSelectionImpact(selections),
+      items: [
+        ...formatFieldDiffItems("新增", added),
+        ...formatFieldDiffItems("修改", updated),
+        ...formatFieldDiffItems("删除", removed)
+      ].slice(0, 6),
+      selections
     };
   }
 
@@ -333,22 +385,22 @@
 
   function flattenDiffFields(value, path = "root", result = new Map(), depth = 0) {
     if (depth >= 4 || !value || typeof value !== "object") {
-      result.set(path, { path, signature: stableStringify(value) });
+      result.set(path, { path, signature: stableStringify(value), value });
       return result;
     }
 
     if (Array.isArray(value)) {
-      result.set(`${path}.length`, { path: `${path}.length`, signature: stableStringify(value.length) });
+      result.set(`${path}.length`, { path: `${path}.length`, signature: stableStringify(value.length), value: value.length });
       value.slice(0, 8).forEach((item, index) => flattenDiffFields(item, `${path}[${index}]`, result, depth + 1));
       if (value.length > 8) {
-        result.set(`${path}[...]`, { path: `${path}[...]`, signature: stableStringify(value.length) });
+        result.set(`${path}[...]`, { path: `${path}[...]`, signature: stableStringify(value.length), value: value.length });
       }
       return result;
     }
 
     const keys = Object.keys(value).sort();
     if (!keys.length) {
-      result.set(path, { path, signature: "{}" });
+      result.set(path, { path, signature: "{}", value });
       return result;
     }
 

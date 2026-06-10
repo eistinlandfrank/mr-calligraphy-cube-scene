@@ -102,29 +102,29 @@ async function main() {
     "学习状态预览应显示 artworks.length 新增变化。"
   );
   assert(
-    learningPreview.fieldSelections.some((item) => item.path === "sessions" && item.action === "update"),
-    "学习状态预览应允许选择性恢复 sessions 字段。"
+    learningPreview.fieldSelections.some((item) => item.path === "sessions[0].score" && item.action === "update"),
+    "学习状态预览应允许选择性恢复 sessions[0].score 深层字段。"
   );
   assert(
     learningPreview.fieldImpactSummary.includes("覆盖本机字段"),
     "学习状态预览应显示字段恢复影响摘要。"
   );
-  const sessionSelection = learningPreview.fieldSelections.find((item) => item.path === "sessions");
+  const sessionSelection = learningPreview.fieldSelections.find((item) => item.path === "sessions[0].score");
   assert(
     sessionSelection?.impact === "会覆盖本机字段",
-    "学习状态预览应提示 sessions 字段会覆盖本机字段。"
+    "学习状态预览应提示 sessions[0].score 字段会覆盖本机字段。"
   );
   assert(
-    sessionSelection.detail.includes("当前：数组 1 项") && sessionSelection.detail.includes("档案：数组 1 项"),
-    "学习状态预览应显示 sessions 字段当前值与档案值摘要。"
+    sessionSelection.detail.includes("当前：数字：70") && sessionSelection.detail.includes("档案：数字：88"),
+    "学习状态预览应显示 sessions[0].score 字段当前值与档案值摘要。"
   );
   assert(
-    sessionSelection.currentPreview.includes('"score": 70'),
-    "学习状态预览应包含 sessions 字段当前本机 JSON 片段。"
+    sessionSelection.currentPreview === "70",
+    "学习状态预览应包含 sessions[0].score 当前本机 JSON 片段。"
   );
   assert(
-    sessionSelection.incomingPreview.includes('"score": 88'),
-    "学习状态预览应包含 sessions 字段导入档案 JSON 片段。"
+    sessionSelection.incomingPreview === "88",
+    "学习状态预览应包含 sessions[0].score 导入档案 JSON 片段。"
   );
   assert(
     learningPreview.fieldSelections.some((item) => item.path === "artworks" && item.action === "add"),
@@ -135,13 +135,13 @@ async function main() {
     storageKeys: ["mr-calligraphy-learning-state-v1"],
     dbIds: [],
     storageFields: {
-      "mr-calligraphy-learning-state-v1": [{ path: "sessions", action: "update" }]
+      "mr-calligraphy-learning-state-v1": [{ path: "sessions[0].score", action: "update" }]
     }
   });
   const partiallyRestored = JSON.parse(localValues.get("mr-calligraphy-learning-state-v1"));
   assert(
     partiallyRestored.sessions[0].score === 88,
-    "字段级恢复应更新已勾选的 sessions 字段。"
+    "字段级恢复应更新已勾选的 sessions[0].score 字段。"
   );
   assert(
     Array.isArray(partiallyRestored.reports),
