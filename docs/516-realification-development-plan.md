@@ -1824,3 +1824,46 @@
 - 两套后台只统一了导入模型底层工具；对象 schema、历史记录、发布流程和远端资产服务仍未统一。
 - 当前导入校验仍是浏览器端静态预检，不能替代后端安全扫描和资产管线处理。
 - OBJ 材质仍按后台各自场景策略处理，还没有统一材质映射配置。
+
+### 2026-06-11：引入 Playwright 浏览器级验收
+
+功能名：前台学习和主后台发布的首批真实交互 E2E。
+
+涉及文件：
+
+- `.gitignore`
+- `package.json`
+- `playwright.config.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 新增 npm 测试工程，提供 `npm run smoke`、`npm run smoke:running`、`npm run test:e2e`、`npm run test:e2e:headed` 和 `npm test`。
+- 新增 Playwright 配置，默认启动 `127.0.0.1:4173` 静态服务器；也支持通过 `PLAYWRIGHT_BASE_URL=http://localhost:41496/` 复用已启动项目。
+- 新增前台真实练习用例：清空本机学习状态，打开首页，在 `#practiceCanvas` 真实绘制笔迹，点击“保存作品”，断言作品、练习会话和笔迹数量写入 `mr-calligraphy-learning-state-v1`。
+- 同一前台用例继续点击“导出报告”，断言浏览器下载 HTML 报告、报告记录写入本机状态，并可用 `?report=报告ID` 打开站内报告详情。
+- 新增主后台发布用例：打开 `main-admin.html`，新增基础方块，断言草稿布局写入 `mr-calligraphy-main-scene-layout-v1`。
+- 主后台用例继续点击“发布到前台”，断言发布快照写入 `mr-calligraphy-main-scene-published-v1`，再打开前台并确认读取来源为 `published`。
+- 更新 smoke test 文档，补充 Playwright 运行方式、覆盖范围和当前环境限制。
+
+验收方式：
+
+- `node --check playwright.config.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- 在具备 npm 代理认证的环境中运行 `npm install && npm run test:e2e`。
+
+当前验证结果：
+
+- Playwright 配置和测试用例语法检查通过。
+- 现有 smoke test 通过：10 个脚本，4 个页面。
+- 当前 Codex 环境执行 `npm install` 时，npm registry 和备用镜像均返回 `407 Proxy Authentication Required`，因此本轮无法在本机实际下载 `@playwright/test` 并跑浏览器 E2E。
+
+已知限制：
+
+- 由于 npm 依赖安装被代理认证阻断，本轮尚未生成 `package-lock.json`，需要在可访问 npm 的环境中安装后补齐锁文件。
+- 首批 E2E 覆盖了两个最关键真实闭环，还没有覆盖写实后台、模型导入、学习档案删除恢复、项目档案导入导出、移动端视口和 WebGL 非空像素。
+- 前台报告用例已检查下载文件名和站内详情，但还没有读取下载文件内容关键字段。
