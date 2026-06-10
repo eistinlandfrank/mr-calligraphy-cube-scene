@@ -1,0 +1,18 @@
+{
+  "projectName": "墨韵心境",
+  "productType": "calligraphy-therapy-capsule",
+  "defaultScene": "capsule-product-showcase",
+  "scenes": [
+    "capsule-product-showcase",
+    "capsule-elder-experience",
+    "capsule-caregiver-monitor",
+    "calligraphy-game-yong",
+    "ink-gallery-report"
+  ],
+  "theme": {
+    "primary": "#8f6a45",
+    "background": "#f5f1ea",
+    "accent": "#2f6f68",
+    "warning": "#b64a3a"
+  }
+}

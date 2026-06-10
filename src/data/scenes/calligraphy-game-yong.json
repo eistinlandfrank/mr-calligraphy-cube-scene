@@ -1,0 +1,88 @@
+{
+  "id": "calligraphy-game-yong",
+  "name": "永字八法虚拟书写",
+  "version": "0.1.0",
+  "type": "calligraphy-game",
+  "camera": {
+    "position": [0, 1.35, 3.8],
+    "target": [0, 1.12, -0.6],
+    "fov": 46,
+    "presets": [
+      { "id": "glyph", "label": "永字练习", "position": [0, 1.35, 3.8], "target": [0, 1.12, -0.6] },
+      { "id": "stroke", "label": "笔画路径", "position": [0.55, 1.42, 2.6], "target": [0.08, 1.12, -0.52] }
+    ]
+  },
+  "environment": {
+    "background": "/assets/scenes/scene-05.png",
+    "ambientColor": "#f6efe3",
+    "fog": true,
+    "floorColor": "#d7c6a8"
+  },
+  "objects": [
+    {
+      "id": "yong-board",
+      "type": "ui-panel",
+      "name": "永字练习板",
+      "visible": true,
+      "interactive": true,
+      "position": [0, 1.18, -0.85],
+      "rotation": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "material": { "color": "#f4ead5", "roughness": 0.56, "metalness": 0, "opacity": 1, "emissiveColor": "#000000" }
+    },
+    {
+      "id": "virtual-brush",
+      "type": "virtual-brush",
+      "name": "路径跟随毛笔",
+      "visible": true,
+      "interactive": true,
+      "position": [0.22, 1.22, 0.1],
+      "rotation": [0.2, 0, -0.18],
+      "scale": [1, 1, 1],
+      "material": { "color": "#18120d", "roughness": 0.5, "metalness": 0.04, "opacity": 1, "emissiveColor": "#000000" }
+    },
+    {
+      "id": "score-panel",
+      "type": "ui-panel",
+      "name": "鼓励式评分面板",
+      "visible": true,
+      "interactive": false,
+      "position": [0.92, 1.24, -0.35],
+      "rotation": [0, -0.28, 0],
+      "scale": [1, 1, 1],
+      "material": { "color": "#2f6f68", "roughness": 0.38, "metalness": 0.04, "opacity": 0.94, "emissiveColor": "#123d38" }
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "next-stroke",
+      "label": "下一笔",
+      "position": [0.5, 1.05, -0.28],
+      "trigger": "click",
+      "targetAction": "playBrush",
+      "targetScene": "calligraphy-game-yong"
+    },
+    {
+      "id": "finish-work",
+      "label": "完成作品",
+      "position": [0.86, 1.0, -0.28],
+      "trigger": "click",
+      "targetAction": "generateReport",
+      "targetScene": "ink-gallery-report"
+    }
+  ],
+  "timeline": [
+    { "time": 0, "label": "显示永字", "action": "showPanel", "target": "yong-board", "duration": 1 },
+    { "time": 2, "label": "播放第一笔", "action": "playBrush", "target": "virtual-brush", "duration": 2 },
+    { "time": 11, "label": "生成评分", "action": "generateReport", "target": "score-panel", "duration": 1.4 }
+  ],
+  "caregiverData": {
+    "elderName": "周老师",
+    "course": "永字八法舒缓体验",
+    "stage": "虚拟书写",
+    "heartRate": 74,
+    "breathRate": 15,
+    "focus": 88,
+    "mood": "投入"
+  }
+}

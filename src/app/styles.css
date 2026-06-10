@@ -1,0 +1,113 @@
+:root {
+  color: #20201d;
+  background: #f5f1ea;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  min-height: 100vh;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-page {
+  min-height: 100vh;
+  padding: 40px;
+  color: #20201d;
+  background:
+    linear-gradient(115deg, rgba(225, 213, 190, 0.92), rgba(248, 246, 240, 0.96) 48%, rgba(219, 232, 224, 0.92)),
+    #f5f1ea;
+}
+
+.page-hero {
+  display: grid;
+  align-content: center;
+  gap: 20px;
+  width: min(920px, 100%);
+  min-height: calc(100vh - 80px);
+}
+
+.eyebrow {
+  margin: 0;
+  color: #6e6a5f;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.page-hero h1 {
+  margin: 0;
+  color: #181714;
+  font-size: clamp(40px, 7vw, 84px);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.page-hero p {
+  max-width: 720px;
+  margin: 0;
+  font-size: 20px;
+  line-height: 1.7;
+}
+
+.route-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.route-actions a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 0 16px;
+  border: 1px solid rgba(32, 32, 29, 0.16);
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+  text-decoration: none;
+  font-weight: 800;
+}
+
+.route-actions a + a {
+  color: #25231f;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+@media (max-width: 720px) {
+  .app-page {
+    padding: 24px;
+  }
+
+  .page-hero {
+    min-height: calc(100vh - 48px);
+  }
+
+  .page-hero p {
+    font-size: 17px;
+  }
+}
