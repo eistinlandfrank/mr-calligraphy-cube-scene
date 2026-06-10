@@ -106,6 +106,19 @@ async function main() {
     "学习状态预览应允许选择性恢复 sessions 字段。"
   );
   assert(
+    learningPreview.fieldImpactSummary.includes("覆盖本机字段"),
+    "学习状态预览应显示字段恢复影响摘要。"
+  );
+  const sessionSelection = learningPreview.fieldSelections.find((item) => item.path === "sessions");
+  assert(
+    sessionSelection?.impact === "会覆盖本机字段",
+    "学习状态预览应提示 sessions 字段会覆盖本机字段。"
+  );
+  assert(
+    sessionSelection.detail.includes("当前：数组 1 项") && sessionSelection.detail.includes("档案：数组 1 项"),
+    "学习状态预览应显示 sessions 字段当前值与档案值摘要。"
+  );
+  assert(
     learningPreview.fieldSelections.some((item) => item.path === "artworks" && item.action === "add"),
     "学习状态预览应允许选择性恢复 artworks 字段。"
   );

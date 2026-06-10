@@ -144,6 +144,7 @@
       currentBytes: currentValue ? new Blob([currentValue]).size : 0,
       incomingBytes: incomingValue ? new Blob([incomingValue]).size : 0,
       fieldDiffSummary: fieldDiff.summary,
+      fieldImpactSummary: fieldDiff.impactSummary,
       fieldDiffs: fieldDiff.items,
       fieldSelections: fieldDiff.selections,
       defaultSelected: !migratedMissing,
@@ -155,7 +156,7 @@
     const current = parseJsonForDiff(currentValue);
     const incoming = parseJsonForDiff(incomingValue);
     if (!current.ok || !incoming.ok) {
-      return { summary: "", items: [], selections: [] };
+      return { summary: "", impactSummary: "", items: [], selections: [] };
     }
 
     const currentFields = current.value == null ? new Map() : flattenDiffFields(current.value);
@@ -184,11 +185,12 @@
 
     const total = added.length + updated.length + removed.length;
     if (!total) {
-      return { summary: "字段无变化", items: [], selections: [] };
+      return { summary: "字段无变化", impactSummary: "", items: [], selections: [] };
     }
 
     return {
       summary: `${added.length} 新增字段 / ${updated.length} 修改字段 / ${removed.length} 删除字段`,
+      impactSummary: summarizeFieldSelectionImpact(selections),
       items: [
         ...formatFieldDiffItems("新增", added),
         ...formatFieldDiffItems("修改", updated),
@@ -210,17 +212,17 @@
     incomingFields.forEach((incomingField, path) => {
       const currentField = currentFields.get(path);
       if (!currentField) {
-        selections.push(createFieldSelection("add", "新增字段", path));
+        selections.push(createFieldSelection("add", "新增字段", path, currentField, incomingField));
         return;
       }
       if (incomingField.signature !== currentField.signature) {
-        selections.push(createFieldSelection("update", "修改字段", path));
+        selections.push(createFieldSelection("update", "修改字段", path, currentField, incomingField));
       }
     });
 
     currentFields.forEach((currentField, path) => {
       if (!incomingFields.has(path)) {
-        selections.push(createFieldSelection("remove", "删除字段", path));
+        selections.push(createFieldSelection("remove", "删除字段", path, currentField, null));
       }
     });
 
@@ -234,20 +236,75 @@
     }
     if (!Array.isArray(value) && typeof value === "object") {
       Object.keys(value).sort().forEach((key) => {
-        result.set(key, { path: key, signature: stableStringify(value[key]) });
+        result.set(key, { path: key, signature: stableStringify(value[key]), value: value[key] });
       });
       return result;
     }
-    result.set("root", { path: "root", signature: stableStringify(value) });
+    result.set("root", { path: "root", signature: stableStringify(value), value });
     return result;
   }
 
-  function createFieldSelection(action, prefix, path) {
+  function createFieldSelection(action, prefix, path, currentField, incomingField) {
     return {
       action,
       path,
-      label: `${prefix}：${path}`
+      label: `${prefix}：${path}`,
+      detail: createFieldSelectionDetail(action, currentField, incomingField),
+      impact: getFieldSelectionImpact(action)
     };
+  }
+
+  function createFieldSelectionDetail(action, currentField, incomingField) {
+    const current = currentField ? summarizeJsonValue(currentField.value) : "本机无此字段";
+    const incoming = incomingField ? summarizeJsonValue(incomingField.value) : "档案无此字段";
+    if (action === "remove") {
+      return `当前：${current} → 恢复后删除`;
+    }
+    if (action === "add") {
+      return `当前：${current} → 档案：${incoming}`;
+    }
+    return `当前：${current} → 档案：${incoming}`;
+  }
+
+  function getFieldSelectionImpact(action) {
+    if (action === "add") return "会新增到本机";
+    if (action === "remove") return "会删除本机字段";
+    return "会覆盖本机字段";
+  }
+
+  function summarizeFieldSelectionImpact(selections) {
+    const counts = selections.reduce((result, field) => {
+      result[field.action] = (result[field.action] || 0) + 1;
+      return result;
+    }, {});
+    const parts = [];
+    if (counts.update) parts.push(`${counts.update} 个覆盖本机字段`);
+    if (counts.add) parts.push(`${counts.add} 个新增字段`);
+    if (counts.remove) parts.push(`${counts.remove} 个删除字段`);
+    return parts.length ? `恢复影响：${parts.join(" / ")}` : "";
+  }
+
+  function summarizeJsonValue(value) {
+    if (Array.isArray(value)) {
+      return `数组 ${value.length} 项`;
+    }
+    if (value && typeof value === "object") {
+      const keys = Object.keys(value).sort();
+      return keys.length ? `对象 ${keys.length} 键：${keys.slice(0, 3).join("、")}${keys.length > 3 ? "…" : ""}` : "空对象";
+    }
+    if (typeof value === "string") {
+      return `文本：${value.length > 28 ? `${value.slice(0, 28)}…` : value}`;
+    }
+    if (typeof value === "number") {
+      return `数字：${value}`;
+    }
+    if (typeof value === "boolean") {
+      return value ? "布尔：true" : "布尔：false";
+    }
+    if (value == null) {
+      return "空";
+    }
+    return String(value);
   }
 
   function parseJsonForDiff(value) {
@@ -1179,6 +1236,8 @@
       const fieldInputs = getFieldInputs();
       const restoreOptions = getSelectedRestoreOptions();
       const selectedCount = restoreOptions.storageKeys.length + restoreOptions.dbIds.length;
+      const selectedControlCount = inputs.filter((input) => input.checked).length + fieldInputs.filter((input) => input.checked).length;
+      const totalControlCount = inputs.length + fieldInputs.length;
       const selectedFieldCount = Object.values(restoreOptions.storageFields).reduce((sum, fields) => sum + fields.length, 0);
       inputs.forEach((input) => {
         input.disabled = isBusy;
@@ -1192,8 +1251,8 @@
 
       if (selectAllInput) {
         selectAllInput.disabled = isBusy || !pendingArchive || inputs.length === 0;
-        selectAllInput.checked = inputs.length > 0 && selectedCount === inputs.length;
-        selectAllInput.indeterminate = selectedCount > 0 && selectedCount < inputs.length;
+        selectAllInput.checked = totalControlCount > 0 && selectedControlCount === totalControlCount;
+        selectAllInput.indeterminate = selectedControlCount > 0 && selectedControlCount < totalControlCount;
       }
       if (selectionStatus) {
         const fieldText = fieldInputs.length ? `，字段 ${selectedFieldCount}/${fieldInputs.length}` : "";
@@ -1253,11 +1312,18 @@
         fieldSummary.textContent = options.fieldDiffSummary;
         body.append(fieldSummary);
       }
+      if (options.fieldImpactSummary) {
+        const impactSummary = document.createElement("span");
+        impactSummary.className = "main-project-field-impact-summary";
+        impactSummary.textContent = options.fieldImpactSummary;
+        body.append(impactSummary);
+      }
       if (Array.isArray(options.fieldSelections) && options.fieldSelections.length) {
         const fieldList = document.createElement("ul");
         fieldList.className = "main-project-field-diffs main-project-field-diffs--selectable";
         options.fieldSelections.forEach((field) => {
           const fieldItem = document.createElement("li");
+          fieldItem.dataset.fieldAction = field.action;
           const fieldChoice = document.createElement("label");
           fieldChoice.className = "main-project-field-choice";
           const fieldInput = document.createElement("input");
@@ -1268,7 +1334,12 @@
           fieldInput.dataset.storageFieldAction = field.action;
           fieldInput.setAttribute("aria-label", `恢复${label}${field.label}`);
           const fieldText = document.createElement("span");
-          fieldText.textContent = field.label;
+          const fieldLabel = document.createElement("span");
+          fieldLabel.textContent = field.label;
+          const fieldImpact = document.createElement("span");
+          fieldImpact.className = "main-project-field-impact";
+          fieldImpact.textContent = `${field.impact} · ${field.detail}`;
+          fieldText.append(fieldLabel, fieldImpact);
           fieldChoice.append(fieldInput, fieldText);
           fieldItem.appendChild(fieldChoice);
           fieldList.appendChild(fieldItem);
@@ -1330,6 +1401,7 @@
       preview.storage.forEach((item) => appendPreviewLine(fragment, "storage", item.id, item.label, describeStorageChange(item), item.change, {
         defaultSelected: item.defaultSelected,
         fieldDiffSummary: item.fieldDiffSummary,
+        fieldImpactSummary: item.fieldImpactSummary,
         fieldDiffs: item.fieldDiffs,
         fieldSelections: item.fieldSelections,
         migrationNote: item.migrationNote
