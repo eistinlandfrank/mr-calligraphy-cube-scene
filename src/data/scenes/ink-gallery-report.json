@@ -53,6 +53,26 @@
       "material": { "color": "#2f6f68", "roughness": 0.38, "metalness": 0.04, "opacity": 0.92, "emissiveColor": "#173c38" }
     }
   ],
+  "uiPanels": [
+    {
+      "id": "report-summary-card",
+      "title": "本次报告",
+      "body": "汇总综合评分、分项指标、练习建议和护工确认状态。",
+      "position": [0.92, 1.2, -0.28],
+      "rotation": [0, -0.28, 0],
+      "size": [0.86, 0.42],
+      "tone": "dark"
+    },
+    {
+      "id": "work-display-card",
+      "title": "作品展墙",
+      "body": "展示本次永字练习结果，并允许保存到本地记录。",
+      "position": [-0.28, 1.18, -0.84],
+      "rotation": [0, 0.12, 0],
+      "size": [0.82, 0.38],
+      "tone": "warm"
+    }
+  ],
   "hotspots": [
     {
       "id": "save-work",

@@ -98,6 +98,7 @@ export function validateSceneConfig(sceneConfig) {
   validateCamera(sceneConfig.camera, errors);
   validateEnvironment(sceneConfig.environment, errors);
   validateObjects(sceneConfig.objects, errors, warnings);
+  validateUiPanels(sceneConfig.uiPanels, errors);
   validateHotspots(sceneConfig.hotspots, errors, warnings);
   validateTimeline(sceneConfig.timeline, errors, warnings);
 
@@ -182,6 +183,33 @@ function validateMaterial(material, prefix, errors) {
   }
 }
 
+function validateUiPanels(uiPanels, errors) {
+  if (!Array.isArray(uiPanels)) {
+    errors.push("uiPanels 必须是数组。");
+    return;
+  }
+
+  uiPanels.forEach((panel, index) => {
+    const prefix = `uiPanels[${index}]`;
+
+    if (!isPlainObject(panel)) {
+      errors.push(`${prefix} 必须是对象。`);
+      return;
+    }
+
+    requireString(panel, "id", errors, `${prefix}.id`);
+    requireString(panel, "title", errors, `${prefix}.title`);
+
+    if (panel.body !== undefined && typeof panel.body !== "string") {
+      errors.push(`${prefix}.body 必须是字符串。`);
+    }
+
+    requireVector3(panel, "position", `${prefix}.position`, errors);
+    requireVector3(panel, "rotation", `${prefix}.rotation`, errors);
+    requireSize2(panel, "size", `${prefix}.size`, errors);
+  });
+}
+
 function validateHotspots(hotspots, errors, warnings) {
   if (!Array.isArray(hotspots)) {
     errors.push("hotspots 必须是数组。");
@@ -231,6 +259,14 @@ function validateTimeline(timeline, errors, warnings) {
       warnings.push(`${prefix}.action 不是已登记动作：${item.action}`);
     }
   });
+}
+
+function requireSize2(target, key, label, errors) {
+  const value = target[key];
+
+  if (!Array.isArray(value) || value.length !== 2 || !value.every(isFiniteNumber)) {
+    errors.push(`${label} 必须是包含 2 个数字的数组。`);
+  }
 }
 
 function requireString(target, key, errors, label = key) {

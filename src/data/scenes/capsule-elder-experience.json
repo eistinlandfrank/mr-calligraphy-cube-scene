@@ -65,6 +65,26 @@
       "material": { "color": "#d7aa72", "roughness": 0.18, "metalness": 0.04, "opacity": 0.78, "emissiveColor": "#d7aa72" }
     }
   ],
+  "uiPanels": [
+    {
+      "id": "elder-breathing-card",
+      "title": "呼吸引导",
+      "body": "跟随水墨光环完成三次缓慢呼吸，进入稳定体验状态。",
+      "position": [-0.88, 1.28, -0.56],
+      "rotation": [0, 0.18, 0],
+      "size": [0.82, 0.38],
+      "tone": "calm"
+    },
+    {
+      "id": "elder-calligraphy-card",
+      "title": "永字练习",
+      "body": "凝视开始按钮后进入永字八法路径跟随练习。",
+      "position": [0.62, 1.24, -0.68],
+      "rotation": [0, -0.18, 0],
+      "size": [0.72, 0.34],
+      "tone": "warm"
+    }
+  ],
   "hotspots": [
     {
       "id": "start-calligraphy-game",

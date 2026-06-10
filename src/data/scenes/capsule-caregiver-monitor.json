@@ -65,6 +65,26 @@
       "material": { "color": "#4aa879", "roughness": 0.2, "metalness": 0.02, "opacity": 1, "emissiveColor": "#4aa879" }
     }
   ],
+  "uiPanels": [
+    {
+      "id": "monitor-session-card",
+      "title": "实时监护",
+      "body": "同步查看当前阶段、剩余时间、练习进度和模拟生命体征。",
+      "position": [-1.82, 1.38, 0.74],
+      "rotation": [0, 0.38, 0],
+      "size": [0.9, 0.42],
+      "tone": "dark"
+    },
+    {
+      "id": "monitor-safety-card",
+      "title": "安全操作",
+      "body": "支持暂停、继续、结束体验和温和呼叫老人端。",
+      "position": [1.18, 1.14, 0.8],
+      "rotation": [0, -0.22, 0],
+      "size": [0.76, 0.34],
+      "tone": "warning"
+    }
+  ],
   "hotspots": [
     {
       "id": "pause-experience",

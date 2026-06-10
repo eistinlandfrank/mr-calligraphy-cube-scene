@@ -105,8 +105,10 @@
 - [x] **P2-01：定义 ProjectConfig 数据结构**  
   验收：项目配置包含项目 ID、名称、默认场景、默认流程和主题信息。
 
-- [ ] **P2-02：定义 SceneConfig 数据结构**  
+- [x] **P2-02：定义 SceneConfig 数据结构**  
   验收：场景配置包含 camera、environment、objects、uiPanels、hotspots 等字段。
+
+  验收记录：2026-06-10 默认场景 JSON 均补充 `uiPanels`，`sceneSchema.js` 增加 `uiPanels` 校验，`docs/scene-schema.md` 同步结构说明；全部默认场景通过校验。
 
 - [ ] **P2-03：定义 FlowConfig 数据结构**  
   验收：流程配置包含 states、actions、next、duration 等字段。

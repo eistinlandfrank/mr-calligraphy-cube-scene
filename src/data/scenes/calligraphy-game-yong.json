@@ -53,6 +53,26 @@
       "material": { "color": "#2f6f68", "roughness": 0.38, "metalness": 0.04, "opacity": 0.94, "emissiveColor": "#123d38" }
     }
   ],
+  "uiPanels": [
+    {
+      "id": "stroke-guide-card",
+      "title": "当前笔画",
+      "body": "按照永字八法顺序描摹，系统记录轨迹与节奏。",
+      "position": [-0.74, 1.22, -0.35],
+      "rotation": [0, 0.2, 0],
+      "size": [0.78, 0.36],
+      "tone": "warm"
+    },
+    {
+      "id": "score-preview-card",
+      "title": "练习反馈",
+      "body": "完成全部笔画后生成路径、笔顺、节奏和专注建议。",
+      "position": [0.92, 1.24, -0.3],
+      "rotation": [0, -0.28, 0],
+      "size": [0.78, 0.36],
+      "tone": "primary"
+    }
+  ],
   "hotspots": [
     {
       "id": "next-stroke",

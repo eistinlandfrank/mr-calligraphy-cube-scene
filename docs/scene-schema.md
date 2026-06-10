@@ -13,6 +13,7 @@
 | `camera` | object | 初始相机和预设镜头 |
 | `environment` | object | 背景、氛围色、雾效和地面色 |
 | `objects` | array | 可编辑 3D 对象 |
+| `uiPanels` | array | 空间 UI 面板配置 |
 | `hotspots` | array | 可交互热点 |
 | `timeline` | array | 自动演示流程节点 |
 | `caregiverData` | object | 护工监护端展示的模拟数据 |
@@ -23,6 +24,9 @@
 - 每个 `objects[]` 必须有 `id`、`type`、`name`、`position`、`rotation`、`scale`。
 - `objects[].id` 不能重复。
 - `material.opacity` 范围是 `0` 到 `1`。
+- `uiPanels[]` 必须有 `id`、`title`、`position`、`rotation`、`size`。
+- `uiPanels[].position` 和 `uiPanels[].rotation` 必须是 3 个数字组成的数组。
+- `uiPanels[].size` 必须是 2 个数字组成的数组。
 - `hotspots[]` 必须有 `id`、`label`、`position`、`trigger`。
 - `timeline[]` 必须有非负 `time` 和 `action`。
 

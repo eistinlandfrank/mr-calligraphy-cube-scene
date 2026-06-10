@@ -87,6 +87,26 @@
       "material": { "color": "#b64a3a", "roughness": 0.34, "metalness": 0.08, "opacity": 1, "emissiveColor": "#3b0904" }
     }
   ],
+  "uiPanels": [
+    {
+      "id": "product-status-card",
+      "title": "入舱准备",
+      "body": "确认舱门、座椅和环幕均处于演示可用状态。",
+      "position": [-0.86, 1.42, 0.62],
+      "rotation": [0, 0.34, 0],
+      "size": [0.78, 0.38],
+      "tone": "primary"
+    },
+    {
+      "id": "caregiver-summary-card",
+      "title": "护工监护",
+      "body": "外部屏同步显示体验阶段、心率、呼吸和安全状态。",
+      "position": [-1.95, 1.54, 0.42],
+      "rotation": [0, 0.48, 0],
+      "size": [0.72, 0.34],
+      "tone": "dark"
+    }
+  ],
   "hotspots": [
     {
       "id": "enter-capsule",
