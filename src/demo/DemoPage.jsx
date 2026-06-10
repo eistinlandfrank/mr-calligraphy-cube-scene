@@ -2,6 +2,7 @@ import { CircleGauge, HeartPulse, Monitor, Pause, Play, RotateCcw, Sparkles } fr
 import { useEffect, useMemo, useState } from "react";
 import { loadDefaultProject } from "../data/configLoader.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
+import { getCurrentFlowState, useFlowStore } from "../store/flowStore.js";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 import { CaregiverView } from "./CaregiverView.jsx";
 import { DemoTimeline, demoTimelineSteps } from "./DemoTimeline.jsx";
@@ -16,6 +17,19 @@ const viewModes = [
 
 const defaultProject = loadDefaultProject();
 
+const flowActionLabels = {
+  start: "开始",
+  next: "下一步",
+  pause: "暂停",
+  resume: "继续",
+  finish: "结束",
+  restart: "重来",
+  confirm: "确认",
+  saveReport: "保存报告",
+  callCaregiver: "呼叫",
+  reset: "重置"
+};
+
 export function DemoPage() {
   const [mode, setMode] = useState("product");
   const [activeStep, setActiveStep] = useState(0);
@@ -26,7 +40,15 @@ export function DemoPage() {
   const [calligraphyStroke, setCalligraphyStroke] = useState("侧");
   const [selectedObjectId, setSelectedObjectId] = useState("capsule-shell");
   const storedScenes = useSceneStore((state) => state.scenes);
-  const phase = demoTimelineSteps[activeStep];
+  const flowState = useFlowStore(getCurrentFlowState);
+  const flowHistory = useFlowStore((state) => state.history);
+  const executableActions = useFlowStore((state) => state.getExecutableActions());
+  const executeFlowAction = useFlowStore((state) => state.executeAction);
+  const phase = useMemo(() => ({
+    id: flowState?.id ?? "idle",
+    label: flowState?.title ?? "等待开始",
+    status: flowState?.description ?? "等待启动体验。"
+  }), [flowState]);
   const activeMode = viewModes.find((item) => item.id === mode) ?? viewModes[0];
   const sceneConfig = selectSceneConfigById(storedScenes, activeMode.sceneId);
 
@@ -169,6 +191,20 @@ export function DemoPage() {
             <strong>{phase.label}</strong>
           </div>
           {caregiverNotice ? <p className="caregiver-notice">{caregiverNotice}</p> : null}
+          <section className="flow-state-card" aria-label="流程状态">
+            <div>
+              <span>Flow State</span>
+              <strong>{phase.id}</strong>
+              <small>历史 {flowHistory.length} 条</small>
+            </div>
+            <div className="flow-action-row">
+              {executableActions.map((actionId) => (
+                <button key={actionId} type="button" onClick={() => executeFlowAction(actionId)}>
+                  {flowActionLabels[actionId] ?? actionId}
+                </button>
+              ))}
+            </div>
+          </section>
 
           <div className="segmented-control" aria-label="视角切换">
             {viewModes.map((item) => {

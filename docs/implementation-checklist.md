@@ -162,11 +162,13 @@
 
 目标：前台从静态切图升级为真实流程驱动的软件演示。
 
-- [ ] **P3-01：建立 flowStore**  
+- [x] **P3-01：建立 flowStore**  
   验收：系统有统一的流程状态、当前状态、状态历史和可执行操作。
 
-- [ ] **P3-02：实现 idle 状态**  
+- [x] **P3-02：实现 idle 状态**  
   验收：进入 `/demo` 后默认处于等待开始状态。
+
+  验收记录：2026-06-10 新增 `src/store/flowStore.js`，默认读取 `defaultFlow.json` 并进入 `idle`；Demo 控制台展示当前状态、历史数量和可执行 actions，`npm run build` 通过。
 
 - [ ] **P3-03：实现 ready_check 状态**  
   验收：开始体验后进入准备检查状态，并创建 PracticeSession。
