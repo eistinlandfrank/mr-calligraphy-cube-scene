@@ -72,10 +72,11 @@
         </div>
 
         <div class="mode-tabs" aria-label="学习模式">
-          <button class="is-active" type="button">单字学习</button>
-          <button type="button">集字练习</button>
-          <button type="button">创作</button>
+          <button class="is-active" type="button" data-learning-mode="single">单字学习</button>
+          <button type="button" data-learning-mode="phrase">集字练习</button>
+          <button type="button" data-learning-mode="creation">创作</button>
         </div>
+        <p id="learningStateSummary" class="learning-state-summary">本机学习记录载入中...</p>
 
         <div class="coach-workspace">
           <div class="glyph-board" aria-label="当前练习字">
@@ -105,9 +106,9 @@
           <div id="pointList" class="chip-list"></div>
         </section>
 
-        <section class="action-zone" aria-label="模拟操作">
+        <section class="action-zone" aria-label="学习操作">
           <div id="actionList" class="action-list"></div>
-          <p id="actionFeedback" class="action-feedback">点击场景热点或下方按钮，可查看该模块的交互反馈。</p>
+          <p id="actionFeedback" class="action-feedback">点击场景热点或下方按钮，可执行学习操作并写入本机记录。</p>
         </section>
       </section>
 
@@ -190,6 +191,7 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
+  <script src="app-state.js?v=learning-state-20260611"></script>
   <script src="script.js?v=main-editor-20260514"></script>
 </body>
 </html>

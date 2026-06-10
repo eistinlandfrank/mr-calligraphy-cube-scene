@@ -215,7 +215,7 @@ const SCENES = [
       ["综合评分", "92分"]
     ],
     actions: [
-      { label: "切换行书", response: "已模拟切换到行书风格：笔意更连贯，结构约束稍放松。" },
+      { label: "切换行书", response: "已切换到行书风格，保存作品时会写入本机作品记录。" },
       { label: "保存作品", response: "作品已加入作品集，可在复盘与分享环节调用。" },
       { label: "查看学习记录", target: 6, response: "跳转到成长轨迹。" }
     ],
@@ -297,7 +297,7 @@ const SCENES = [
     ],
     actions: [
       { label: "再写一遍", target: 3, response: "回到临摹场景，带着复盘结论再练一次。" },
-      { label: "生成视频", response: "已模拟生成书写过程视频，适合展示运笔轨迹。" },
+      { label: "生成视频", response: "视频导出需要接入书写轨迹回放后启用。" },
       { label: "保存作品", response: "作品已保存到作品集，可继续分享或导出。" }
     ],
     points: [
@@ -339,7 +339,7 @@ const SCENES = [
     actions: [
       { label: "继续学习", target: 3, response: "回到临摹训练，继续补齐薄弱项。" },
       { label: "制定计划", response: "建议下一阶段重点练结构稳定、章法呼应和创作完整度。" },
-      { label: "导出报告", response: "已模拟导出学习报告，包含数据、雷达图和综合评分。" }
+      { label: "导出报告", response: "将根据本机练习、作品和报告记录导出学习报告。" }
     ],
     points: [
       {
@@ -760,6 +760,9 @@ const els = {
   deleteRoleButton: document.getElementById("deleteRoleButton"),
   infoPanel: document.getElementById("infoPanel"),
   infoPanelHandle: document.getElementById("infoPanelHandle"),
+  modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
+  learningStateSummary: document.getElementById("learningStateSummary"),
+  glyphValue: document.querySelector(".glyph-board span"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -1279,6 +1282,7 @@ function init() {
   buildStepNavigation();
   buildPathList();
   bindQuickControls();
+  bindLearningControls();
   initInfoPanelDrag();
   installRoomApi();
   bindSceneEditorControls();
@@ -1286,6 +1290,7 @@ function init() {
   applyRoomConfigToCssCube();
   buildSceneConfigPanel();
   initCubeControls();
+  renderLearningStateSummary();
 
   loadScene(0);
   if (new URLSearchParams(window.location.search).has("modelView")) {
@@ -1293,6 +1298,7 @@ function init() {
   }
   window.addEventListener("keydown", handleKeyboardSceneChange, true);
   window.addEventListener("storage", handleMainSceneStorageChange);
+  window.addEventListener("mr-learning-state-change", renderLearningState);
 }
 
 function handleMainSceneStorageChange(event) {
@@ -3208,6 +3214,50 @@ function bindQuickControls() {
   els.quickNext.addEventListener("click", goNext);
 }
 
+function bindLearningControls() {
+  els.modeButtons.forEach((button) => {
+    button.dataset.featureState = "real";
+    button.addEventListener("click", () => {
+      const mode = button.dataset.learningMode;
+      const result = window.MRAppState?.setMode(mode);
+      if (result?.message) {
+        showNotice(result.message);
+      }
+      renderLearningState();
+      loadScene(0);
+    });
+  });
+}
+
+function renderLearningState() {
+  renderLearningStateSummary();
+  updateSceneText(currentIndex);
+  updateInteractionPanel(currentIndex, activePointIndex);
+  updatePathPanel(currentIndex);
+}
+
+function renderLearningStateSummary() {
+  const stats = window.MRAppState?.getStats?.();
+  if (!stats) {
+    return;
+  }
+
+  els.modeButtons.forEach((button) => {
+    const isActive = button.dataset.learningMode === stats.activeMode;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+  });
+
+  if (els.glyphValue) {
+    els.glyphValue.textContent = stats.glyph;
+  }
+
+  if (els.learningStateSummary) {
+    const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
+    els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.glyph}字 / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${trainingLabel}模式`;
+  }
+}
+
 function focusModelView() {
   cubeYaw = 0;
   cubePitch = 2;
@@ -3316,18 +3366,124 @@ function handleKeyboardSceneChange(event) {
   }
 }
 
+function getLearningSceneMetrics(index) {
+  const scene = SCENES[index];
+  const stats = window.MRAppState?.getStats?.();
+  if (!stats) {
+    return scene.metrics;
+  }
+
+  const latestSession = stats.latestSession;
+  const latestArtwork = stats.latestArtwork;
+  const latestReport = stats.latestReport;
+  const metrics = latestSession?.metrics || {};
+  const score = latestSession?.score || stats.averageScore;
+  const lectureLabel = stats.lectureStatus === "complete"
+    ? "已完成"
+    : stats.lectureStatus === "playing"
+      ? "播放中"
+      : "未开始";
+  const trainingLabel = stats.trainingMode === "compare" ? "对比模式" : "示范模式";
+
+  switch (index) {
+    case 0:
+      return [
+        ["综合评分", `${stats.averageScore}分`],
+        ["当前模式", stats.modeLabel],
+        ["练习次数", `${stats.sessionCount}次`],
+        ["作品", `${stats.artworkCount}幅`],
+        ["报告", `${stats.reportCount}份`]
+      ];
+    case 1:
+      return [
+        ["学习时长", `${stats.learningMinutes}分钟`],
+        ["完成练习", `${stats.savedSessionCount}次`],
+        ["当前字", stats.glyph],
+        ["碑帖", stats.copybook],
+        ["连续学习", stats.sessionCount > 0 ? "1天" : "0天"]
+      ];
+    case 2:
+      return [
+        ["讲解状态", lectureLabel],
+        ["当前字", stats.glyph],
+        ["学习法", stats.copybook],
+        ["学习模式", stats.modeLabel]
+      ];
+    case 3:
+      return [
+        ["综合评分", `${score}分`],
+        ["结构", String(metrics.structure || 88)],
+        ["笔画", String(metrics.stroke || 85)],
+        ["笔法", String(metrics.technique || 87)],
+        ["模式", trainingLabel]
+      ];
+    case 4:
+      return [
+        ["当前笔画", stats.activeStroke],
+        ["进度", `${(window.MRAppState?.strokes || []).indexOf(stats.activeStroke) + 1 || 1}/8`],
+        ["起笔", "待接入笔迹"],
+        ["行笔", trainingLabel],
+        ["收笔", "会话记录中"]
+      ];
+    case 5:
+      return [
+        ["作品名称", latestArtwork?.title || `${stats.glyph}字创作`],
+        ["风格", latestArtwork?.style || "楷书"],
+        ["作品数量", `${stats.artworkCount}幅`],
+        ["碑帖", stats.copybook],
+        ["综合评分", `${latestArtwork?.score || score}分`]
+      ];
+    case 6:
+      return [
+        ["学习时长", `${stats.learningMinutes}分钟`],
+        ["练习次数", `${stats.sessionCount}次`],
+        ["保存作品", `${stats.artworkCount}幅`],
+        ["报告数量", `${stats.reportCount}份`],
+        ["平均评分", `${stats.averageScore}分`]
+      ];
+    case 7:
+      return [
+        ["作品", latestArtwork?.title || "暂无作品"],
+        ["复盘会话", `${stats.savedSessionCount}次`],
+        ["最近风格", latestArtwork?.style || "未保存"],
+        ["平均评分", `${stats.averageScore}分`],
+        ["作品数", `${stats.artworkCount}幅`]
+      ];
+    case 8:
+      return [
+        ["练习次数", `${stats.sessionCount}次`],
+        ["练习字数", `${stats.sessionCount}字`],
+        ["保存作品", `${stats.artworkCount}幅`],
+        ["报告导出", latestReport ? "已导出" : "未导出"],
+        ["平均评分", `${stats.averageScore}分`]
+      ];
+    case 9:
+      return [
+        ["复习单字", `${Math.max(1, stats.sessionCount)}个`],
+        ["结构学习", `${stats.savedSessionCount}次`],
+        ["作品创作", `${stats.artworkCount}幅`],
+        ["实践练习", `${stats.sessionCount}次`],
+        ["学习时长", `${stats.learningMinutes}分钟`]
+      ];
+    default:
+      return scene.metrics;
+  }
+}
+
 function updateSceneText(index) {
   const scene = SCENES[index];
+  const metrics = getLearningSceneMetrics(index);
   els.stepLabel.textContent = `步骤 ${String(index + 1).padStart(2, "0")}`;
   els.sceneTitle.textContent = scene.title;
   els.sceneDescription.textContent = scene.description;
-  els.coachScore.textContent = scene.metrics[0][1];
-  els.insightScore.textContent = scene.metrics[0][1].replace("分", "");
+  els.coachScore.textContent = metrics[0][1];
+  els.insightScore.textContent = String(metrics[0][1]).replace("分", "");
 }
 
 function updateInteractionPanel(sceneIndex, pointIndex) {
   const scene = SCENES[sceneIndex];
   const point = scene.points[pointIndex];
+  const metrics = getLearningSceneMetrics(sceneIndex);
 
   els.sceneFocus.textContent = scene.focus;
   els.contentTitle.textContent = point.label;
@@ -3336,7 +3492,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   els.metricGrid.innerHTML = "";
   els.pointList.innerHTML = "";
   els.actionList.innerHTML = "";
-  els.actionFeedback.textContent = "点击场景热点或下方按钮，可查看该模块的交互反馈。";
+  els.actionFeedback.textContent = getLearningActionHint(sceneIndex);
 
   point.tags.forEach((tag) => {
     const tagEl = document.createElement("span");
@@ -3344,7 +3500,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     els.contentTags.appendChild(tagEl);
   });
 
-  scene.metrics.slice(1).forEach(([label, value]) => {
+  metrics.slice(1).forEach(([label, value]) => {
     const item = document.createElement("div");
     item.className = "metric-item";
     item.innerHTML = `<span>${label}</span><strong>${value}</strong>`;
@@ -3362,20 +3518,128 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   });
 
   scene.actions.forEach((action) => {
+    const feature = getLearningActionFeature(action);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "action-button";
     button.textContent = action.label;
-    button.addEventListener("click", () => runAction(action));
+    button.dataset.featureState = feature.state;
+    if (feature.state === "disabled") {
+      button.disabled = true;
+      button.title = feature.reason;
+      button.setAttribute("aria-label", `${action.label}：${feature.reason}`);
+    } else {
+      button.addEventListener("click", () => runAction(action));
+    }
     els.actionList.appendChild(button);
   });
 }
 
 function runAction(action) {
-  els.actionFeedback.textContent = action.response;
+  const result = runLearningAction(action);
+  els.actionFeedback.textContent = result.message || action.response;
+  renderLearningStateSummary();
 
-  if (typeof action.target === "number") {
-    window.setTimeout(() => loadScene(action.target), 420);
+  if (result.notice) {
+    showNotice(result.notice);
+  }
+
+  const target = typeof result.target === "number" ? result.target : action.target;
+  if (typeof target === "number") {
+    window.setTimeout(() => loadScene(target), 420);
+    return;
+  }
+
+  updateSceneText(currentIndex);
+  updatePathPanel(currentIndex);
+}
+
+function getLearningActionHint(sceneIndex) {
+  if (!window.MRAppState) {
+    return "点击场景热点或下方按钮，可查看该模块的交互反馈。";
+  }
+
+  if (sceneIndex === 6 || sceneIndex === 8 || sceneIndex === 9) {
+    return window.MRAppState.getReportPreview();
+  }
+
+  return "点击按钮会写入本机学习记录；未接入的能力会明确禁用。";
+}
+
+function getLearningActionFeature(action) {
+  const disabledActions = {
+    "生成视频": "需要先接入书写轨迹回放与视频导出，本版暂不伪装为已生成。"
+  };
+
+  if (disabledActions[action.label]) {
+    return { state: "disabled", reason: disabledActions[action.label] };
+  }
+
+  return { state: "real" };
+}
+
+function runLearningAction(action) {
+  const appState = window.MRAppState;
+  if (!appState) {
+    return { message: action.response, target: action.target };
+  }
+
+  switch (action.label) {
+    case "查看笔画分析":
+      return {
+        message: `已读取当前任务：${appState.getStats().glyph}字，当前笔画为“${appState.getStats().activeStroke}”。书写画布接入后会显示真实笔迹分析。`
+      };
+    case "选择日课字":
+      return appState.selectDailyGlyph();
+    case "进入 AI 讲解":
+    case "播放讲解":
+      return { ...appState.playLecture(), target: action.target };
+    case "切换碑帖":
+      return appState.rotateCopybook();
+    case "进入临摹训练":
+    case "开始临摹":
+    case "继续学习":
+    case "再写一遍":
+      return { ...appState.startPractice(), target: action.target ?? 3 };
+    case "示范模式":
+      return appState.setTrainingMode("guide");
+    case "对比模式":
+      return appState.setTrainingMode("compare");
+    case "上一个笔画":
+      return appState.moveStroke(-1);
+    case "下一个笔画":
+      return appState.moveStroke(1);
+    case "进入笔画拆解":
+    case "复习巩固":
+      return { message: action.response, target: action.target };
+    case "进入创作":
+      return { message: "已完成笔画拆解，进入创作实践。", target: action.target };
+    case "切换行书":
+      return appState.setArtworkStyle("行书");
+    case "保存作品":
+      return appState.saveArtwork();
+    case "查看学习记录":
+    case "打开历史记录":
+      return { message: appState.getReportPreview(), target: 6 };
+    case "筛选优秀记录":
+      return appState.filterExcellentRecords();
+    case "导出学习报告":
+    case "导出报告":
+      return { ...appState.createReport(), target: action.target };
+    case "查看作品":
+      return { message: appState.getStats().latestArtwork ? "已打开最近保存的作品复盘页。" : "还没有保存作品，请先完成一次保存作品。", target: action.target };
+    case "制定计划":
+      return appState.createPlan();
+    case "查看成就":
+      return {
+        message: `当前成就来自本机记录：${appState.getStats().sessionCount} 次练习、${appState.getStats().artworkCount} 幅作品、${appState.getStats().reportCount} 份报告。`
+      };
+    case "查看详情":
+      return { message: appState.getReportPreview() };
+    case "返回首页":
+      return { message: "回到 MR 书法教练首页。", target: 0 };
+    default:
+      return { message: action.response, target: action.target };
   }
 }
 
@@ -3404,13 +3668,16 @@ function updateQuickControls(index) {
 function updatePathPanel(index) {
   const progress = Math.round(((index + 1) / SCENES.length) * 100);
   const pathItems = els.pathList.querySelectorAll(".path-item");
+  const stats = window.MRAppState?.getStats?.();
 
   els.pathProgress.textContent = `${index + 1} / ${SCENES.length}`;
   els.pathProgressBar.style.width = `${progress}%`;
 
   pathItems.forEach((button, buttonIndex) => {
     const state = button.querySelector(".path-item-state");
-    const isDone = buttonIndex < index;
+    const realState = getLearningPathState(buttonIndex, stats);
+    const isDone = realState.done;
+    const isVisited = buttonIndex < index;
     const isActive = buttonIndex === index;
 
     button.classList.toggle("is-done", isDone);
@@ -3418,9 +3685,36 @@ function updatePathPanel(index) {
     button.setAttribute("aria-current", isActive ? "step" : "false");
 
     if (state) {
-      state.textContent = isActive ? "进行中" : isDone ? "完成" : "待学习";
+      state.textContent = isActive ? realState.activeLabel : isDone ? realState.doneLabel : isVisited ? "已浏览" : realState.pendingLabel;
     }
   });
+}
+
+function getLearningPathState(index, stats) {
+  if (!stats) {
+    return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
+  }
+
+  switch (index) {
+    case 1:
+      return { done: Boolean(stats.glyph), activeLabel: "选字中", doneLabel: "已选字", pendingLabel: "待选字" };
+    case 2:
+      return { done: stats.lectureStatus === "complete", activeLabel: "讲解中", doneLabel: "已讲解", pendingLabel: "待讲解" };
+    case 3:
+      return { done: stats.sessionCount > 0, activeLabel: stats.sessionCount > 0 ? "练习中" : "待创建", doneLabel: "已练习", pendingLabel: "待练习" };
+    case 5:
+      return { done: stats.artworkCount > 0, activeLabel: "创作中", doneLabel: "已保存", pendingLabel: "待创作" };
+    case 6:
+      return { done: stats.sessionCount > 0, activeLabel: "记录中", doneLabel: "有记录", pendingLabel: "无记录" };
+    case 7:
+      return { done: stats.artworkCount > 0, activeLabel: "复盘中", doneLabel: "可复盘", pendingLabel: "待作品" };
+    case 8:
+      return { done: stats.reportCount > 0, activeLabel: "报告中", doneLabel: "已导出", pendingLabel: "待报告" };
+    case 9:
+      return { done: stats.reportCount > 0, activeLabel: "总结中", doneLabel: "已总结", pendingLabel: "待总结" };
+    default:
+      return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
+  }
 }
 
 function getShortSceneName(title) {
