@@ -52,7 +52,7 @@ export function CaregiverDashboard({
   }, [data, phase, tick]);
 
   const safety = getSafetyState({ vitals, isPaused, phase });
-  const remainingTime = formatTime(remainingSeconds);
+  const remainingTime = formatTime(Math.max(0, remainingSeconds));
 
   function runAction(actionId) {
     const message = {
@@ -88,7 +88,7 @@ export function CaregiverDashboard({
           <span>体验阶段</span>
           <strong>{phase?.label ?? data?.stage ?? "书法游戏"}</strong>
         </article>
-        <article>
+        <article aria-label={`剩余时间 ${remainingTime}，由流程状态计时器计算`}>
           <span>剩余时间</span>
           <strong>{remainingTime}</strong>
         </article>

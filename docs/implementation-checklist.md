@@ -312,8 +312,10 @@
 - [x] **P5-03：显示当前流程阶段**  
   验收：流程变化时护工端同步变化。
 
-- [ ] **P5-04：显示剩余时间**  
+- [x] **P5-04：显示剩余时间**  
   验收：剩余时间由状态机计时器计算。
+
+  验收记录：2026-06-10 DemoPage 根据 FlowConfig duration、stateEnteredAt、accumulatedPausedMs 和 pausedAt 计算状态机剩余时间，并传入 CaregiverDashboard；护工端剩余时间做非负格式化并标注来源于流程状态计时器，`npm run build` 通过。
 
 - [x] **P5-05：显示练习完成度**  
   验收：完成度来自书法游戏真实进度。
