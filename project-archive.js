@@ -33,6 +33,7 @@
     for (const item of DB_ITEMS) {
       archive.indexedDb[item.id] = await exportDbStore(item);
     }
+    archive.migrations = [];
     archive.projectSchema = createProjectSchema(archive);
 
     downloadJson(archive, `mr-calligraphy-project-${formatTimestamp(new Date())}.json`);
@@ -41,8 +42,8 @@
 
   async function importProject(fileOrArchive) {
     const archive = await resolveArchive(fileOrArchive);
-    await restoreProjectArchive(archive);
-    return summarizeArchive(archive, "已恢复项目档案，刷新页面后生效。");
+    const restoredArchive = await restoreProjectArchive(archive);
+    return summarizeArchive(restoredArchive, "已恢复项目档案，刷新页面后生效。");
   }
 
   async function prepareImportProject(file) {
@@ -56,20 +57,23 @@
   }
 
   async function restoreProjectArchive(archive, options = null) {
-    validateArchive(archive);
-    const restoreOptions = normalizeRestoreOptions(options);
+    const migratedArchive = migrateProjectArchive(archive);
+    validateArchive(migratedArchive);
+    const restoreOptions = normalizeRestoreOptions(options, migratedArchive);
 
     if (!restoreOptions.storageKeys.length && !restoreOptions.dbIds.length) {
       throw new Error("请至少选择一项要恢复的项目档案内容。");
     }
 
-    importLocalStorage(archive.storage || {}, restoreOptions.storageKeys);
+    importLocalStorage(migratedArchive.storage || {}, restoreOptions.storageKeys);
 
     for (const item of DB_ITEMS) {
       if (restoreOptions.dbIds.includes(item.id)) {
-        await importDbStore(item, archive.indexedDb?.[item.id]);
+        await importDbStore(item, migratedArchive.indexedDb?.[item.id]);
       }
     }
+
+    return migratedArchive;
   }
 
   async function resolveArchive(fileOrArchive) {
@@ -78,8 +82,7 @@
       return result.archive;
     }
 
-    validateArchive(fileOrArchive);
-    return fileOrArchive;
+    return migrateProjectArchive(fileOrArchive);
   }
 
   async function readArchiveFile(file) {
@@ -94,25 +97,26 @@
       throw new Error("项目档案 JSON 格式不正确，无法读取。");
     }
 
-    validateArchive(archive);
-    return archive;
+    return migrateProjectArchive(archive);
   }
 
   async function createArchivePreview(archive) {
-    validateArchive(archive);
+    const migratedArchive = migrateProjectArchive(archive);
+    validateArchive(migratedArchive);
 
-    const storage = STORAGE_ITEMS.map((item) => compareStorageItem(item, archive.storage || {}));
+    const storage = STORAGE_ITEMS.map((item) => compareStorageItem(item, migratedArchive.storage || {}));
     const indexedDb = [];
 
     for (const item of DB_ITEMS) {
-      indexedDb.push(await compareDbItem(item, archive.indexedDb?.[item.id]));
+      indexedDb.push(await compareDbItem(item, migratedArchive.indexedDb?.[item.id]));
     }
 
-    const projectSchema = getArchiveProjectSchema(archive);
+    const projectSchema = getArchiveProjectSchema(migratedArchive);
 
     return {
-      exportedAt: archive.exportedAt || "",
-      source: archive.source || "",
+      exportedAt: migratedArchive.exportedAt || "",
+      source: migratedArchive.source || "",
+      migrations: migratedArchive.migrations || [],
       projectSchema,
       schemaSummary: summarizeProjectSchema(projectSchema),
       storage,
@@ -125,6 +129,7 @@
     const record = storage[item.key];
     const incomingValue = record?.value == null ? null : record.value;
     const currentValue = window.localStorage.getItem(item.key);
+    const migratedMissing = record?.migratedMissing === true;
 
     if (incomingValue !== null && typeof incomingValue !== "string") {
       throw new Error(`项目档案中的 ${item.label} 数据格式不正确。`);
@@ -135,20 +140,25 @@
       label: item.label,
       change: getStorageChange(currentValue, incomingValue),
       currentBytes: currentValue ? new Blob([currentValue]).size : 0,
-      incomingBytes: incomingValue ? new Blob([incomingValue]).size : 0
+      incomingBytes: incomingValue ? new Blob([incomingValue]).size : 0,
+      defaultSelected: !migratedMissing,
+      migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机内容。` : ""
     };
   }
 
   async function compareDbItem(item, pack) {
     const records = Array.isArray(pack?.records) ? pack.records : [];
     const currentRecords = await readDbStoreRecords(item);
+    const migratedMissing = pack?.migratedMissing === true;
 
     return {
       id: item.id,
       label: item.label,
       currentCount: currentRecords.length,
       incomingCount: records.length,
-      change: currentRecords.length === records.length ? "same-count" : "replace"
+      change: currentRecords.length === records.length ? "same-count" : "replace",
+      defaultSelected: !migratedMissing,
+      migrationNote: migratedMissing ? `旧档案不包含“${item.label}”，默认保留当前本机模型库。` : ""
     };
   }
 
@@ -198,15 +208,15 @@
     }, {});
   }
 
-  function normalizeRestoreOptions(options) {
+  function normalizeRestoreOptions(options, archive = null) {
     const allStorageKeys = STORAGE_ITEMS.map((item) => item.key);
     const allDbIds = DB_ITEMS.map((item) => item.id);
     const storageKeys = Array.isArray(options?.storageKeys)
       ? options.storageKeys.filter((key) => allStorageKeys.includes(key))
-      : allStorageKeys;
+      : allStorageKeys.filter((key) => archive?.storage?.[key]?.defaultSelected !== false);
     const dbIds = Array.isArray(options?.dbIds)
       ? options.dbIds.filter((id) => allDbIds.includes(id))
-      : allDbIds;
+      : allDbIds.filter((id) => archive?.indexedDb?.[id]?.defaultSelected !== false);
     return {
       storageKeys: [...new Set(storageKeys)],
       dbIds: [...new Set(dbIds)]
@@ -224,7 +234,8 @@
       source: archive.source || "",
       sections: {},
       assetManifest: { importedModelCount: 0, missingBinaryCount: 0, assets: [] },
-      summary: {}
+      summary: {},
+      migrations: Array.isArray(archive.migrations) ? archive.migrations : []
     };
   }
 
@@ -242,7 +253,8 @@
       realisticObjects: Number(summary.realisticObjects) || 0,
       realisticSnapshots: Number(summary.realisticSnapshots) || 0,
       importedModels: Number(summary.importedModels) || 0,
-      missingModelBinaries: Number(summary.missingModelBinaries) || 0
+      missingModelBinaries: Number(summary.missingModelBinaries) || 0,
+      migrationCount: Array.isArray(schema?.migrations) ? schema.migrations.length : 0
     };
   }
 
@@ -370,6 +382,166 @@
     return bytes.buffer;
   }
 
+  function migrateProjectArchive(archive) {
+    if (!archive || archive.kind !== ARCHIVE_KIND) {
+      throw new Error("这不是 MR 书法项目档案。");
+    }
+
+    const migrated = cloneArchive(archive);
+    const migrations = normalizeMigrationRecords([
+      ...(Array.isArray(migrated.migrations) ? migrated.migrations : []),
+      ...(Array.isArray(migrated.projectSchema?.migrations) ? migrated.projectSchema.migrations : [])
+    ]);
+
+    if (migrated.version == null || migrated.version === "") {
+      migrated.version = ARCHIVE_VERSION;
+      migrations.push(createMigrationRecord(
+        "archive-version-defaulted",
+        "archive-version",
+        "archive.version",
+        "旧档案缺少版本号，已按当前 v1 档案结构读取。"
+      ));
+    }
+
+    if (Number(migrated.version) !== ARCHIVE_VERSION) {
+      throw new Error(`不支持的项目档案版本：${migrated.version}`);
+    }
+
+    if (migrated.projectSchema && window.MRProjectSchema?.validateProjectSchema) {
+      window.MRProjectSchema.validateProjectSchema(migrated.projectSchema);
+    }
+
+    if (!migrated.storage || typeof migrated.storage !== "object") {
+      migrated.storage = {};
+      migrations.push(createMigrationRecord(
+        "storage-container-created",
+        "storage-container",
+        "archive.storage",
+        "旧档案缺少 storage 容器，已创建空容器并默认保留当前本机配置。"
+      ));
+    }
+
+    if (!migrated.indexedDb || typeof migrated.indexedDb !== "object") {
+      migrated.indexedDb = {};
+      migrations.push(createMigrationRecord(
+        "indexeddb-container-created",
+        "indexeddb-container",
+        "archive.indexedDb",
+        "旧档案缺少 IndexedDB 容器，已创建空容器并默认保留当前本机模型库。"
+      ));
+    }
+
+    STORAGE_ITEMS.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(migrated.storage, item.key)) {
+        return;
+      }
+      migrated.storage[item.key] = {
+        label: item.label,
+        value: null,
+        bytes: 0,
+        migratedMissing: true,
+        defaultSelected: false
+      };
+      migrations.push(createMigrationRecord(
+        `storage-default:${item.key}`,
+        "storage-default",
+        item.key,
+        `旧档案不包含“${item.label}”，导入预览默认保留当前本机内容。`
+      ));
+    });
+
+    DB_ITEMS.forEach((item) => {
+      if (Object.prototype.hasOwnProperty.call(migrated.indexedDb, item.id)) {
+        return;
+      }
+      migrated.indexedDb[item.id] = {
+        label: item.label,
+        dbName: item.dbName,
+        storeName: item.storeName,
+        keyPath: item.keyPath,
+        records: [],
+        migratedMissing: true,
+        defaultSelected: false
+      };
+      migrations.push(createMigrationRecord(
+        `indexeddb-default:${item.id}`,
+        "indexeddb-default",
+        item.id,
+        `旧档案不包含“${item.label}”，导入预览默认保留当前本机模型库。`
+      ));
+    });
+
+    if (!migrated.projectSchema) {
+      migrations.push(createMigrationRecord(
+        "project-schema-synthesized",
+        "project-schema",
+        "archive.projectSchema",
+        "旧档案缺少统一 projectSchema，已按当前项目结构重新生成摘要。"
+      ));
+    }
+
+    migrated.migrations = dedupeMigrationRecords(migrations);
+    migrated.projectSchema = createProjectSchema(migrated);
+    validateArchive(migrated);
+    return migrated;
+  }
+
+  function cloneArchive(archive) {
+    try {
+      return JSON.parse(JSON.stringify(archive));
+    } catch (error) {
+      throw new Error("项目档案包含无法迁移的数据。");
+    }
+  }
+
+  function createMigrationRecord(id, type, target, message) {
+    return {
+      id,
+      type,
+      target,
+      message,
+      createdAt: new Date().toISOString()
+    };
+  }
+
+  function normalizeMigrationRecords(records) {
+    if (!Array.isArray(records)) {
+      return [];
+    }
+    return dedupeMigrationRecords(records.map((record, index) => normalizeMigrationRecord(record, index)).filter(Boolean));
+  }
+
+  function normalizeMigrationRecord(record, index = 0) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+
+    const id = String(record.id || `migration-${index + 1}`).slice(0, 96);
+    const message = String(record.message || "").trim();
+    if (!message) {
+      return null;
+    }
+
+    return {
+      id,
+      type: String(record.type || "archive-migration").slice(0, 48),
+      target: String(record.target || "").slice(0, 128),
+      message: message.slice(0, 180),
+      createdAt: record.createdAt || null
+    };
+  }
+
+  function dedupeMigrationRecords(records) {
+    const seen = new Set();
+    return records.filter((record) => {
+      if (seen.has(record.id)) {
+        return false;
+      }
+      seen.add(record.id);
+      return true;
+    });
+  }
+
   function validateArchive(archive) {
     if (!archive || archive.kind !== ARCHIVE_KIND) {
       throw new Error("这不是 MR 书法项目档案。");
@@ -383,7 +555,7 @@
   }
 
   function summarizeArchive(archive, prefix, options = null) {
-    const restoreOptions = normalizeRestoreOptions(options);
+    const restoreOptions = normalizeRestoreOptions(options, archive);
     const selectedStorageKeys = new Set(restoreOptions.storageKeys);
     const selectedDbIds = new Set(restoreOptions.dbIds);
     const storageCount = STORAGE_ITEMS
@@ -394,11 +566,14 @@
       const pack = archive.indexedDb?.[item.id];
       return sum + (Array.isArray(pack?.records) ? pack.records.length : 0);
     }, 0);
+    const migrationCount = Array.isArray(archive.migrations) ? archive.migrations.length : 0;
+    const migrationText = migrationCount ? `，${migrationCount} 条迁移记录` : "";
     return {
       ok: true,
-      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型，并写入统一项目 schema。`,
+      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型${migrationText}，并写入统一项目 schema。`,
       storageCount,
-      modelCount
+      modelCount,
+      migrationCount
     };
   }
 
@@ -542,16 +717,19 @@
       if (cancelButton) cancelButton.disabled = true;
     };
 
-    const appendPreviewLine = (fragment, itemKind, id, label, detail, change) => {
+    const appendPreviewLine = (fragment, itemKind, id, label, detail, change, options = {}) => {
       const item = document.createElement("li");
       item.dataset.change = change || "normal";
+      if (options.defaultSelected === false) {
+        item.dataset.defaultSelected = "false";
+      }
 
       const choice = document.createElement("label");
       choice.className = "main-project-preview-choice";
 
       const input = document.createElement("input");
       input.type = "checkbox";
-      input.checked = true;
+      input.checked = options.defaultSelected !== false;
       input.dataset.archiveKind = itemKind;
       input.dataset.archiveId = id;
       input.setAttribute("aria-label", `恢复${label}`);
@@ -564,8 +742,29 @@
       text.textContent = detail;
 
       body.append(title, text);
+      if (options.migrationNote) {
+        const note = document.createElement("span");
+        note.className = "main-project-preview-note";
+        note.textContent = options.migrationNote;
+        body.append(note);
+      }
       choice.append(input, body);
       item.append(choice);
+      fragment.appendChild(item);
+    };
+
+    const appendMigrationLine = (fragment, migration) => {
+      const item = document.createElement("li");
+      item.dataset.change = "migration";
+
+      const body = document.createElement("span");
+      body.className = "main-project-migration-line";
+      const title = document.createElement("strong");
+      title.textContent = "迁移说明";
+      const text = document.createElement("span");
+      text.textContent = migration.message;
+      body.append(title, text);
+      item.append(body);
       fragment.appendChild(item);
     };
 
@@ -577,12 +776,20 @@
       if (previewMeta) {
         const summary = preview.summary;
         const schema = preview.schemaSummary;
-        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型`;
+        const migrationText = preview.migrations?.length ? ` · ${preview.migrations.length} 条迁移` : "";
+        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型`;
       }
 
       const fragment = document.createDocumentFragment();
-      preview.storage.forEach((item) => appendPreviewLine(fragment, "storage", item.id, item.label, describeStorageChange(item), item.change));
-      preview.indexedDb.forEach((item) => appendPreviewLine(fragment, "indexedDb", item.id, item.label, describeDbChange(item), item.change));
+      preview.migrations?.forEach((migration) => appendMigrationLine(fragment, migration));
+      preview.storage.forEach((item) => appendPreviewLine(fragment, "storage", item.id, item.label, describeStorageChange(item), item.change, {
+        defaultSelected: item.defaultSelected,
+        migrationNote: item.migrationNote
+      }));
+      preview.indexedDb.forEach((item) => appendPreviewLine(fragment, "indexedDb", item.id, item.label, describeDbChange(item), item.change, {
+        defaultSelected: item.defaultSelected,
+        migrationNote: item.migrationNote
+      }));
 
       previewList.innerHTML = "";
       previewList.appendChild(fragment);
@@ -620,7 +827,10 @@
           const result = await prepareImportProject(file);
           pendingArchive = result.archive;
           renderImportPreview(result.preview);
-          setStatus(`${result.message} 可取消不想覆盖的条目，再点击“恢复所选”。`, "success");
+          const migrationText = result.preview.migrations?.length
+            ? ` 已应用 ${result.preview.migrations.length} 条兼容迁移；旧档案缺失的新条目默认保留本机内容。`
+            : "";
+          setStatus(`${result.message}${migrationText} 可取消不想覆盖的条目，再点击“恢复所选”。`, "success");
         } catch (error) {
           setStatus(error?.message || "项目档案导入失败。", "error");
         } finally {
@@ -681,6 +891,7 @@
     importProject,
     prepareImportProject,
     restoreProjectArchive,
+    migrateProjectArchive,
     storageItems: STORAGE_ITEMS.map((item) => ({ ...item })),
     dbItems: DB_ITEMS.map((item) => ({ ...item }))
   };

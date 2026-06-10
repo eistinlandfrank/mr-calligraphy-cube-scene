@@ -41,7 +41,7 @@
       sections,
       assetManifest,
       summary: createSummary(sections, assetManifest),
-      migrations: []
+      migrations: normalizeMigrationRecords(source.migrations || source.projectSchema?.migrations)
     };
   }
 
@@ -283,6 +283,43 @@
   function normalizeCount(value) {
     const number = Number(value);
     return Number.isFinite(number) && number > 0 ? Math.round(number) : 0;
+  }
+
+  function normalizeMigrationRecords(records) {
+    if (!Array.isArray(records)) {
+      return [];
+    }
+
+    const seen = new Set();
+    return records.map((record, index) => normalizeMigrationRecord(record, index))
+      .filter(Boolean)
+      .filter((record) => {
+        if (seen.has(record.id)) {
+          return false;
+        }
+        seen.add(record.id);
+        return true;
+      });
+  }
+
+  function normalizeMigrationRecord(record, index = 0) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+
+    const id = String(record.id || `migration-${index + 1}`).slice(0, 96);
+    const message = String(record.message || record.label || "").trim();
+    if (!id || !message) {
+      return null;
+    }
+
+    return {
+      id,
+      type: String(record.type || "archive-migration").slice(0, 48),
+      target: String(record.target || "").slice(0, 128),
+      message: message.slice(0, 180),
+      createdAt: normalizeDate(record.createdAt) || null
+    };
   }
 
   window.MRProjectSchema = {

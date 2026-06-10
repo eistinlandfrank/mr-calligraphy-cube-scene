@@ -11,6 +11,7 @@ const TIMEOUT_MS = 5000;
 
 const SCRIPT_CHECKS = [
   { file: "scripts/control-inventory.js", parser: "script" },
+  { file: "scripts/archive-migration-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
   { file: "practice-canvas.js", parser: "script" },
@@ -27,6 +28,10 @@ const COMMAND_CHECKS = [
   {
     label: "控件状态清单",
     command: [process.execPath, "scripts/control-inventory.js", "--check"]
+  },
+  {
+    label: "项目档案迁移检查",
+    command: [process.execPath, "scripts/archive-migration-check.js"]
   }
 ];
 
