@@ -3733,6 +3733,36 @@ body.is-model-view .notice-panel {
   font: inherit;
 }
 
+.plan-tools {
+  display: grid;
+  margin-top: 8px;
+}
+
+.plan-tools button {
+  min-height: 32px;
+  border: 1px solid rgba(116, 255, 219, 0.28);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.plan-tools button:hover,
+.plan-tools button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.56);
+  outline: none;
+  background: rgba(47, 111, 104, 0.54);
+}
+
+.plan-tools button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .plan-item-list {
   display: grid;
   gap: 6px;

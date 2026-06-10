@@ -1220,6 +1220,29 @@
     return { ok: true, plan: decoratePlan(plan), message: `已更新计划项：${item.title}。` };
   }
 
+  function addPlanItem(planId, item = {}) {
+    const plan = state.plans.find((entry) => entry.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "请先生成一份学习计划。" };
+    }
+    if (plan.items.length >= 12) {
+      return { ok: false, message: "单份计划最多保留 12 个任务，请先删除不需要的计划项。" };
+    }
+
+    const title = String(item.title || "").trim().replace(/\s+/g, " ").slice(0, 64);
+    const detail = String(item.detail || "").trim().replace(/\s+/g, " ").slice(0, 140);
+    if (title.length < 2) {
+      return { ok: false, message: "新增计划项标题至少需要 2 个字符。" };
+    }
+
+    const planItem = makePlanItem(makeId("plan-custom"), title, detail || "自定义补充任务，完成后可勾选保存进度。");
+    plan.items.push(planItem);
+    plan.completedAt = null;
+    addEvent("plan-item-add", `新增计划项：${planItem.title}`);
+    saveState();
+    return { ok: true, plan: decoratePlan(plan), item: clone(planItem), message: `已新增计划项：${planItem.title}。` };
+  }
+
   function movePlanItem(planId, itemId, direction) {
     const plan = state.plans.find((item) => item.id === String(planId || ""));
     if (!plan) {
@@ -2043,6 +2066,7 @@
     createPlan,
     togglePlanItem,
     updatePlanItem,
+    addPlanItem,
     movePlanItem,
     deletePlanItem,
     createReport,

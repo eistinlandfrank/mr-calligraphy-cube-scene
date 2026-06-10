@@ -853,6 +853,7 @@ const els = {
   planProgressFill: document.getElementById("planProgressFill"),
   planSummary: document.getElementById("planSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
+  planAddItem: document.getElementById("planAddItem"),
   planItemList: document.getElementById("planItemList"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
@@ -3498,6 +3499,8 @@ function bindPlanControls() {
     updatePathPanel(currentIndex);
   });
 
+  els.planAddItem?.addEventListener("click", addCustomPlanItem);
+
   els.planItemList?.addEventListener("change", (event) => {
     const input = event.target.closest("[data-plan-item-id]");
     if (!input) return;
@@ -4018,12 +4021,15 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   els.planProgressLabel.textContent = `${progress.done}/${progress.total}`;
   els.planProgressFill.style.width = `${progress.percent}%`;
   els.planSummary.textContent = plan?.summary || "点击“制定计划”后会生成可勾选任务。";
+  if (els.planAddItem) {
+    els.planAddItem.disabled = !plan;
+  }
   els.planItemList.innerHTML = "";
 
   if (!plan?.items?.length) {
     const empty = document.createElement("p");
     empty.className = "plan-empty";
-    empty.textContent = "还没有学习计划。";
+    empty.textContent = plan ? "这份计划还没有任务项，可以新增自定义计划项。" : "还没有学习计划。";
     els.planItemList.appendChild(empty);
     return;
   }
@@ -4153,6 +4159,35 @@ function deletePlanItem(planId, itemId) {
     return null;
   }
   return window.MRAppState?.deletePlanItem?.(planId, itemId);
+}
+
+function addCustomPlanItem() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  if (!planId) {
+    showNotice("请先点击“制定计划”，再新增自定义计划项。");
+    return;
+  }
+
+  const title = window.prompt("新增计划项标题", "补充一次专项练习");
+  if (title === null) {
+    return;
+  }
+  const detail = window.prompt("计划项说明", "写下这项练习的完成标准。");
+  if (detail === null) {
+    return;
+  }
+
+  const result = window.MRAppState?.addPlanItem?.(planId, { title, detail });
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  if (result?.ok) {
+    activePlanId = result.plan?.id || planId;
+    renderPlanPanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+    renderLearningStateSummary();
+  }
 }
 
 function renderHistoryTrend(trend) {
