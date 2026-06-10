@@ -39,3 +39,4 @@
 - 2026-06-10：完成 P3-05。immersive_intro 会同步老人视角、阶段说明和基于 FlowConfig 的剩余时间。
 - 2026-06-10：完成 P3-06。calligraphy_tutorial 状态在老人端显示当前练习字“永”和八法笔画说明。
 - 2026-06-10：完成 P3-07。practice_game 状态会显示老人端书法练习组件，并在 PracticeSession 中记录练习开始。
+- 2026-06-10：完成 P3-08。练习完成后进入 scoring，基于 PracticeSession.practiceData 生成 Report 原型和 score_generated 事件。

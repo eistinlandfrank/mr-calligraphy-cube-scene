@@ -159,8 +159,9 @@ export function DemoPage() {
 
   function handleGameComplete() {
     setCalligraphyProgress(100);
-    setActiveStep(demoTimelineSteps.length - 1);
-    setMode("caregiver");
+    if (phase.id === "practice_game") {
+      executeFlowAction("finish");
+    }
     setCaregiverNotice("作品已完成，护工端收到评分报告。");
   }
 

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { loadDefaultFlow } from "../data/configLoader.js";
+import { createReport } from "../report-core/reportSchema.js";
 import { createPracticeSession, createSessionEvent } from "../session-core/sessionSchema.js";
 
 const defaultFlow = loadDefaultFlow();
@@ -173,6 +174,28 @@ function buildTransitionSession(session, fromStateId, toStateId, reason, at) {
   ];
 
   if (toStateId !== "practice_game") {
+    if (toStateId === "scoring") {
+      const report = buildSessionReport(session, at);
+
+      return {
+        ...session,
+        currentState: toStateId,
+        report,
+        events: [
+          ...baseEvents,
+          createSessionEvent({
+            type: "score_generated",
+            stateId: toStateId,
+            at,
+            payload: {
+              reportId: report.id,
+              score: report.score
+            }
+          })
+        ]
+      };
+    }
+
     return {
       ...session,
       currentState: toStateId,
@@ -197,4 +220,43 @@ function buildTransitionSession(session, fromStateId, toStateId, reason, at) {
       startedAt: session.practiceData.startedAt ?? at
     }
   };
+}
+
+function buildSessionReport(session, at) {
+  const practiceData = session.practiceData;
+  const strokeCount = practiceData.strokes.length;
+  const rewritePenalty = practiceData.rewriteCount * 2;
+  const interruptionPenalty = practiceData.interruptionCount * 5;
+  const metrics = {
+    pathAccuracy: clampScore(78 + Math.min(strokeCount * 2, 12) - rewritePenalty),
+    strokeOrder: clampScore(practiceData.startedAt ? 88 + Math.min(strokeCount, 8) : 70),
+    rhythm: clampScore(84 - interruptionPenalty),
+    focus: clampScore(90 - interruptionPenalty - rewritePenalty)
+  };
+  const score = Math.round(
+    metrics.pathAccuracy * 0.4 +
+    metrics.strokeOrder * 0.25 +
+    metrics.rhythm * 0.2 +
+    metrics.focus * 0.15
+  );
+  const lowestMetric = Object.entries(metrics).sort((a, b) => a[1] - b[1])[0][0];
+  const suggestionLabels = {
+    pathAccuracy: "下一轮可放慢速度，优先贴合标准路径。",
+    strokeOrder: "下一轮先跟读笔顺，再进入连续描摹。",
+    rhythm: "下一轮保持呼吸节奏，减少忽快忽慢。",
+    focus: "下一轮可缩短单次练习，先保持稳定专注。"
+  };
+
+  return createReport({
+    sessionId: session.id,
+    generatedAt: at,
+    score,
+    metrics,
+    suggestions: [suggestionLabels[lowestMetric]],
+    summary: `完成“${practiceData.character}”字练习，综合分 ${score}。`
+  });
+}
+
+function clampScore(value) {
+  return Math.min(100, Math.max(0, Math.round(value)));
 }

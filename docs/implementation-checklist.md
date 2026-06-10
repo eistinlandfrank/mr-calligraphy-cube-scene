@@ -195,8 +195,10 @@
 
   验收记录：2026-06-10 从 `calligraphy_tutorial` 进入 `practice_game` 时，Demo 同步老人端书法练习组件，PracticeSession 写入 `practice_started` 事件并记录 `practiceData.startedAt`；真实鼠标/触控轨迹采集继续在 P4-03 至 P4-05 完成。
 
-- [ ] **P3-08：实现 scoring 状态**  
+- [x] **P3-08：实现 scoring 状态**  
   验收：练习结束后进入评分阶段，根据练习数据计算分数。
+
+  验收记录：2026-06-10 `practice_game` 执行 `finish` 会进入 `scoring`，基于 PracticeSession.practiceData 生成 Report 原型并写入 `score_generated` 事件；书法组件完成回调接入状态机，store 脚本和 `npm run build` 通过。
 
 - [ ] **P3-09：实现 report 状态**  
   验收：系统根据 session 数据生成报告页面。
