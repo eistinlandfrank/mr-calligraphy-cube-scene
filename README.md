@@ -133,6 +133,6 @@ assets/           旧版静态原型资源
 - `docs/implementation-checklist.md`：分阶段验收清单。
 - `docs/codex-tasks.md`：每次功能提交的开发记录。
 - `docs/test-checklist.md`：答辩或发布前的浏览器检查清单。
-- `docs/scene-schema.md`、`docs/flow-schema.md`、`docs/session-report-schema.md`：核心数据结构说明。
+- `docs/scene-schema.md`、`docs/flow-schema.md`、`docs/session-schema.md`、`docs/report-schema.md`：核心数据结构说明。
 
 本项目按“完成一个功能、更新开发文档、中文提交并推送到 GitHub”的方式维护。
