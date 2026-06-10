@@ -20,6 +20,8 @@ export function DemoPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isFlowPaused, setIsFlowPaused] = useState(false);
   const [caregiverNotice, setCaregiverNotice] = useState("");
+  const [calligraphyProgress, setCalligraphyProgress] = useState(0);
+  const [calligraphyStroke, setCalligraphyStroke] = useState("侧");
   const [selectedObjectId, setSelectedObjectId] = useState("capsule-shell");
   const storedScenes = useSceneStore((state) => state.scenes);
   const phase = demoTimelineSteps[activeStep];
@@ -48,13 +50,16 @@ export function DemoPage() {
     return () => window.clearInterval(timer);
   }, [isPlaying, isFlowPaused]);
 
-  const practiceProgress = Math.min(100, Math.round((activeStep / (demoTimelineSteps.length - 1)) * 100));
+  const practiceProgress = Math.max(
+    Math.min(100, Math.round((activeStep / (demoTimelineSteps.length - 1)) * 100)),
+    calligraphyProgress
+  );
   const remainingSeconds = Math.max(0, 900 - activeStep * 118);
-  const currentStroke = ["侧", "勒", "努", "趯", "策", "掠"][Math.min(activeStep, 5)];
+  const currentStroke = mode === "elder" ? calligraphyStroke : ["侧", "勒", "努", "趯", "策", "掠"][Math.min(activeStep, 5)];
 
   const modePanel = useMemo(() => {
     if (mode === "elder") {
-      return <ElderView phase={phase} />;
+      return <ElderView phase={phase} onGameProgress={handleGameProgress} onGameComplete={handleGameComplete} />;
     }
 
     if (mode === "caregiver") {
@@ -84,6 +89,18 @@ export function DemoPage() {
   function selectStep(index) {
     setActiveStep(index);
     setMode(demoTimelineSteps[index].mode);
+  }
+
+  function handleGameProgress(progress, strokeLabel) {
+    setCalligraphyProgress(progress);
+    setCalligraphyStroke(strokeLabel);
+  }
+
+  function handleGameComplete() {
+    setCalligraphyProgress(100);
+    setActiveStep(demoTimelineSteps.length - 1);
+    setMode("caregiver");
+    setCaregiverNotice("作品已完成，护工端收到评分报告。");
   }
 
   function handleCaregiverAction(actionId) {

@@ -496,6 +496,303 @@ textarea {
   background: #2f6f68;
 }
 
+.virtual-calligraphy-game {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.calligraphy-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.calligraphy-head div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.calligraphy-head span,
+.current-stroke-card span,
+.calligraphy-score-panel span {
+  color: #766c5d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.calligraphy-head strong {
+  color: #211f1b;
+  font-size: 18px;
+}
+
+.stroke-counter {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  min-height: 36px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+  font-weight: 900;
+}
+
+.calligraphy-workspace {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+}
+
+.yong-canvas {
+  width: 100%;
+  max-width: 290px;
+  aspect-ratio: 1;
+  border: 1px solid rgba(38, 34, 28, 0.1);
+  border-radius: 8px;
+  background: #efe4d1;
+}
+
+.yong-canvas rect {
+  fill: rgba(255, 255, 255, 0.34);
+  stroke: rgba(143, 106, 69, 0.28);
+  stroke-width: 2;
+}
+
+.yong-canvas text {
+  fill: rgba(34, 28, 22, 0.08);
+  font-family: "KaiTi", "STKaiti", "SimSun", serif;
+  font-size: 178px;
+  text-anchor: middle;
+}
+
+.grid-line {
+  fill: none;
+  stroke: rgba(143, 106, 69, 0.18);
+  stroke-width: 1.5;
+  stroke-dasharray: 7 7;
+}
+
+.standard-stroke {
+  fill: none;
+  stroke: rgba(40, 34, 28, 0.26);
+  stroke-width: 13;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.standard-stroke.is-active {
+  stroke: #15120f;
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+}
+
+.standard-stroke.is-done {
+  stroke: #2f6f68;
+  stroke-opacity: 0.78;
+}
+
+.virtual-brush line {
+  stroke: #b98945;
+  stroke-width: 8;
+  stroke-linecap: round;
+}
+
+.virtual-brush circle {
+  fill: #15100c;
+}
+
+.virtual-brush path {
+  fill: #15100c;
+}
+
+.stroke-side-panel {
+  display: grid;
+  grid-template-rows: minmax(92px, auto) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.current-stroke-card,
+.stroke-pill-grid,
+.calligraphy-score-panel {
+  border: 1px solid rgba(38, 34, 28, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.current-stroke-card {
+  display: grid;
+  gap: 5px;
+  align-content: center;
+  padding: 12px;
+}
+
+.current-stroke-card strong {
+  color: #211f1b;
+  font-size: 36px;
+  line-height: 1;
+}
+
+.current-stroke-card p {
+  margin: 0;
+  color: #62594c;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.stroke-pill-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  align-content: center;
+  padding: 10px;
+}
+
+.stroke-pill-grid span {
+  display: grid;
+  place-items: center;
+  min-height: 34px;
+  border-radius: 8px;
+  color: #4a4136;
+  background: rgba(216, 199, 170, 0.48);
+  font-weight: 900;
+}
+
+.stroke-pill-grid span.is-active {
+  color: #ffffff;
+  background: #8f6a45;
+}
+
+.stroke-pill-grid span.is-done {
+  color: #ffffff;
+  background: #2f6f68;
+}
+
+.calligraphy-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.calligraphy-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+  border: 1px solid rgba(38, 34, 28, 0.12);
+  border-radius: 8px;
+  color: #ffffff;
+  background: #3c3933;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.calligraphy-actions button:first-child {
+  background: #2f6f68;
+}
+
+.calligraphy-actions button:last-child {
+  background: #8f6a45;
+}
+
+.calligraphy-score-panel {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 10px;
+  padding: 10px;
+}
+
+.calligraphy-score-panel > div:first-child {
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+}
+
+.calligraphy-score-panel > div:first-child span {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.calligraphy-score-panel > div:first-child strong {
+  font-size: 36px;
+  line-height: 1;
+}
+
+.score-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.score-metric-grid article {
+  display: grid;
+  gap: 3px;
+  align-content: center;
+  min-height: 58px;
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.score-metric-grid strong {
+  color: #211f1b;
+  font-size: 18px;
+}
+
+.calligraphy-score-panel p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #4f463b;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.preview-calligraphy-panel {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 4;
+  width: min(620px, calc(100% - 28px));
+  max-height: calc(100% - 28px);
+  overflow: auto;
+}
+
+.virtual-calligraphy-game.is-compact {
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(27, 30, 27, 0.76);
+  backdrop-filter: blur(18px);
+}
+
+.virtual-calligraphy-game.is-compact .calligraphy-head span,
+.virtual-calligraphy-game.is-compact .current-stroke-card span,
+.virtual-calligraphy-game.is-compact .calligraphy-score-panel span,
+.virtual-calligraphy-game.is-compact .current-stroke-card p,
+.virtual-calligraphy-game.is-compact .calligraphy-score-panel p {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.virtual-calligraphy-game.is-compact .calligraphy-head strong,
+.virtual-calligraphy-game.is-compact .current-stroke-card strong,
+.virtual-calligraphy-game.is-compact .score-metric-grid strong {
+  color: #ffffff;
+}
+
+.virtual-calligraphy-game.is-compact .current-stroke-card,
+.virtual-calligraphy-game.is-compact .stroke-pill-grid,
+.virtual-calligraphy-game.is-compact .calligraphy-score-panel {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .care-stat-grid article {
   display: grid;
   align-content: center;
@@ -917,6 +1214,15 @@ textarea {
 
   .elder-workbench {
     grid-template-columns: 1fr;
+  }
+
+  .calligraphy-workspace,
+  .calligraphy-score-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .score-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

@@ -1,5 +1,6 @@
 import { sceneConfigById } from "../data/scenes/index.js";
 import { SceneRenderer } from "../scene-core/SceneRenderer.jsx";
+import { VirtualCalligraphyGame } from "../scene-core/VirtualCalligraphyGame.jsx";
 import { selectSceneConfigById, useSceneStore } from "../store/sceneStore.js";
 
 export function PreviewPage({ sceneId }) {
@@ -21,6 +22,11 @@ export function PreviewPage({ sceneId }) {
       </header>
       <section className="preview-stage">
         <SceneRenderer sceneConfig={sceneConfig} mode={mode} phaseIndex={3} />
+        {sceneConfig.type === "calligraphy-game" ? (
+          <div className="preview-calligraphy-panel">
+            <VirtualCalligraphyGame compact />
+          </div>
+        ) : null}
         <div className="preview-meta">
           <span>SceneConfig</span>
           <strong>{sceneConfig.name}</strong>
