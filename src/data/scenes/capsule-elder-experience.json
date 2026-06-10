@@ -1,0 +1,100 @@
+{
+  "id": "capsule-elder-experience",
+  "name": "老人舱内沉浸体验",
+  "version": "0.1.0",
+  "type": "elder-view",
+  "camera": {
+    "position": [0, 1.2, 4.5],
+    "target": [0, 1.0, 0],
+    "fov": 55,
+    "presets": [
+      { "id": "rest", "label": "半躺视角", "position": [0, 1.2, 4.5], "target": [0, 1.0, 0] },
+      { "id": "screen", "label": "环幕书法", "position": [0, 1.35, 2.6], "target": [0, 1.2, -1.2] },
+      { "id": "brush", "label": "虚拟毛笔", "position": [0.9, 1.45, 2.1], "target": [0, 1.1, -0.6] }
+    ]
+  },
+  "environment": {
+    "background": "/assets/scenes/scene-04.png",
+    "ambientColor": "#efe3d2",
+    "fog": true,
+    "floorColor": "#cfc2ad"
+  },
+  "objects": [
+    {
+      "id": "immersive-screen",
+      "type": "immersive-screen",
+      "name": "水墨沉浸环幕",
+      "visible": true,
+      "interactive": true,
+      "position": [0, 1.18, -1.05],
+      "rotation": [0, 0, 0],
+      "scale": [1.2, 1, 1],
+      "material": { "color": "#edf1ed", "roughness": 0.22, "metalness": 0.02, "opacity": 1, "emissiveColor": "#d7ede5" }
+    },
+    {
+      "id": "elder-ui-panel",
+      "type": "ui-panel",
+      "name": "老人端提示面板",
+      "visible": true,
+      "interactive": true,
+      "position": [-0.88, 1.28, -0.58],
+      "rotation": [0, 0.18, 0],
+      "scale": [1, 1, 1],
+      "material": { "color": "#2f6f68", "roughness": 0.38, "metalness": 0.04, "opacity": 0.9, "emissiveColor": "#173c38" }
+    },
+    {
+      "id": "virtual-brush",
+      "type": "virtual-brush",
+      "name": "虚拟毛笔",
+      "visible": true,
+      "interactive": true,
+      "position": [0.38, 1.1, 0.1],
+      "rotation": [0.34, 0, -0.22],
+      "scale": [1, 1, 1],
+      "material": { "color": "#1d1711", "roughness": 0.5, "metalness": 0.02, "opacity": 1, "emissiveColor": "#000000" }
+    },
+    {
+      "id": "breathing-guide",
+      "type": "ui-panel",
+      "name": "呼吸引导光环",
+      "visible": true,
+      "interactive": false,
+      "position": [0, 1.54, -0.7],
+      "rotation": [0, 0, 0],
+      "scale": [1, 1, 1],
+      "material": { "color": "#d7aa72", "roughness": 0.18, "metalness": 0.04, "opacity": 0.78, "emissiveColor": "#d7aa72" }
+    }
+  ],
+  "hotspots": [
+    {
+      "id": "start-calligraphy-game",
+      "label": "开始书法游戏",
+      "position": [0, 1.3, -0.78],
+      "trigger": "gaze",
+      "targetAction": "playBrush",
+      "targetScene": "calligraphy-game-yong"
+    },
+    {
+      "id": "call-caregiver",
+      "label": "呼叫护工",
+      "position": [-0.9, 1.12, -0.3],
+      "trigger": "click",
+      "targetAction": "notifyCaregiver",
+      "targetScene": "capsule-caregiver-monitor"
+    }
+  ],
+  "timeline": [
+    { "time": 0, "label": "沉浸启动", "action": "fadeIn", "target": "immersive-screen", "duration": 1.8 },
+    { "time": 3, "label": "呼吸引导", "action": "showPanel", "target": "breathing-guide", "duration": 2.4 },
+    { "time": 7, "label": "书法游戏", "action": "playBrush", "target": "virtual-brush", "duration": 5.2 }
+  ],
+  "caregiverData": {
+    "elderName": "周老师",
+    "course": "永字八法舒缓体验",
+    "stage": "沉浸导入",
+    "heartRate": 72,
+    "breathRate": 15,
+    "focus": 76,
+    "mood": "放松"
+  }
+}
