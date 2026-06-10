@@ -69,10 +69,11 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
   const latestStrokeRecord = completedStrokeRecords[completedStrokeRecords.length - 1];
 
   function nextStroke() {
-    setCompletedStrokeIds((ids) => (ids.includes(currentStroke.id) ? ids : [...ids, currentStroke.id]));
+    const nextCompletedIds = addUniqueId(completedStrokeIds, currentStroke.id);
+    setCompletedStrokeIds(nextCompletedIds);
 
     if (currentStrokeIndex >= yongCharacter.strokes.length - 1) {
-      completeWork();
+      completeWork(completedStrokeRecords, nextCompletedIds.length);
       return;
     }
 
@@ -86,11 +87,31 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
     setUserStrokePoints([]);
   }
 
-  function completeWork() {
-    const score = buildScore(completedStrokeIds.length + 1);
-    setScorePanel(score);
+  function completeWork(strokeRecords = completedStrokeRecords, completedCount = completedStrokeIds.length) {
+    if (scorePanel) {
+      return;
+    }
+
+    const normalizedCompletedCount = Math.min(
+      yongCharacter.strokes.length,
+      Math.max(completedCount, strokeRecords.length)
+    );
+    const score = buildScore(normalizedCompletedCount);
+    const completedAt = new Date().toISOString();
+    const result = {
+      ...score,
+      practiceState: "completed",
+      completedAt,
+      completedStrokeCount: normalizedCompletedCount,
+      totalStrokeCount: yongCharacter.strokes.length,
+      strokeRecords
+    };
+
+    setProgress(1);
+    setScorePanel(result);
     setIsPlaying(false);
-    onComplete?.(score);
+    onProgressChange?.(100, currentStroke?.label);
+    onComplete?.(result);
   }
 
   function startInput(event) {
@@ -167,13 +188,15 @@ export function VirtualCalligraphyGame({ compact = false, paused = false, onComp
       rhythmStability: rhythm.rhythmStability,
       completedAt: new Date().toISOString()
     };
+    const nextStrokeRecords = mergeStrokeRecord(completedStrokeRecords, strokeRecord);
+    const nextCompletedIds = addUniqueId(completedStrokeIds, currentStroke.id);
 
-    setCompletedStrokeRecords((records) => [...records.filter((record) => record.strokeId !== currentStroke.id), strokeRecord]);
-    setCompletedStrokeIds((ids) => (ids.includes(currentStroke.id) ? ids : [...ids, currentStroke.id]));
+    setCompletedStrokeRecords(nextStrokeRecords);
+    setCompletedStrokeIds(nextCompletedIds);
     setStrokeFeedback(`「${currentStroke.label}」已完成，平均偏差 ${deviation.averageDeviation} 点。`);
 
     if (currentStrokeIndex >= yongCharacter.strokes.length - 1) {
-      completeWork();
+      completeWork(nextStrokeRecords, nextCompletedIds.length);
       return;
     }
 
@@ -341,6 +364,14 @@ function getSvgPoint(event, svgElement) {
 function getExpectedStartPoint(stroke) {
   const [x = 150, y = 150] = stroke.points[0] ?? [];
   return { x, y };
+}
+
+function addUniqueId(ids, id) {
+  return ids.includes(id) ? ids : [...ids, id];
+}
+
+function mergeStrokeRecord(records, strokeRecord) {
+  return [...records.filter((record) => record.strokeId !== strokeRecord.strokeId), strokeRecord];
 }
 
 function calculatePathDeviation(userPoints, standardPoints) {

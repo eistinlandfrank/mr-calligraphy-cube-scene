@@ -179,12 +179,12 @@ export function DemoPage() {
     setCalligraphyStroke(strokeLabel);
   }
 
-  function handleGameComplete() {
+  function handleGameComplete(result) {
     setCalligraphyProgress(100);
     if (phase.id === "practice_game") {
       executeFlowAction("finish");
     }
-    setCaregiverNotice("作品已完成，护工端收到评分报告。");
+    setCaregiverNotice(result?.total ? `作品已完成，护工端收到 ${result.total} 分评分报告。` : "作品已完成，护工端收到评分报告。");
   }
 
   function handleCaregiverAction(actionId) {
