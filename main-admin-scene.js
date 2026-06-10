@@ -52,12 +52,18 @@ const noticeState = document.getElementById("noticeState");
 const layerSearchInput = document.getElementById("mainLayerSearch");
 const layerSummary = document.getElementById("mainLayerSummary");
 const layerList = document.getElementById("mainLayerList");
+const snapshotCreateButton = document.getElementById("mainSnapshotCreate");
+const snapshotRefreshButton = document.getElementById("mainSnapshotRefresh");
+const historyStatus = document.getElementById("mainHistoryStatus");
+const snapshotList = document.getElementById("mainSnapshotList");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
+const HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const IMPORT_DB_STORE = "models";
 const MAX_IMPORT_MODEL_BYTES = 50 * 1024 * 1024;
 const MAX_UNDO_STEPS = 256;
+const MAX_HISTORY_SNAPSHOTS = 10;
 const DEFAULT_LIGHTING = {
   ambient: 0.55,
   environment: 0.55,
@@ -120,6 +126,7 @@ const DECOR_SPECS = [
 ];
 
 const layout = loadLayout();
+let layoutHistory = loadLayoutHistory();
 let lighting = normalizeLighting(layout.lighting);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x11100e);
@@ -480,6 +487,7 @@ async function handleImportModel(event) {
     populateObjectSelect();
     selectObject(entry.id);
     importModelNameInput.value = "";
+    createLayoutSnapshot(`导入：${entry.label}`, { notice: false });
     showImportStatus(`已导入：${entry.label} · ${formatImportMetrics(importedRecord.metrics)}`);
     showNotice(`已导入模型：${entry.label}`);
   } catch (error) {
@@ -1021,6 +1029,255 @@ function saveLayout() {
   }
 }
 
+function loadLayoutHistory() {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const source = Array.isArray(parsed.snapshots) ? parsed.snapshots : Array.isArray(parsed) ? parsed : [];
+
+    return source
+      .map(normalizeLayoutSnapshot)
+      .filter(Boolean)
+      .slice(0, MAX_HISTORY_SNAPSHOTS);
+  } catch (error) {
+    console.warn("Main scene history could not be loaded.", error);
+    return [];
+  }
+}
+
+function saveLayoutHistory() {
+  try {
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      snapshots: layoutHistory.slice(0, MAX_HISTORY_SNAPSHOTS)
+    }));
+  } catch (error) {
+    console.warn("Main scene history could not be saved.", error);
+    setHistoryStatus("保存历史失败，可能是浏览器本机存储空间不足。", "error");
+  }
+}
+
+function normalizeLayoutSnapshot(record, index = 0) {
+  if (!record || typeof record !== "object" || !record.layout) {
+    return null;
+  }
+
+  const layoutValue = normalizeSnapshotLayout(record.layout);
+  const fallbackLabel = index === 0 ? "主场景快照" : `主场景快照 ${index + 1}`;
+
+  return {
+    id: String(record.id || `snapshot-${Date.now()}-${index}`),
+    label: String(record.label || fallbackLabel).slice(0, 60),
+    createdAt: Number.isFinite(Date.parse(record.createdAt)) ? record.createdAt : new Date().toISOString(),
+    layout: layoutValue,
+    stats: normalizeSnapshotStats(record.stats, layoutValue)
+  };
+}
+
+function normalizeSnapshotLayout(value = {}) {
+  return {
+    objects: value && typeof value.objects === "object" && value.objects
+      ? clonePlain(value.objects)
+      : {},
+    customObjects: Array.isArray(value.customObjects)
+      ? value.customObjects.map(normalizeCustomObject)
+      : [],
+    importedModels: Array.isArray(value.importedModels)
+      ? value.importedModels.map(normalizeImportedModel)
+      : [],
+    lighting: normalizeLighting(value.lighting || lighting)
+  };
+}
+
+function normalizeSnapshotStats(stats, layoutValue) {
+  const fallback = getLayoutStats(layoutValue);
+  const source = stats && typeof stats === "object" ? stats : {};
+
+  return {
+    objectCount: Math.max(0, Math.round(readNumber(source.objectCount, fallback.objectCount))),
+    customCount: Math.max(0, Math.round(readNumber(source.customCount, fallback.customCount))),
+    importedCount: Math.max(0, Math.round(readNumber(source.importedCount, fallback.importedCount))),
+    hiddenCount: Math.max(0, Math.round(readNumber(source.hiddenCount, fallback.hiddenCount))),
+    lockedCount: Math.max(0, Math.round(readNumber(source.lockedCount, fallback.lockedCount)))
+  };
+}
+
+function getLayoutStats(layoutValue = layout) {
+  const objectStates = layoutValue && typeof layoutValue.objects === "object" && layoutValue.objects ? layoutValue.objects : {};
+  const customCount = Array.isArray(layoutValue.customObjects) ? layoutValue.customObjects.length : 0;
+  const importedCount = Array.isArray(layoutValue.importedModels) ? layoutValue.importedModels.length : 0;
+  const objectCount = MODEL_SPECS.length + DECOR_SPECS.length + customCount + importedCount;
+  const states = Object.values(objectStates);
+
+  return {
+    objectCount,
+    customCount,
+    importedCount,
+    hiddenCount: states.filter((state) => state?.deleted === true || state?.hidden === true).length,
+    lockedCount: states.filter((state) => state?.locked === true).length
+  };
+}
+
+function createLayoutSnapshot(label = "手动快照", options = {}) {
+  const snapshot = {
+    id: `snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    label: String(label || "手动快照").slice(0, 60),
+    createdAt: new Date().toISOString(),
+    layout: normalizeSnapshotLayout(layout),
+    stats: getLayoutStats(layout)
+  };
+
+  layoutHistory = [
+    snapshot,
+    ...layoutHistory.filter((item) => item.id !== snapshot.id)
+  ].slice(0, MAX_HISTORY_SNAPSHOTS);
+
+  saveLayoutHistory();
+  renderHistoryPanel();
+
+  if (options.notice !== false) {
+    showNotice(`已保存快照：${snapshot.label}`);
+  }
+  if (options.status !== false) {
+    setHistoryStatus(`已保存快照：${snapshot.label}`, "success");
+  }
+
+  return snapshot;
+}
+
+function renderHistoryPanel() {
+  if (!snapshotList) {
+    return;
+  }
+
+  snapshotList.innerHTML = "";
+
+  if (!layoutHistory.length) {
+    const empty = document.createElement("p");
+    empty.className = "main-history-empty";
+    empty.textContent = "暂无快照。点击“保存快照”记录当前主场景布局。";
+    snapshotList.appendChild(empty);
+    setHistoryStatus("最多保留最近 10 次主场景布局快照。", "normal");
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  layoutHistory.forEach((snapshot) => {
+    fragment.appendChild(createSnapshotRow(snapshot));
+  });
+  snapshotList.appendChild(fragment);
+  setHistoryStatus(`已保留 ${layoutHistory.length} / ${MAX_HISTORY_SNAPSHOTS} 次快照。`, "normal");
+}
+
+function createSnapshotRow(snapshot) {
+  const row = document.createElement("div");
+  row.className = "main-snapshot-row";
+
+  const detail = document.createElement("div");
+  detail.className = "main-snapshot-detail";
+
+  const title = document.createElement("strong");
+  title.textContent = snapshot.label;
+
+  const meta = document.createElement("span");
+  meta.textContent = `${formatDateTime(snapshot.createdAt)} · ${formatSnapshotStats(snapshot.stats)}`;
+
+  detail.append(title, meta);
+
+  const actions = document.createElement("div");
+  actions.className = "main-snapshot-actions";
+
+  const restoreButton = document.createElement("button");
+  restoreButton.type = "button";
+  restoreButton.dataset.snapshotAction = "restore";
+  restoreButton.dataset.snapshotId = snapshot.id;
+  restoreButton.textContent = "恢复";
+
+  const deleteButton = document.createElement("button");
+  deleteButton.type = "button";
+  deleteButton.dataset.snapshotAction = "delete";
+  deleteButton.dataset.snapshotId = snapshot.id;
+  deleteButton.textContent = "删除";
+
+  actions.append(restoreButton, deleteButton);
+  row.append(detail, actions);
+
+  return row;
+}
+
+function handleSnapshotListClick(event) {
+  const button = event.target.closest("[data-snapshot-action]");
+  if (!button) {
+    return;
+  }
+
+  const snapshot = layoutHistory.find((item) => item.id === button.dataset.snapshotId);
+  if (!snapshot) {
+    setHistoryStatus("未找到该快照。", "error");
+    renderHistoryPanel();
+    return;
+  }
+
+  if (button.dataset.snapshotAction === "restore") {
+    restoreLayoutSnapshot(snapshot);
+    return;
+  }
+
+  if (button.dataset.snapshotAction === "delete") {
+    deleteLayoutSnapshot(snapshot.id);
+  }
+}
+
+function restoreLayoutSnapshot(snapshot) {
+  createLayoutSnapshot("恢复前自动快照", { notice: false, status: false });
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeSnapshotLayout(snapshot.layout)));
+    setHistoryStatus(`已恢复快照：${snapshot.label}，页面即将刷新。`, "success");
+    showNotice(`已恢复快照：${snapshot.label}`);
+    window.setTimeout(() => window.location.reload(), 900);
+  } catch (error) {
+    console.warn("Main scene snapshot could not be restored.", error);
+    setHistoryStatus("恢复快照失败，可能是浏览器本机存储空间不足。", "error");
+  }
+}
+
+function deleteLayoutSnapshot(id) {
+  const before = layoutHistory.length;
+  layoutHistory = layoutHistory.filter((snapshot) => snapshot.id !== id);
+  saveLayoutHistory();
+  renderHistoryPanel();
+  setHistoryStatus(before === layoutHistory.length ? "未找到要删除的快照。" : "已删除快照。", "success");
+}
+
+function setHistoryStatus(message, tone = "normal") {
+  if (!historyStatus) {
+    return;
+  }
+
+  historyStatus.textContent = message;
+  historyStatus.dataset.tone = tone;
+}
+
+function formatSnapshotStats(stats = {}) {
+  return `${stats.objectCount || 0} 对象 / ${stats.customCount || 0} 自定义 / ${stats.importedCount || 0} 导入`;
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "时间未知";
+  }
+
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function clonePlain(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
 function openImportDb() {
   if (importDbPromise) {
     return importDbPromise;
@@ -1096,6 +1353,18 @@ async function deleteImportedModelData(record) {
     request.onerror = () => reject(request.error || new Error("Could not delete imported model."));
     transaction.oncomplete = () => resolve();
     transaction.onerror = () => reject(transaction.error || new Error("Could not delete imported model."));
+  });
+}
+
+function isImportedModelReferencedByHistory(record) {
+  if (!record?.dbKey && !record?.id) {
+    return false;
+  }
+
+  return layoutHistory.some((snapshot) => {
+    return snapshot.layout.importedModels.some((item) => {
+      return (record.dbKey && item.dbKey === record.dbKey) || (record.id && item.id === record.id);
+    });
   });
 }
 
@@ -1555,6 +1824,7 @@ function addCustomObject() {
   if (newObjectNameInput) {
     newObjectNameInput.value = "";
   }
+  createLayoutSnapshot(`新增：${entry.label}`, { notice: false });
   showCustomStatus(`已新增：${entry.label}。可在对象图层中搜索、隐藏或锁定。`);
   showNotice(`已新增：${entry.label}`);
 }
@@ -1690,7 +1960,9 @@ function removeImportedEntry(entry, options = {}) {
   layout.importedModels = layout.importedModels.filter((item) => item.id !== entry.id);
   delete layout.objects[entry.id];
 
-  if (options.deleteStorage !== false) {
+  if (options.deleteStorage !== false && isImportedModelReferencedByHistory(importRecord)) {
+    showImportStatus(`模型已从当前布局移除，文件保留用于历史回滚：${importRecord.label || importRecord.fileName}`);
+  } else if (options.deleteStorage !== false) {
     deleteImportedModelData(importRecord)
       .then(() => showImportStatus(`已清理模型文件：${importRecord.label || importRecord.fileName}`))
       .catch((error) => {
@@ -1744,6 +2016,7 @@ async function deleteSelected() {
     });
     const label = selectedEntry.label;
     removeImportedEntry(selectedEntry);
+    createLayoutSnapshot(`删除：${label}`, { notice: false });
     showNotice(`Deleted model: ${label}`);
     return;
   }
@@ -1756,6 +2029,7 @@ async function deleteSelected() {
     });
     const label = selectedEntry.label;
     removeCustomEntry(selectedEntry);
+    createLayoutSnapshot(`删除：${label}`, { notice: false });
     showNotice(`已删除：${label}`);
     return;
   }
@@ -1769,6 +2043,7 @@ async function deleteSelected() {
   updateObjectOption(selectedEntry);
   updateUiState();
   renderLayerPanel();
+  createLayoutSnapshot(`隐藏：${selectedEntry.label}`, { notice: false });
 }
 
 function restoreSelected() {
@@ -1784,6 +2059,7 @@ function restoreSelected() {
   updateObjectOption(selectedEntry);
   updateUiState();
   renderLayerPanel();
+  createLayoutSnapshot(`恢复：${selectedEntry.label}`, { notice: false });
 }
 
 function resetSelected() {
@@ -1796,9 +2072,11 @@ function resetSelected() {
   updateObjectOption(selectedEntry);
   selectObject(selectedEntry.id);
   renderLayerPanel();
+  createLayoutSnapshot(`复位：${selectedEntry.label}`, { notice: false });
 }
 
 function resetAll() {
+  createLayoutSnapshot("恢复全部默认前", { notice: false });
   undoStack.length = 0;
   layout.objects = {};
   layout.customObjects = [];
@@ -1865,9 +2143,18 @@ function bindUi() {
   restoreButton.addEventListener("click", restoreSelected);
   saveButton.addEventListener("click", () => {
     if (selectedEntry) saveEntry(selectedEntry);
+    createLayoutSnapshot(`保存：${selectedEntry?.label || "主场景"}`, { notice: false });
     showNotice("已保存，正常主场景页面会读取这些参数。");
   });
   resetAllButton.addEventListener("click", resetAll);
+  snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
+  snapshotRefreshButton?.addEventListener("click", () => {
+    layoutHistory = loadLayoutHistory();
+    renderHistoryPanel();
+    setHistoryStatus("已刷新保存历史列表。", "success");
+  });
+  snapshotList?.addEventListener("click", handleSnapshotListClick);
+  renderHistoryPanel();
   newObjectAddButton?.addEventListener("click", addCustomObject);
   newObjectTypeSelect?.addEventListener("change", () => syncCustomSizeInputs(true));
   syncCustomSizeInputs(false);

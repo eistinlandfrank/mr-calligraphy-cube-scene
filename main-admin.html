@@ -141,7 +141,20 @@
               <input id="projectImportFile" type="file" accept="application/json,.json">
             </label>
           </div>
-          <p id="projectArchiveStatus" class="main-project-status">可导出学习记录、房间配置、场景布局和本机导入模型。</p>
+          <p id="projectArchiveStatus" class="main-project-status">可导出学习记录、房间配置、场景布局、保存历史和本机导入模型。</p>
+        </section>
+
+        <section class="main-history-panel" aria-label="保存历史">
+          <div class="main-light-title">
+            <span>Snapshots</span>
+            <strong>保存历史</strong>
+          </div>
+          <div class="main-history-actions">
+            <button id="mainSnapshotCreate" type="button">保存快照</button>
+            <button id="mainSnapshotRefresh" type="button">刷新列表</button>
+          </div>
+          <p id="mainHistoryStatus" class="main-history-status">最多保留最近 10 次主场景布局快照。</p>
+          <div id="mainSnapshotList" class="main-snapshot-list" aria-live="polite"></div>
         </section>
 
         <div class="main-axis-grid">

@@ -465,6 +465,7 @@ button {
 .main-light-panel,
 .main-add-panel,
 .main-layer-panel,
+.main-history-panel,
 .main-project-panel {
   display: grid;
   gap: 10px;
@@ -791,6 +792,113 @@ button {
   color: #ffd5cb;
   border-color: rgba(255, 120, 94, 0.34);
   background: rgba(201, 63, 47, 0.14);
+}
+
+.main-history-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.main-history-actions button,
+.main-snapshot-actions button {
+  min-height: 34px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+}
+
+.main-history-actions button:hover,
+.main-snapshot-actions button:hover {
+  border-color: rgba(116, 255, 219, 0.56);
+  background: rgba(47, 111, 104, 0.56);
+}
+
+.main-history-status,
+.main-history-empty {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.main-history-status {
+  min-height: 32px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.main-history-status[data-tone="success"] {
+  color: #bcf5d9;
+  border-color: rgba(116, 255, 219, 0.28);
+  background: rgba(47, 111, 104, 0.18);
+}
+
+.main-history-status[data-tone="error"] {
+  color: #ffd5cb;
+  border-color: rgba(255, 120, 94, 0.34);
+  background: rgba(201, 63, 47, 0.14);
+}
+
+.main-snapshot-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 2px;
+  scrollbar-color: rgba(255, 255, 255, 0.34) rgba(0, 0, 0, 0.16);
+  scrollbar-width: thin;
+}
+
+.main-snapshot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.main-snapshot-detail {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.main-snapshot-detail strong,
+.main-snapshot-detail span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-snapshot-detail strong {
+  font-size: 13px;
+}
+
+.main-snapshot-detail span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+}
+
+.main-snapshot-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  gap: 6px;
+}
+
+.main-snapshot-actions button {
+  min-width: 0;
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .main-light-title {
