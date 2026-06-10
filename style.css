@@ -591,6 +591,70 @@ button {
   font: inherit;
 }
 
+.main-layer-batch {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  align-items: center;
+}
+
+.main-layer-batch label {
+  grid-column: span 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 30px;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.main-layer-batch label input,
+.main-layer-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2f8f82;
+}
+
+.main-layer-batch span {
+  grid-column: span 2;
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 11px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.main-layer-batch button {
+  min-width: 0;
+  min-height: 30px;
+  padding: 0 6px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.main-layer-batch button:hover,
+.main-layer-batch button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.56);
+  outline: none;
+  background: rgba(47, 111, 104, 0.56);
+}
+
+.main-layer-batch button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 255, 255, 0.38);
+  background: rgba(255, 255, 255, 0.06);
+}
+
 .main-layer-summary,
 .main-layer-empty {
   margin: 0;
@@ -635,9 +699,9 @@ button {
 
 .main-layer-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 34px 34px;
+  grid-template-columns: 18px minmax(0, 1fr) 34px 34px;
   gap: 6px;
-  align-items: stretch;
+  align-items: center;
 }
 
 .main-layer-select,
@@ -688,6 +752,11 @@ button {
 .main-layer-row.is-active .main-layer-select {
   border-color: rgba(116, 255, 219, 0.5);
   background: rgba(47, 111, 104, 0.38);
+}
+
+.main-layer-row.is-selected .main-layer-select {
+  border-color: rgba(188, 245, 217, 0.42);
+  background: rgba(63, 152, 101, 0.24);
 }
 
 .main-layer-row.is-hidden .main-layer-select,

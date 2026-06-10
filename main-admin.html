@@ -50,6 +50,15 @@
             <span>搜索对象</span>
             <input id="mainLayerSearch" type="search" placeholder="名称 / 类型">
           </label>
+          <div class="main-layer-batch" aria-label="图层批量操作">
+            <label><input id="mainLayerSelectVisible" type="checkbox">选择当前结果</label>
+            <span id="mainLayerSelectionStatus">已选 0 个</span>
+            <button data-feature-state="real" id="mainLayerBatchHide" type="button">隐藏</button>
+            <button data-feature-state="real" id="mainLayerBatchShow" type="button">显示</button>
+            <button data-feature-state="real" id="mainLayerBatchLock" type="button">锁定</button>
+            <button data-feature-state="real" id="mainLayerBatchUnlock" type="button">解锁</button>
+            <button data-feature-state="real" id="mainLayerBatchClear" type="button">清除</button>
+          </div>
           <p id="mainLayerSummary" class="main-layer-summary">正在读取场景对象。</p>
           <div id="mainLayerList" class="main-layer-list" aria-live="polite"></div>
         </section>
@@ -228,6 +237,6 @@
     }
   </script>
   <script src="project-archive.js?v=project-archive-selective-20260611"></script>
-  <script type="module" src="main-admin-scene.js?v=main-three-editor-20260516-import"></script>
+  <script type="module" src="main-admin-scene.js?v=main-layer-batch-20260611"></script>
 </body>
 </html>

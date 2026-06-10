@@ -51,6 +51,13 @@ const exposureValue = document.getElementById("mainExposureValue");
 const lightResetButton = document.getElementById("mainLightReset");
 const noticeState = document.getElementById("noticeState");
 const layerSearchInput = document.getElementById("mainLayerSearch");
+const layerSelectVisibleInput = document.getElementById("mainLayerSelectVisible");
+const layerSelectionStatus = document.getElementById("mainLayerSelectionStatus");
+const layerBatchHideButton = document.getElementById("mainLayerBatchHide");
+const layerBatchShowButton = document.getElementById("mainLayerBatchShow");
+const layerBatchLockButton = document.getElementById("mainLayerBatchLock");
+const layerBatchUnlockButton = document.getElementById("mainLayerBatchUnlock");
+const layerBatchClearButton = document.getElementById("mainLayerBatchClear");
 const layerSummary = document.getElementById("mainLayerSummary");
 const layerList = document.getElementById("mainLayerList");
 const snapshotCreateButton = document.getElementById("mainSnapshotCreate");
@@ -174,6 +181,7 @@ const objects = new Map();
 const selectableMeshes = [];
 const undoStack = [];
 const lightRig = {};
+const selectedLayerIds = new Set();
 let importDbPromise = null;
 let selectedEntry = null;
 let dragStart = null;
@@ -1474,6 +1482,7 @@ function renderLayerPanel() {
   const visibleCount = entries.filter((entry) => !isEntryHidden(entry)).length;
   const hiddenCount = entries.length - visibleCount;
   const lockedCount = entries.filter(isEntryLocked).length;
+  pruneSelectedLayers(entries);
   const filteredEntries = entries.filter((entry) => {
     if (!query) return true;
     return [
@@ -1485,7 +1494,7 @@ function renderLayerPanel() {
   });
 
   if (layerSummary) {
-    layerSummary.textContent = `共 ${entries.length} 个对象 · 显示 ${visibleCount} · 隐藏 ${hiddenCount} · 锁定 ${lockedCount}`;
+    layerSummary.textContent = `共 ${entries.length} 个对象 · 显示 ${visibleCount} · 隐藏 ${hiddenCount} · 锁定 ${lockedCount} · 已选 ${selectedLayerIds.size}`;
   }
 
   layerList.innerHTML = "";
@@ -1495,6 +1504,7 @@ function renderLayerPanel() {
     empty.className = "main-layer-empty";
     empty.textContent = query ? "没有匹配的对象。" : "暂无可管理对象。";
     layerList.appendChild(empty);
+    renderLayerBatchControls(filteredEntries);
     return;
   }
 
@@ -1522,6 +1532,38 @@ function renderLayerPanel() {
   });
 
   layerList.appendChild(fragment);
+  renderLayerBatchControls(filteredEntries);
+}
+
+function pruneSelectedLayers(entries = [...objects.values()]) {
+  const validIds = new Set(entries.map((entry) => entry.id));
+  selectedLayerIds.forEach((id) => {
+    if (!validIds.has(id)) {
+      selectedLayerIds.delete(id);
+    }
+  });
+}
+
+function renderLayerBatchControls(filteredEntries = []) {
+  const filteredIds = filteredEntries.map((entry) => entry.id);
+  const selectedVisibleCount = filteredIds.filter((id) => selectedLayerIds.has(id)).length;
+  const selectedCount = selectedLayerIds.size;
+
+  if (layerSelectVisibleInput) {
+    layerSelectVisibleInput.checked = filteredIds.length > 0 && selectedVisibleCount === filteredIds.length;
+    layerSelectVisibleInput.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < filteredIds.length;
+    layerSelectVisibleInput.disabled = filteredIds.length === 0;
+  }
+
+  if (layerSelectionStatus) {
+    layerSelectionStatus.textContent = selectedCount ? `已选 ${selectedCount} 个` : `当前 ${filteredIds.length} 个`;
+  }
+
+  [layerBatchHideButton, layerBatchShowButton, layerBatchLockButton, layerBatchUnlockButton, layerBatchClearButton].forEach((button) => {
+    if (button) {
+      button.disabled = selectedCount === 0;
+    }
+  });
 }
 
 function groupLayerEntries(entries) {
@@ -1552,9 +1594,17 @@ function createLayerRow(entry) {
   const row = document.createElement("div");
   row.className = "main-layer-row";
   row.classList.toggle("is-active", selectedEntry?.id === entry.id);
+  row.classList.toggle("is-selected", selectedLayerIds.has(entry.id));
   row.classList.toggle("is-hidden", isEntryHidden(entry));
   row.classList.toggle("is-locked", isEntryLocked(entry));
   row.dataset.layerId = entry.id;
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "main-layer-checkbox";
+  checkbox.checked = selectedLayerIds.has(entry.id);
+  checkbox.dataset.layerCheck = entry.id;
+  checkbox.setAttribute("aria-label", `选择图层：${entry.label}`);
 
   const selectButton = document.createElement("button");
   selectButton.type = "button";
@@ -1589,7 +1639,7 @@ function createLayerRow(entry) {
   lockButton.title = isEntryLocked(entry) ? "解锁对象" : "锁定对象";
   lockButton.setAttribute("aria-label", lockButton.title);
 
-  row.append(selectButton, visibilityButton, lockButton);
+  row.append(checkbox, selectButton, visibilityButton, lockButton);
   return row;
 }
 
@@ -1614,6 +1664,121 @@ function handleLayerClick(event) {
   if (selectButton) {
     selectObject(selectButton.dataset.layerSelect);
   }
+}
+
+function handleLayerSelectionChange(event) {
+  const checkbox = event.target.closest("[data-layer-check]");
+  if (!checkbox) return;
+
+  const id = checkbox.dataset.layerCheck;
+  if (checkbox.checked) {
+    selectedLayerIds.add(id);
+  } else {
+    selectedLayerIds.delete(id);
+  }
+  renderLayerPanel();
+}
+
+function getFilteredLayerEntries() {
+  const query = String(layerSearchInput?.value || "").trim().toLowerCase();
+  return [...objects.values()].filter((entry) => {
+    if (!query) return true;
+    return [
+      entry.id,
+      entry.label,
+      entry.type,
+      getLayerGroupLabel(entry)
+    ].some((value) => String(value || "").toLowerCase().includes(query));
+  });
+}
+
+function handleLayerSelectVisibleChange() {
+  const filteredEntries = getFilteredLayerEntries();
+  if (layerSelectVisibleInput?.checked) {
+    filteredEntries.forEach((entry) => selectedLayerIds.add(entry.id));
+  } else {
+    filteredEntries.forEach((entry) => selectedLayerIds.delete(entry.id));
+  }
+  renderLayerPanel();
+}
+
+function clearLayerSelection() {
+  selectedLayerIds.clear();
+  renderLayerPanel();
+  showNotice("已清除图层选择。");
+}
+
+function getSelectedLayerEntries() {
+  pruneSelectedLayers();
+  return [...selectedLayerIds].map((id) => objects.get(id)).filter(Boolean);
+}
+
+function applyLayerBatchVisibility(hidden) {
+  const entries = getSelectedLayerEntries();
+  if (!entries.length) {
+    showNotice("请先选择要批量处理的图层。");
+    return;
+  }
+
+  const changed = applyLayerBatchUpdate(entries, (entry) => {
+    entry.object.userData.deleted = false;
+    entry.object.userData.hidden = hidden;
+    applyObjectVisibility(entry.object);
+  }, hidden ? "批量隐藏" : "批量显示");
+
+  if (changed) {
+    showNotice(`${hidden ? "已隐藏" : "已显示"} ${changed} 个所选图层。`);
+  }
+}
+
+function applyLayerBatchLock(locked) {
+  const entries = getSelectedLayerEntries();
+  if (!entries.length) {
+    showNotice("请先选择要批量处理的图层。");
+    return;
+  }
+
+  const changed = applyLayerBatchUpdate(entries, (entry) => {
+    entry.object.userData.locked = locked;
+  }, locked ? "批量锁定" : "批量解锁");
+
+  if (changed) {
+    showNotice(`${locked ? "已锁定" : "已解锁"} ${changed} 个所选图层。`);
+  }
+}
+
+function applyLayerBatchUpdate(entries, updateEntry, actionLabel) {
+  const beforeSnapshots = [];
+
+  entries.forEach((entry) => {
+    const before = snapshot(entry);
+    updateEntry(entry);
+    const after = snapshot(entry);
+    if (!snapshotsMatch(before, after)) {
+      beforeSnapshots.push(before);
+      saveEntry(entry);
+      updateObjectOption(entry);
+    }
+  });
+
+  if (!beforeSnapshots.length) {
+    showNotice("所选图层已经处于目标状态。");
+    return 0;
+  }
+
+  pushUndo({ kind: "layer-batch", snapshots: beforeSnapshots, label: actionLabel });
+
+  if (selectedEntry && !canTransformEntry(selectedEntry)) {
+    transformControls.detach();
+  }
+  if (selectedEntry && canTransformEntry(selectedEntry)) {
+    transformControls.attach(selectedEntry.object);
+  }
+
+  updateUiState();
+  renderLayerPanel();
+  createLayoutSnapshot(`${actionLabel}：${beforeSnapshots.length} 个对象`, { notice: false });
+  return beforeSnapshots.length;
 }
 
 function toggleLayerVisibility(entry) {
@@ -1858,6 +2023,33 @@ async function undo() {
       createLayoutSnapshot(`撤回编辑：${entry.label}`, { notice: false });
       showNotice(`已撤回编辑：${entry.label}`);
     }
+    return;
+  }
+
+  if (item.kind === "layer-batch") {
+    const snapshots = Array.isArray(item.snapshots) ? item.snapshots : [];
+    snapshots.forEach((snapshotItem) => {
+      const entry = objects.get(snapshotItem.id);
+      if (!entry) return;
+      entry.object.position.set(snapshotItem.x, snapshotItem.y, snapshotItem.z);
+      entry.object.rotation.set(toRadians(snapshotItem.rx), toRadians(snapshotItem.ry), toRadians(snapshotItem.rz));
+      entry.object.scale.setScalar(snapshotItem.scale * (entry.object.userData.scaleFactor || 1));
+      entry.object.userData.deleted = snapshotItem.deleted;
+      entry.object.userData.hidden = snapshotItem.hidden === true;
+      entry.object.userData.locked = snapshotItem.locked === true;
+      applyObjectVisibility(entry.object);
+      saveEntry(entry);
+      updateObjectOption(entry);
+    });
+    if (selectedEntry && canTransformEntry(selectedEntry)) {
+      transformControls.attach(selectedEntry.object);
+    } else {
+      transformControls.detach();
+    }
+    updateUiState();
+    renderLayerPanel();
+    createLayoutSnapshot(`撤回${item.label || "批量图层操作"}`, { notice: false });
+    showNotice(`已撤回${item.label || "批量图层操作"}。`);
     return;
   }
 
@@ -2418,6 +2610,13 @@ function bindUi() {
   lightResetButton.addEventListener("click", resetLighting);
   layerSearchInput?.addEventListener("input", renderLayerPanel);
   layerList?.addEventListener("click", handleLayerClick);
+  layerList?.addEventListener("change", handleLayerSelectionChange);
+  layerSelectVisibleInput?.addEventListener("change", handleLayerSelectVisibleChange);
+  layerBatchHideButton?.addEventListener("click", () => applyLayerBatchVisibility(true));
+  layerBatchShowButton?.addEventListener("click", () => applyLayerBatchVisibility(false));
+  layerBatchLockButton?.addEventListener("click", () => applyLayerBatchLock(true));
+  layerBatchUnlockButton?.addEventListener("click", () => applyLayerBatchLock(false));
+  layerBatchClearButton?.addEventListener("click", clearLayerSelection);
 
   [xInput, yInput, zInput, rotXInput, rotYInput, rotZInput, scaleInput].forEach((input) => {
     input.addEventListener("focus", () => {
