@@ -16,9 +16,12 @@ export function SceneEditor() {
   const activeSceneId = useSceneStore((state) => state.activeSceneId);
   const selectedObjectId = useSceneStore((state) => state.selectedObjectId);
   const lastSavedAt = useSceneStore((state) => state.lastSavedAt);
+  const sceneVersions = useSceneStore((state) => state.sceneVersions);
+  const activeVersionId = useSceneStore((state) => state.activeVersionId);
   const setSelectedObjectId = useSceneStore((state) => state.setSelectedObjectId);
   const saveScenes = useSceneStore((state) => state.saveScenes);
   const hydrateScenesFromIndexedDb = useSceneStore((state) => state.hydrateScenesFromIndexedDb);
+  const loadSceneVersion = useSceneStore((state) => state.loadSceneVersion);
   const resetScene = useSceneStore((state) => state.resetScene);
   const importScene = useSceneStore((state) => state.importScene);
   const flowConfig = useFlowStore((state) => state.flowConfig);
@@ -50,6 +53,18 @@ export function SceneEditor() {
     });
 
     downloadConfigJson(payload, `${project.id}-config.json`);
+  }
+
+  async function switchSceneVersion(event) {
+    const versionId = event.target.value;
+
+    if (!versionId) {
+      return;
+    }
+
+    const loaded = await loadSceneVersion(versionId);
+    const version = sceneVersions.find((item) => item.id === versionId);
+    setImportStatus(loaded ? `已切换配置版本：${version?.label ?? versionId}` : "切换失败：未找到该配置版本。");
   }
 
   async function importSceneConfig(event) {
@@ -112,6 +127,19 @@ export function SceneEditor() {
             <Save size={17} strokeWidth={2.2} />
             <span>保存到本机</span>
           </button>
+          <select
+            className="admin-version-select"
+            value={activeVersionId ?? ""}
+            onChange={switchSceneVersion}
+            aria-label="配置版本选择"
+          >
+            <option value="">{sceneVersions.length ? "选择配置版本" : "暂无保存版本"}</option>
+            {sceneVersions.map((version) => (
+              <option key={version.id} value={version.id}>
+                {version.label}
+              </option>
+            ))}
+          </select>
           <button type="button" onClick={exportScene}>
             <Download size={17} strokeWidth={2.2} />
             <span>导出场景</span>

@@ -17,6 +17,8 @@ export const useSceneStore = create((set, get) => ({
   activeSceneId: baseSceneConfigs[0].id,
   selectedObjectId: baseSceneConfigs[0].objects[0]?.id ?? "",
   lastSavedAt: null,
+  sceneVersions: [],
+  activeVersionId: null,
 
   setActiveSceneId: (sceneId) => {
     const scene = get().scenes.find((item) => item.id === sceneId);
@@ -165,21 +167,50 @@ export const useSceneStore = create((set, get) => ({
   saveScenes: async () => {
     const scenes = get().scenes;
     const savedAt = new Date().toISOString();
-    await persistScenes(scenes, savedAt);
-    set({ lastSavedAt: savedAt });
+    const version = await persistScenes(scenes, savedAt);
+
+    set((state) => ({
+      lastSavedAt: savedAt,
+      activeVersionId: version?.id ?? state.activeVersionId,
+      sceneVersions: version ? mergeSceneVersionMetas(state.sceneVersions, version) : state.sceneVersions
+    }));
   },
 
   hydrateScenesFromIndexedDb: async () => {
-    const snapshot = await loadScenesFromIndexedDb();
+    const [snapshot, versions] = await Promise.all([
+      loadSceneSnapshotFromIndexedDb(SCENE_DB_SNAPSHOT_ID),
+      loadSceneVersionsFromIndexedDb()
+    ]);
 
     if (!snapshot?.scenes?.length) {
+      set({ sceneVersions: versions });
       return;
     }
 
     set({
       scenes: mergeStoredScenes(snapshot.scenes),
-      lastSavedAt: snapshot.savedAt ?? null
+      lastSavedAt: snapshot.savedAt ?? null,
+      sceneVersions: versions,
+      activeVersionId: snapshot.sourceVersionId ?? versions[0]?.id ?? null
     });
+  },
+
+  loadSceneVersion: async (versionId) => {
+    const snapshot = await loadSceneSnapshotFromIndexedDb(versionId);
+
+    if (!snapshot?.scenes?.length) {
+      return false;
+    }
+
+    persistScenesToLocalStorage(snapshot.scenes);
+    set({
+      scenes: mergeStoredScenes(snapshot.scenes),
+      activeVersionId: snapshot.id,
+      lastSavedAt: snapshot.savedAt ?? null,
+      selectedObjectId: snapshot.scenes[0]?.objects?.[0]?.id ?? ""
+    });
+
+    return true;
   },
 
   resetScene: (sceneId) => {
@@ -231,16 +262,34 @@ function loadInitialScenes() {
 
 async function persistScenes(scenes, savedAt) {
   if (typeof window === "undefined") {
+    return null;
+  }
+
+  persistScenesToLocalStorage(scenes);
+  const version = createSceneVersionSnapshot(scenes, savedAt);
+
+  try {
+    await persistScenesToIndexedDb({
+      id: SCENE_DB_SNAPSHOT_ID,
+      sourceVersionId: version.id,
+      savedAt,
+      label: "最新保存版本",
+      scenes
+    });
+    await persistScenesToIndexedDb(version);
+  } catch (error) {
+    console.warn("保存 SceneConfig 到 IndexedDB 失败", error);
+  }
+
+  return toSceneVersionMeta(version);
+}
+
+function persistScenesToLocalStorage(scenes) {
+  if (typeof window === "undefined") {
     return;
   }
 
   window.localStorage.setItem(SCENE_STORAGE_KEY, JSON.stringify(scenes));
-
-  try {
-    await persistScenesToIndexedDb({ id: SCENE_DB_SNAPSHOT_ID, savedAt, scenes });
-  } catch (error) {
-    console.warn("保存 SceneConfig 到 IndexedDB 失败", error);
-  }
 }
 
 function mergeStoredScenes(stored) {
@@ -251,7 +300,7 @@ function mergeStoredScenes(stored) {
   return [...baseMerged, ...extraScenes];
 }
 
-function loadScenesFromIndexedDb() {
+function loadSceneSnapshotFromIndexedDb(snapshotId) {
   if (typeof indexedDB === "undefined") {
     return Promise.resolve(null);
   }
@@ -267,10 +316,42 @@ function loadScenesFromIndexedDb() {
       const database = request.result;
       const transaction = database.transaction(SCENE_DB_STORE, "readonly");
       const store = transaction.objectStore(SCENE_DB_STORE);
-      const getRequest = store.get(SCENE_DB_SNAPSHOT_ID);
+      const getRequest = store.get(snapshotId);
 
       getRequest.onerror = () => resolve(null);
       getRequest.onsuccess = () => resolve(getRequest.result ?? null);
+      transaction.oncomplete = () => database.close();
+      transaction.onerror = () => database.close();
+    };
+  });
+}
+
+function loadSceneVersionsFromIndexedDb() {
+  if (typeof indexedDB === "undefined") {
+    return Promise.resolve([]);
+  }
+
+  return new Promise((resolve) => {
+    const request = indexedDB.open(SCENE_DB_NAME, SCENE_DB_VERSION);
+
+    request.onupgradeneeded = () => {
+      createSceneSnapshotStore(request.result);
+    };
+    request.onerror = () => resolve([]);
+    request.onsuccess = () => {
+      const database = request.result;
+      const transaction = database.transaction(SCENE_DB_STORE, "readonly");
+      const store = transaction.objectStore(SCENE_DB_STORE);
+      const getAllRequest = store.getAll();
+
+      getAllRequest.onerror = () => resolve([]);
+      getAllRequest.onsuccess = () => {
+        const versions = getAllRequest.result
+          .filter((snapshot) => snapshot.id !== SCENE_DB_SNAPSHOT_ID)
+          .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+          .map(toSceneVersionMeta);
+        resolve(versions);
+      };
       transaction.oncomplete = () => database.close();
       transaction.onerror = () => database.close();
     };
@@ -311,6 +392,45 @@ function createSceneSnapshotStore(database) {
   if (!database.objectStoreNames.contains(SCENE_DB_STORE)) {
     database.createObjectStore(SCENE_DB_STORE, { keyPath: "id" });
   }
+}
+
+function createSceneVersionSnapshot(scenes, savedAt) {
+  return {
+    id: `version-${savedAt.replace(/[:.]/g, "-")}`,
+    savedAt,
+    label: formatVersionLabel(savedAt),
+    scenes
+  };
+}
+
+function toSceneVersionMeta(snapshot) {
+  return {
+    id: snapshot.id,
+    savedAt: snapshot.savedAt,
+    label: snapshot.label ?? formatVersionLabel(snapshot.savedAt)
+  };
+}
+
+function mergeSceneVersionMetas(versions, version) {
+  return [version, ...versions.filter((item) => item.id !== version.id)]
+    .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+    .slice(0, 12);
+}
+
+function formatVersionLabel(savedAt) {
+  const date = new Date(savedAt);
+
+  if (Number.isNaN(date.getTime())) {
+    return "未命名版本";
+  }
+
+  return date.toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
 }
 
 function cloneSceneList(scenes) {
