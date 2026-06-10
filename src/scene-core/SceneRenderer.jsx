@@ -1,4 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { BadgeAlert, Glasses, LogOut } from "lucide-react";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { LoadingState } from "../app/LoadingState.jsx";
@@ -44,12 +45,80 @@ export function SceneRenderer({
   className = ""
 }) {
   const [isReady, setIsReady] = useState(false);
+  const [xrRenderer, setXrRenderer] = useState(null);
+  const [xrSession, setXrSession] = useState(null);
+  const [xrSupport, setXrSupport] = useState({
+    checked: false,
+    supported: false,
+    message: "正在检测 WebXR"
+  });
   const backgroundColor = sceneConfig?.environment?.fog ? "#d8ded4" : "#ebe2d4";
   const configValidation = useMemo(() => validateSceneConfig(sceneConfig), [sceneConfig]);
+  const xrActive = Boolean(xrSession);
 
   useEffect(() => {
     setIsReady(false);
   }, [sceneConfig?.id, mode]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function detectWebXr() {
+      if (!navigator.xr?.isSessionSupported) {
+        setXrSupport({ checked: true, supported: false, message: "当前浏览器不支持 WebXR" });
+        return;
+      }
+
+      try {
+        const supported = await navigator.xr.isSessionSupported("immersive-vr");
+
+        if (!cancelled) {
+          setXrSupport({
+            checked: true,
+            supported,
+            message: supported ? "WebXR 可用" : "当前设备不支持沉浸模式"
+          });
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setXrSupport({ checked: true, supported: false, message: `WebXR 检测失败：${error.message}` });
+        }
+      }
+    }
+
+    detectWebXr();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function enterXrMode() {
+    if (!xrRenderer || !xrSupport.supported || xrSession) {
+      return;
+    }
+
+    try {
+      const session = await navigator.xr.requestSession("immersive-vr", {
+        optionalFeatures: ["local-floor", "bounded-floor"]
+      });
+
+      const handleSessionEnd = () => {
+        setXrSession(null);
+      };
+
+      session.addEventListener("end", handleSessionEnd, { once: true });
+      xrRenderer.xr.enabled = true;
+      await xrRenderer.xr.setSession(session);
+      setXrSession(session);
+      setXrSupport((support) => ({ ...support, message: "已进入 XR 模式" }));
+    } catch (error) {
+      setXrSupport({ checked: true, supported: false, message: `进入 XR 失败：${error.message}` });
+    }
+  }
+
+  async function exitXrMode() {
+    await xrSession?.end();
+  }
 
   if (!configValidation.valid) {
     return <ConfigErrorPanel sceneConfig={sceneConfig} errors={configValidation.errors} warnings={configValidation.warnings} />;
@@ -65,7 +134,7 @@ export function SceneRenderer({
         />
       ) : null}
       <Canvas
-        shadows
+        shadows={!xrActive}
         dpr={[1, 2]}
         camera={{ position: [4.8, 2.4, 6.4], fov: sceneConfig?.camera?.fov ?? 50 }}
       >
@@ -109,8 +178,15 @@ export function SceneRenderer({
               ))
             : null}
           <SceneReadySignal key={`${sceneConfig?.id ?? "scene"}-${mode}`} onReady={() => setIsReady(true)} />
+          <SceneXrBridge onRendererReady={setXrRenderer} />
         </Suspense>
       </Canvas>
+      <XrControlPanel
+        active={xrActive}
+        support={xrSupport}
+        onEnter={enterXrMode}
+        onExit={exitXrMode}
+      />
     </div>
   );
 }
@@ -139,6 +215,35 @@ function SceneReadySignal({ onReady }) {
   });
 
   return null;
+}
+
+function SceneXrBridge({ onRendererReady }) {
+  const { gl } = useThree();
+
+  useEffect(() => {
+    gl.xr.enabled = true;
+    onRendererReady?.(gl);
+
+    return () => {
+      onRendererReady?.(null);
+    };
+  }, [gl, onRendererReady]);
+
+  return null;
+}
+
+function XrControlPanel({ active, support, onEnter, onExit }) {
+  const Icon = active ? LogOut : support.supported ? Glasses : BadgeAlert;
+
+  return (
+    <div className={`xr-control-panel ${active ? "is-active" : ""}`}>
+      <button type="button" onClick={active ? onExit : onEnter} disabled={!active && !support.supported}>
+        <Icon size={16} strokeWidth={2.2} />
+        <span>{active ? "退出 XR" : "进入 XR"}</span>
+      </button>
+      <small>{support.message}</small>
+    </div>
+  );
 }
 
 function SceneCameraRig({ mode, phaseIndex }) {

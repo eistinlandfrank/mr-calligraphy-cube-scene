@@ -351,6 +351,52 @@ textarea {
   z-index: 4;
 }
 
+.xr-control-panel {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  max-width: min(220px, calc(100% - 32px));
+}
+
+.xr-control-panel button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid rgba(47, 111, 104, 0.24);
+  border-radius: 8px;
+  color: #ffffff;
+  background: #2f6f68;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.xr-control-panel button:disabled {
+  color: #675e53;
+  background: rgba(255, 255, 255, 0.72);
+  cursor: not-allowed;
+}
+
+.xr-control-panel.is-active button {
+  background: #b64a3a;
+}
+
+.xr-control-panel small {
+  padding: 5px 7px;
+  border-radius: 8px;
+  color: #4f463b;
+  background: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+  font-weight: 850;
+  text-align: right;
+}
+
 @keyframes loading-spin {
   to {
     transform: rotate(360deg);
