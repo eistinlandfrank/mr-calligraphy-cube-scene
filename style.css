@@ -1169,12 +1169,14 @@ button {
 }
 
 .main-project-field-details,
-.main-project-model-details {
+.main-project-model-details,
+.main-project-model-full-details {
   margin-left: 20px;
 }
 
 .main-project-field-details summary,
-.main-project-model-details summary {
+.main-project-model-details summary,
+.main-project-model-full-details summary {
   cursor: pointer;
   color: rgba(188, 245, 217, 0.78);
   font-size: 10px;
@@ -1182,20 +1184,23 @@ button {
 }
 
 .main-project-field-preview-grid,
-.main-project-model-preview-grid {
+.main-project-model-preview-grid,
+.main-project-model-full-grid {
   display: grid;
   gap: 6px;
   margin-top: 5px;
 }
 
 .main-project-field-preview-grid strong,
-.main-project-model-preview-grid strong {
+.main-project-model-preview-grid strong,
+.main-project-model-full-grid strong {
   color: rgba(255, 255, 255, 0.72);
   font-size: 10px;
 }
 
 .main-project-field-preview-grid pre,
-.main-project-model-preview-grid pre {
+.main-project-model-preview-grid pre,
+.main-project-model-full-grid pre {
   max-height: 120px;
   margin: 2px 0 0;
   padding: 6px;
@@ -1208,6 +1213,11 @@ button {
   line-height: 1.35;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.main-project-model-full-grid pre {
+  max-height: 220px;
+  background: rgba(5, 16, 18, 0.34);
 }
 
 .main-project-migration-line,

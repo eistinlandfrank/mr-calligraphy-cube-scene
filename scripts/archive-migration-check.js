@@ -234,6 +234,18 @@ async function main() {
     "主场景模型仓库修改模型预览应显示当前本机和导入档案元数据片段。"
   );
   assert(
+    updatedModelSelection?.currentFullPreview.includes("\"arrayBuffer\"") &&
+      updatedModelSelection?.currentFullPreview.includes("\"kind\": \"ArrayBuffer\"") &&
+      updatedModelSelection?.currentFullPreview.includes("\"bytes\": 3"),
+    "主场景模型仓库完整本机 JSON 预览应摘要显示 ArrayBuffer。"
+  );
+  assert(
+    updatedModelSelection?.incomingFullPreview.includes("\"data\"") &&
+      updatedModelSelection?.incomingFullPreview.includes("\"label\": \"档案更新模型\"") &&
+      updatedModelSelection?.incomingFullPreview.includes("\"bytes\": 20"),
+    "主场景模型仓库完整档案 JSON 预览应显示档案记录结构。"
+  );
+  assert(
     conflictingModelSelection?.conflictSummary.includes("命名冲突") &&
       conflictingModelSelection?.conflictSummary.includes("本机旧模型"),
     "主场景模型仓库同名不同 key 模型应显示命名冲突提示。"

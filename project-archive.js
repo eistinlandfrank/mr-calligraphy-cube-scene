@@ -15,6 +15,9 @@
     { id: "mainModels", label: "主场景导入模型", dbName: "mr-calligraphy-main-model-store", storeName: "models", keyPath: "key" },
     { id: "realisticModels", label: "写实场景导入模型", dbName: "mr-calligraphy-model-store", storeName: "models", keyPath: "id" }
   ];
+  const MODEL_FULL_PREVIEW_MAX_LENGTH = 12000;
+  const MODEL_PREVIEW_ARRAY_SAMPLE_LIMIT = 12;
+  const MODEL_PREVIEW_STRING_LIMIT = 1200;
 
   async function exportProject() {
     const archive = {
@@ -361,7 +364,7 @@
     return String(value);
   }
 
-  function createJsonPreview(value, missingLabel) {
+  function createJsonPreview(value, missingLabel, maxLength = 720) {
     if (typeof value === "undefined") {
       return missingLabel;
     }
@@ -369,7 +372,7 @@
     if (typeof text !== "string") {
       return missingLabel;
     }
-    return text.length > 720 ? `${text.slice(0, 720)}\n...` : text;
+    return maxLength > 0 && text.length > maxLength ? `${text.slice(0, maxLength)}\n...` : text;
   }
 
   function parseJsonForDiff(value) {
@@ -531,6 +534,7 @@
       sha256: model.sha256,
       metrics: model.metrics
     });
+    model.fullPreview = createDbModelRecordFullPreview(record);
     return model;
   }
 
@@ -581,7 +585,9 @@
           ? createConflictResolvedDbModelLabel(model.label, collectUsedDbModelLabels(currentMap, new Set(), model.key, new Map()))
           : "",
         currentPreview: createDbModelPreview(currentModel, "本机中无此模型"),
-        incomingPreview: createDbModelPreview(incomingModel, "档案中无此模型")
+        incomingPreview: createDbModelPreview(incomingModel, "档案中无此模型"),
+        currentFullPreview: createDbModelFullPreview(currentModel, "本机中无此模型"),
+        incomingFullPreview: createDbModelFullPreview(incomingModel, "档案中无此模型")
       };
     });
   }
@@ -627,6 +633,101 @@
       preview.metrics = model.metrics;
     }
     return createJsonPreview(preview, missingLabel);
+  }
+
+  function createDbModelFullPreview(model, missingLabel) {
+    return model?.fullPreview || missingLabel;
+  }
+
+  function createDbModelRecordFullPreview(record) {
+    return createJsonPreview(
+      sanitizeDbModelRecordForPreview(record),
+      "无模型 JSON",
+      MODEL_FULL_PREVIEW_MAX_LENGTH
+    );
+  }
+
+  function sanitizeDbModelRecordForPreview(value, seen = new WeakSet()) {
+    if (typeof value === "undefined") {
+      return "[undefined]";
+    }
+    if (value === null || typeof value === "number" || typeof value === "boolean") {
+      return value;
+    }
+    if (typeof value === "string") {
+      if (value.length > MODEL_PREVIEW_STRING_LIMIT) {
+        return {
+          kind: "string",
+          characters: value.length,
+          preview: `${value.slice(0, MODEL_PREVIEW_STRING_LIMIT)}...`
+        };
+      }
+      return value;
+    }
+    if (typeof value === "function") {
+      return `[Function ${value.name || "anonymous"}]`;
+    }
+    if (value instanceof ArrayBuffer) {
+      return {
+        kind: "ArrayBuffer",
+        bytes: value.byteLength
+      };
+    }
+    if (ArrayBuffer.isView(value)) {
+      const view = value;
+      const sampleSource = view instanceof DataView
+        ? new Uint8Array(view.buffer, view.byteOffset, Math.min(view.byteLength, MODEL_PREVIEW_ARRAY_SAMPLE_LIMIT))
+        : Array.prototype.slice.call(view, 0, MODEL_PREVIEW_ARRAY_SAMPLE_LIMIT);
+      return {
+        kind: view.constructor?.name || "TypedArray",
+        length: typeof view.length === "number" ? view.length : view.byteLength,
+        bytes: view.byteLength,
+        sample: Array.from(sampleSource)
+      };
+    }
+    if (typeof Blob !== "undefined" && value instanceof Blob) {
+      return {
+        kind: "Blob",
+        type: value.type || "",
+        bytes: value.size
+      };
+    }
+    if (value instanceof Date) {
+      return value.toISOString();
+    }
+    if (typeof value !== "object") {
+      return String(value);
+    }
+    if (seen.has(value)) {
+      return "[Circular]";
+    }
+    seen.add(value);
+    if (Array.isArray(value)) {
+      if (value.length > MODEL_PREVIEW_ARRAY_SAMPLE_LIMIT) {
+        return {
+          kind: "Array",
+          length: value.length,
+          sample: value.slice(0, MODEL_PREVIEW_ARRAY_SAMPLE_LIMIT).map((item) => sanitizeDbModelRecordForPreview(item, seen))
+        };
+      }
+      return value.map((item) => sanitizeDbModelRecordForPreview(item, seen));
+    }
+    return Object.keys(value).reduce((result, key) => {
+      const fieldValue = value[key];
+      if (key === "arrayBufferBase64" && typeof fieldValue === "string") {
+        result[key] = fieldValue
+          ? {
+              kind: "base64",
+              characters: fieldValue.length,
+              estimatedBytes: Math.floor((fieldValue.length * 3) / 4),
+              omitted: true
+            }
+          : null;
+        return result;
+      }
+      result[key] = sanitizeDbModelRecordForPreview(fieldValue, seen);
+      return result;
+    }, {});
   }
 
   function findDbModelNameConflicts(model, currentMap, ignoredKeys = new Set()) {
@@ -1829,6 +1930,21 @@
       }
     };
 
+    const createPreviewGrid = (items, className) => {
+      const previewGrid = document.createElement("div");
+      previewGrid.className = className;
+      items.forEach(([previewLabel, previewValue]) => {
+        const previewBlock = document.createElement("span");
+        const previewTitle = document.createElement("strong");
+        previewTitle.textContent = previewLabel;
+        const previewCode = document.createElement("pre");
+        previewCode.textContent = previewValue || "无";
+        previewBlock.append(previewTitle, previewCode);
+        previewGrid.appendChild(previewBlock);
+      });
+      return previewGrid;
+    };
+
     const clearPendingImport = () => {
       pendingArchive = null;
       if (previewBox) previewBox.hidden = true;
@@ -1917,20 +2033,10 @@
             fieldDetails.className = "main-project-field-details";
             const summary = document.createElement("summary");
             summary.textContent = "查看字段片段";
-            const previewGrid = document.createElement("div");
-            previewGrid.className = "main-project-field-preview-grid";
-            [
+            const previewGrid = createPreviewGrid([
               ["当前本机", field.currentPreview],
               ["导入档案", field.incomingPreview]
-            ].forEach(([previewLabel, previewValue]) => {
-              const previewBlock = document.createElement("span");
-              const previewTitle = document.createElement("strong");
-              previewTitle.textContent = previewLabel;
-              const previewCode = document.createElement("pre");
-              previewCode.textContent = previewValue || "无";
-              previewBlock.append(previewTitle, previewCode);
-              previewGrid.appendChild(previewBlock);
-            });
+            ], "main-project-field-preview-grid");
             fieldDetails.append(summary, previewGrid);
             fieldItem.appendChild(fieldDetails);
           }
@@ -2012,22 +2118,24 @@
             modelDetails.className = "main-project-model-details";
             const summary = document.createElement("summary");
             summary.textContent = "查看模型片段";
-            const previewGrid = document.createElement("div");
-            previewGrid.className = "main-project-model-preview-grid";
-            [
+            const previewGrid = createPreviewGrid([
               ["当前本机", model.currentPreview],
               ["导入档案", model.incomingPreview]
-            ].forEach(([previewLabel, previewValue]) => {
-              const previewBlock = document.createElement("span");
-              const previewTitle = document.createElement("strong");
-              previewTitle.textContent = previewLabel;
-              const previewCode = document.createElement("pre");
-              previewCode.textContent = previewValue || "无";
-              previewBlock.append(previewTitle, previewCode);
-              previewGrid.appendChild(previewBlock);
-            });
+            ], "main-project-model-preview-grid");
             modelDetails.append(summary, previewGrid);
             modelItem.appendChild(modelDetails);
+          }
+          if (model.currentFullPreview || model.incomingFullPreview) {
+            const modelFullDetails = document.createElement("details");
+            modelFullDetails.className = "main-project-model-full-details";
+            const fullSummary = document.createElement("summary");
+            fullSummary.textContent = "查看完整模型 JSON";
+            const fullPreviewGrid = createPreviewGrid([
+              ["当前本机", model.currentFullPreview],
+              ["导入档案", model.incomingFullPreview]
+            ], "main-project-model-full-grid");
+            modelFullDetails.append(fullSummary, fullPreviewGrid);
+            modelItem.appendChild(modelFullDetails);
           }
           modelList.appendChild(modelItem);
         });
