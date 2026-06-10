@@ -80,11 +80,18 @@
 
         <div class="coach-workspace">
           <div class="glyph-board" aria-label="当前练习字">
-            <span>永</span>
+            <span id="practiceGlyphGuide">永</span>
+            <canvas id="practiceCanvas" class="practice-canvas" aria-label="书写练习画布"></canvas>
             <i class="corner lt"></i>
             <i class="corner rt"></i>
             <i class="corner lb"></i>
             <i class="corner rb"></i>
+            <div class="practice-toolbar" aria-label="书写工具">
+              <button id="practiceUndo" type="button" title="撤销上一笔" aria-label="撤销上一笔">↶</button>
+              <button id="practiceClear" type="button" title="清空练习" aria-label="清空练习">清</button>
+              <button id="practiceReplay" type="button" title="回放笔迹" aria-label="回放笔迹">▶</button>
+            </div>
+            <p id="practiceCanvasStatus" class="practice-canvas-status">在米字格中书写，保存作品时会记录笔迹和截图。</p>
           </div>
 
           <section class="score-board" aria-label="关键指标">
@@ -192,6 +199,7 @@
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
   <script src="app-state.js?v=learning-state-20260611"></script>
+  <script src="practice-canvas.js?v=practice-canvas-20260611"></script>
   <script src="script.js?v=main-editor-20260514"></script>
 </body>
 </html>

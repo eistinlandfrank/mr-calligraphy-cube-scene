@@ -82,6 +82,8 @@
 
   function normalizeSession(record) {
     if (!record || typeof record !== "object") return null;
+    const strokes = normalizeStrokes(record.strokes);
+    const feedback = normalizeStringList(record.feedback);
     return {
       id: String(record.id || makeId("session")),
       taskId: String(record.taskId || "task-default"),
@@ -92,14 +94,21 @@
       endedAt: record.endedAt ? String(record.endedAt) : null,
       trainingMode: ["guide", "compare"].includes(record.trainingMode) ? record.trainingMode : "guide",
       strokeIndex: normalizeInteger(record.strokeIndex, 0, 0, STROKES.length - 1),
+      strokes,
+      strokeCount: normalizeInteger(record.strokeCount, strokes.length, 0, 999),
+      pointCount: normalizeInteger(record.pointCount, countStrokePoints(strokes), 0, 99999),
+      bounds: normalizeBounds(record.bounds),
       metrics: normalizeMetrics(record.metrics),
       score: normalizeScore(record.score, 86),
+      feedback,
+      snapshotAt: record.snapshotAt ? String(record.snapshotAt) : null,
       status: ["active", "saved"].includes(record.status) ? record.status : "active"
     };
   }
 
   function normalizeArtwork(record) {
     if (!record || typeof record !== "object") return null;
+    const feedback = normalizeStringList(record.feedback);
     return {
       id: String(record.id || makeId("artwork")),
       sessionId: record.sessionId ? String(record.sessionId) : null,
@@ -108,6 +117,12 @@
       mode: MODE_CONFIG[record.mode] ? record.mode : "single",
       style: String(record.style || "楷书"),
       score: normalizeScore(record.score, 86),
+      strokeCount: normalizeInteger(record.strokeCount, 0, 0, 999),
+      pointCount: normalizeInteger(record.pointCount, 0, 0, 99999),
+      feedback,
+      imageData: typeof record.imageData === "string" && record.imageData.startsWith("data:image/")
+        ? record.imageData
+        : null,
       createdAt: String(record.createdAt || new Date().toISOString())
     };
   }
@@ -122,6 +137,8 @@
       sessionCount: normalizeInteger(record.sessionCount, 0, 0, 9999),
       artworkCount: normalizeInteger(record.artworkCount, 0, 0, 9999),
       averageScore: normalizeScore(record.averageScore, 0),
+      latestStrokeCount: normalizeInteger(record.latestStrokeCount, 0, 0, 999),
+      latestPointCount: normalizeInteger(record.latestPointCount, 0, 0, 99999),
       recommendations: Array.isArray(record.recommendations) ? record.recommendations.map(String) : []
     };
   }
@@ -154,6 +171,69 @@
       technique: normalizeScore(source.technique, 87),
       fluency: normalizeScore(source.fluency, 86),
       force: normalizeScore(source.force, 84)
+    };
+  }
+
+  function normalizeStrokes(strokes) {
+    if (!Array.isArray(strokes)) return [];
+    return strokes
+      .map((stroke) => Array.isArray(stroke)
+        ? stroke.map(normalizePoint).filter(Boolean).slice(0, 220)
+        : [])
+      .filter((stroke) => stroke.length > 1)
+      .slice(0, 80);
+  }
+
+  function normalizePoint(point) {
+    if (!point || typeof point !== "object") return null;
+    const x = Number(point.x);
+    const y = Number(point.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    return {
+      x: Number(Math.min(1, Math.max(0, x)).toFixed(4)),
+      y: Number(Math.min(1, Math.max(0, y)).toFixed(4)),
+      t: Number.isFinite(Number(point.t)) ? Math.round(Number(point.t)) : 0,
+      p: Number.isFinite(Number(point.p)) ? Number(Math.min(1, Math.max(0, Number(point.p))).toFixed(3)) : 0.5
+    };
+  }
+
+  function countStrokePoints(strokes) {
+    return strokes.reduce((sum, stroke) => sum + stroke.length, 0);
+  }
+
+  function normalizeBounds(bounds) {
+    if (!bounds || typeof bounds !== "object") return null;
+    const minX = Number(bounds.minX);
+    const minY = Number(bounds.minY);
+    const maxX = Number(bounds.maxX);
+    const maxY = Number(bounds.maxY);
+    if (![minX, minY, maxX, maxY].every(Number.isFinite)) return null;
+    return {
+      minX: Number(Math.min(1, Math.max(0, minX)).toFixed(4)),
+      minY: Number(Math.min(1, Math.max(0, minY)).toFixed(4)),
+      maxX: Number(Math.min(1, Math.max(0, maxX)).toFixed(4)),
+      maxY: Number(Math.min(1, Math.max(0, maxY)).toFixed(4))
+    };
+  }
+
+  function normalizeStringList(value) {
+    return Array.isArray(value) ? value.map(String).filter(Boolean).slice(0, 8) : [];
+  }
+
+  function normalizePracticeResult(result = {}) {
+    const strokes = normalizeStrokes(result.strokes);
+    const metrics = normalizeMetrics(result.metrics);
+    return {
+      strokes,
+      strokeCount: normalizeInteger(result.strokeCount, strokes.length, 0, 999),
+      pointCount: normalizeInteger(result.pointCount, countStrokePoints(strokes), 0, 99999),
+      bounds: normalizeBounds(result.bounds),
+      metrics,
+      score: normalizeScore(result.score, Math.round((metrics.structure + metrics.stroke + metrics.technique + metrics.fluency + metrics.force) / 5)),
+      feedback: normalizeStringList(result.feedback),
+      imageData: typeof result.imageData === "string" && result.imageData.startsWith("data:image/")
+        ? result.imageData
+        : null
     };
   }
 
@@ -197,6 +277,11 @@
     const latestSession = sessions[sessions.length - 1] || null;
     const latestArtwork = state.artworks[state.artworks.length - 1] || null;
     const latestReport = state.reports[state.reports.length - 1] || null;
+    const latestFeedback = latestSession?.feedback?.length
+      ? latestSession.feedback
+      : latestArtwork?.feedback?.length
+        ? latestArtwork.feedback
+        : [];
     return {
       activeMode: state.activeMode,
       modeLabel: getModeConfig().label,
@@ -214,7 +299,8 @@
       learningMinutes,
       latestSession,
       latestArtwork,
-      latestReport
+      latestReport,
+      latestFeedback
     };
   }
 
@@ -303,6 +389,10 @@
       endedAt: null,
       trainingMode: state.trainingMode,
       strokeIndex: state.activeStrokeIndex,
+      strokes: [],
+      strokeCount: 0,
+      pointCount: 0,
+      bounds: null,
       metrics: normalizeMetrics({
         structure: scoreBase + 2,
         stroke: scoreBase,
@@ -311,6 +401,8 @@
         force: scoreBase - 1
       }),
       score: normalizeScore(scoreBase + 1, 86),
+      feedback: [],
+      snapshotAt: null,
       status: "active"
     };
     state.sessions.push(session);
@@ -362,8 +454,47 @@
     };
   }
 
-  function saveArtwork() {
+  function recordPracticeResult(result = {}) {
+    const practice = normalizePracticeResult(result);
     let session = getCurrentSession();
+    if (!session || session.status !== "active") {
+      startPractice();
+      session = getCurrentSession();
+    }
+
+    if (!session) {
+      return { ok: false, message: "无法创建练习会话。" };
+    }
+
+    session.strokes = practice.strokes;
+    session.strokeCount = practice.strokeCount;
+    session.pointCount = practice.pointCount;
+    session.bounds = practice.bounds;
+    session.metrics = practice.metrics;
+    session.score = practice.score;
+    session.feedback = practice.feedback;
+    session.snapshotAt = new Date().toISOString();
+    addEvent("practice-score", `记录笔迹评分：${practice.score}`);
+    saveState();
+    return {
+      ok: true,
+      session: clone(session),
+      practice: clone(practice),
+      message: `已记录 ${practice.strokeCount} 笔、${practice.pointCount} 个采样点，当前评分 ${practice.score}。`
+    };
+  }
+
+  function saveArtwork(practiceResult = null) {
+    let session = getCurrentSession();
+    let practice = null;
+
+    if (practiceResult) {
+      const recorded = recordPracticeResult(practiceResult);
+      if (!recorded.ok) return recorded;
+      session = getCurrentSession();
+      practice = recorded.practice;
+    }
+
     if (!session || session.status !== "active") {
       startPractice();
       session = getCurrentSession();
@@ -382,6 +513,10 @@
       mode: session.mode,
       style: state.artworkStyle,
       score: session.score,
+      strokeCount: session.strokeCount || practice?.strokeCount || 0,
+      pointCount: session.pointCount || practice?.pointCount || 0,
+      feedback: session.feedback || practice?.feedback || [],
+      imageData: practice?.imageData || null,
       createdAt: now
     };
     state.artworks.push(artwork);
@@ -432,11 +567,14 @@
       sessionCount: stats.sessionCount,
       artworkCount: stats.artworkCount,
       averageScore: stats.averageScore,
+      latestStrokeCount: stats.latestSession?.strokeCount || 0,
+      latestPointCount: stats.latestSession?.pointCount || 0,
       recommendations: [
+        ...stats.latestFeedback,
         "优先补齐结构稳定度和重心控制。",
         "每次保存作品后对比最近一次记录。",
-        "书写画布接入后，将用真实笔迹重算笔画与流畅度。"
-      ]
+        "继续保留真实笔迹，用于后续更精细的笔法分析。"
+      ].filter(Boolean).slice(0, 6)
     };
     state.reports.push(report);
     addEvent("report", "导出学习报告");
@@ -483,6 +621,7 @@
     setTrainingMode,
     moveStroke,
     setArtworkStyle,
+    recordPracticeResult,
     saveArtwork,
     filterExcellentRecords,
     createPlan,

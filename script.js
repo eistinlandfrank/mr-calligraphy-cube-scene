@@ -762,7 +762,12 @@ const els = {
   infoPanelHandle: document.getElementById("infoPanelHandle"),
   modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
   learningStateSummary: document.getElementById("learningStateSummary"),
-  glyphValue: document.querySelector(".glyph-board span"),
+  glyphValue: document.getElementById("practiceGlyphGuide"),
+  practiceCanvas: document.getElementById("practiceCanvas"),
+  practiceUndo: document.getElementById("practiceUndo"),
+  practiceClear: document.getElementById("practiceClear"),
+  practiceReplay: document.getElementById("practiceReplay"),
+  practiceCanvasStatus: document.getElementById("practiceCanvasStatus"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -1283,6 +1288,7 @@ function init() {
   buildPathList();
   bindQuickControls();
   bindLearningControls();
+  initPracticeCanvas();
   initInfoPanelDrag();
   installRoomApi();
   bindSceneEditorControls();
@@ -3229,6 +3235,22 @@ function bindLearningControls() {
   });
 }
 
+function initPracticeCanvas() {
+  const stats = window.MRAppState?.getStats?.();
+  window.MRPracticeCanvas?.init?.({
+    canvas: els.practiceCanvas,
+    statusEl: els.practiceCanvasStatus,
+    undoButton: els.practiceUndo,
+    clearButton: els.practiceClear,
+    replayButton: els.practiceReplay,
+    glyph: stats?.glyph || "永"
+  });
+
+  if (stats?.latestSession?.status === "active" && stats.latestSession.strokes?.length) {
+    window.MRPracticeCanvas?.loadStrokes?.(stats.latestSession.strokes);
+  }
+}
+
 function renderLearningState() {
   renderLearningStateSummary();
   updateSceneText(currentIndex);
@@ -3251,6 +3273,7 @@ function renderLearningStateSummary() {
   if (els.glyphValue) {
     els.glyphValue.textContent = stats.glyph;
   }
+  window.MRPracticeCanvas?.setGlyph?.(stats.glyph);
 
   if (els.learningStateSummary) {
     const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
@@ -3366,6 +3389,30 @@ function handleKeyboardSceneChange(event) {
   }
 }
 
+function getCurrentPracticeResult(options = {}) {
+  const result = window.MRPracticeCanvas?.getResult?.({ includeImage: options.includeImage !== false });
+  if (!result) {
+    return null;
+  }
+
+  if (options.requireStrokes && result.strokeCount <= 0) {
+    return null;
+  }
+
+  return result;
+}
+
+function recordLivePracticeIfAvailable(options = {}) {
+  const result = getCurrentPracticeResult({ includeImage: false, requireStrokes: true });
+  if (!result || !window.MRAppState?.recordPracticeResult) {
+    return null;
+  }
+  if (!options.allowCreate && !window.MRAppState.getState?.().currentSessionId) {
+    return null;
+  }
+  return window.MRAppState.recordPracticeResult(result);
+}
+
 function getLearningSceneMetrics(index) {
   const scene = SCENES[index];
   const stats = window.MRAppState?.getStats?.();
@@ -3376,8 +3423,10 @@ function getLearningSceneMetrics(index) {
   const latestSession = stats.latestSession;
   const latestArtwork = stats.latestArtwork;
   const latestReport = stats.latestReport;
-  const metrics = latestSession?.metrics || {};
-  const score = latestSession?.score || stats.averageScore;
+  const livePractice = getCurrentPracticeResult({ includeImage: false, requireStrokes: false });
+  const hasLivePractice = livePractice && livePractice.strokeCount > 0;
+  const metrics = hasLivePractice ? livePractice.metrics : latestSession?.metrics || {};
+  const score = hasLivePractice ? livePractice.score : latestSession?.score || stats.averageScore;
   const lectureLabel = stats.lectureStatus === "complete"
     ? "已完成"
     : stats.lectureStatus === "playing"
@@ -3421,9 +3470,9 @@ function getLearningSceneMetrics(index) {
       return [
         ["当前笔画", stats.activeStroke],
         ["进度", `${(window.MRAppState?.strokes || []).indexOf(stats.activeStroke) + 1 || 1}/8`],
-        ["起笔", "待接入笔迹"],
-        ["行笔", trainingLabel],
-        ["收笔", "会话记录中"]
+        ["采样点", hasLivePractice ? `${livePractice.pointCount}个` : "未书写"],
+        ["笔画数", hasLivePractice ? `${livePractice.strokeCount}笔` : "0笔"],
+        ["模式", trainingLabel]
       ];
     case 5:
       return [
@@ -3586,9 +3635,17 @@ function runLearningAction(action) {
 
   switch (action.label) {
     case "查看笔画分析":
-      return {
-        message: `已读取当前任务：${appState.getStats().glyph}字，当前笔画为“${appState.getStats().activeStroke}”。书写画布接入后会显示真实笔迹分析。`
-      };
+      {
+        const recorded = recordLivePracticeIfAvailable({ allowCreate: true });
+        if (recorded?.practice) {
+          return {
+            message: `已记录当前笔迹：${recorded.practice.strokeCount} 笔、${recorded.practice.pointCount} 个采样点，评分 ${recorded.practice.score}。${recorded.practice.feedback[0] || ""}`
+          };
+        }
+        return {
+          message: `当前任务：${appState.getStats().glyph}字。请先在练习格中书写，再查看真实笔画分析。`
+        };
+      }
     case "选择日课字":
       return appState.selectDailyGlyph();
     case "进入 AI 讲解":
@@ -3617,7 +3674,13 @@ function runLearningAction(action) {
     case "切换行书":
       return appState.setArtworkStyle("行书");
     case "保存作品":
-      return appState.saveArtwork();
+      {
+        const practiceResult = getCurrentPracticeResult({ includeImage: true, requireStrokes: true });
+        if (!practiceResult) {
+          return { ok: false, message: "请先在练习格中书写，再保存作品。" };
+        }
+        return appState.saveArtwork(practiceResult);
+      }
     case "查看学习记录":
     case "打开历史记录":
       return { message: appState.getReportPreview(), target: 6 };
@@ -3625,6 +3688,7 @@ function runLearningAction(action) {
       return appState.filterExcellentRecords();
     case "导出学习报告":
     case "导出报告":
+      recordLivePracticeIfAvailable();
       return { ...appState.createReport(), target: action.target };
     case "查看作品":
       return { message: appState.getStats().latestArtwork ? "已打开最近保存的作品复盘页。" : "还没有保存作品，请先完成一次保存作品。", target: action.target };
