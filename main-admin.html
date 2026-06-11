@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法主场景管理页</title>
-  <link rel="stylesheet" href="style.css?v=archive-migration-20260611">
+  <link rel="stylesheet" href="style.css?v=admin-risk-20260611">
 </head>
 <body class="main-admin-page main-three-admin-page">
   <main class="app-shell">
@@ -18,6 +18,16 @@
           <h1>主场景管理页</h1>
         </div>
       </header>
+
+      <section id="mainAdminRiskBanner" class="admin-risk-banner" aria-label="后台权限风险提示">
+        <div>
+          <span>本机静态后台</span>
+          <strong>当前无登录、角色权限和操作审计</strong>
+          <p>这个页面会真实改写本机浏览器里的主场景草稿、发布版本、项目档案和导入模型；同一浏览器中任何能打开此页的人都可以编辑。</p>
+        </div>
+        <button data-feature-state="real-local" id="mainAdminRiskAcknowledge" type="button">已了解</button>
+        <small id="mainAdminRiskStatus">尚未确认本机权限边界。</small>
+      </section>
 
       <aside class="main-object-panel" aria-label="主场景物体编辑">
         <div class="main-object-title">
@@ -247,6 +257,6 @@
   </script>
   <script src="project-schema-utils.js?v=archive-asset-hash-20260611"></script>
   <script src="project-archive.js?v=archive-asset-hash-20260611"></script>
-  <script type="module" src="main-admin-scene.js?v=publish-releases-20260611"></script>
+  <script type="module" src="main-admin-scene.js?v=admin-risk-20260611"></script>
 </body>
 </html>

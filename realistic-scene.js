@@ -49,10 +49,14 @@ const snapshotCreateButton = document.getElementById("realisticSnapshotCreate");
 const snapshotRefreshButton = document.getElementById("realisticSnapshotRefresh");
 const historyStatus = document.getElementById("realisticHistoryStatus");
 const snapshotList = document.getElementById("realisticSnapshotList");
+const adminRiskBanner = document.getElementById("realisticAdminRiskBanner");
+const adminRiskAcknowledgeButton = document.getElementById("realisticAdminRiskAcknowledge");
+const adminRiskStatus = document.getElementById("realisticAdminRiskStatus");
 const isDesignMode = Boolean(designObjectSelect && designXInput && designYInput && designZInput);
 const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
 const SCENE_HISTORY_STORAGE_KEY = "mr-calligraphy-realistic-history-v1";
 const SCENE_PUBLISHED_STORAGE_KEY = "mr-calligraphy-realistic-published-v1";
+const ADMIN_RISK_ACK_KEY = "mr-calligraphy-admin-risk-ack-v1";
 const IMPORTED_MODEL_LIST_KEY = "importedModels";
 const IMPORT_DB_NAME = "mr-calligraphy-model-store";
 const IMPORT_DB_STORE = "models";
@@ -1774,7 +1778,60 @@ function handleEditorKeydown(event) {
     setTransformMode("rotate");
   }
 }
+
+function readAdminRiskAcknowledgements() {
+  try {
+    const raw = window.localStorage.getItem(ADMIN_RISK_ACK_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeAdminRiskAcknowledgement(scope) {
+  const record = {
+    ...readAdminRiskAcknowledgements(),
+    [scope]: new Date().toISOString()
+  };
+  window.localStorage.setItem(ADMIN_RISK_ACK_KEY, JSON.stringify(record));
+  return record[scope];
+}
+
+function formatAdminRiskTime(value) {
+  if (!value || Number.isNaN(Date.parse(value))) {
+    return "";
+  }
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function renderAdminRiskBanner() {
+  if (!adminRiskBanner || !adminRiskStatus) return;
+  const acknowledgedAt = readAdminRiskAcknowledgements().realisticScene || "";
+  const acknowledged = Boolean(acknowledgedAt);
+  adminRiskBanner.classList.toggle("is-acknowledged", acknowledged);
+  adminRiskStatus.textContent = acknowledged
+    ? `已确认本机权限边界：${formatAdminRiskTime(acknowledgedAt)}`
+    : "尚未确认本机权限边界。";
+  if (adminRiskAcknowledgeButton) {
+    adminRiskAcknowledgeButton.textContent = acknowledged ? "重新确认" : "已了解";
+  }
+}
+
+function acknowledgeAdminRisk() {
+  writeAdminRiskAcknowledgement("realisticScene");
+  renderAdminRiskBanner();
+  setImportStatus("已记录：写实后台是本机静态编辑页，不含登录和角色权限。");
+}
+
 function bindUi() {
+  renderAdminRiskBanner();
+  adminRiskAcknowledgeButton?.addEventListener("click", acknowledgeAdminRisk);
+
   resetButton.addEventListener("click", () => {
     camera.position.set(4.4, 3.1, 5.6);
     controls.target.set(0.15, 0.4, 0.05);

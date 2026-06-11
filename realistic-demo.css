@@ -143,6 +143,79 @@ body.model-error #brushModel::part(default-progress-bar) {
   letter-spacing: 0;
 }
 
+.admin-risk-banner {
+  position: absolute;
+  z-index: 4;
+  left: 28px;
+  top: 124px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 12px;
+  width: min(520px, calc(100vw - 440px));
+  min-width: 320px;
+  padding: 12px;
+  border: 1px solid rgba(217, 184, 132, 0.42);
+  border-radius: 8px;
+  color: var(--paper);
+  background:
+    linear-gradient(180deg, rgba(95, 49, 26, 0.9), rgba(22, 20, 18, 0.88)),
+    var(--glass);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(16px);
+}
+
+.admin-risk-banner span {
+  display: block;
+  color: #ffd58c;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-risk-banner strong {
+  display: block;
+  margin-top: 3px;
+  font-size: 14px;
+}
+
+.admin-risk-banner p {
+  margin: 5px 0 0;
+  color: rgba(255, 249, 237, 0.76);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-risk-banner button {
+  align-self: start;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 249, 237, 0.22);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+}
+
+.admin-risk-banner button:hover,
+.admin-risk-banner button:focus-visible {
+  border-color: rgba(217, 184, 132, 0.72);
+  background: var(--cinnabar);
+  outline: none;
+}
+
+.admin-risk-banner small {
+  grid-column: 1 / -1;
+  color: rgba(255, 249, 237, 0.62);
+  font-size: 11px;
+}
+
+.admin-risk-banner.is-acknowledged {
+  border-color: rgba(116, 255, 219, 0.3);
+  background:
+    linear-gradient(180deg, rgba(40, 85, 77, 0.84), rgba(22, 20, 18, 0.88)),
+    var(--glass);
+}
+
 .demo-panel {
   right: 28px;
   bottom: 28px;
@@ -598,5 +671,13 @@ body.admin-page .design-panel {
     top: auto;
     right: 16px;
     bottom: 16px;
+  }
+
+  .admin-risk-banner {
+    left: 16px;
+    top: 108px;
+    width: calc(100vw - 32px);
+    min-width: 0;
+    grid-template-columns: 1fr;
   }
 }

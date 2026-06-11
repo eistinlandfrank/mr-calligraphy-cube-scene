@@ -86,10 +86,14 @@ const publishNoteInput = document.getElementById("mainPublishNote");
 const publishDiffSummary = document.getElementById("mainPublishDiffSummary");
 const publishDiffList = document.getElementById("mainPublishDiffList");
 const publishHistoryList = document.getElementById("mainPublishHistoryList");
+const adminRiskBanner = document.getElementById("mainAdminRiskBanner");
+const adminRiskAcknowledgeButton = document.getElementById("mainAdminRiskAcknowledge");
+const adminRiskStatus = document.getElementById("mainAdminRiskStatus");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
+const ADMIN_RISK_ACK_KEY = "mr-calligraphy-admin-risk-ack-v1";
 const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const IMPORT_DB_STORE = "models";
 const MAX_UNDO_STEPS = 256;
@@ -2902,8 +2906,59 @@ function pickObject(event) {
   }
 }
 
+function readAdminRiskAcknowledgements() {
+  try {
+    const raw = window.localStorage.getItem(ADMIN_RISK_ACK_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeAdminRiskAcknowledgement(scope) {
+  const record = {
+    ...readAdminRiskAcknowledgements(),
+    [scope]: new Date().toISOString()
+  };
+  window.localStorage.setItem(ADMIN_RISK_ACK_KEY, JSON.stringify(record));
+  return record[scope];
+}
+
+function formatAdminRiskTime(value) {
+  if (!value || Number.isNaN(Date.parse(value))) {
+    return "";
+  }
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function renderAdminRiskBanner() {
+  if (!adminRiskBanner || !adminRiskStatus) return;
+  const acknowledgedAt = readAdminRiskAcknowledgements().mainScene || "";
+  const acknowledged = Boolean(acknowledgedAt);
+  adminRiskBanner.classList.toggle("is-acknowledged", acknowledged);
+  adminRiskStatus.textContent = acknowledged
+    ? `已确认本机权限边界：${formatAdminRiskTime(acknowledgedAt)}`
+    : "尚未确认本机权限边界。";
+  if (adminRiskAcknowledgeButton) {
+    adminRiskAcknowledgeButton.textContent = acknowledged ? "重新确认" : "已了解";
+  }
+}
+
+function acknowledgeAdminRisk() {
+  writeAdminRiskAcknowledgement("mainScene");
+  renderAdminRiskBanner();
+  showNotice("已记录：主场景后台是本机静态编辑页，不含登录和角色权限。");
+}
+
 function bindUi() {
   objectSelect.addEventListener("change", () => selectObject(objectSelect.value));
+  renderAdminRiskBanner();
+  adminRiskAcknowledgeButton?.addEventListener("click", acknowledgeAdminRisk);
   translateButton.addEventListener("click", () => setMode("translate"));
   rotateButton.addEventListener("click", () => setMode("rotate"));
   focusButton.addEventListener("click", focusSelected);

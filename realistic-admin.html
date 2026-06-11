@@ -4,19 +4,29 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法场景管理页</title>
-  <link rel="stylesheet" href="realistic-demo.css?v=split-admin-20260514">
+  <link rel="stylesheet" href="realistic-demo.css?v=admin-risk-20260611">
 </head>
 <body class="admin-page">
   <main class="realistic-shell">
     <canvas id="realisticCanvas" aria-label="写实 3D 书法场景管理画布"></canvas>
 
     <header class="demo-header">
-      <a data-feature-state="demo-content" href="realistic-demo.html" class="back-link">返回演示</a>
+      <a data-feature-state="real-local" href="realistic-demo.html" class="back-link">返回演示</a>
       <div>
         <span>Scene Editor</span>
         <h1>场景管理页</h1>
       </div>
     </header>
+
+    <section id="realisticAdminRiskBanner" class="admin-risk-banner" aria-label="后台权限风险提示">
+      <div>
+        <span>本机静态后台</span>
+        <strong>当前无登录、角色权限和操作审计</strong>
+        <p>这个页面会真实改写本机浏览器里的写实场景草稿、发布版本、保存快照和导入模型；同一浏览器中任何能打开此页的人都可以编辑。</p>
+      </div>
+      <button data-feature-state="real-local" id="realisticAdminRiskAcknowledge" type="button">已了解</button>
+      <small id="realisticAdminRiskStatus">尚未确认本机权限边界。</small>
+    </section>
 
     <aside class="design-panel" aria-label="场景设计接口">
       <div class="design-title">
@@ -122,6 +132,6 @@
       }
     }
   </script>
-  <script type="module" src="realistic-scene.js?v=realistic-publish-releases-20260611"></script>
+  <script type="module" src="realistic-scene.js?v=admin-risk-20260611"></script>
 </body>
 </html>
