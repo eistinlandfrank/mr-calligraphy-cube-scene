@@ -151,7 +151,59 @@ assert(
 );
 assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应伪造多报告趋势。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出和多报告趋势已生成。");
+const planResult = window.MRAppState.createPlan();
+assert(planResult.ok, "学习计划应能基于本机状态生成。");
+const latestPlan = window.MRAppState.getLatestPlan();
+assert(latestPlan.items.length === 5, "自动学习计划应生成 5 个任务项。");
+assert(latestPlan.reminderSummary.total === 5, "学习计划应返回提醒汇总。");
+assert(
+  latestPlan.items.every((item) => item.dueAt && item.remindAt && item.reviewAction && item.reminder),
+  "学习计划项应包含到期、提醒、复盘动作和派生提醒状态。"
+);
+
+const firstPlanItem = latestPlan.items[0];
+const toggledPlanItem = window.MRAppState.togglePlanItem(latestPlan.id, firstPlanItem.id, true);
+assert(toggledPlanItem.ok, "计划项应可勾选完成。");
+const pendingReviewItem = toggledPlanItem.plan.items.find((item) => item.id === firstPlanItem.id);
+assert(pendingReviewItem.reminder.status === "review-pending", "完成计划项后应进入待复盘状态。");
+
+const reviewResult = window.MRAppState.completePlanItemReview(latestPlan.id, firstPlanItem.id);
+assert(reviewResult.ok, "计划项应可写入复盘完成状态。");
+const reviewedItem = reviewResult.plan.items.find((item) => item.id === firstPlanItem.id);
+assert(reviewedItem.reviewDoneAt && reviewedItem.reminder.status === "reviewed", "复盘完成后应写入 reviewDoneAt 并派生已复盘状态。");
+assert(Number.isInteger(reviewResult.nextAction.targetStep), "复盘完成后应返回下一步学习触发目标。");
+
+const secondPlanItem = latestPlan.items[1];
+const snoozeResult = window.MRAppState.snoozePlanItem(latestPlan.id, secondPlanItem.id, 1);
+assert(snoozeResult.ok, "计划项应可顺延。");
+const snoozedItem = snoozeResult.plan.items.find((item) => item.id === secondPlanItem.id);
+assert(snoozedItem.snoozedUntil && snoozedItem.reminder.status === "snoozed", "顺延后应写入 snoozedUntil 并派生顺延状态。");
+
+const updatePlanResult = window.MRAppState.updatePlanItem(latestPlan.id, secondPlanItem.id, {
+  title: "复盘任务重点",
+  detail: "按新的到期时间复盘任务重点。",
+  dueAt: "2026-06-20",
+  remindAt: "2026-06-19",
+  reviewAction: "report"
+});
+assert(updatePlanResult.ok, "计划项应可更新到期、提醒和复盘动作。");
+const updatedPlanItem = updatePlanResult.plan.items.find((item) => item.id === secondPlanItem.id);
+assert(updatedPlanItem.reviewAction === "report" && updatedPlanItem.dueAt && updatedPlanItem.remindAt, "计划项编辑结果应保留排期和复盘动作。");
+
+const addPlanResult = window.MRAppState.addPlanItem(latestPlan.id, {
+  title: "补充专项练习",
+  detail: "补一轮结构练习。",
+  dueAt: "2026-06-21",
+  remindAt: "2026-06-20",
+  reviewAction: "custom"
+});
+assert(addPlanResult.ok && addPlanResult.plan.items.length === 6, "学习计划应可新增带排期的自定义任务。");
+
+const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
+assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
+
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势和学习计划提醒复盘已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

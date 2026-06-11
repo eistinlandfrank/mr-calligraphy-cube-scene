@@ -4,6 +4,16 @@
   const MAX_EVENTS = 120;
   const MAX_HISTORY_TRASH = 12;
   const MAX_ARTWORK_TAGS = 8;
+  const MAX_PLAN_ITEMS = 12;
+
+  const PLAN_REVIEW_ACTIONS = {
+    practice: { label: "进入练习", targetStep: 3 },
+    task: { label: "复盘任务步骤", targetStep: 2 },
+    weakness: { label: "专项补强", targetStep: 3 },
+    artwork: { label: "复盘作品", targetStep: 5 },
+    report: { label: "查看报告", targetStep: 8 },
+    custom: { label: "自定义复盘", targetStep: 3 }
+  };
 
   const MODE_CONFIG = {
     single: {
@@ -296,7 +306,7 @@
   function normalizePlan(record) {
     if (!record || typeof record !== "object") return null;
     const items = Array.isArray(record.items)
-      ? record.items.map(normalizePlanItem).filter(Boolean).slice(0, 8)
+      ? record.items.map(normalizePlanItem).filter(Boolean).slice(0, MAX_PLAN_ITEMS)
       : [];
     const fallbackTask = findTaskForState(record.mode, record.glyph, record.copybook);
     return {
@@ -322,7 +332,12 @@
         title,
         detail: "",
         done: false,
-        completedAt: null
+        completedAt: null,
+        dueAt: null,
+        remindAt: null,
+        snoozedUntil: null,
+        reviewAction: "custom",
+        reviewDoneAt: null
       };
     }
     if (!item || typeof item !== "object") return null;
@@ -333,8 +348,80 @@
       title,
       detail: String(item.detail || ""),
       done: item.done === true,
-      completedAt: item.completedAt ? String(item.completedAt) : null
+      completedAt: item.completedAt ? String(item.completedAt) : null,
+      dueAt: normalizePlanDate(item.dueAt),
+      remindAt: normalizePlanDate(item.remindAt),
+      snoozedUntil: normalizePlanDate(item.snoozedUntil),
+      reviewAction: normalizePlanReviewAction(item.reviewAction),
+      reviewDoneAt: normalizePlanDate(item.reviewDoneAt)
     };
+  }
+
+  function normalizePlanDate(value) {
+    if (!value) return null;
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? new Date(time).toISOString() : null;
+  }
+
+  function normalizeEditablePlanDate(value, hour = 18) {
+    const text = String(value ?? "").trim();
+    if (!text) {
+      return { ok: true, value: null };
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      const date = new Date(`${text}T${String(hour).padStart(2, "0")}:00:00`);
+      if (Number.isFinite(date.getTime())) {
+        return { ok: true, value: date.toISOString() };
+      }
+    }
+
+    const time = Date.parse(text);
+    if (Number.isFinite(time)) {
+      return { ok: true, value: new Date(time).toISOString() };
+    }
+    return { ok: false, value: null };
+  }
+
+  function normalizePlanReviewAction(value) {
+    const key = String(value || "custom");
+    return PLAN_REVIEW_ACTIONS[key] ? key : "custom";
+  }
+
+  function makePlanDueAt(days = 1, hour = 18, base = new Date()) {
+    const date = new Date(base);
+    date.setDate(date.getDate() + normalizeInteger(days, 1, 0, 60));
+    date.setHours(hour, 0, 0, 0);
+    return date.toISOString();
+  }
+
+  function makePlanReminderAt(dueAt) {
+    const due = new Date(dueAt);
+    if (Number.isNaN(due.getTime())) {
+      return makePlanDueAt(0, 9);
+    }
+    due.setDate(due.getDate() - 1);
+    due.setHours(9, 0, 0, 0);
+    return due.toISOString();
+  }
+
+  function makePlanSnoozedUntil(days = 1) {
+    const date = new Date();
+    date.setDate(date.getDate() + normalizeInteger(days, 1, 1, 14));
+    date.setHours(9, 0, 0, 0);
+    return date.toISOString();
+  }
+
+  function formatPlanDate(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "";
+    }
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    return `${month}-${day} ${hour}:${minute}`;
   }
 
   function normalizeHistoryTrashEntry(record) {
@@ -815,9 +902,115 @@
   }
 
   function decoratePlan(plan) {
+    const items = Array.isArray(plan?.items)
+      ? plan.items.map((item) => ({
+        ...clone(item),
+        reminder: getPlanItemReminder(item)
+      }))
+      : [];
     return {
       ...clone(plan),
-      progress: getPlanProgress(plan)
+      items,
+      progress: getPlanProgress(plan),
+      reminderSummary: getPlanReminderSummary(items)
+    };
+  }
+
+  function getPlanItemReminder(item, nowValue = Date.now()) {
+    const now = Number.isFinite(nowValue) ? nowValue : Date.now();
+    const dueTime = Date.parse(item?.dueAt || "");
+    const remindTime = Date.parse(item?.remindAt || "");
+    const snoozeTime = Date.parse(item?.snoozedUntil || "");
+    const reviewAction = normalizePlanReviewAction(item?.reviewAction);
+    const reviewLabel = PLAN_REVIEW_ACTIONS[reviewAction].label;
+    let status = "unscheduled";
+    let tone = "idle";
+    let label = "未设置提醒";
+
+    if (item?.done) {
+      if (item.reviewDoneAt) {
+        status = "reviewed";
+        tone = "done";
+        label = "已完成复盘";
+      } else {
+        status = "review-pending";
+        tone = "review";
+        label = "待复盘";
+      }
+    } else if (Number.isFinite(snoozeTime) && snoozeTime > now) {
+      status = "snoozed";
+      tone = "snoozed";
+      label = `已顺延至 ${formatPlanDate(item.snoozedUntil)}`;
+    } else if (Number.isFinite(dueTime) && dueTime < now) {
+      status = "overdue";
+      tone = "danger";
+      label = "已逾期";
+    } else if (Number.isFinite(remindTime) && remindTime <= now) {
+      status = "due";
+      tone = "warning";
+      label = "已到提醒";
+    } else if (Number.isFinite(dueTime)) {
+      status = "scheduled";
+      tone = "idle";
+      label = "未到期";
+    }
+
+    return {
+      status,
+      tone,
+      label,
+      dueAt: Number.isFinite(dueTime) ? new Date(dueTime).toISOString() : null,
+      dueLabel: Number.isFinite(dueTime) ? `到期 ${formatPlanDate(dueTime)}` : "未设置到期",
+      remindAt: Number.isFinite(remindTime) ? new Date(remindTime).toISOString() : null,
+      remindLabel: Number.isFinite(remindTime) ? `提醒 ${formatPlanDate(remindTime)}` : "未设置提醒",
+      snoozedUntil: Number.isFinite(snoozeTime) ? new Date(snoozeTime).toISOString() : null,
+      snoozeLabel: Number.isFinite(snoozeTime) ? `顺延 ${formatPlanDate(snoozeTime)}` : "",
+      reviewAction,
+      reviewLabel,
+      reviewDoneAt: normalizePlanDate(item?.reviewDoneAt),
+      reviewDoneLabel: item?.reviewDoneAt ? `复盘 ${formatPlanDate(item.reviewDoneAt)}` : "待完成复盘"
+    };
+  }
+
+  function getPlanReminderSummary(items = []) {
+    const reminders = items.map((item) => item.reminder || getPlanItemReminder(item));
+    const counts = reminders.reduce((acc, reminder) => {
+      acc[reminder.status] = (acc[reminder.status] || 0) + 1;
+      return acc;
+    }, {});
+    const pendingDates = reminders
+      .filter((reminder) => !["reviewed", "review-pending"].includes(reminder.status) && reminder.dueAt)
+      .map((reminder) => reminder.dueAt)
+      .sort((a, b) => Date.parse(a) - Date.parse(b));
+    const nextDueAt = pendingDates[0] || null;
+    const overdue = counts.overdue || 0;
+    const due = counts.due || 0;
+    const reviewPending = counts["review-pending"] || 0;
+    const snoozed = counts.snoozed || 0;
+    let label = "暂无计划提醒";
+
+    if (overdue) {
+      label = `${overdue} 项逾期，建议优先处理`;
+    } else if (reviewPending) {
+      label = `${reviewPending} 项待复盘，点击复盘可触发下一步`;
+    } else if (due) {
+      label = `${due} 项已到提醒`;
+    } else if (snoozed) {
+      label = `${snoozed} 项已顺延`;
+    } else if (nextDueAt) {
+      label = `下一项到期：${formatPlanDate(nextDueAt)}`;
+    }
+
+    return {
+      total: reminders.length,
+      overdue,
+      due,
+      reviewPending,
+      snoozed,
+      reviewed: counts.reviewed || 0,
+      scheduled: counts.scheduled || 0,
+      nextDueAt,
+      label
     };
   }
 
@@ -1241,11 +1434,11 @@
       copybook: state.selectedCopybook,
       summary: `围绕“${currentTask.taskTitle}”和“${state.selectedCopybook}”安排可勾选任务，重点是${currentTask.focus}。`,
       items: [
-        makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`),
-        makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务步骤完成：${currentTask.strokePlan.join("、")}。`),
-        makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice),
-        makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。"),
-        makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。")
+        makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`, { dueDays: 1, reviewAction: "practice" }),
+        makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务步骤完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task" }),
+        makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice, { dueDays: 3, reviewAction: "weakness" }),
+        makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。", { dueDays: 4, reviewAction: "artwork" }),
+        makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。", { dueDays: 5, reviewAction: "report" })
       ],
       completedAt: null
     };
@@ -1259,13 +1452,20 @@
     };
   }
 
-  function makePlanItem(id, title, detail) {
+  function makePlanItem(id, title, detail, options = {}) {
+    const dueAt = normalizePlanDate(options.dueAt) || makePlanDueAt(options.dueDays || 1, 18);
+    const remindAt = normalizePlanDate(options.remindAt) || makePlanReminderAt(dueAt);
     return {
       id,
       title,
       detail,
       done: false,
-      completedAt: null
+      completedAt: null,
+      dueAt,
+      remindAt,
+      snoozedUntil: null,
+      reviewAction: normalizePlanReviewAction(options.reviewAction),
+      reviewDoneAt: null
     };
   }
 
@@ -1299,10 +1499,10 @@
 
     item.done = typeof done === "boolean" ? done : !item.done;
     item.completedAt = item.done ? new Date().toISOString() : null;
-    const progress = getPlanProgress(plan);
-    plan.completedAt = progress.total > 0 && progress.done === progress.total
-      ? new Date().toISOString()
-      : null;
+    if (!item.done) {
+      item.reviewDoneAt = null;
+    }
+    updatePlanCompletion(plan);
     addEvent("plan-item", `${item.done ? "完成" : "取消"}计划项：${item.title}`);
     saveState();
     return {
@@ -1328,8 +1528,35 @@
       return { ok: false, message: "计划项标题至少需要 2 个字符。" };
     }
 
+    let nextDueAt = item.dueAt;
+    let nextRemindAt = item.remindAt;
+    if (Object.prototype.hasOwnProperty.call(updates, "dueAt")) {
+      const parsedDue = normalizeEditablePlanDate(updates.dueAt, 18);
+      if (!parsedDue.ok) {
+        return { ok: false, message: "到期时间格式无效，请使用 YYYY-MM-DD 或可识别的时间。" };
+      }
+      nextDueAt = parsedDue.value;
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "remindAt")) {
+      const parsedRemind = normalizeEditablePlanDate(updates.remindAt, 9);
+      if (!parsedRemind.ok) {
+        return { ok: false, message: "提醒时间格式无效，请使用 YYYY-MM-DD 或可识别的时间。" };
+      }
+      nextRemindAt = parsedRemind.value;
+    } else if (Object.prototype.hasOwnProperty.call(updates, "dueAt") && nextDueAt && !nextRemindAt) {
+      nextRemindAt = makePlanReminderAt(nextDueAt);
+    }
+    if (nextDueAt && nextRemindAt && Date.parse(nextRemindAt) > Date.parse(nextDueAt)) {
+      return { ok: false, message: "提醒时间不能晚于到期时间。" };
+    }
+
     item.title = nextTitle;
     item.detail = nextDetail;
+    item.dueAt = nextDueAt;
+    item.remindAt = nextRemindAt;
+    if (Object.prototype.hasOwnProperty.call(updates, "reviewAction")) {
+      item.reviewAction = normalizePlanReviewAction(updates.reviewAction);
+    }
     addEvent("plan-item-edit", `编辑计划项：${item.title}`);
     saveState();
     return { ok: true, plan: decoratePlan(plan), message: `已更新计划项：${item.title}。` };
@@ -1340,8 +1567,8 @@
     if (!plan) {
       return { ok: false, message: "请先生成一份学习计划。" };
     }
-    if (plan.items.length >= 12) {
-      return { ok: false, message: "单份计划最多保留 12 个任务，请先删除不需要的计划项。" };
+    if (plan.items.length >= MAX_PLAN_ITEMS) {
+      return { ok: false, message: `单份计划最多保留 ${MAX_PLAN_ITEMS} 个任务，请先删除不需要的计划项。` };
     }
 
     const title = String(item.title || "").trim().replace(/\s+/g, " ").slice(0, 64);
@@ -1350,7 +1577,25 @@
       return { ok: false, message: "新增计划项标题至少需要 2 个字符。" };
     }
 
-    const planItem = makePlanItem(makeId("plan-custom"), title, detail || "自定义补充任务，完成后可勾选保存进度。");
+    const parsedDue = normalizeEditablePlanDate(item.dueAt, 18);
+    if (!parsedDue.ok) {
+      return { ok: false, message: "到期时间格式无效，请使用 YYYY-MM-DD 或可识别的时间。" };
+    }
+    const parsedRemind = normalizeEditablePlanDate(item.remindAt, 9);
+    if (!parsedRemind.ok) {
+      return { ok: false, message: "提醒时间格式无效，请使用 YYYY-MM-DD 或可识别的时间。" };
+    }
+    const dueAt = parsedDue.value || makePlanDueAt(Math.min(plan.items.length + 1, MAX_PLAN_ITEMS), 18);
+    const remindAt = parsedRemind.value || makePlanReminderAt(dueAt);
+    if (Date.parse(remindAt) > Date.parse(dueAt)) {
+      return { ok: false, message: "提醒时间不能晚于到期时间。" };
+    }
+
+    const planItem = makePlanItem(makeId("plan-custom"), title, detail || "自定义补充任务，完成后可勾选保存进度。", {
+      dueAt,
+      remindAt,
+      reviewAction: item.reviewAction || "custom"
+    });
     plan.items.push(planItem);
     plan.completedAt = null;
     addEvent("plan-item-add", `新增计划项：${planItem.title}`);
@@ -1391,13 +1636,87 @@
     }
 
     const [item] = plan.items.splice(index, 1);
+    updatePlanCompletion(plan);
+    addEvent("plan-item-delete", `删除计划项：${item.title}`);
+    saveState();
+    return { ok: true, plan: decoratePlan(plan), message: `已删除计划项：${item.title}。` };
+  }
+
+  function snoozePlanItem(planId, itemId, days = 1) {
+    const plan = state.plans.find((item) => item.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "未找到学习计划。" };
+    }
+    const item = plan.items.find((entry) => entry.id === String(itemId || ""));
+    if (!item) {
+      return { ok: false, message: "未找到计划任务。" };
+    }
+    if (item.done) {
+      return { ok: false, message: "已完成计划项无需顺延，可以直接复盘。" };
+    }
+
+    const duration = normalizeInteger(days, 1, 1, 14);
+    const dueTime = Date.parse(item.dueAt || "");
+    const base = Number.isFinite(dueTime) && dueTime > Date.now()
+      ? new Date(dueTime)
+      : new Date();
+    item.dueAt = makePlanDueAt(duration, 18, base);
+    item.remindAt = makePlanReminderAt(item.dueAt);
+    item.snoozedUntil = makePlanSnoozedUntil(duration);
+    addEvent("plan-item-snooze", `顺延计划项：${item.title}`);
+    saveState();
+    return {
+      ok: true,
+      plan: decoratePlan(plan),
+      message: `已顺延计划项：${item.title}，新的到期时间 ${formatPlanDate(item.dueAt)}。`
+    };
+  }
+
+  function completePlanItemReview(planId, itemId) {
+    const plan = state.plans.find((item) => item.id === String(planId || ""));
+    if (!plan) {
+      return { ok: false, message: "未找到学习计划。" };
+    }
+    const item = plan.items.find((entry) => entry.id === String(itemId || ""));
+    if (!item) {
+      return { ok: false, message: "未找到计划任务。" };
+    }
+
+    const now = new Date().toISOString();
+    item.done = true;
+    item.completedAt = item.completedAt || now;
+    item.reviewDoneAt = now;
+    item.snoozedUntil = null;
+    updatePlanCompletion(plan);
+    const nextAction = getPlanReviewNextAction(item);
+    addEvent("plan-item-review", `完成计划项复盘：${item.title}`);
+    saveState();
+    return {
+      ok: true,
+      plan: decoratePlan(plan),
+      nextAction,
+      message: `已完成复盘：${item.title}。${nextAction?.label ? `下一步：${nextAction.label}。` : ""}`
+    };
+  }
+
+  function updatePlanCompletion(plan) {
     const progress = getPlanProgress(plan);
     plan.completedAt = progress.total > 0 && progress.done === progress.total
       ? new Date().toISOString()
       : null;
-    addEvent("plan-item-delete", `删除计划项：${item.title}`);
-    saveState();
-    return { ok: true, plan: decoratePlan(plan), message: `已删除计划项：${item.title}。` };
+  }
+
+  function getPlanReviewNextAction(item) {
+    const reviewAction = normalizePlanReviewAction(item?.reviewAction);
+    const meta = PLAN_REVIEW_ACTIONS[reviewAction];
+    const stats = getStats();
+    if (reviewAction === "artwork" && stats.latestArtwork?.id) {
+      return { type: reviewAction, label: "打开最近作品复盘", openArtworkId: stats.latestArtwork.id };
+    }
+    if (reviewAction === "report" && stats.latestReport?.id) {
+      return { type: reviewAction, label: "打开最近学习报告", openReportId: stats.latestReport.id };
+    }
+    return { type: reviewAction, label: meta.label, targetStep: meta.targetStep };
   }
 
   function createReport() {
@@ -3416,6 +3735,8 @@
     togglePlanItem,
     updatePlanItem,
     addPlanItem,
+    snoozePlanItem,
+    completePlanItemReview,
     movePlanItem,
     deletePlanItem,
     createReport,

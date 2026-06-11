@@ -883,6 +883,7 @@ const els = {
   planProgressLabel: document.getElementById("planProgressLabel"),
   planProgressFill: document.getElementById("planProgressFill"),
   planSummary: document.getElementById("planSummary"),
+  planReminderSummary: document.getElementById("planReminderSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
   planItemList: document.getElementById("planItemList"),
@@ -5420,6 +5421,16 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   els.planProgressLabel.textContent = `${progress.done}/${progress.total}`;
   els.planProgressFill.style.width = `${progress.percent}%`;
   els.planSummary.textContent = plan?.summary || "点击“制定计划”后会生成可勾选任务。";
+  if (els.planReminderSummary) {
+    els.planReminderSummary.textContent = plan?.reminderSummary?.label || "暂无计划提醒";
+    els.planReminderSummary.dataset.reminderTone = plan?.reminderSummary?.overdue
+      ? "danger"
+      : plan?.reminderSummary?.due || plan?.reminderSummary?.reviewPending
+        ? "warning"
+        : plan?.reminderSummary?.snoozed
+          ? "snoozed"
+          : "idle";
+  }
   if (els.planAddItem) {
     els.planAddItem.disabled = !plan;
   }
@@ -5434,9 +5445,15 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   }
 
   plan.items.forEach((item, index) => {
+    const reminder = item.reminder || {};
     const row = document.createElement("div");
     row.className = "plan-item";
     row.classList.toggle("is-done", item.done);
+    row.classList.toggle("is-overdue", reminder.status === "overdue");
+    row.classList.toggle("is-due", reminder.status === "due");
+    row.classList.toggle("is-snoozed", reminder.status === "snoozed");
+    row.classList.toggle("is-review-pending", reminder.status === "review-pending");
+    row.classList.toggle("is-reviewed", reminder.status === "reviewed");
 
     const label = document.createElement("label");
     label.className = "plan-item-check";
@@ -5452,12 +5469,26 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     const detail = document.createElement("small");
     title.textContent = item.title;
     detail.textContent = item.detail || "完成后勾选，进度会保存到本机。";
-    body.append(title, detail);
+    const meta = document.createElement("span");
+    meta.className = "plan-item-meta";
+    [
+      reminder.label || "未设置提醒",
+      reminder.dueLabel || "未设置到期",
+      reminder.remindLabel || "未设置提醒",
+      `复盘：${reminder.reviewLabel || "自定义复盘"}`
+    ].forEach((text) => {
+      const chip = document.createElement("span");
+      chip.textContent = text;
+      meta.appendChild(chip);
+    });
+    body.append(title, detail, meta);
     label.append(checkbox, body);
 
     const actions = document.createElement("div");
     actions.className = "plan-item-actions";
     [
+      ["review", reminder.status === "reviewed" ? "已复盘" : "复盘", reminder.status === "reviewed"],
+      ["snooze", "顺延", item.done],
       ["up", "上移", index === 0],
       ["down", "下移", index === plan.items.length - 1],
       ["edit", "编辑", false],
@@ -5516,6 +5547,10 @@ function handlePlanItemAction(event) {
     result = deletePlanItem(planId, itemId);
   } else if (action === "up" || action === "down") {
     result = window.MRAppState?.movePlanItem?.(planId, itemId, action);
+  } else if (action === "snooze") {
+    result = window.MRAppState?.snoozePlanItem?.(planId, itemId, 1);
+  } else if (action === "review") {
+    result = window.MRAppState?.completePlanItemReview?.(planId, itemId);
   }
 
   if (result?.message) {
@@ -5527,6 +5562,9 @@ function handlePlanItemAction(event) {
     updateSceneText(currentIndex);
     updatePathPanel(currentIndex);
     renderLearningStateSummary();
+    if (action === "review" && result.nextAction) {
+      followPlanReviewAction(result.nextAction);
+    }
   }
 }
 
@@ -5545,7 +5583,19 @@ function editPlanItem(planId, itemId) {
   if (detail === null) {
     return null;
   }
-  return window.MRAppState?.updatePlanItem?.(planId, itemId, { title, detail });
+  const dueAt = window.prompt("到期日期（YYYY-MM-DD，可留空）", formatPlanInputDate(item.dueAt));
+  if (dueAt === null) {
+    return null;
+  }
+  const remindAt = window.prompt("提醒日期（YYYY-MM-DD，可留空）", formatPlanInputDate(item.remindAt));
+  if (remindAt === null) {
+    return null;
+  }
+  const reviewAction = window.prompt("复盘动作：practice / task / weakness / artwork / report / custom", item.reviewAction || "custom");
+  if (reviewAction === null) {
+    return null;
+  }
+  return window.MRAppState?.updatePlanItem?.(planId, itemId, { title, detail, dueAt, remindAt, reviewAction });
 }
 
 function deletePlanItem(planId, itemId) {
@@ -5575,8 +5625,20 @@ function addCustomPlanItem() {
   if (detail === null) {
     return;
   }
+  const dueAt = window.prompt("到期日期（YYYY-MM-DD，可留空自动安排）", "");
+  if (dueAt === null) {
+    return;
+  }
+  const remindAt = window.prompt("提醒日期（YYYY-MM-DD，可留空自动安排）", "");
+  if (remindAt === null) {
+    return;
+  }
+  const reviewAction = window.prompt("复盘动作：practice / task / weakness / artwork / report / custom", "custom");
+  if (reviewAction === null) {
+    return;
+  }
 
-  const result = window.MRAppState?.addPlanItem?.(planId, { title, detail });
+  const result = window.MRAppState?.addPlanItem?.(planId, { title, detail, dueAt, remindAt, reviewAction });
   if (result?.message) {
     showNotice(result.message);
   }
@@ -5586,6 +5648,20 @@ function addCustomPlanItem() {
     updateSceneText(currentIndex);
     updatePathPanel(currentIndex);
     renderLearningStateSummary();
+  }
+}
+
+function followPlanReviewAction(nextAction = {}) {
+  if (nextAction.openArtworkId && typeof openArtworkDetailRoute === "function") {
+    openArtworkDetailRoute(nextAction.openArtworkId, { routeMode: "push", updateUrl: true, showMissing: true });
+    return;
+  }
+  if (nextAction.openReportId && typeof openReportDetailRoute === "function") {
+    openReportDetailRoute(nextAction.openReportId, { routeMode: "push", updateUrl: true, showMissing: true });
+    return;
+  }
+  if (Number.isInteger(nextAction.targetStep)) {
+    loadScene(nextAction.targetStep, { routeMode: "push", updateStepRoute: true });
   }
 }
 
@@ -6933,6 +7009,17 @@ function formatHistoryTime(value) {
   const hour = String(date.getHours()).padStart(2, "0");
   const minute = String(date.getMinutes()).padStart(2, "0");
   return `${month}-${day} ${hour}:${minute}`;
+}
+
+function formatPlanInputDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function focusModelView(options = {}) {
