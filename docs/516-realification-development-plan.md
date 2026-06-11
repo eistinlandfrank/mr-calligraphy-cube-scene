@@ -47,7 +47,7 @@
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
-| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、服务端签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
+| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、PDF 最近作品 JPEG 截图嵌入、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、服务端签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
@@ -4978,7 +4978,7 @@
 
 已知限制：
 
-- 第一版原生 PDF 是文本摘要型 PDF，尚未把雷达图、趋势图和作品截图嵌入 PDF 页面。
+- 第一版原生 PDF 是文本摘要型 PDF；后续已补能力条形图、作品卡片和最近作品 JPEG 截图嵌入，雷达图/趋势图位图仍待补。
 - 云端长期报告、教师批注、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 ### 2026-06-11：增强学习报告 PDF 图表
@@ -5021,10 +5021,9 @@
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 
-已知限制：
+后续状态：
 
-- HTML 报告继续真实嵌入作品截图；当前原生 PDF 为轻量实现，先展示作品卡片和截图来源状态，不直接嵌入 PNG 位图。
-- 雷达图、趋势图、教师批注、服务端签名验真和服务端 PDF 渲染仍未接入。
+- 后续版本已补最近作品 JPEG 截图嵌入；雷达图、趋势图、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 提交：
 
@@ -6042,7 +6041,7 @@
 已知限制：
 
 - 当前摘要是本机完整性提示，不是服务端证书、教师身份签名、不可篡改审计或账号化长期报告仓库。
-- PDF 仍是轻量原生 PDF，作品截图继续以来源状态和截图摘要参与验真，尚未直接嵌入 PNG 位图。
+- PDF 仍是轻量原生 PDF；后续已补最近作品 JPEG 截图嵌入，作品截图摘要仍参与验真。
 
 验收方式：
 
@@ -6260,3 +6259,57 @@
 提交：
 
 - 中文 commit message：`新增报告仓库同步包导入导出`
+
+### 2026-06-12：嵌入学习报告 PDF 作品截图
+
+功能名：学习报告原生 PDF 最近作品截图嵌入。
+
+涉及文件：
+
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `createReportPdf()` 会解析最近作品 `imageData` 中的 JPEG data URL，读取真实宽高并生成 PDF 图片对象。
+- `createSimplePdf()` 新增 PDF `/XObject` 资源输出，使用 `/ASCIIHexDecode` + `/DCTDecode` 嵌入 JPEG 数据流。
+- 最近作品卡片左侧不再只写“作品截图/已保存”文字；在可用 JPEG 情况下会真实绘制截图。
+- `getReportPdfExport()` 新增 `features.artworkImageEmbedded`、`artworkImageMime` 和 `artworkImageDigest`，用于前端、脚本和后续服务端验收判断。
+- 学习状态检查验证 PDF 中包含 `ArtworkImageEmbedded: yes`、`/Subtype /Image` 和 `/DCTDecode`。
+- Playwright 前台真实流程点击“下载 PDF”后读取下载文件，验证浏览器下载出的 PDF 包含图片对象。
+
+真实化说明：
+
+- 数据来源：当前浏览器保存作品时生成的 JPEG 截图 data URL，来自 `mr-calligraphy-learning-state-v1.artworks[].imageData`。
+- 写入状态：本功能只影响 PDF 下载文件，不修改本机学习状态。
+- 成功反馈：导出结果 feature 标记截图已嵌入，PDF 注释也写入 `ArtworkImageEmbedded: yes`。
+- 失败反馈：没有作品、没有截图、非 JPEG、损坏 base64 或图片超过大小上限时继续生成作品卡片，不写入坏图片流。
+- 刷新后复现方式：刷新后只要报告和作品仍在本机学习状态中，再次下载 PDF 仍会嵌入最近作品截图。
+
+已知限制：
+
+- 当前嵌入的是浏览器书写画布保存出的 JPEG 截图；PNG 转码、雷达图/趋势图位图、服务端签名验真和服务端 PDF 渲染仍未接入。
+
+验收方式：
+
+- 手工验收：完成一次书写、保存作品、导出报告并打开站内报告，点击“下载 PDF”；PDF 作品卡片应显示最近作品截图。
+- 脚本验收：`node scripts/learning-state-check.js` 验证图片 XObject 和导出 feature；`npm run test:e2e -- --grep "front practice saves real strokes"` 验证浏览器下载 PDF 内含嵌入图片对象。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`嵌入学习报告PDF作品截图`

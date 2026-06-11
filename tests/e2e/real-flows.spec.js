@@ -1,4 +1,5 @@
 const { expect, test } = require("@playwright/test");
+const fs = require("fs");
 const { validateProjectRepositoryPackage } = require("../../scripts/project-repository-mock-server.js");
 
 const LEARNING_KEY = "mr-calligraphy-learning-state-v1";
@@ -249,6 +250,17 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reports[0].teacherReview.note).toContain("竖钩");
 
   await expect(page.locator("#reportVerification")).toContainText("本机验真摘要");
+  const reportPdfDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportDetailDownloadPdf").click();
+  const reportPdfDownload = await reportPdfDownloadPromise;
+  expect(reportPdfDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-.*\.pdf$/);
+  const reportPdfPath = await reportPdfDownload.path();
+  const reportPdfText = fs.readFileSync(reportPdfPath, "utf8");
+  expect(reportPdfText).toContain("%PDF-1.4");
+  expect(reportPdfText).toContain("ArtworkImageEmbedded: yes");
+  expect(reportPdfText).toContain("/Subtype /Image");
+  expect(reportPdfText).toContain("/DCTDecode");
+
   const reportRepositoryDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportRepositoryExportButton").click();
   const reportRepositoryDownload = await reportRepositoryDownloadPromise;

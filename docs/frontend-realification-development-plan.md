@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和 PDF 资源嵌入验收 |
+| 报告导出 | HTML 报告、原生 PDF、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名、PDF 趋势图/雷达图位图和服务端 PDF 渲染验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -144,7 +144,7 @@ node scripts/control-inventory.js --check
 目标：评分不再像固定模板，报告能被复盘和验证。
 
 - 评分结果显示证据点、覆盖范围、重心、停顿、压感和维度理由；本机 `ScoreService` 已记录并展示最近评分证据摘要。
-- 原生 PDF 继续增强图表、作品截图、报告 ID 和服务端验真回执；本机验真摘要、报告仓库远端 API adapter 和本机冲突审计第一版已完成。
+- 原生 PDF 继续增强趋势图/雷达图、报告 ID 和服务端验真回执；最近作品 JPEG 截图嵌入、本机验真摘要、报告仓库远端 API adapter 和本机冲突审计第一版已完成。
 - 报告 schema 固定版本，继续支持账号化服务端保存、教师批注和签名审计。
 - 分享页和报告页必须带本机/云端来源说明。
 
@@ -1002,3 +1002,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告仓库同步包导入导出`
+
+## 33. 2026-06-12 嵌入学习报告 PDF 作品截图
+
+本次把原生 PDF 从“作品卡片只说明截图来源”推进到“可把最近作品截图真实嵌入 PDF 文件”。
+
+完成内容：
+
+- `createReportPdf()` 解析最近作品 JPEG data URL，读取宽高并生成 PDF 图片对象。
+- `createSimplePdf()` 增加 `/XObject` 图片资源、`/Subtype /Image`、`/ASCIIHexDecode` 和 `/DCTDecode` 输出。
+- 最近作品卡片在可用 JPEG 时绘制真实截图；非 JPEG 或过大图片走安全降级说明。
+- `getReportPdfExport()` 暴露 `artworkImageEmbedded`、`artworkImageMime` 和 `artworkImageDigest`。
+- 学习状态检查和 Playwright 都会验证下载出的 PDF 包含嵌入图片对象。
+
+真实化说明：
+
+- 数据来源：当前浏览器保存作品时的 `ArtworkRecord.imageData`。
+- 写入状态：不修改本机状态，只影响下载出的 PDF 文件。
+- 成功反馈：PDF feature 和注释会显示 `ArtworkImageEmbedded: yes`。
+- 失败反馈：无图、非 JPEG、损坏 base64 或超过大小上限时不写坏流，只保留作品卡片。
+- 刷新后复现方式：报告和作品保存在本机状态，刷新后再次下载仍可嵌入。
+
+仍待补：
+
+- PNG 转码、雷达图/趋势图位图、服务端签名验真和服务端 PDF 渲染仍未接入。
+
+验收：
+
+- `node --check app-state.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`嵌入学习报告PDF作品截图`

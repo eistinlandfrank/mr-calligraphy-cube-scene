@@ -36,6 +36,7 @@
   const REPORT_VERIFICATION_KIND = "mr-calligraphy-report-verification-v1";
   const REPORT_VERIFICATION_ALGORITHM = "sha256-stable-json";
   const REPORT_VERIFICATION_BOUNDARY = "本机报告验真摘要由当前浏览器用报告核心字段、关联练习和最近作品截图摘要计算 SHA-256；它不是服务端证书、教师签名或不可篡改审计。";
+  const REPORT_PDF_MAX_EMBEDDED_IMAGE_BYTES = 1800000;
   const HISTORY_REPOSITORY_CONFLICT_FIELDS = {
     session: ["title", "glyph", "copybook", "score", "feedback", "metrics", "endedAt", "status"],
     artwork: ["title", "glyph", "style", "score", "feedback", "tags", "createdAt"],
@@ -5338,7 +5339,9 @@
 
     const normalizedReport = normalizeReport(report);
     const verification = createReportVerification(normalizedReport);
-    const pdf = createReportPdf(normalizedReport, verification);
+    const pdfResult = createReportPdf(normalizedReport, verification);
+    const pdf = typeof pdfResult === "string" ? pdfResult : pdfResult.pdf;
+    const pdfFeatures = pdfResult?.features || {};
     const latestArtwork = findReportArtwork(normalizedReport);
     return {
       ok: true,
@@ -5354,11 +5357,16 @@
         artworkCard: true,
         artworkAvailable: Boolean(latestArtwork),
         artworkImageAvailable: Boolean(latestArtwork?.imageData),
+        artworkImageEmbedded: Boolean(pdfFeatures.artworkImageEmbedded),
+        artworkImageMime: pdfFeatures.artworkImageMime || "",
+        artworkImageDigest: pdfFeatures.artworkImageDigest || "",
         teacherReview: Boolean(normalizedReport.teacherReview),
         verification: Boolean(verification),
         verificationDigest: verification?.digest || ""
       },
-      message: "已生成包含能力条形图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+      message: pdfFeatures.artworkImageEmbedded
+        ? "已生成包含能力条形图、最近作品截图、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        : "已生成包含能力条形图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
     };
   }
 
@@ -5404,6 +5412,7 @@
       label,
       value: normalizeScore(normalizedReport.scoreBreakdown?.[key], 0)
     }));
+    const artworkPdfImage = createReportPdfArtworkImage(latestArtwork);
     const lines = [
       { text: "MR 书法学习报告", size: 22 },
       { text: `报告 ID：${normalizedReport.id}`, size: 11 },
@@ -5429,7 +5438,7 @@
           : "最近作品：暂无保存作品。",
         size: 12
       },
-      { type: "artworkCard", artwork: latestArtwork, session: latestSession },
+      { type: "artworkCard", artwork: latestArtwork, session: latestSession, image: artworkPdfImage },
       { text: "", size: 6 },
       { text: "教师批注", size: 16 },
       {
@@ -5456,7 +5465,7 @@
         .map((item, index) => ({ text: `${index + 1}. ${item}`, size: 12 }))
     ];
 
-    return createSimplePdf(lines, {
+    const pdf = createSimplePdf(lines, {
       title: "MR Calligraphy Report",
       subject: normalizedReport.id,
       source: STORAGE_KEY,
@@ -5464,11 +5473,98 @@
       artworkCard: true,
       artworkAvailable: Boolean(latestArtwork),
       artworkImageAvailable: Boolean(latestArtwork?.imageData),
+      artworkImageEmbedded: Boolean(artworkPdfImage),
+      artworkImageMime: artworkPdfImage?.mimeType || "",
+      artworkImageDigest: artworkPdfImage?.digest || "",
       teacherReview: Boolean(normalizedReport.teacherReview),
       verificationKind: verificationInfo.kind,
       verificationAlgorithm: verificationInfo.algorithm,
       verificationDigest: verificationInfo.digest
     });
+    return {
+      pdf,
+      features: {
+        artworkImageEmbedded: Boolean(artworkPdfImage),
+        artworkImageMime: artworkPdfImage?.mimeType || "",
+        artworkImageDigest: artworkPdfImage?.digest || ""
+      }
+    };
+  }
+
+  function createReportPdfArtworkImage(artwork) {
+    const imageData = typeof artwork?.imageData === "string" ? artwork.imageData : "";
+    if (!imageData) return null;
+    const parsed = parseReportPdfImageDataUrl(imageData);
+    if (!parsed || parsed.bytes.length > REPORT_PDF_MAX_EMBEDDED_IMAGE_BYTES) return null;
+    if (!/^image\/jpe?g$/i.test(parsed.mimeType)) return null;
+    const dimensions = getJpegDimensions(parsed.bytes);
+    if (!dimensions) return null;
+    return {
+      mimeType: "image/jpeg",
+      width: dimensions.width,
+      height: dimensions.height,
+      hex: bytesToHex(parsed.bytes),
+      digest: sha256Hex(imageData)
+    };
+  }
+
+  function parseReportPdfImageDataUrl(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:([^;,]+);base64,([\s\S]+)$/i);
+    if (!match) return null;
+    const bytes = decodeBase64ToBytes(match[2]);
+    if (!bytes?.length) return null;
+    return {
+      mimeType: match[1].toLowerCase(),
+      bytes
+    };
+  }
+
+  function decodeBase64ToBytes(base64) {
+    const clean = String(base64 || "").replace(/\s+/g, "");
+    if (!clean) return null;
+    try {
+      if (typeof atob === "function") {
+        const binary = atob(clean);
+        const bytes = new Uint8Array(binary.length);
+        for (let index = 0; index < binary.length; index += 1) {
+          bytes[index] = binary.charCodeAt(index);
+        }
+        return bytes;
+      }
+      if (typeof Buffer !== "undefined") {
+        return new Uint8Array(Buffer.from(clean, "base64"));
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  function getJpegDimensions(bytes) {
+    if (!bytes || bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return null;
+    let index = 2;
+    const sofMarkers = new Set([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf]);
+    while (index + 3 < bytes.length) {
+      while (index < bytes.length && bytes[index] !== 0xff) index += 1;
+      while (index < bytes.length && bytes[index] === 0xff) index += 1;
+      const marker = bytes[index];
+      index += 1;
+      if (!marker || marker === 0xd9 || marker === 0xda) break;
+      if (index + 1 >= bytes.length) break;
+      const segmentLength = (bytes[index] << 8) + bytes[index + 1];
+      if (segmentLength < 2 || index + segmentLength > bytes.length) break;
+      if (sofMarkers.has(marker) && segmentLength >= 7) {
+        const height = (bytes[index + 3] << 8) + bytes[index + 4];
+        const width = (bytes[index + 5] << 8) + bytes[index + 6];
+        return width > 0 && height > 0 ? { width, height } : null;
+      }
+      index += segmentLength;
+    }
+    return null;
+  }
+
+  function bytesToHex(bytes) {
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
   }
 
   function createSimplePdf(lines, metadata = {}) {
@@ -5479,6 +5575,7 @@
     const minY = 60;
     const maxChars = 38;
     const content = [];
+    const pdfImages = [];
     let y = startY;
     const drawTextAt = (text, size, x, textY) => {
       content.push(`0.07 0.11 0.10 rg BT /F1 ${size} Tf ${x} ${textY} Td <${toUtf16BEHex(text)}> Tj ET`);
@@ -5494,6 +5591,28 @@
       if (y < minY) return;
       drawTextAt(text, size, marginX, y);
       y -= lineHeight;
+    };
+    const registerImage = (image) => {
+      if (!image?.hex || !image.width || !image.height) return null;
+      const existing = pdfImages.find((item) => item.digest && item.digest === image.digest);
+      if (existing) return existing;
+      const item = {
+        ...image,
+        name: `Im${pdfImages.length + 1}`
+      };
+      pdfImages.push(item);
+      return item;
+    };
+    const drawImage = (image, x, imageY, boxWidth, boxHeight) => {
+      const registered = registerImage(image);
+      if (!registered) return false;
+      const scale = Math.min(boxWidth / registered.width, boxHeight / registered.height);
+      const width = Number((registered.width * scale).toFixed(2));
+      const height = Number((registered.height * scale).toFixed(2));
+      const offsetX = Number((x + (boxWidth - width) / 2).toFixed(2));
+      const offsetY = Number((imageY + (boxHeight - height) / 2).toFixed(2));
+      content.push(`q ${width} 0 0 ${height} ${offsetX} ${offsetY} cm /${registered.name} Do Q`);
+      return true;
     };
     const drawMetricBars = (items = []) => {
       const normalizedItems = items
@@ -5526,7 +5645,7 @@
       });
       y -= blockHeight + 8;
     };
-    const drawArtworkCard = (artwork, session) => {
+    const drawArtworkCard = (artwork, session, image = null) => {
       const blockHeight = artwork ? 92 : 52;
       if (y - blockHeight < minY) return;
 
@@ -5534,6 +5653,7 @@
       const cardY = y - blockHeight + 8;
       content.push(`% ArtworkCard: ${artwork ? "yes" : "empty"}`);
       content.push(`% ArtworkImageAvailable: ${artwork?.imageData ? "yes" : "no"}`);
+      content.push(`% ArtworkImageEmbedded: ${image ? "yes" : "no"}`);
       drawRect(cardX, cardY, 466, blockHeight, "0.99 0.97 0.92");
       strokeRect(cardX, cardY, 466, blockHeight, "0.83 0.78 0.68");
 
@@ -5547,15 +5667,20 @@
       const previewY = cardY + 16;
       drawRect(previewX, previewY, 86, 54, "0.92 0.96 0.94");
       strokeRect(previewX, previewY, 86, 54, "0.66 0.74 0.70");
-      drawTextAt("作品截图", 9, previewX + 18, previewY + 34);
-      drawTextAt(artwork.imageData ? "已保存" : "未保存", 9, previewX + 24, previewY + 19);
+      const embedded = drawImage(image, previewX + 2, previewY + 2, 82, 50);
+      if (!embedded) {
+        drawTextAt("作品截图", 9, previewX + 18, previewY + 34);
+        drawTextAt(artwork.imageData ? "未嵌入" : "未保存", 9, previewX + 22, previewY + 19);
+      }
 
       const title = artwork.title || `${artwork.glyph || "作品"}练习作品`;
       const score = normalizeScore(artwork.score || session?.score, 0);
       drawTextAt(`最近作品：${title}`, 12, marginX + 104, y - 18);
       drawTextAt(`评分：${score}    笔画：${artwork.strokeCount || 0}    采样点：${artwork.pointCount || 0}`, 10, marginX + 104, y - 38);
       drawTextAt(`保存时间：${formatDateTime(artwork.createdAt)}`, 10, marginX + 104, y - 56);
-      drawTextAt("HTML 报告会嵌入原图；本 PDF 使用轻量作品卡片保证离线稳定打开。", 9, marginX + 104, y - 74);
+      drawTextAt(embedded
+        ? "PDF 已嵌入最近作品截图；验真摘要仍使用本机报告核心字段。"
+        : "当前截图格式暂未嵌入 PDF；HTML 报告仍可查看原图。", 9, marginX + 104, y - 74);
       y -= blockHeight + 8;
     };
 
@@ -5565,7 +5690,7 @@
         return;
       }
       if (line.type === "artworkCard") {
-        drawArtworkCard(line.artwork, line.session);
+        drawArtworkCard(line.artwork, line.session, line.image);
         return;
       }
       const size = Number(line.size) || 12;
@@ -5586,26 +5711,40 @@
     const verificationKind = sanitizePdfComment(metadata.verificationKind || "");
     const verificationAlgorithm = sanitizePdfComment(metadata.verificationAlgorithm || "");
     const verificationDigest = sanitizePdfComment(metadata.verificationDigest || "");
+    const artworkImageMime = sanitizePdfComment(metadata.artworkImageMime || "");
+    const artworkImageDigest = sanitizePdfComment(metadata.artworkImageDigest || "");
     const pdfComments = [
       `% Source: ${source}`,
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
       `% ArtworkCard: ${metadata.artworkCard ? "yes" : "no"}`,
       `% ArtworkAvailable: ${metadata.artworkAvailable ? "yes" : "no"}`,
       `% ArtworkImageAvailable: ${metadata.artworkImageAvailable ? "yes" : "no"}`,
+      `% ArtworkImageEmbedded: ${metadata.artworkImageEmbedded ? "yes" : "no"}`,
+      `% ArtworkImageMime: ${artworkImageMime}`,
+      `% ArtworkImageDigest: ${artworkImageDigest}`,
       `% TeacherReview: ${metadata.teacherReview ? "yes" : "no"}`,
       `% ReportVerification: ${verificationDigest ? "yes" : "no"}`,
       `% ReportVerificationKind: ${verificationKind}`,
       `% ReportVerificationAlgorithm: ${verificationAlgorithm}`,
       `% ReportDigest: ${verificationDigest}`
     ].join("\n");
+    const xObjectResources = pdfImages.length
+      ? `/XObject << ${pdfImages.map((image, index) => `/${image.name} ${8 + index} 0 R`).join(" ")} >>`
+      : "";
+    const imageObjects = pdfImages.map((image) => {
+      const imageStream = `${image.hex}>\n`;
+      return `<< /Type /XObject /Subtype /Image /Width ${image.width} /Height ${image.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter [/ASCIIHexDecode /DCTDecode] /Length ${imageStream.length} >>\nstream\n${imageStream}endstream`;
+    });
+    const infoObjectNumber = 8 + imageObjects.length;
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
       "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /ProcSet [/PDF /Text] /Font << /F1 4 0 R >> >> /Contents 6 0 R >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /ProcSet [/PDF /Text /ImageC] /Font << /F1 4 0 R >> ${xObjectResources} >> /Contents 6 0 R >>`,
       "<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [5 0 R] >>",
       "<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /FontDescriptor 7 0 R >>",
       `<< /Length ${stream.length} >>\nstream\n${stream}endstream`,
       "<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >>",
+      ...imageObjects,
       `<< /Title (${title}) /Subject (${subject}) /Creator (MR Calligraphy) >>`
     ];
     let pdf = `%PDF-1.4\n%\xE2\xE3\xCF\xD3\n${pdfComments}\n`;
@@ -5619,7 +5758,7 @@
     offsets.slice(1).forEach((offset) => {
       pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
     });
-    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 8 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${infoObjectNumber} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
     return pdf;
   }
 

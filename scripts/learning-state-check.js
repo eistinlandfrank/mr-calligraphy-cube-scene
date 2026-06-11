@@ -9,6 +9,8 @@ global.CustomEvent = class CustomEvent {
 };
 global.dispatchEvent = () => true;
 
+const TEST_ARTWORK_JPEG_DATA_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z";
+
 const storage = new Map([
   [
     "mr-calligraphy-learning-state-v1",
@@ -166,7 +168,7 @@ assert(comparison.latest.id === "artwork-2", "作品对比应选择最新作品�
 assert(comparison.scoreDelta === 16, "作品对比应计算评分差。");
 assert(comparison.strokeDelta === 4, "作品对比应计算笔画差。");
 assert(comparison.pointDelta === 40, "作品对比应计算采样点差。");
-assert(comparison.latest.imageData.startsWith("data:image/png"), "作品对比应保留作品截图。");
+assert(comparison.latest.imageData.startsWith("data:image/"), "作品对比应保留作品截图。");
 assert(
   comparison.metricDeltas.some((metric) => metric.key === "structure" && metric.delta === 14),
   "作品对比应基于关联练习计算维度差。"
@@ -200,7 +202,7 @@ assert(sharePackage.ok, "作品分享页应能基于指定作品生成。");
 assert(sharePackage.filename.includes("mr-calligraphy-share"), "作品分享页应返回可下载文件名。");
 assert(sharePackage.html.includes("MR 书法作品分享"), "作品分享页 HTML 应包含分享页标题。");
 assert(sharePackage.html.includes("永字作品 2"), "作品分享页 HTML 应包含作品标题。");
-assert(sharePackage.html.includes("data:image/png"), "作品分享页 HTML 应嵌入作品截图。");
+assert(sharePackage.html.includes("data:image/"), "作品分享页 HTML 应嵌入作品截图。");
 assert(sharePackage.html.includes("不是云端公开链接"), "作品分享页应明确本机导出边界。");
 assert(sharePackage.html.includes("结构"), "作品分享页应包含能力维度。");
 
@@ -267,12 +269,17 @@ assert(reportPdfExport.features.metricCount === 5, "PDF 报告应包含五项能
 assert(reportPdfExport.features.artworkCard, "PDF 报告应声明包含最近作品卡片。");
 assert(reportPdfExport.features.artworkAvailable, "PDF 报告应识别最近作品记录。");
 assert(reportPdfExport.features.artworkImageAvailable, "PDF 报告应识别最近作品截图来源。");
+assert(reportPdfExport.features.artworkImageEmbedded, "PDF 报告应把可用 JPEG 作品截图嵌入 PDF。");
+assert(reportPdfExport.features.artworkImageMime === "image/jpeg", "PDF 报告应记录已嵌入截图 MIME。");
 assert(reportPdfExport.features.verification, "PDF 报告应声明包含本机验真摘要。");
 assert(/^[a-f0-9]{64}$/.test(reportPdfExport.verification.digest), "PDF 报告验真摘要应为 64 位 SHA-256。");
 assert(reportPdfExport.features.verificationDigest === reportPdfExport.verification.digest, "PDF feature 应暴露同一个验真摘要。");
 assert(!reportPdfExport.features.teacherReview, "未批注报告不应伪造教师批注。");
 assert(reportPdfExport.pdf.includes("MetricBars: 5"), "PDF 内容应包含能力条形图标记。");
 assert(reportPdfExport.pdf.includes("ArtworkCard: yes"), "PDF 内容应包含作品卡片标记。");
+assert(reportPdfExport.pdf.includes("ArtworkImageEmbedded: yes"), "PDF 内容应包含作品截图嵌入标记。");
+assert(reportPdfExport.pdf.includes("/Subtype /Image"), "PDF 内容应包含图片 XObject。");
+assert(reportPdfExport.pdf.includes("/DCTDecode"), "PDF 内容应使用 JPEG DCTDecode 图片流。");
 assert(reportPdfExport.pdf.includes("ReportVerification: yes"), "PDF 内容应包含报告验真标记。");
 assert(reportPdfExport.pdf.includes(`ReportDigest: ${reportPdfExport.verification.digest}`), "PDF 内容应包含报告验真摘要。");
 assert(reportPdfExport.byteLength > 1000, "PDF 报告不应是空壳文件。");
@@ -798,7 +805,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告 PDF 作品截图嵌入、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {
@@ -1097,7 +1104,7 @@ function createArtwork(id, sessionId, glyph, score, time) {
     strokeCount: id === "artwork-2" ? 12 : 8,
     pointCount: id === "artwork-2" ? 120 : 80,
     feedback: [`${glyph}字作品反馈`],
-    imageData: "data:image/png;base64,iVBORw0KGgo=",
+    imageData: TEST_ARTWORK_JPEG_DATA_URL,
     createdAt: time
   };
 }
