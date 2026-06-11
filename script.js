@@ -944,6 +944,7 @@ let activeArtworkSearch = "";
 let activeArtworkTag = "";
 let activeReportMetricKey = "structure";
 let activeReportSeriesMetricKeys = new Set(["structure"]);
+let activeReportSeriesTooltipTarget = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
@@ -3559,6 +3560,14 @@ function bindReportControls() {
     openReportDetailRoute(button.dataset.reportJump);
   });
   els.reportSeries?.addEventListener("click", (event) => {
+    const tooltipAction = event.target.closest("[data-report-series-tooltip-action]");
+    if (tooltipAction) {
+      event.preventDefault();
+      event.stopPropagation();
+      handleReportSeriesTooltipAction(tooltipAction.dataset.reportSeriesTooltipAction);
+      return;
+    }
+
     const metricButton = event.target.closest("[data-report-series-metric]");
     if (metricButton) {
       toggleReportSeriesMetric(metricButton.dataset.reportSeriesMetric);
@@ -3582,8 +3591,15 @@ function bindReportControls() {
   });
   els.reportSeries?.addEventListener("pointerout", (event) => {
     const target = event.target.closest("[data-report-series-tooltip]");
-    if (!target) return;
-    if (event.relatedTarget && target.contains(event.relatedTarget)) return;
+    if (target) {
+      if (isReportSeriesTooltipTransition(event.relatedTarget, target)) return;
+      hideReportSeriesTooltip();
+      return;
+    }
+
+    const tooltip = event.target.closest("[data-report-series-tooltip-box]");
+    if (!tooltip) return;
+    if (isReportSeriesTooltipTransition(event.relatedTarget)) return;
     hideReportSeriesTooltip();
   });
   els.reportSeries?.addEventListener("focusin", (event) => {
@@ -3592,8 +3608,16 @@ function bindReportControls() {
     showReportSeriesTooltip(target);
   });
   els.reportSeries?.addEventListener("focusout", (event) => {
-    if (!event.target.closest("[data-report-series-tooltip]")) return;
+    if (!event.target.closest("[data-report-series-tooltip], [data-report-series-tooltip-box]")) return;
+    if (isReportSeriesTooltipTransition(event.relatedTarget)) return;
     hideReportSeriesTooltip();
+  });
+  els.reportSeries?.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const tooltip = getReportSeriesTooltip();
+    if (!tooltip || tooltip.hidden) return;
+    event.preventDefault();
+    hideReportSeriesTooltip({ force: true });
   });
 }
 
@@ -4419,23 +4443,60 @@ function createReportSeriesTooltip() {
   tooltip.id = "reportSeriesTooltip";
   tooltip.className = "report-series-tooltip";
   tooltip.dataset.reportSeriesTooltipBox = "";
-  tooltip.setAttribute("role", "status");
+  tooltip.dataset.pinned = "false";
+  tooltip.setAttribute("role", "group");
+  tooltip.setAttribute("aria-label", "趋势详情提示");
+  tooltip.setAttribute("aria-live", "polite");
+
+  const content = document.createElement("div");
+  content.className = "report-series-tooltip-content";
+  const title = document.createElement("strong");
+  title.dataset.reportSeriesTooltipTitle = "";
+  const body = document.createElement("span");
+  body.dataset.reportSeriesTooltipBody = "";
+  content.append(title, body);
+
+  const actions = document.createElement("div");
+  actions.className = "report-series-tooltip-actions";
+  const pin = document.createElement("button");
+  pin.id = "reportSeriesTooltipPin";
+  pin.type = "button";
+  pin.dataset.featureState = "real-local";
+  pin.dataset.reportSeriesTooltipAction = "pin";
+  pin.setAttribute("aria-pressed", "false");
+  pin.textContent = "固定";
+  const copy = document.createElement("button");
+  copy.id = "reportSeriesTooltipCopy";
+  copy.type = "button";
+  copy.dataset.featureState = "real-local";
+  copy.dataset.reportSeriesTooltipAction = "copy";
+  copy.textContent = "复制";
+  actions.append(pin, copy);
+
+  const status = document.createElement("small");
+  status.className = "report-series-tooltip-status";
+  status.dataset.reportSeriesTooltipStatus = "";
+
+  tooltip.append(content, actions, status);
   tooltip.hidden = true;
   return tooltip;
 }
 
 function showReportSeriesTooltip(target, event = null) {
-  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+  const tooltip = getReportSeriesTooltip();
   if (!tooltip || !target?.dataset || !Object.prototype.hasOwnProperty.call(target.dataset, "reportSeriesTooltip")) {
     return;
   }
+  if (isReportSeriesTooltipPinned(tooltip)) {
+    return;
+  }
 
-  tooltip.innerHTML = "";
-  const title = document.createElement("strong");
-  title.textContent = target.dataset.tooltipTitle || "趋势详情";
-  const body = document.createElement("span");
-  body.textContent = target.dataset.tooltipBody || "这项数据来自本机报告记录。";
-  tooltip.append(title, body);
+  activeReportSeriesTooltipTarget = target;
+  setReportSeriesTooltipContent(
+    tooltip,
+    target.dataset.tooltipTitle || "趋势详情",
+    target.dataset.tooltipBody || "这项数据来自本机报告记录。"
+  );
   tooltip.hidden = false;
 
   if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
@@ -4450,27 +4511,97 @@ function showReportSeriesTooltip(target, event = null) {
 }
 
 function moveReportSeriesTooltip(event) {
-  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
-  if (!tooltip || tooltip.hidden) return;
+  const tooltip = getReportSeriesTooltip();
+  if (!tooltip || tooltip.hidden || isReportSeriesTooltipPinned(tooltip)) return;
   positionReportSeriesTooltip(event.clientX, event.clientY);
 }
 
 function positionReportSeriesTooltip(clientX, clientY) {
-  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+  const tooltip = getReportSeriesTooltip();
   if (!tooltip || !els.reportSeries) return;
   const rect = els.reportSeries.getBoundingClientRect();
-  const tooltipWidth = Math.min(220, Math.max(160, rect.width - 16));
+  const tooltipWidth = Math.min(260, Math.max(178, rect.width - 16));
   const left = clamp(clientX - rect.left + 12, 8, Math.max(8, rect.width - tooltipWidth - 8));
-  const top = clamp(clientY - rect.top + 12, 8, Math.max(8, rect.height - 88));
+  const top = clamp(clientY - rect.top + 12, 8, Math.max(8, rect.height - 118));
   tooltip.style.width = `${tooltipWidth}px`;
   tooltip.style.left = `${left}px`;
   tooltip.style.top = `${top}px`;
 }
 
-function hideReportSeriesTooltip() {
-  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+function hideReportSeriesTooltip(options = {}) {
+  const tooltip = getReportSeriesTooltip();
   if (!tooltip) return;
+  if (isReportSeriesTooltipPinned(tooltip) && !options.force) return;
+  tooltip.dataset.pinned = "false";
+  tooltip.classList.remove("is-pinned");
+  updateReportSeriesTooltipState(tooltip);
+  activeReportSeriesTooltipTarget = null;
   tooltip.hidden = true;
+}
+
+function getReportSeriesTooltip() {
+  return els.reportSeries?.querySelector("[data-report-series-tooltip-box]") || null;
+}
+
+function isReportSeriesTooltipPinned(tooltip = getReportSeriesTooltip()) {
+  return tooltip?.dataset.pinned === "true";
+}
+
+function setReportSeriesTooltipContent(tooltip, titleText, bodyText) {
+  tooltip.dataset.tooltipTitle = titleText;
+  tooltip.dataset.tooltipBody = bodyText;
+  const title = tooltip.querySelector("[data-report-series-tooltip-title]");
+  const body = tooltip.querySelector("[data-report-series-tooltip-body]");
+  if (title) title.textContent = titleText;
+  if (body) body.textContent = bodyText;
+  updateReportSeriesTooltipState(tooltip);
+}
+
+function updateReportSeriesTooltipState(tooltip = getReportSeriesTooltip(), statusText = "") {
+  if (!tooltip) return;
+  const pinned = isReportSeriesTooltipPinned(tooltip);
+  tooltip.classList.toggle("is-pinned", pinned);
+  const pin = tooltip.querySelector("[data-report-series-tooltip-action='pin']");
+  if (pin) {
+    pin.textContent = pinned ? "解除" : "固定";
+    pin.setAttribute("aria-pressed", String(pinned));
+  }
+  const status = tooltip.querySelector("[data-report-series-tooltip-status]");
+  if (status) {
+    status.textContent = statusText || (pinned ? "已固定，可复制或按 Esc 关闭。" : "悬停后可固定或复制。");
+  }
+}
+
+function handleReportSeriesTooltipAction(action) {
+  const tooltip = getReportSeriesTooltip();
+  if (!tooltip || tooltip.hidden) return;
+
+  if (action === "pin") {
+    const pinned = !isReportSeriesTooltipPinned(tooltip);
+    tooltip.dataset.pinned = String(pinned);
+    tooltip.hidden = false;
+    updateReportSeriesTooltipState(tooltip);
+    showNotice(pinned ? "已固定趋势提示，可继续复制。" : "已解除趋势提示固定。");
+    return;
+  }
+
+  if (action === "copy") {
+    const title = tooltip.dataset.tooltipTitle || "趋势详情";
+    const body = tooltip.dataset.tooltipBody || "这项数据来自本机报告记录。";
+    copyText(`${title}\n${body}`).then((ok) => {
+      updateReportSeriesTooltipState(tooltip, ok ? "已复制到剪贴板。" : "复制失败，可手动选中提示内容。");
+      showNotice(ok ? "已复制趋势提示内容。" : "复制失败，可手动复制提示内容。");
+    });
+  }
+}
+
+function isReportSeriesTooltipTransition(node, target = activeReportSeriesTooltipTarget) {
+  const tooltip = getReportSeriesTooltip();
+  return isNodeInside(node, target) || isNodeInside(node, tooltip);
+}
+
+function isNodeInside(node, root) {
+  return Boolean(node && root && (node === root || root.contains(node)));
 }
 
 function renderReportLatest(detail) {
