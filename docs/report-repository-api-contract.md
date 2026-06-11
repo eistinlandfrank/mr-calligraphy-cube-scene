@@ -91,9 +91,11 @@ Authorization: Bearer <token>
 
 - 远端报告 ID 本机不存在：新增。
 - 远端报告 ID 本机存在且内容相同：跳过。
-- 远端报告 ID 本机存在但内容不同：跳过并记录 `lastSkippedConflictCount`。
+- 远端报告 ID 本机存在但内容不同：跳过并记录 `lastSkippedConflictCount` 和 `lastConflictReports`。
 
-后续账号化服务端应提供报告版本号、服务端字段级 merge、教师批注审计和用户确认入口。
+`lastConflictReports` 会保存本机/远端标题、更新时间、字段差异摘要和远端报告快照。前台站内报告面板会显示“报告仓库冲突审计”，用户可以按字段选择保留本机或采用远端、把远端冲突报告另存为本机副本，或忽略该条审计。本机原报告不会被静默覆盖，只有用户明确选择的远端字段才会写回同 ID 本机报告。
+
+后续账号化服务端应提供报告版本号、服务端字段级 merge、教师批注审计、服务端签名和用户确认入口。
 
 ## 6. 失败响应
 
@@ -159,4 +161,4 @@ npm run test:e2e -- --grep "front practice saves real strokes"
 - `MRAppState.getReportRepositoryPackage()` 生成报告包和验真摘要。
 - `configureReportRepositoryRemote()` 持久化 endpoint/token。
 - 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header。
-- 拉取同 ID 差异报告时不静默覆盖本机报告。
+- 拉取同 ID 差异报告时不静默覆盖本机报告，而是生成本机冲突审计并支持字段级合并或远端副本另存。

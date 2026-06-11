@@ -21,6 +21,18 @@
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
   const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，但仍不包含账号化教师端、服务端签章、不可篡改审计或云端 PDF 渲染。";
+  const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
+  const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
+  const REPORT_REPOSITORY_CONFLICT_LABELS = {
+    title: "标题",
+    summary: "摘要",
+    averageScore: "平均分",
+    sessionCount: "练习次数",
+    artworkCount: "作品数量",
+    teacherReview: "教师批注",
+    recommendations: "练习建议",
+    createdAt: "生成时间"
+  };
   const REPORT_VERIFICATION_KIND = "mr-calligraphy-report-verification-v1";
   const REPORT_VERIFICATION_ALGORITHM = "sha256-stable-json";
   const REPORT_VERIFICATION_BOUNDARY = "本机报告验真摘要由当前浏览器用报告核心字段、关联练习和最近作品截图摘要计算 SHA-256；它不是服务端证书、教师签名或不可篡改审计。";
@@ -751,6 +763,9 @@
     const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
       ? source.lastRemoteDirection
       : "";
+    const lastConflictReports = Array.isArray(source.lastConflictReports)
+      ? source.lastConflictReports.map(normalizeReportRepositoryConflict).filter(Boolean).slice(0, REPORT_REPOSITORY_MAX_CONFLICTS)
+      : [];
     return {
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
@@ -765,8 +780,44 @@
       lastImportedReportCount: normalizeInteger(source.lastImportedReportCount, 0, 0, 99999),
       lastRemoteReportCount: normalizeInteger(source.lastRemoteReportCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
+      lastConflictReports,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+    };
+  }
+
+  function normalizeReportRepositoryConflict(record) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    if (!id) return null;
+    const remoteReport = normalizeReport(record.remoteReport || record.remoteRecord);
+    if (!remoteReport) return null;
+    return {
+      id,
+      conflictId: String(record.conflictId || `report:${id}`),
+      typeLabel: "报告",
+      title: String(record.title || record.remoteTitle || record.localTitle || id).slice(0, 120),
+      localTitle: String(record.localTitle || record.title || id).slice(0, 120),
+      remoteTitle: String(record.remoteTitle || record.title || id).slice(0, 120),
+      localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
+      remoteUpdatedAt: normalizePlanDate(record.remoteUpdatedAt),
+      detectedAt: normalizePlanDate(record.detectedAt) || new Date().toISOString(),
+      fieldDiffs: Array.isArray(record.fieldDiffs)
+        ? record.fieldDiffs.map(normalizeReportRepositoryFieldDiff).filter(Boolean).slice(0, 12)
+        : [],
+      remoteReport
+    };
+  }
+
+  function normalizeReportRepositoryFieldDiff(record) {
+    if (!record || typeof record !== "object") return null;
+    const field = String(record.field || "").trim();
+    if (!field) return null;
+    return {
+      field,
+      label: String(record.label || REPORT_REPOSITORY_CONFLICT_LABELS[field] || field).slice(0, 32),
+      localValue: formatPlanRepositoryMergeValue(record.localValue),
+      remoteValue: formatPlanRepositoryMergeValue(record.remoteValue)
     };
   }
 
@@ -4334,7 +4385,9 @@
     }
     if (repository.lastSkippedConflictCount > 0) {
       tone = "warning";
-      message = `远端报告有 ${repository.lastSkippedConflictCount} 份同 ID 差异已跳过，未覆盖本机报告。`;
+      message = repository.lastConflictReports.length
+        ? `远端报告有 ${repository.lastConflictReports.length} 份同 ID 差异已保存冲突审计，未覆盖本机报告。`
+        : `远端报告有 ${repository.lastSkippedConflictCount} 份同 ID 差异已跳过，未覆盖本机报告。`;
     }
     if (repository.lastError) {
       tone = "warning";
@@ -4365,6 +4418,7 @@
       lastImportedReportCount: repository.lastImportedReportCount,
       lastRemoteReportCount: repository.lastRemoteReportCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
+      lastConflictReports: clone(repository.lastConflictReports),
       lastPackageId: repository.lastPackageId,
       lastError: repository.lastError
     };
@@ -4471,6 +4525,77 @@
     saveState();
   }
 
+  function createReportRepositoryConflict(localReport, remoteReport) {
+    const local = normalizeReport(localReport);
+    const remote = normalizeReport(remoteReport);
+    if (!local || !remote) return null;
+    const fieldDiffs = REPORT_REPOSITORY_CONFLICT_FIELDS
+      .filter((field) => stablePlanStringify(local[field] ?? "") !== stablePlanStringify(remote[field] ?? ""))
+      .map((field) => ({
+        field,
+        label: REPORT_REPOSITORY_CONFLICT_LABELS[field] || field,
+        localValue: local[field],
+        remoteValue: remote[field]
+      }));
+    return normalizeReportRepositoryConflict({
+      id: remote.id,
+      conflictId: `report:${remote.id}`,
+      title: remote.title || local.title || `报告 ${remote.id}`,
+      localTitle: local.title || local.id,
+      remoteTitle: remote.title || remote.id,
+      localUpdatedAt: getReportRepositoryRecordUpdatedAt(local),
+      remoteUpdatedAt: getReportRepositoryRecordUpdatedAt(remote),
+      detectedAt: new Date().toISOString(),
+      fieldDiffs,
+      remoteReport: remote
+    });
+  }
+
+  function getReportRepositoryRecordUpdatedAt(report = {}) {
+    return report.teacherReview?.reviewedAt || report.generatedAt || report.createdAt || null;
+  }
+
+  function getReportRepositoryConflictRecords(conflicts = []) {
+    return conflicts
+      .map(normalizeReportRepositoryConflict)
+      .filter(Boolean)
+      .slice(0, REPORT_REPOSITORY_MAX_CONFLICTS);
+  }
+
+  function mergeReportRepositoryReports(incomingReports = []) {
+    const existingIndex = new Map(state.reports.map((report, index) => [report.id, index]));
+    let importedCount = 0;
+    let skippedConflictCount = 0;
+    const conflicts = [];
+
+    incomingReports
+      .map(normalizeReport)
+      .filter(Boolean)
+      .forEach((report) => {
+        if (!existingIndex.has(report.id)) {
+          state.reports.push(report);
+          existingIndex.set(report.id, state.reports.length - 1);
+          importedCount += 1;
+          return;
+        }
+        const existing = normalizeReport(state.reports[existingIndex.get(report.id)]);
+        if (stablePlanStringify(existing) === stablePlanStringify(report)) {
+          return;
+        }
+        skippedConflictCount += 1;
+        const conflict = createReportRepositoryConflict(existing, report);
+        if (conflict) {
+          conflicts.push(conflict);
+        }
+      });
+
+    return {
+      importedCount,
+      skippedConflictCount,
+      conflicts: getReportRepositoryConflictRecords(conflicts)
+    };
+  }
+
   function importReportRepositoryPackage(input) {
     const parsed = parseReportRepositoryPackage(input);
     if (!parsed.ok) {
@@ -4484,21 +4609,7 @@
       return { ok: false, message };
     }
 
-    const existingIndex = new Map(state.reports.map((report, index) => [report.id, index]));
-    let importedCount = 0;
-    let skippedConflictCount = 0;
-    incomingReports.forEach((report) => {
-      if (!existingIndex.has(report.id)) {
-        state.reports.push(report);
-        existingIndex.set(report.id, state.reports.length - 1);
-        importedCount += 1;
-        return;
-      }
-      const existing = normalizeReport(state.reports[existingIndex.get(report.id)]);
-      if (stablePlanStringify(existing) !== stablePlanStringify(report)) {
-        skippedConflictCount += 1;
-      }
-    });
+    const merged = mergeReportRepositoryReports(incomingReports);
 
     const now = new Date().toISOString();
     state.reportRepository = normalizeReportRepository({
@@ -4506,24 +4617,26 @@
       mode: "local-json",
       lastImportedAt: now,
       lastCheckedAt: now,
-      lastImportedReportCount: importedCount,
-      lastSkippedConflictCount: skippedConflictCount,
+      lastImportedReportCount: merged.importedCount,
+      lastSkippedConflictCount: merged.skippedConflictCount,
+      lastConflictReports: merged.conflicts,
       lastPackageId: parsed.package.packageId || null,
-      lastError: skippedConflictCount
-        ? `有 ${skippedConflictCount} 份同 ID 差异报告已跳过，未覆盖本机报告。`
+      lastError: merged.skippedConflictCount
+        ? `有 ${merged.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
         : ""
     });
-    addEvent("report-repository-import", `导入报告仓库同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}`);
+    addEvent("report-repository-import", `导入报告仓库同步包：新增 ${merged.importedCount}，跳过冲突 ${merged.skippedConflictCount}`);
     saveState();
     return {
       ok: true,
-      importedCount,
-      skippedConflictCount,
+      importedCount: merged.importedCount,
+      skippedConflictCount: merged.skippedConflictCount,
+      conflicts: merged.conflicts,
       totalReportCount: state.reports.length,
       status: getReportRepositoryStatus(),
-      message: skippedConflictCount
-        ? `已导入报告仓库同步包：新增 ${importedCount} 份，跳过 ${skippedConflictCount} 份同 ID 差异报告。${REPORT_REPOSITORY_BOUNDARY}`
-        : `已导入报告仓库同步包：新增 ${importedCount} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
+      message: merged.skippedConflictCount
+        ? `已导入报告仓库同步包：新增 ${merged.importedCount} 份，跳过 ${merged.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
+        : `已导入报告仓库同步包：新增 ${merged.importedCount} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -4752,6 +4865,7 @@
         lastExportedReportCount: reportCount,
         lastPackageId: acceptedPackageId,
         lastSkippedConflictCount: 0,
+        lastConflictReports: [],
         lastRemoteStatus: `已推送 ${reportCount} 份报告到远端 API。`,
         lastError: ""
       });
@@ -4816,7 +4930,7 @@
         lastSkippedConflictCount: imported.skippedConflictCount || 0,
         lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
         lastError: imported.skippedConflictCount
-          ? `有 ${imported.skippedConflictCount} 份同 ID 差异报告已跳过，未覆盖本机报告。`
+          ? `有 ${imported.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
           : ""
       });
       addEvent("report-repository-remote-pull", `从远端 API 拉取报告：${parsed.package.reports.length} 份报告`);
@@ -4828,7 +4942,7 @@
         skippedConflictCount: imported.skippedConflictCount || 0,
         pulledReportCount: parsed.package.reports.length,
         message: imported.skippedConflictCount
-          ? `已从远端 API 拉取报告：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告。${REPORT_REPOSITORY_BOUNDARY}`
+          ? `已从远端 API 拉取报告：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
           : `已从远端 API 拉取报告：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -4836,6 +4950,178 @@
       recordReportRepositoryError(message);
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
+  }
+
+  function getReportRepositoryConflicts() {
+    const repository = normalizeReportRepository(state.reportRepository);
+    return {
+      ok: true,
+      count: repository.lastConflictReports.length,
+      conflicts: clone(repository.lastConflictReports),
+      message: repository.lastConflictReports.length
+        ? `当前有 ${repository.lastConflictReports.length} 份报告仓库冲突审计。`
+        : "当前没有待处理的报告仓库冲突审计。"
+    };
+  }
+
+  function resolveReportRepositoryConflict(action, options = {}) {
+    const strategy = String(action || "").trim();
+    const repository = normalizeReportRepository(state.reportRepository);
+    const conflicts = repository.lastConflictReports;
+    const conflictId = String(options.conflictId || options.id || "").trim();
+    const targets = conflictId
+      ? conflicts.filter((conflict) => conflict.conflictId === conflictId)
+      : conflicts;
+    if (!targets.length) {
+      return {
+        ok: false,
+        status: getReportRepositoryStatus(),
+        message: "当前没有匹配的报告仓库冲突审计。"
+      };
+    }
+
+    if (strategy === "copy-remote") {
+      const copied = targets.map(copyReportRepositoryConflictRemoteReport).filter(Boolean);
+      updateReportRepositoryConflictRecordsAfterResolve(repository, targets, `已将 ${copied.length} 份远端冲突报告另存为本机副本。`);
+      addEvent("report-repository-conflict-copy", `远端冲突报告另存副本：${copied.length} 份`);
+      saveState();
+      return {
+        ok: true,
+        copiedCount: copied.length,
+        copied,
+        status: getReportRepositoryStatus(),
+        message: `已将 ${copied.length} 份远端冲突报告另存为本机副本；原本机报告仍保留。`
+      };
+    }
+
+    if (strategy === "merge-fields") {
+      return mergeReportRepositoryConflictFields(repository, targets, options);
+    }
+
+    if (strategy === "dismiss") {
+      updateReportRepositoryConflictRecordsAfterResolve(repository, targets, `已忽略 ${targets.length} 份报告仓库冲突审计。`);
+      addEvent("report-repository-conflict-dismiss", `忽略报告仓库冲突审计：${targets.length} 份`);
+      saveState();
+      return {
+        ok: true,
+        dismissedCount: targets.length,
+        status: getReportRepositoryStatus(),
+        message: `已忽略 ${targets.length} 份报告仓库冲突审计；本机报告保持不变。`
+      };
+    }
+
+    return {
+      ok: false,
+      status: getReportRepositoryStatus(),
+      message: "未知的报告仓库冲突处理方式。"
+    };
+  }
+
+  function mergeReportRepositoryConflictFields(repository, targets, options = {}) {
+    let mergedCount = 0;
+    let remoteFieldCount = 0;
+    let localFieldCount = 0;
+
+    targets.forEach((conflict) => {
+      const localIndex = state.reports.findIndex((report) => report.id === conflict.id);
+      const remoteReport = normalizeReport(conflict.remoteReport);
+      if (localIndex < 0 || !remoteReport) return;
+
+      const localReport = normalizeReport(state.reports[localIndex]);
+      if (!localReport) return;
+      const nextReport = clone(localReport);
+      const selections = getReportRepositoryConflictMergeSelections(conflict, options);
+      const fields = getReportRepositoryMergeFields(conflict);
+      fields.forEach((field) => {
+        if (stablePlanStringify(localReport[field] ?? "") === stablePlanStringify(remoteReport[field] ?? "")) {
+          return;
+        }
+        const choice = selections[field] === "remote" ? "remote" : "local";
+        if (choice === "remote") {
+          nextReport[field] = clone(remoteReport[field]);
+          remoteFieldCount += 1;
+        } else {
+          localFieldCount += 1;
+        }
+      });
+
+      state.reports[localIndex] = normalizeReport(nextReport);
+      mergedCount += 1;
+    });
+
+    if (!mergedCount) {
+      return {
+        ok: false,
+        status: getReportRepositoryStatus(),
+        message: "没有找到可字段合并的本机冲突报告。"
+      };
+    }
+
+    updateReportRepositoryConflictRecordsAfterResolve(
+      repository,
+      targets,
+      `已按字段合并 ${mergedCount} 份报告仓库冲突，远端字段 ${remoteFieldCount} 项，本机字段 ${localFieldCount} 项。`
+    );
+    addEvent("report-repository-conflict-merge", `字段级合并报告仓库冲突：${mergedCount} 份`);
+    saveState();
+    return {
+      ok: true,
+      mergedCount,
+      remoteFieldCount,
+      localFieldCount,
+      status: getReportRepositoryStatus(),
+      message: `已按字段合并 ${mergedCount} 份报告仓库冲突：采用远端字段 ${remoteFieldCount} 项，保留本机字段 ${localFieldCount} 项。`
+    };
+  }
+
+  function getReportRepositoryMergeFields(conflict) {
+    const diffFields = Array.isArray(conflict.fieldDiffs)
+      ? conflict.fieldDiffs.map((field) => String(field.field || "").trim()).filter(Boolean)
+      : [];
+    return [...new Set([...diffFields, ...REPORT_REPOSITORY_CONFLICT_FIELDS])];
+  }
+
+  function getReportRepositoryConflictMergeSelections(conflict, options = {}) {
+    const source = options && typeof options === "object" ? options : {};
+    const selections = source.selections && typeof source.selections === "object"
+      ? source.selections
+      : source.fields && typeof source.fields === "object"
+        ? source.fields
+        : source;
+    const nested = selections?.[conflict.conflictId] || selections?.[conflict.id] || selections;
+    const result = {};
+    Object.entries(nested || {}).forEach(([field, value]) => {
+      if (["conflictId", "id", "selections", "fields"].includes(field)) return;
+      result[field] = value === "remote" ? "remote" : "local";
+    });
+    return result;
+  }
+
+  function updateReportRepositoryConflictRecordsAfterResolve(repository, targets, statusMessage) {
+    const targetIds = new Set(targets.map((conflict) => conflict.conflictId));
+    const remaining = repository.lastConflictReports.filter((conflict) => !targetIds.has(conflict.conflictId));
+    state.reportRepository = normalizeReportRepository({
+      ...repository,
+      lastCheckedAt: new Date().toISOString(),
+      lastSkippedConflictCount: remaining.length,
+      lastConflictReports: remaining,
+      lastRemoteStatus: statusMessage,
+      lastError: remaining.length
+        ? `仍有 ${remaining.length} 份报告仓库冲突审计待处理。`
+        : ""
+    });
+  }
+
+  function copyReportRepositoryConflictRemoteReport(conflict) {
+    const normalized = normalizeReport(conflict.remoteReport);
+    if (!normalized) return null;
+    const copy = clone(normalized);
+    copy.id = makeId("report-remote-copy");
+    copy.title = appendHistoryRepositoryCopyTitle(copy.title || conflict.remoteTitle || conflict.title || "远端冲突报告");
+    copy.latestSessionId = null;
+    copy.latestArtworkId = null;
+    state.reports.push(normalizeReport(copy));
+    return copy;
   }
 
   function createReportHtml(report, verification = null) {
@@ -9329,6 +9615,7 @@
     getHistoryRepositoryPackage,
     getReportRepositoryStatus,
     getReportRepositoryRemoteConfig,
+    getReportRepositoryConflicts,
     getReportRepositoryPackage,
     getPlanExport,
     getReportPreview,
@@ -9375,6 +9662,7 @@
     pullReportRepositoryFromRemote,
     resolvePlanRepositoryConflict,
     resolveHistoryRepositoryConflict,
+    resolveReportRepositoryConflict,
     setMode,
     selectDailyGlyph,
     rotateCopybook,

@@ -19,7 +19,7 @@
 
 ## 2. 我对当前版本的判断
 
-这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库远端 API adapter、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
+这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库远端 API adapter、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
 
 但它还不是一个真实可交付产品。最大问题不是“按钮没有绑定”，而是“按钮看起来像生产功能，实际只是本机原型能力”。用户看到 AI、评分、分享、同步、发布、后台这些词时，会自然期待账号、后端、权限、云端数据和端到端稳定性；当前很多地方还只做到本机状态或文件导出。
 
@@ -41,7 +41,7 @@ node scripts/control-inventory.js --check
 | `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
-| `script.js dynamic` | 28 | 1 | 0 | 0 | 1 | 0 |
+| `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
 
@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要和报告仓库远端 API adapter 已有第一版 | 仍主要是本机报告；远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和 PDF 资源嵌入验收 |
+| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和 PDF 资源嵌入验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -144,7 +144,7 @@ node scripts/control-inventory.js --check
 目标：评分不再像固定模板，报告能被复盘和验证。
 
 - 评分结果显示证据点、覆盖范围、重心、停顿、压感和维度理由；本机 `ScoreService` 已记录并展示最近评分证据摘要。
-- 原生 PDF 继续增强图表、作品截图、报告 ID 和服务端验真回执；本机验真摘要和报告仓库远端 API adapter 第一版已完成。
+- 原生 PDF 继续增强图表、作品截图、报告 ID 和服务端验真回执；本机验真摘要、报告仓库远端 API adapter 和本机冲突审计第一版已完成。
 - 报告 schema 固定版本，继续支持账号化服务端保存、教师批注和签名审计。
 - 分享页和报告页必须带本机/云端来源说明。
 
@@ -916,7 +916,7 @@ git diff --check
 仍待补：
 
 - 这仍是前端 adapter，不是账号化教师端、服务端签章、不可篡改审计、服务端 PDF 渲染或生产长期报告仓库。
-- 同 ID 差异第一版只跳过并计数，后续需要补报告冲突审计 UI 和账号化服务端合并。
+- 当前同 ID 差异已在后续补为本机冲突审计、字段级合并和远端副本另存；后续仍需账号化服务端合并和服务端签名审计。
 
 验收：
 
@@ -930,3 +930,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告仓库远端同步`
+
+## 31. 2026-06-12 报告仓库冲突审计
+
+本次把报告仓库远端拉取从“遇到同 ID 差异只跳过计数”推进到“可审阅、可字段合并、可另存远端副本”。
+
+完成内容：
+
+- `reportRepository.lastConflictReports` 保存同 ID 差异报告的字段差异和远端报告快照。
+- `getReportRepositoryConflicts()` 返回当前待处理报告冲突审计。
+- `resolveReportRepositoryConflict()` 支持 `merge-fields`、`copy-remote` 和 `dismiss`。
+- 站内报告面板新增“报告仓库冲突审计”区域，可选择本机或远端字段。
+- 数据层覆盖字段级合并和远端副本另存；E2E 覆盖页面拉取冲突报告并应用远端摘要字段。
+
+真实化说明：
+
+- 数据来源：远端报告包、本机同 ID 报告和用户字段选择。
+- 写入状态：冲突审计写入 `reportRepository.lastConflictReports`；字段合并写回 `reports`；另存副本新增本机报告。
+- 成功反馈：冲突面板刷新，处理后审计消失或减少，notice 显示采用远端字段数量或副本数量。
+- 失败反馈：没有匹配冲突或未知处理方式时不修改报告，并返回明确提示。
+- 刷新后复现方式：未处理审计随 `mr-calligraphy-learning-state-v1` 持久化，刷新后仍可继续处理。
+
+仍待补：
+
+- 服务端版本号合并、教师身份审计、服务端签章、不可篡改日志和账号空间隔离。
+
+验收：
+
+- `node --check app-state.js && node --check script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库冲突审计`

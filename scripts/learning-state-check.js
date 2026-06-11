@@ -797,7 +797,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告本机验真摘要、报告仓库远端 API adapter、报告仓库 mock 服务、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告本机验真摘要、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {
@@ -846,7 +846,37 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
     };
     const conflictPull = await window.MRAppState.pullReportRepositoryFromRemote();
     assert(conflictPull.ok && conflictPull.skippedConflictCount >= 1, "报告仓库同 ID 差异应跳过并提示冲突。");
-    assert(window.MRAppState.getReportRepositoryStatus().lastSkippedConflictCount >= 1, "报告仓库状态应记录跳过冲突数量。");
+    const conflictStatus = window.MRAppState.getReportRepositoryStatus();
+    assert(conflictStatus.lastSkippedConflictCount >= 1, "报告仓库状态应记录跳过冲突数量。");
+    assert(conflictStatus.lastConflictReports.length >= 1, "报告仓库状态应保存同 ID 差异冲突审计。");
+    const firstConflict = conflictStatus.lastConflictReports[0];
+    assert(firstConflict.fieldDiffs.some((field) => field.field === "summary"), "报告仓库冲突审计应记录字段差异。");
+    const conflictList = window.MRAppState.getReportRepositoryConflicts();
+    assert(conflictList.ok && conflictList.count >= 1, "报告仓库冲突查询 API 应返回待处理审计。");
+    const mergeResult = window.MRAppState.resolveReportRepositoryConflict("merge-fields", {
+      conflictId: firstConflict.conflictId,
+      selections: { summary: "remote" }
+    });
+    assert(mergeResult.ok && mergeResult.remoteFieldCount >= 1, "报告仓库冲突应支持字段级合并。");
+    const mergedReport = window.MRAppState.getState().reports.find((item) => item.id === firstConflict.id);
+    assert(mergedReport.summary.includes("远端报告修改"), "报告字段级合并应只把选择的远端字段写回本机报告。");
+    assert(window.MRAppState.getReportRepositoryStatus().lastConflictReports.length === 0, "字段级合并后应清理对应报告冲突审计。");
+
+    mock.state.package.reports[2] = {
+      ...mock.state.package.reports[2],
+      title: "远端冲突报告副本"
+    };
+    const copyConflictPull = await window.MRAppState.pullReportRepositoryFromRemote();
+    assert(copyConflictPull.ok && copyConflictPull.skippedConflictCount >= 1, "报告仓库应能再次记录同 ID 差异冲突。");
+    const copyConflict = window.MRAppState.getReportRepositoryStatus().lastConflictReports[0];
+    const reportCountBeforeCopy = window.MRAppState.getState().reports.length;
+    const copyResult = window.MRAppState.resolveReportRepositoryConflict("copy-remote", {
+      conflictId: copyConflict.conflictId
+    });
+    assert(copyResult.ok && copyResult.copiedCount === 1, "报告仓库冲突应支持另存远端副本。");
+    const copiedReports = window.MRAppState.getState().reports.filter((item) => item.title.includes("远端冲突报告副本"));
+    assert(window.MRAppState.getState().reports.length === reportCountBeforeCopy + 1, "另存远端副本应新增一份本机报告。");
+    assert(copiedReports.some((item) => item.title.includes("远端副本")), "远端报告副本标题应标记来源。");
 
     const badTokenConfig = window.MRAppState.configureReportRepositoryRemote({
       remoteEndpoint: mock.endpoint,

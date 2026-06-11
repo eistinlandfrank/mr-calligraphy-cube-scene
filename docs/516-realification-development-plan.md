@@ -47,7 +47,7 @@
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
-| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、本机教师批注、本机验真摘要和报告仓库远端 API adapter | 还没有账号化教师端、服务端签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
+| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、本机教师批注、本机验真摘要、报告仓库远端 API adapter、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、服务端签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
@@ -6111,7 +6111,7 @@
 已知限制：
 
 - 当前是前端 adapter 和本机 mock 服务，不是账号化教师端、服务端签章、不可篡改审计、服务端 PDF 渲染或生产长期报告仓库。
-- 同 ID 差异第一版只跳过并计数；后续需要补报告冲突审计 UI、字段级合并和服务端版本策略。
+- 当前同 ID 差异已在后续补为本机冲突审计、字段级合并和远端副本另存；后续仍需要服务端版本策略、教师身份审计和签名回执。
 - 本机验真摘要仍是本机 SHA-256 提示，不替代服务端证书或教师身份签名。
 
 验收方式：
@@ -6134,3 +6134,67 @@
 提交：
 
 - 中文 commit message：`新增报告仓库远端同步`
+
+### 2026-06-12：新增报告仓库冲突审计
+
+功能名：站内学习报告 `ReportRepository` 同 ID 差异冲突审计。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/report-repository-api-contract.md`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `reportRepository` 新增 `lastConflictReports`，保存远端同 ID 差异报告的字段差异和远端报告快照。
+- 报告仓库导入和远端拉取遇到同 ID 差异时，会跳过覆盖并保存冲突审计。
+- 新增 `MRAppState.getReportRepositoryConflicts()`，可读取当前待处理报告冲突审计。
+- 新增 `MRAppState.resolveReportRepositoryConflict()`，支持字段级合并、另存远端副本和忽略审计。
+- 站内报告面板新增“报告仓库冲突审计”区域，展示本机/远端字段差异，并提供本机/远端字段选择。
+- smoke test 新增报告仓库冲突审计 DOM 标记。
+- `learning-state-check.js` 新增字段级合并和远端副本另存断言。
+- Playwright 前台用例新增真实页面冲突处理：远端修改同 ID 报告摘要后，页面显示冲突审计，用户选择远端摘要并应用字段合并。
+
+真实化说明：
+
+- 数据来源：远端报告仓库包、本机同 ID `ReportRecord` 和用户在冲突审计面板的字段选择。
+- 写入状态：冲突审计写入 `mr-calligraphy-learning-state-v1.reportRepository.lastConflictReports`；字段合并写回本机 `reports`；另存远端副本会新增一份本机报告。
+- 成功反馈：处理后报告面板刷新，冲突数量减少或清空，并显示 notice。
+- 失败反馈：没有匹配冲突、本机报告不存在或未知处理方式时返回明确错误，不修改其他报告。
+- 刷新后复现方式：未处理的冲突审计保存在本机学习状态，刷新后仍显示。
+
+已知限制：
+
+- 当前是本机冲突审计和手动处理，不是账号化服务端合并、教师身份审计、服务端签章或不可篡改日志。
+- 字段级合并第一版按报告顶层字段处理，不做深层数组三方合并。
+
+验收方式：
+
+- 手工验收：配置一个返回同 ID 差异报告的远端报告 API，点击“拉取报告”后应出现“报告仓库冲突审计”；选择远端字段并点击“应用字段合并”，只应更新被选择字段；点击“另存远端副本”应新增带“远端副本”标记的本机报告。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖报告冲突查询、字段级合并和另存副本；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证页面入口；`npm run test:e2e -- --grep "front practice saves real strokes"` 覆盖浏览器级冲突处理。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库冲突审计`

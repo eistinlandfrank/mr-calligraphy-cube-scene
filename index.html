@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法 360° 全景交互演示</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=report-repository-20260612">
+  <link rel="stylesheet" href="style.css?v=report-conflict-20260612">
 </head>
 <body>
   <main class="app-shell">
@@ -244,6 +244,13 @@
               <button data-feature-state="real-local" id="reportRepositoryPullButton" type="button">拉取报告</button>
             </div>
           </details>
+          <div id="reportRepositoryConflictPanel" class="report-repository-conflict" aria-label="报告仓库冲突审计" hidden>
+            <div class="report-repository-conflict-head">
+              <strong>报告仓库冲突审计</strong>
+              <span id="reportRepositoryConflictStatus">远端同 ID 差异报告已跳过。</span>
+            </div>
+            <ul id="reportRepositoryConflictList" class="report-repository-conflict-list"></ul>
+          </div>
           <div class="report-actions">
             <button data-feature-state="real-local" id="reportDetailCopyLink" type="button">复制报告链接</button>
             <button data-feature-state="real-export" id="reportDetailDownload" type="button">下载 HTML</button>
@@ -573,8 +580,8 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
-  <script src="app-state.js?v=report-repository-20260612"></script>
+  <script src="app-state.js?v=report-conflict-20260612"></script>
   <script src="practice-canvas.js?v=practice-canvas-20260611"></script>
-  <script src="script.js?v=report-repository-20260612"></script>
+  <script src="script.js?v=report-conflict-20260612"></script>
 </body>
 </html>

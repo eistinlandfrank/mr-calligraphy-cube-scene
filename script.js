@@ -861,6 +861,9 @@ const els = {
   reportRepositoryRemoteButton: document.getElementById("reportRepositoryRemoteButton"),
   reportRepositoryPushButton: document.getElementById("reportRepositoryPushButton"),
   reportRepositoryPullButton: document.getElementById("reportRepositoryPullButton"),
+  reportRepositoryConflictPanel: document.getElementById("reportRepositoryConflictPanel"),
+  reportRepositoryConflictStatus: document.getElementById("reportRepositoryConflictStatus"),
+  reportRepositoryConflictList: document.getElementById("reportRepositoryConflictList"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
   reportDetailDownload: document.getElementById("reportDetailDownload"),
   reportDetailDownloadPdf: document.getElementById("reportDetailDownloadPdf"),
@@ -3669,6 +3672,7 @@ function bindReportControls() {
   els.reportRepositoryRemoteButton?.addEventListener("click", checkReportRepositoryRemote);
   els.reportRepositoryPushButton?.addEventListener("click", pushReportRepositoryRemote);
   els.reportRepositoryPullButton?.addEventListener("click", pullReportRepositoryRemote);
+  els.reportRepositoryConflictList?.addEventListener("click", handleReportRepositoryConflictAction);
   els.reportMetrics?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-report-metric]");
     if (!button) return;
@@ -5531,6 +5535,100 @@ function renderReportRepositoryStatus(detail) {
   if (!detail && els.reportRepositoryPushButton) {
     els.reportRepositoryPushButton.disabled = true;
   }
+  renderReportRepositoryConflictPanel(status);
+}
+
+function renderReportRepositoryConflictPanel(status) {
+  const panel = els.reportRepositoryConflictPanel;
+  if (!panel) return;
+  const conflicts = Array.isArray(status?.lastConflictReports) ? status.lastConflictReports : [];
+  const hasConflict = Boolean(conflicts.length);
+  panel.hidden = !hasConflict;
+  if (!hasConflict) {
+    if (els.reportRepositoryConflictList) {
+      els.reportRepositoryConflictList.innerHTML = "";
+    }
+    return;
+  }
+
+  if (els.reportRepositoryConflictStatus) {
+    els.reportRepositoryConflictStatus.textContent = `${conflicts.length} 份远端同 ID 差异报告已跳过，可字段合并、另存副本或忽略审计。`;
+  }
+  if (!els.reportRepositoryConflictList) return;
+  els.reportRepositoryConflictList.innerHTML = "";
+  conflicts.forEach((conflict, conflictIndex) => {
+    const item = document.createElement("li");
+    const head = document.createElement("div");
+    head.className = "report-repository-conflict-item-head";
+    const title = document.createElement("strong");
+    title.textContent = `${conflict.typeLabel || "报告"}：${conflict.remoteTitle || conflict.title || conflict.id}`;
+    const detail = document.createElement("span");
+    detail.textContent = `本机：${conflict.localTitle || conflict.id} / ${formatHistoryTime(conflict.localUpdatedAt)}；远端：${conflict.remoteTitle || conflict.id} / ${formatHistoryTime(conflict.remoteUpdatedAt)}`;
+    head.append(title, detail);
+    item.appendChild(head);
+
+    const fields = Array.isArray(conflict.fieldDiffs) ? conflict.fieldDiffs : [];
+    if (fields.length) {
+      const fieldList = document.createElement("div");
+      fieldList.className = "report-repository-conflict-fields";
+      fields.slice(0, 8).forEach((field, fieldIndex) => {
+        fieldList.appendChild(createReportRepositoryMergeChoice({
+          conflictId: conflict.conflictId || "",
+          fieldDiff: field,
+          groupKey: `${conflictIndex}-${fieldIndex}`
+        }));
+      });
+      item.appendChild(fieldList);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "report-repository-conflict-actions";
+    [
+      ["merge-fields", "应用字段合并"],
+      ["copy-remote", "另存远端副本"],
+      ["dismiss", "忽略审计"]
+    ].forEach(([action, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real-local";
+      button.dataset.reportConflictAction = action;
+      button.dataset.reportConflictId = conflict.conflictId || "";
+      button.textContent = label;
+      actions.appendChild(button);
+    });
+    item.appendChild(actions);
+    els.reportRepositoryConflictList.appendChild(item);
+  });
+}
+
+function createReportRepositoryMergeChoice({ conflictId = "", fieldDiff = {}, groupKey = "" }) {
+  const wrapper = document.createElement("fieldset");
+  wrapper.className = "report-repository-merge-choice";
+  const legend = document.createElement("legend");
+  legend.textContent = fieldDiff.label || fieldDiff.field || "字段";
+  const options = document.createElement("div");
+  options.className = "report-repository-merge-options";
+  [
+    { value: "local", label: "本机", detail: fieldDiff.localValue || "空", checked: true },
+    { value: "remote", label: "远端", detail: fieldDiff.remoteValue || "空", checked: false }
+  ].forEach((choice) => {
+    const choiceLabel = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = `report-merge-${groupKey}`;
+    input.value = choice.value;
+    input.checked = choice.checked;
+    input.dataset.reportMergeConflictId = conflictId;
+    input.dataset.reportMergeField = fieldDiff.field || "";
+    const title = document.createElement("strong");
+    title.textContent = choice.label;
+    const detail = document.createElement("span");
+    detail.textContent = choice.detail;
+    choiceLabel.append(input, title, detail);
+    options.appendChild(choiceLabel);
+  });
+  wrapper.append(legend, options);
+  return wrapper;
 }
 
 function setReportDetailActions(detail) {
@@ -5632,6 +5730,33 @@ async function pullReportRepositoryRemote() {
     setReportRepositoryRemoteBusy(false);
     renderReportPanel(currentIndex);
   }
+}
+
+function handleReportRepositoryConflictAction(event) {
+  const button = event.target?.closest?.("[data-report-conflict-action]");
+  if (!button) return;
+  const action = button.dataset.reportConflictAction || "";
+  const conflictId = button.dataset.reportConflictId || "";
+  const options = action === "merge-fields"
+    ? { conflictId, selections: collectReportRepositoryMergeSelections(conflictId) }
+    : { conflictId };
+  const result = window.MRAppState?.resolveReportRepositoryConflict?.(action, options);
+  renderReportPanel(currentIndex);
+  renderLearningStateSummary();
+  showNotice(result?.message || "报告仓库冲突处理失败。");
+}
+
+function collectReportRepositoryMergeSelections(conflictId = "") {
+  const selections = {};
+  const panel = els.reportRepositoryConflictPanel;
+  if (!panel) return selections;
+  panel.querySelectorAll("input[data-report-merge-field]:checked").forEach((input) => {
+    const inputConflictId = input.dataset.reportMergeConflictId || "";
+    const field = input.dataset.reportMergeField || "";
+    if (!field || (conflictId && inputConflictId !== conflictId)) return;
+    selections[field] = input.value === "remote" ? "remote" : "local";
+  });
+  return selections;
 }
 
 function setReportRepositoryRemoteBusy(isBusy) {

@@ -277,6 +277,29 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportRepositorySummary")).toContainText("已从远端 API 拉取 1 份报告");
   expect(reportRequests.some((item) => item.method === "GET" && item.authorization === "Bearer report-token")).toBe(true);
 
+  remoteReportPackage = {
+    ...remoteReportPackage,
+    reports: remoteReportPackage.reports.map((report, index) => index === 0
+      ? {
+        ...report,
+        summary: "远端 E2E 报告摘要，只应在用户选择字段合并后写回本机。",
+        title: "远端 E2E 冲突报告"
+      }
+      : report)
+  };
+  await page.locator("#reportRepositoryPullButton").click();
+  await expect(page.locator("#reportRepositoryConflictPanel")).toBeVisible();
+  await expect(page.locator("#reportRepositoryConflictStatus")).toContainText("1 份远端同 ID 差异报告");
+  await expect(page.locator("#reportRepositoryConflictList")).toContainText("应用字段合并");
+  await page.locator('#reportRepositoryConflictPanel input[data-report-merge-field="summary"][value="remote"]').click();
+  await page.locator("#reportRepositoryConflictPanel").getByRole("button", { name: "应用字段合并" }).click();
+  await expect(page.locator("#reportRepositoryConflictPanel")).toBeHidden();
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastConflictReports).toHaveLength(0);
+  expect(learningState.reportRepository.lastSkippedConflictCount).toBe(0);
+  expect(learningState.reports[0].summary).toContain("远端 E2E 报告摘要");
+
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTeacherReviewStatus")).toContainText("王老师");
