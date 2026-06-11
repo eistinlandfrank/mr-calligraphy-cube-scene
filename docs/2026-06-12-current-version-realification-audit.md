@@ -71,20 +71,20 @@ HTML 报告、原生 PDF、报告对比、多报告趋势和本机教师批注�
 
 ### 2.7 后台还不是可协作的项目后台
 
-主后台和写实后台都能编辑本机场景，也能导出项目档案、做本机发布、回滚、远端发布包预检和回执审计。本轮新增本机 `ProjectRepository` 状态视图：`projectSchema.repository` 会把主场景和写实样张归一为 `project-scene-repository-v1`，统一统计草稿对象、快照、发布版本、导入资产、缺文件/缺哈希风险和下一步动作；主后台项目档案区会直接显示这份仓库状态。
+主后台和写实后台都能编辑本机场景，也能导出项目档案、做本机发布、回滚、远端发布包预检和回执审计。本轮新增本机 `ProjectRepository` 状态视图：`projectSchema.repository` 会把主场景和写实样张归一为 `project-scene-repository-v1`，统一统计草稿对象、快照、发布版本、导入资产、缺文件/缺哈希风险和下一步动作；主后台项目档案区会直接显示这份仓库状态。随后又补了远端项目仓库 API adapter，主后台可配置 endpoint/token，用真实 GET 检查服务、PUT 当前项目仓库包，并保存服务端回执。
 
-它们仍不是账号后台，任何能打开页面的人都能改当前浏览器里的数据，`ProjectRepository` 也只是本机项目仓库 adapter，不是多人协作 CMS。
+它们仍不是账号后台，任何能打开页面的人都能改当前浏览器里的数据，`ProjectRepository` 远端 adapter 只是可替换服务端接口的第一版，不是多人协作 CMS。
 
 真实化方向：
 
 - 继续扩展主后台和写实后台对象 schema 的字段迁移和完整 diff；统一仓库状态第一版已完成。
-- 把本机 `ProjectRepository` 扩展为可替换的服务端 repository。
+- 把远端 `ProjectRepository` adapter 继续生产化为账号化服务端 repository、多人合并和资产签名。
 - 接入账号、角色、权限、审计和发布审批。
 - 远端发布由“用户配置 endpoint”升级为“生产发布服务”。
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库和后台远端发布都已有 API 合同、mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化。这个方向是对的，但它目前证明的是“前端能对接 API”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、项目仓库和后台远端发布都已有 API 合同、mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化。这个方向是对的，但它目前证明的是“前端能对接 API”，不是“项目已有生产后端”。
 
 真实化方向：
 
@@ -196,7 +196,7 @@ npm run test:e2e
 
 交付：
 
-- `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现。
+- `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现；`ProjectRepository` 远端 API adapter 第一版已完成，仍需账号空间和服务端合并。
 - 登录态、用户 ID、角色、token 刷新和服务端分页。
 - 计划仓库冲突解决已从计划级扩展到前端字段级第一版；后续仍需服务端合并审计、账号空间隔离和更复杂的计划项增删合并。
 
@@ -224,8 +224,8 @@ npm run test:e2e
 
 交付：
 
-- 统一主后台/写实后台对象 schema；本机 `ProjectRepository` 状态视图第一版已完成。
-- 项目仓库继续支持远端保存、版本历史、字段合并、资产签名。
+- 统一主后台/写实后台对象 schema；本机 `ProjectRepository` 状态视图和远端项目仓库 API adapter 第一版已完成。
+- 项目仓库继续支持账号化远端保存、版本历史、字段合并、资产签名。
 - 远端发布服务支持审批、发布锁、CDN 回执和不可篡改审计。
 
 验收：

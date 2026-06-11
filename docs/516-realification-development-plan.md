@@ -5752,3 +5752,66 @@
 提交：
 
 - 中文 commit message：`新增统一项目仓库状态`
+
+### 2026-06-12：新增远端项目仓库适配器
+
+功能名：主后台 `ProjectRepository` 远端 API adapter 第一版。
+
+涉及文件：
+
+- `project-archive.js`
+- `main-admin.html`
+- `style.css`
+- `scripts/project-repository-mock-server.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/project-repository-api-contract.md`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `project-archive.js` 新增 `createProjectRepositoryPackage()`，会从当前浏览器本机 `localStorage` 和 IndexedDB 生成完整 `mr-calligraphy-project-repository-package-v1`。
+- 项目仓库包包含 `archive`、`projectSchema`、统一 `repository`、summary、边界说明和 64 位 `packageDigest`。
+- 新增 `mr-calligraphy-project-repository-remote-v1` 本机远端状态，持久化 endpoint、token、最近检查、最近推送、packageId、packageDigest、repositoryDigest、错误信息和回执列表。
+- 新增 `configureProjectRepositoryRemote()`、`checkProjectRepositoryRemote()`、`pushProjectRepositoryToRemote()`、`getProjectRepositoryRemoteStatus()` 等 adapter 方法。
+- 主后台“项目仓库状态”面板新增“远端项目仓库 API”折叠区，提供 endpoint/token、保存远端、检查远端、推送仓库包和最近回执列表。
+- 新增 `scripts/project-repository-mock-server.js`，可启动本机 `/api/project-repository` mock 服务，支持 GET、PUT、OPTIONS、Bearer token、packageDigest 校验和服务端回执。
+- 新增 `docs/project-repository-api-contract.md`，记录远端项目仓库 API 合同、成功响应、失败响应、mock 服务和验收方式。
+- Playwright 主后台用例新增远端项目仓库 GET/PUT 验收，并复用 mock server 的 `validateProjectRepositoryPackage()` 验证浏览器生成的包结构和摘要。
+
+真实化说明：
+
+- 数据来源：当前浏览器里的项目档案快照、项目 schema、统一 `ProjectRepository` 状态和 IndexedDB 模型仓库。
+- 写入状态：远端配置、检查结果、推送结果和回执会真实写入 `mr-calligraphy-project-repository-remote-v1`。
+- 网络行为：点击“检查远端”会对用户配置 endpoint 发起真实 `GET`；点击“推送仓库包”会发起真实 `PUT`，并携带可选 Bearer token。
+- 成功反馈：主后台状态条会显示远端返回 message，回执列表会显示服务端 packageId、远端版本、摘要和时间。
+- 失败反馈：未配置 endpoint、非法协议、fetch 不支持、HTTP 非 2xx、`ok:false`、JSON 错误都会写入本机错误状态，不伪造成成功。
+
+已知限制：
+
+- 当前仍是静态前端的远端 adapter，不是账号化协作后台。
+- mock server 只在内存保存最近项目仓库包，不提供真实数据库、权限、多人冲突解决、资产 CDN 或不可篡改审计。
+- 后续需要补账号空间、服务端版本历史、字段级三方合并、资产签名、发布审批和 CDN 回执。
+
+验收方式：
+
+- 手工验收：运行 `node scripts/project-repository-mock-server.js`，在 `http://localhost:41496/main-admin.html` 展开“远端项目仓库 API”，配置输出 endpoint 后点击“检查远端 / 推送仓库包”，应看到真实远端状态和回执。
+- 脚本验收：`node scripts/smoke-test.js --base-url=http://localhost:41496/` 覆盖 DOM 标记和 mock server 语法；`npm run test:e2e -- --grep "main admin publishes"` 覆盖真实浏览器 GET/PUT、token、包结构、digest 和回执持久化。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/project-repository-mock-server.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+
+提交：
+
+- 中文 commit message：`新增远端项目仓库适配器`

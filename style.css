@@ -1060,6 +1060,15 @@ button {
   line-height: 1.35;
 }
 
+.project-repository-remote {
+  margin-top: 2px;
+}
+
+.project-repository-receipt-list {
+  max-height: 128px;
+  margin-top: 8px;
+}
+
 .main-project-audit {
   display: grid;
   gap: 8px;

@@ -1,0 +1,352 @@
+#!/usr/bin/env node
+
+const crypto = require("crypto");
+const http = require("http");
+
+const PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
+const VERSION = 1;
+
+function createProjectRepositoryMockServer(options = {}) {
+  const requiredToken = String(options.token || process.env.PROJECT_REPOSITORY_MOCK_TOKEN || "").trim();
+  const state = {
+    startedAt: new Date().toISOString(),
+    package: null,
+    receipts: []
+  };
+
+  const server = http.createServer(async (request, response) => {
+    try {
+      if (request.method === "OPTIONS") {
+        return sendEmpty(response, 204);
+      }
+
+      if (!isProjectRepositoryPath(request.url)) {
+        return sendJson(response, 404, {
+          ok: false,
+          message: "项目仓库 mock 只提供 /api/project-repository。"
+        });
+      }
+
+      const auth = validateAuth(request, requiredToken);
+      if (!auth.ok) {
+        return sendJson(response, 401, {
+          ok: false,
+          message: auth.message,
+          remoteVersion: "mr-calligraphy-project-repository-mock-v1"
+        });
+      }
+
+      if (request.method === "GET") {
+        return sendJson(response, 200, {
+          ok: true,
+          message: state.package
+            ? `远端项目仓库 mock 可读，当前包含 ${state.package.summary?.sceneCount || 0} 个场景。`
+            : "远端项目仓库 mock 服务可访问，当前尚未接收项目仓库包。",
+          remoteVersion: "mr-calligraphy-project-repository-mock-v1",
+          contract: createContract(),
+          package: state.package,
+          receiptCount: state.receipts.length,
+          latestReceipt: state.receipts[0] || null
+        });
+      }
+
+      if (request.method === "PUT") {
+        const payload = await readJsonBody(request);
+        const validation = validateProjectRepositoryPackage(payload);
+        if (!validation.ok) {
+          return sendJson(response, 422, {
+            ok: false,
+            message: validation.message,
+            errors: validation.errors,
+            warnings: validation.warnings,
+            remoteVersion: "mr-calligraphy-project-repository-mock-v1"
+          });
+        }
+
+        const receipt = createReceipt(payload, validation);
+        state.package = {
+          ...clone(payload),
+          packageId: receipt.packageId,
+          acceptedAt: receipt.acceptedAt,
+          repositoryDigest: receipt.repositoryDigest
+        };
+        state.receipts.unshift(receipt);
+
+        return sendJson(response, 201, {
+          ok: true,
+          message: `远端项目仓库 mock 已接收 ${payload.summary.sceneCount || 0} 个场景、${payload.summary.importedModels || 0} 个导入模型。`,
+          remoteVersion: receipt.remoteVersion,
+          packageId: receipt.packageId,
+          repositoryDigest: receipt.repositoryDigest,
+          package: state.package,
+          receipt,
+          warnings: validation.warnings
+        });
+      }
+
+      return sendJson(response, 405, {
+        ok: false,
+        message: "项目仓库 mock 只支持 GET 检查、PUT 写入和 OPTIONS 预检。"
+      });
+    } catch (error) {
+      return sendJson(response, 500, {
+        ok: false,
+        message: `项目仓库 mock 处理失败：${error?.message || "未知错误"}。`
+      });
+    }
+  });
+
+  return {
+    server,
+    state,
+    start: (startOptions = {}) => startServer(server, startOptions),
+    close: () => closeServer(server)
+  };
+}
+
+function startProjectRepositoryMockServer(options = {}) {
+  const mock = createProjectRepositoryMockServer(options);
+  return mock.start(options).then((info) => ({
+    ...mock,
+    ...info
+  }));
+}
+
+function startServer(server, options = {}) {
+  const host = String(options.host || process.env.PROJECT_REPOSITORY_MOCK_HOST || "127.0.0.1");
+  const port = Number(options.port || process.env.PROJECT_REPOSITORY_MOCK_PORT || 0);
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, host, () => {
+      server.off("error", reject);
+      const address = server.address();
+      const baseUrl = `http://${address.address}:${address.port}`;
+      resolve({
+        host: address.address,
+        port: address.port,
+        baseUrl,
+        endpoint: `${baseUrl}/api/project-repository`
+      });
+    });
+  });
+}
+
+function closeServer(server) {
+  return new Promise((resolve, reject) => {
+    if (!server.listening) {
+      resolve();
+      return;
+    }
+    server.close((error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function isProjectRepositoryPath(url) {
+  try {
+    const parsed = new URL(url || "/", "http://localhost");
+    return parsed.pathname === "/api/project-repository";
+  } catch (error) {
+    return false;
+  }
+}
+
+function validateAuth(request, requiredToken) {
+  if (!requiredToken) {
+    return { ok: true };
+  }
+  const expected = `Bearer ${requiredToken}`;
+  if (request.headers.authorization === expected) {
+    return { ok: true };
+  }
+  return { ok: false, message: "项目仓库 mock 拒绝请求：Authorization token 不匹配。" };
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    request.on("data", (chunk) => chunks.push(chunk));
+    request.on("error", reject);
+    request.on("end", () => {
+      try {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch (error) {
+        reject(new Error("请求体不是可解析 JSON"));
+      }
+    });
+  });
+}
+
+function sendEmpty(response, statusCode) {
+  response.writeHead(statusCode, createResponseHeaders());
+  response.end();
+}
+
+function sendJson(response, statusCode, payload) {
+  const body = JSON.stringify(payload, null, 2);
+  response.writeHead(statusCode, createResponseHeaders({
+    "Content-Type": "application/json; charset=utf-8"
+  }));
+  response.end(body);
+}
+
+function createResponseHeaders(extra = {}) {
+  return {
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+    "Access-Control-Max-Age": "600",
+    "Cache-Control": "no-store",
+    ...extra
+  };
+}
+
+function createContract() {
+  return {
+    kind: "mr-calligraphy-project-repository-contract-v1",
+    accepts: {
+      check: "GET /api/project-repository",
+      push: "PUT /api/project-repository",
+      authorization: "optional Bearer token",
+      cors: "GET, PUT, OPTIONS"
+    },
+    packageKind: PACKAGE_KIND,
+    requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "summary", "repository", "projectSchema", "archive", "packageDigest"],
+    receiptFields: ["ok", "message", "packageId", "repositoryDigest", "remoteVersion", "receipt"]
+  };
+}
+
+function validateProjectRepositoryPackage(payload) {
+  const errors = [];
+  const warnings = [];
+  if (!payload || typeof payload !== "object") {
+    return {
+      ok: false,
+      errors: ["项目仓库包为空"],
+      warnings,
+      message: "项目仓库包为空。"
+    };
+  }
+
+  if (payload.kind !== PACKAGE_KIND) errors.push("项目仓库包 kind 不匹配");
+  if (Number(payload.version) !== VERSION) errors.push("项目仓库包版本不匹配");
+  if (!payload.packageId) errors.push("缺少 packageId");
+  if (!payload.exportedAt) errors.push("缺少 exportedAt");
+  if (!payload.summary || typeof payload.summary !== "object") errors.push("缺少 summary");
+  if (payload.repository?.kind !== "mr-calligraphy-project-repository-v1") errors.push("repository.kind 不匹配");
+  if (!Array.isArray(payload.repository?.scenes)) errors.push("repository.scenes 不是数组");
+  if (payload.projectSchema?.kind !== "mr-calligraphy-project-schema") errors.push("projectSchema.kind 不匹配");
+  if (payload.archive?.kind !== "mr-calligraphy-project-archive") errors.push("archive.kind 不匹配");
+  if (!payload.archive?.storage || typeof payload.archive.storage !== "object") errors.push("archive.storage 缺失");
+  if (!payload.archive?.indexedDb || typeof payload.archive.indexedDb !== "object") errors.push("archive.indexedDb 缺失");
+
+  const expectedDigest = createPackageDigest(payload);
+  if (!payload.packageDigest) {
+    errors.push("缺少 packageDigest");
+  } else if (payload.packageDigest !== expectedDigest) {
+    errors.push("packageDigest 不匹配");
+  }
+
+  if (payload.summary && payload.repository?.summary) {
+    const summaryScenes = Number(payload.summary.sceneCount || 0);
+    const repositoryScenes = Number(payload.repository.summary.sceneCount || 0);
+    if (summaryScenes !== repositoryScenes) {
+      warnings.push(`summary.sceneCount 为 ${summaryScenes}，repository.summary.sceneCount 为 ${repositoryScenes}。`);
+    }
+  }
+  if (payload.repository && payload.repository.status !== "ready") {
+    warnings.push(`项目仓库状态为 ${payload.repository.status || "unknown"}，服务端已接收但建议先处理仓库提醒。`);
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    message: errors.length ? `项目仓库包校验失败：${errors.join("；")}。` : "项目仓库包校验通过。"
+  };
+}
+
+function createPackageDigest(payload) {
+  const copy = clone(payload || {});
+  delete copy.packageDigest;
+  return sha256StableJson(copy);
+}
+
+function createReceipt(payload, validation) {
+  const repositoryDigest = sha256StableJson({
+    kind: payload.kind,
+    version: payload.version,
+    repository: payload.repository,
+    projectSchema: payload.projectSchema,
+    summary: payload.summary
+  });
+  const acceptedAt = new Date().toISOString();
+  return {
+    receiptKind: "mr-calligraphy-project-repository-receipt-v1",
+    remoteVersion: "mr-calligraphy-project-repository-mock-v1",
+    packageId: `mock-project-repository-${repositoryDigest.slice(0, 12)}`,
+    sourcePackageId: String(payload.packageId || ""),
+    packageDigest: payload.packageDigest,
+    repositoryDigest,
+    acceptedAt,
+    sceneCount: Number(payload.summary?.sceneCount || 0),
+    modelCount: Number(payload.summary?.importedModels || 0),
+    warningCount: validation.warnings.length,
+    warnings: validation.warnings,
+    receiptDigest: sha256StableJson({
+      sourcePackageId: payload.packageId,
+      repositoryDigest,
+      acceptedAt
+    })
+  };
+}
+
+function sha256StableJson(value) {
+  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+async function runCli() {
+  const mock = await startProjectRepositoryMockServer({
+    host: process.env.PROJECT_REPOSITORY_MOCK_HOST || "127.0.0.1",
+    port: process.env.PROJECT_REPOSITORY_MOCK_PORT || 0,
+    token: process.env.PROJECT_REPOSITORY_MOCK_TOKEN || ""
+  });
+  console.log(`项目仓库 mock 服务已启动：${mock.endpoint}`);
+  if (process.env.PROJECT_REPOSITORY_MOCK_TOKEN) {
+    console.log("需要 Authorization: Bearer <PROJECT_REPOSITORY_MOCK_TOKEN>");
+  }
+  console.log("按 Ctrl+C 停止。");
+}
+
+if (require.main === module) {
+  runCli().catch((error) => {
+    console.error(error);
+    process.exitCode = 1;
+  });
+}
+
+module.exports = {
+  PACKAGE_KIND,
+  VERSION,
+  createContract,
+  createProjectRepositoryMockServer,
+  startProjectRepositoryMockServer,
+  validateProjectRepositoryPackage
+};

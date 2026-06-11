@@ -18,6 +18,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/remote-publish-mock-server.js", parser: "script" },
   { file: "scripts/plan-repository-mock-server.js", parser: "script" },
   { file: "scripts/history-repository-mock-server.js", parser: "script" },
+  { file: "scripts/project-repository-mock-server.js", parser: "script" },
   { file: "scripts/learning-state-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },
@@ -69,7 +70,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "projectRepositoryStatus", "projectRepositoryList", "projectRepositoryRefresh", "projectImportExportImpact", "projectAuditExport", "projectAuditList", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "mainRemotePublishReviewStatus", "mainRemotePublishRequestReview", "mainRemotePublishApproveReview", "mainRemotePublishRejectReview", "mainRemotePublishUnlock", "mainRemotePublishReceiptStatus", "mainRemotePublishReceiptList", "mainRemotePublishReceiptExport", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "projectRepositoryStatus", "projectRepositoryList", "projectRepositoryRefresh", "projectRepositoryRemoteStatus", "projectRepositoryEndpoint", "projectRepositoryToken", "projectRepositorySaveRemote", "projectRepositoryCheckRemote", "projectRepositoryPushRemote", "projectRepositoryReceiptList", "projectImportExportImpact", "projectAuditExport", "projectAuditList", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "mainRemotePublishReviewStatus", "mainRemotePublishRequestReview", "mainRemotePublishApproveReview", "mainRemotePublishRejectReview", "mainRemotePublishUnlock", "mainRemotePublishReceiptStatus", "mainRemotePublishReceiptList", "mainRemotePublishReceiptExport", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",

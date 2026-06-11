@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法主场景管理页</title>
-  <link rel="stylesheet" href="style.css?v=project-repository-20260612">
+  <link rel="stylesheet" href="style.css?v=project-repository-remote-20260612">
 </head>
 <body class="main-admin-page main-three-admin-page">
   <main class="app-shell">
@@ -169,6 +169,26 @@
             </div>
             <p id="projectRepositoryStatus" class="main-project-status">正在读取本机项目仓库状态。</p>
             <ul id="projectRepositoryList" class="main-project-repository-list" aria-live="polite"></ul>
+            <details class="project-repository-remote remote-publish-panel">
+              <summary>远端项目仓库 API</summary>
+              <p id="projectRepositoryRemoteStatus" class="remote-publish-status">尚未配置远端项目仓库 API。</p>
+              <div class="remote-publish-fields">
+                <label>
+                  <span>Endpoint</span>
+                  <input id="projectRepositoryEndpoint" type="url" inputmode="url" placeholder="https://example.com/api/project-repository">
+                </label>
+                <label>
+                  <span>Token</span>
+                  <input id="projectRepositoryToken" type="password" autocomplete="off" placeholder="可选 Bearer token">
+                </label>
+              </div>
+              <div class="remote-publish-actions">
+                <button data-feature-state="real-local" id="projectRepositorySaveRemote" type="button">保存远端</button>
+                <button data-feature-state="real-local" id="projectRepositoryCheckRemote" type="button">检查远端</button>
+                <button data-feature-state="real-local" id="projectRepositoryPushRemote" type="button">推送仓库包</button>
+              </div>
+              <ul id="projectRepositoryReceiptList" class="main-project-repository-list project-repository-receipt-list" aria-live="polite"></ul>
+            </details>
           </div>
           <div class="main-project-audit" aria-label="项目档案恢复审计">
             <div class="main-project-audit-head">
@@ -308,8 +328,8 @@
       }
     }
   </script>
-  <script src="project-schema-utils.js?v=project-repository-20260612"></script>
-  <script src="project-archive.js?v=project-repository-20260612"></script>
+  <script src="project-schema-utils.js?v=project-repository-remote-20260612"></script>
+  <script src="project-archive.js?v=project-repository-remote-20260612"></script>
   <script src="project-remote-publish.js?v=remote-publish-workflow-20260611"></script>
   <script type="module" src="main-admin-scene.js?v=remote-workflow-20260611"></script>
 </body>
