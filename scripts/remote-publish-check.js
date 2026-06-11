@@ -53,6 +53,8 @@ async function run() {
     mainPackage.package.manifest.kind === "mr-calligraphy-remote-publish-manifest-v1",
     "发布包应包含远端发布 manifest。"
   );
+  assert(mainPackage.validation.ok, "生成发布包时应通过本机预检。");
+  assert(adapter.validatePackage(mainPackage.package).ok, "远端发布包预检 API 应接受未篡改发布包。");
   assert(/^[a-f0-9]{64}$/.test(mainPackage.package.manifest.packageDigest), "发布包 manifest 应包含 SHA-256 摘要。");
   assert(mainPackage.package.manifest.objectSummary.objectCount === 1, "发布包 manifest 应统计布局对象数量。");
   const repeatedMainPackage = adapter.createPackage("mainScene", {
@@ -64,6 +66,14 @@ async function run() {
   assert(
     repeatedMainPackage.package.manifest.packageDigest === mainPackage.package.manifest.packageDigest,
     "同一发布内容重复生成的 packageDigest 应保持稳定。"
+  );
+  const tamperedPackage = JSON.parse(JSON.stringify(mainPackage.package));
+  tamperedPackage.releaseLayout.objects.table.visible = false;
+  const tamperedValidation = adapter.validatePackage(tamperedPackage);
+  assert(!tamperedValidation.ok, "远端发布包预检应拒绝摘要不匹配的篡改发布包。");
+  assert(
+    tamperedValidation.errors.some((item) => item.includes("摘要不匹配")),
+    "远端发布包预检应说明摘要不匹配。"
   );
 
   let pushedMainPackage = null;
@@ -103,6 +113,7 @@ async function run() {
   assert(pushedMainPackage.manifest.packageDigest === mainPackage.package.manifest.packageDigest, "推送 body 应携带同一 manifest 摘要。");
   assert(mainPush.packageId === "accepted-mainScene", "主场景推送应记录远端接收 packageId。");
   assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
+  assert(mainPush.validation.ok, "主场景推送结果应包含通过的预检结果。");
 
   const realisticRecord = createPublishedRecord("realistic-release-1", "写实样张版");
   const realisticPush = await adapter.push("realisticScene", {
@@ -121,7 +132,7 @@ async function run() {
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、发布包预检、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
 }
 
 function createPublishedRecord(releaseId, note) {

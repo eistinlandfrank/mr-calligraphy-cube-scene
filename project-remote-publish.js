@@ -206,10 +206,13 @@
       releaseLayout: clone(release.layout || record.layout || {})
     };
     payload.manifest = createPackageManifest(payload);
+    const validation = validatePackage(payload);
 
     return {
-      ok: true,
-      package: payload
+      ok: validation.ok,
+      package: payload,
+      validation,
+      message: validation.ok ? "远端发布包已生成并通过本机预检。" : `远端发布包预检失败：${validation.errors.join("；")}。`
     };
   }
 
@@ -253,6 +256,79 @@
       hasLighting: Boolean(layout.lighting && typeof layout.lighting === "object"),
       hasLayerOrder: Array.isArray(layout.layerOrder)
     };
+  }
+
+  function validatePackage(payload = {}) {
+    const errors = [];
+    const warnings = [];
+    if (!payload || typeof payload !== "object") {
+      return {
+        ok: false,
+        errors: ["发布包为空"],
+        warnings,
+        message: "远端发布包为空。"
+      };
+    }
+    if (payload.kind !== PACKAGE_KIND) {
+      errors.push("发布包 kind 不匹配");
+    }
+    if (Number(payload.version) !== VERSION) {
+      errors.push("发布包版本不匹配");
+    }
+    if (!payload.sceneId) {
+      errors.push("缺少 sceneId");
+    }
+    if (!payload.release?.id) {
+      errors.push("缺少 release.id");
+    }
+    if (!payload.record || typeof payload.record !== "object" || !payload.record.layout) {
+      errors.push("缺少本机发布记录 layout");
+    }
+    if (!payload.releaseLayout || typeof payload.releaseLayout !== "object") {
+      errors.push("缺少 releaseLayout");
+    }
+    if (!payload.manifest || typeof payload.manifest !== "object") {
+      errors.push("缺少 manifest");
+    }
+
+    if (payload.manifest && typeof payload.manifest === "object") {
+      const expectedManifest = createPackageManifest(payload);
+      compareManifestField(errors, payload.manifest, expectedManifest, "packageDigest", "发布包摘要不匹配");
+      compareManifestField(errors, payload.manifest, expectedManifest, "recordDigest", "发布记录摘要不匹配");
+      compareManifestField(errors, payload.manifest, expectedManifest, "releaseDigest", "release 摘要不匹配");
+      compareManifestField(errors, payload.manifest, expectedManifest, "layoutDigest", "布局摘要不匹配");
+      if (stableStringify(payload.manifest.objectSummary || {}) !== stableStringify(expectedManifest.objectSummary)) {
+        errors.push("布局对象摘要不匹配");
+      }
+      if (payload.manifest.sceneId !== expectedManifest.sceneId) {
+        errors.push("manifest sceneId 不匹配");
+      }
+      if (payload.manifest.releaseId !== expectedManifest.releaseId) {
+        errors.push("manifest releaseId 不匹配");
+      }
+    }
+
+    const objectSummary = payload.manifest?.objectSummary || {};
+    if (
+      Number(objectSummary.objectCount || 0) === 0 &&
+      Number(objectSummary.customObjectCount || 0) === 0 &&
+      Number(objectSummary.importedModelCount || 0) === 0
+    ) {
+      warnings.push("发布布局没有可统计对象，请确认是否为空场景。");
+    }
+
+    return {
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      message: errors.length ? `远端发布包预检失败：${errors.join("；")}。` : "远端发布包预检通过。"
+    };
+  }
+
+  function compareManifestField(errors, actual, expected, key, message) {
+    if (actual?.[key] !== expected?.[key]) {
+      errors.push(message);
+    }
   }
 
   function getCurrentRelease(record = {}) {
@@ -307,7 +383,11 @@
 
     const packaged = createPackage(normalizedId, options);
     if (!packaged.ok) {
-      return packaged;
+      return saveRemoteError(normalizedId, packaged.message || "远端发布包预检失败。");
+    }
+    const validation = validatePackage(packaged.package);
+    if (!validation.ok) {
+      return saveRemoteError(normalizedId, validation.message);
     }
 
     try {
@@ -341,6 +421,7 @@
         packageId: parsed.packageId || packaged.package.packageId,
         releaseId,
         packageDigest: packaged.package.manifest?.packageDigest || "",
+        validation,
         remoteVersion: parsed.remoteVersion,
         message: `${parsed.message} ${BOUNDARY}`
       };
@@ -548,6 +629,7 @@
     getConfig,
     createPackage,
     createPackageManifest,
+    validatePackage,
     check,
     push
   };

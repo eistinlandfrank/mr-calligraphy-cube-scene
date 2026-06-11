@@ -4536,6 +4536,54 @@
 
 - 中文 commit message：`新增远端发布包摘要`
 
+### 2026-06-11：新增远端发布包预检
+
+功能名：远端发布包 manifest 本机预检。
+
+涉及文件：
+
+- `project-remote-publish.js`
+- `scripts/remote-publish-check.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRProjectRemotePublish` 新增 `validatePackage()`，用于校验远端发布包和 manifest。
+- `createPackage()` 返回 `validation`，正常发布包会标记为预检通过。
+- `push()` 在 POST 前重新执行预检；预检失败不会请求远端 API，而是写入本机远端发布错误状态。
+- 预检覆盖 package kind、version、sceneId、releaseId、record layout、releaseLayout、manifest 存在性、四个 SHA-256 摘要、对象摘要、manifest sceneId 和 releaseId。
+- 远端发布检查脚本新增正常包预检通过、篡改包预检失败和推送结果携带 validation 的断言。
+
+真实化说明：
+
+- 数据来源：即将发送的发布包、manifest、release layout 和本机发布记录。
+- 写入状态：预检失败只写入 `mr-calligraphy-remote-publish-v1.scenes.*.lastError`；预检通过且远端接收后才更新最近推送状态。
+- 成功反馈：正常推送返回 `validation.ok === true`。
+- 失败反馈：摘要不匹配、缺少 release、缺少 layout 或 manifest 不一致时返回明确失败，不执行 POST。
+- 刷新后复现方式：预检失败写入的错误状态会保存在本机远端发布状态中。
+
+验收方式：
+
+- 手工验收：在控制台对 `MRProjectRemotePublish.createPackage()` 的结果篡改 `releaseLayout` 或 manifest，再调用 `validatePackage()`，应返回失败。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证正常包、篡改包和推送结果。
+
+当前验证结果：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-check.js`
+- `node scripts/remote-publish-check.js`
+
+已知限制：
+
+- 本机预检不能替代远端服务端校验；生产 API 仍应重新计算并拒绝摘要不匹配的发布包。
+- 该功能不包含账号权限、审核流、发布锁或远端资产签名。
+
+提交：
+
+- 中文 commit message：`新增远端发布包预检`
+
 ### 2026-06-11：新增学习报告原生 PDF 导出
 
 功能名：站内学习报告原生 PDF 文件导出。

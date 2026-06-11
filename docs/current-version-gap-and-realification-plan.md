@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版已完成，但仍缺图表/作品嵌入、云端长期报告和教师批注 | PDF 图表/截图增强、服务端接口草案 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
-| P2 | 后台远端发布生产化 | 远端发布 API adapter 和发布包 manifest/digest 已完成第一版，但仍缺审核流、发布锁和远端资产签名 | 远端发布审批状态、发布锁、远端资产签名 |
+| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest 和发布前预检已完成第一版，但仍缺审核流、发布锁和远端资产签名 | 远端发布审批状态、发布锁、远端资产签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
 ## 8. 每个功能完成时的记录格式
@@ -447,6 +447,38 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增远端发布包摘要`
+
+### 2026-06-11：新增远端发布包预检
+
+完成内容：
+
+- `MRProjectRemotePublish` 新增 `validatePackage(packagePayload)`，可校验远端发布包结构和 manifest 摘要。
+- `createPackage()` 会返回 `validation`，只有 manifest、release、record、layout 和摘要一致时才算通过。
+- `push()` 在 POST 前重新执行本机预检；预检失败会写入远端发布错误状态，不会把坏包发给远端 API。
+- 预检会识别 `packageDigest`、`recordDigest`、`releaseDigest`、`layoutDigest`、对象摘要、sceneId 和 releaseId 不匹配。
+- `scripts/remote-publish-check.js` 新增篡改发布包的失败断言，并验证正常推送返回通过的 validation。
+
+真实化说明：
+
+- 数据来源：即将发送的远端发布包、manifest 和当前本机发布记录。
+- 写入状态：预检失败只写入 `mr-calligraphy-remote-publish-v1.scenes.*.lastError`；预检通过且远端接收后才写入最近推送状态。
+- 成功反馈：正常包会返回 `validation.ok === true` 并继续推送。
+- 失败反馈：摘要不匹配、缺少 release、缺少 layout 或 manifest 不一致时返回明确错误，不执行 POST。
+- 刷新后复现方式：预检失败写入的错误状态保存在远端发布状态中，刷新后台后仍可看到失败提示。
+
+验收：
+
+- 手工验收：构造或拦截发布包并篡改 manifest 后，调用 `validatePackage()` 应返回失败；正常后台推送仍应先通过预检再 POST。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证正常包预检通过、篡改包预检失败、推送结果包含 validation。
+
+已知限制：
+
+- 当前预检在浏览器本机执行，不替代远端服务端校验；生产 API 仍应重新校验 digest。
+- 预检不包含账号权限、审核流、发布锁或资产签名。
+
+提交：
+
+- 中文 commit message：`新增远端发布包预检`
 
 ### 2026-06-11：远端计划 API adapter
 
