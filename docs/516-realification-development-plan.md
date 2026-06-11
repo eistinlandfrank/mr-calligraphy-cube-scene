@@ -5809,11 +5809,6 @@
 - `node --check tests/e2e/real-flows.spec.js`
 - `node --check scripts/smoke-test.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- 本机 mock server 版本历史检查：连续 PUT 两个仓库包后，`GET ?packageId=` 可取回旧版本。
-- `npm run test:e2e -- --grep "main admin publishes"`
-- `npm run test:e2e`
-- `git diff --check`
-- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 - `npm run test:e2e -- --grep "main admin publishes"`
 - `npm run test:e2e`
 
@@ -5997,6 +5992,11 @@
 - `node --check scripts/project-repository-mock-server.js`
 - `node --check tests/e2e/real-flows.spec.js`
 - `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- 本机 mock server 版本历史检查：连续 PUT 两个仓库包后，`GET ?packageId=` 可取回旧版本。
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+- `git diff --check`
 
 提交：
 
