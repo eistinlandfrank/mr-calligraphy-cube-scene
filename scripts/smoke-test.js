@@ -65,7 +65,7 @@ const PAGE_CHECKS = [
   {
     path: "/realistic-demo.html",
     label: "写实样张页",
-    markers: ["MR 书法写实 3D 样张", "realisticCanvas", "realistic-scene.js"]
+    markers: ["MR 书法写实 3D 样张", "realisticCanvas", "resetCamera", "toggleMotion", "realistic-scene.js"]
   },
   {
     path: "/realistic-admin.html",

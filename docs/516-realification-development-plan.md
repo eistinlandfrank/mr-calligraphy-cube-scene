@@ -1595,7 +1595,7 @@
 - 四个入口 HTML 静态按钮从粗粒度 `real` 迁移为更明确的状态。
 - 前台下载图片、下载报告、导出档案、导出所选、生成视频和导出报告等能力标记为 `real-export`。
 - 主后台“发布到前台”标记为 `real-published-local`，明确这是本机发布快照，不是线上部署。
-- 写实样张等纯展示入口仍标记为 `demo-content`；前台步骤导航后续已升级为 `real-local`，并支持 URL 路由复现。
+- 写实样张页的相机重置和暂停旋转已升级为 `real-local`；前台步骤导航后续已升级为 `real-local`，并支持 URL 路由复现。
 - 前台动态生成的学习动作、热点、任务、历史、计划按钮，以及主后台动态图层/快照按钮同步使用细分状态。
 - MutationObserver 对未显式标注的动态控件不再默认补成 `real`，而是标记为 `disabled` 并留下缺失状态，避免新增控件伪装成功。
 - 样式增加本机真实、文件导出、本机发布、演示内容和禁用态的轻量区分。
@@ -1606,7 +1606,7 @@
 - 运行 `node scripts/control-inventory.js --check`，四个入口页面应显示 missing 0、invalid 0，并能看到 `real-local`、`real-export`、`real-published-local` 和 `demo-content` 统计。
 - 打开前台，学习动作按钮的小标签应显示“本机真实”“文件导出”或“演示内容”，而不是全部显示“真实可用”。
 - 打开主后台，项目导出应归类为文件导出，“发布到前台”应归类为本机发布。
-- 打开写实样张页，重置视角和暂停旋转应归类为演示内容。
+- 打开写实样张页，重置视角和暂停旋转应归类为本机真实控件。
 
 已知限制：
 
@@ -3906,3 +3906,41 @@
 - 这次只是静态版的本机风险提示和确认状态，不是身份认证系统。
 - 页面仍然没有账号登录、角色权限、远端审计、发布审批和操作锁。
 - 如果同一台机器上有人能打开后台页面，仍然可以修改本机浏览器状态。
+
+### 2026-06-11：真实化写实样张控件
+
+功能名：写实样张页相机重置和旋转控制从演示内容改为本机真实控件。
+
+涉及文件：
+
+- `realistic-demo.html`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `realistic-demo.html` 的“重置视角”和“暂停旋转”从 `demo-content` 改为 `real-local`。
+- 这两个按钮原本已经由 `realistic-scene.js` 绑定真实相机和 OrbitControls 状态，本次修正为准确状态标注。
+- `scripts/smoke-test.js` 写实样张页标记新增 `resetCamera` 和 `toggleMotion`，避免控件被误删。
+- 控件清单现在显示 `realistic-demo.html` 为 3 个 `real-local`、0 个 `demo-content`。
+
+验收方式：
+
+- 打开 `http://localhost:41496/realistic-demo.html`。
+- 点击“暂停旋转”，自动旋转应停止，按钮文案应变为“开始旋转”。
+- 再次点击应恢复自动旋转，按钮文案回到“暂停旋转”。
+- 拖动视角后点击“重置视角”，相机应回到默认角度。
+
+当前验证结果：
+
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 这次修正的是控件状态标注和入口验收，不新增持久化视角保存。
+- 写实样张本身仍是本机演示页，不是云端发布页或公开资产库。
