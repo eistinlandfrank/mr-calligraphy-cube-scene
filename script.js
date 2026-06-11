@@ -3830,7 +3830,9 @@ function renderTaskPanel() {
     ["练习字", `${task.glyph || stats.glyph}字`],
     ["碑帖", task.copybook || stats.copybook],
     ["重点", task.focus || stats.taskFocus],
-    ["状态", progress.statusLabel || "待开始"]
+    ["状态", progress.statusLabel || "待开始"],
+    ["依赖", progress.dependencyStatus?.label || "无前置"],
+    ["完成条件", progress.ruleSummary || "阶段 / 练习 / 作品 / 报告"]
   ].forEach(([label, value]) => {
     const chip = document.createElement("span");
     chip.textContent = `${label}：${value}`;
@@ -3855,6 +3857,11 @@ function renderTaskPanel() {
     button.dataset.taskId = item.id;
     button.dataset.featureState = "real-local";
     button.classList.toggle("is-active", Boolean(item.active));
+    button.classList.toggle("is-locked", Boolean(item.locked));
+    button.setAttribute("aria-disabled", item.locked ? "true" : "false");
+    button.title = item.locked
+      ? item.dependencyStatus?.reason || "请先完成前置任务。"
+      : item.description || item.taskTitle;
 
     const title = document.createElement("strong");
     title.textContent = item.taskTitle;
@@ -3863,7 +3870,9 @@ function renderTaskPanel() {
     const focus = document.createElement("small");
     focus.textContent = item.focus;
     const status = document.createElement("em");
-    status.textContent = `${item.progress?.statusLabel || "待开始"} · ${item.progress?.percent || 0}%`;
+    status.textContent = item.locked
+      ? `${item.progress?.statusLabel || "未解锁"} · ${item.dependencyStatus?.label || "前置"}`
+      : `${item.progress?.statusLabel || "待开始"} · ${item.progress?.percent || 0}%`;
 
     button.append(title, detail, focus, status);
     els.taskList.appendChild(button);
@@ -3892,7 +3901,16 @@ function renderTaskProgress(progress = {}) {
   rail.appendChild(fill);
 
   const detail = document.createElement("p");
-  detail.textContent = `${progress.stageCount || 0} 条阶段记录 / ${progress.sessionCount || 0} 次练习 / ${progress.artworkCount || 0} 幅作品 / ${progress.reportCount || 0} 份报告`;
+  detail.textContent = `${progress.stageCount || 0} 条阶段记录 / ${progress.sessionCount || 0} 次练习 / ${progress.artworkCount || 0} 幅作品 / ${progress.reportCount || 0} 份报告 / 均分 ${progress.averageScore || 0}`;
+
+  const rule = document.createElement("p");
+  rule.className = "task-progress-rule";
+  rule.textContent = `完成条件：${progress.ruleSummary || "阶段 / 练习 / 作品 / 报告"}`;
+
+  const dependency = document.createElement("p");
+  dependency.className = "task-dependency-note";
+  dependency.hidden = !progress.dependencyStatus?.dependencies?.length;
+  dependency.textContent = progress.dependencyStatus?.reason || "";
 
   const milestones = document.createElement("div");
   milestones.className = "task-milestones";
@@ -3903,7 +3921,7 @@ function renderTaskProgress(progress = {}) {
     milestones.appendChild(badge);
   });
 
-  els.taskProgress.append(head, rail, detail, milestones);
+  els.taskProgress.append(head, rail, detail, rule, dependency, milestones);
 }
 
 function renderLecturePanel(sceneIndex = currentIndex) {

@@ -68,6 +68,13 @@
       level: "基础",
       focus: "永字八法的八个基本笔势",
       description: "用“永”字串联点、横、竖、钩、撇、捺等基本笔法，适合建立单字练习基准。",
+      dependsOn: [],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1
+      },
       strokePlan: ["观察中宫", "慢写八法", "回放检查", "保存作品"]
     },
     {
@@ -79,6 +86,13 @@
       level: "基础",
       focus: "左右结构和横画间距",
       description: "练习单人旁和右部横画的比例，重点观察左右重心与横画长短。",
+      dependsOn: ["single-yong-basic"],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1
+      },
       strokePlan: ["拆左右比例", "练单人旁", "控制横距", "保存对比"]
     },
     {
@@ -90,6 +104,14 @@
       level: "进阶",
       focus: "左右呼应和口部收束",
       description: "把“禾”和“口”的空间关系写稳定，避免左重右轻或口部松散。",
+      dependsOn: ["single-ren-structure"],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1,
+        minAverageScore: 75
+      },
       strokePlan: ["确定左右宽度", "练撇捺开合", "收紧口部", "评分复盘"]
     },
     {
@@ -101,6 +123,13 @@
       level: "基础",
       focus: "双字间距和行气",
       description: "从单字过渡到双字组合，先练“和”的稳定，再看“敬”的纵向节奏。",
+      dependsOn: [],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1
+      },
       strokePlan: ["单字复写", "双字间距", "行气检查", "作品保存"]
     },
     {
@@ -112,6 +141,13 @@
       level: "进阶",
       focus: "左右结构与上下呼应",
       description: "练习礼字旁和心字底相关结构，让两字在大小与重心上形成一致节奏。",
+      dependsOn: ["phrase-he-jing"],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1
+      },
       strokePlan: ["拆偏旁", "定中轴", "连写两字", "查看趋势"]
     },
     {
@@ -123,6 +159,14 @@
       level: "挑战",
       focus: "行书牵丝和双字姿态",
       description: "观察行书中牵丝、收放和字势变化，练习双字组合的轻重节奏。",
+      dependsOn: ["phrase-li-zhi"],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1,
+        minAverageScore: 78
+      },
       strokePlan: ["看字势", "练牵丝", "连写双字", "导出报告"]
     },
     {
@@ -134,6 +178,13 @@
       level: "基础",
       focus: "单字作品完整度",
       description: "以“雅”为主题完成一幅单字作品，关注主笔、留白和落款空间。",
+      dependsOn: [],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1
+      },
       strokePlan: ["确定章法", "完成创作", "保存作品", "制定计划"]
     },
     {
@@ -145,6 +196,13 @@
       level: "进阶",
       focus: "行书节奏与留白",
       description: "用行书语感完成“静”字创作，强调线条节奏和画面安定感。",
+      dependsOn: ["creation-ya"],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1
+      },
       strokePlan: ["观察节奏", "控制留白", "完成作品", "视频回放"]
     },
     {
@@ -156,6 +214,14 @@
       level: "挑战",
       focus: "少笔画字的姿态控制",
       description: "用较少笔画建立完整作品气息，重点控制点画之间的呼应和重心。",
+      dependsOn: ["creation-jing"],
+      completionRules: {
+        requiredStages: ["strokeBreakdown", "creation", "review"],
+        minPractices: 1,
+        minArtworks: 1,
+        minReports: 1,
+        minAverageScore: 78
+      },
       strokePlan: ["定点位", "练呼应", "保存作品", "报告复盘"]
     }
   ];
@@ -845,6 +911,98 @@
     return getTaskById(state.selectedTaskId) || findTaskForState(state.activeMode, state.selectedGlyph, state.selectedCopybook);
   }
 
+  function getTaskCompletionRules(task) {
+    const source = task?.completionRules || {};
+    const requiredStages = Array.isArray(source.requiredStages)
+      ? source.requiredStages.filter((stage) => LEARNING_STAGE_CONFIG[stage])
+      : ["strokeBreakdown", "creation", "review"];
+    return {
+      requiredStages,
+      minPractices: normalizeInteger(source.minPractices, 1, 0, 99),
+      minArtworks: normalizeInteger(source.minArtworks, 1, 0, 99),
+      minReports: normalizeInteger(source.minReports, 1, 0, 99),
+      minAverageScore: normalizeInteger(source.minAverageScore, 0, 0, 100)
+    };
+  }
+
+  function getTaskRuleSummary(rules) {
+    const parts = [];
+    if (rules.requiredStages.length) {
+      parts.push(`阶段${rules.requiredStages.length}项`);
+    }
+    if (rules.minPractices > 0) {
+      parts.push(`练习${rules.minPractices}次`);
+    }
+    if (rules.minArtworks > 0) {
+      parts.push(`作品${rules.minArtworks}幅`);
+    }
+    if (rules.minReports > 0) {
+      parts.push(`报告${rules.minReports}份`);
+    }
+    if (rules.minAverageScore > 0) {
+      parts.push(`均分${rules.minAverageScore}+`);
+    }
+    return parts.length ? parts.join(" / ") : "无硬性条件";
+  }
+
+  function getTaskDependencyStatus(task, visited = new Set()) {
+    const dependsOn = Array.isArray(task?.dependsOn)
+      ? task.dependsOn.map((id) => String(id || "")).filter(Boolean)
+      : [];
+    if (!dependsOn.length) {
+      return {
+        locked: false,
+        label: "无前置",
+        reason: "该任务没有前置任务。",
+        dependencies: []
+      };
+    }
+
+    const dependencies = dependsOn.map((id) => {
+      const dependency = getTaskById(id);
+      if (!dependency) {
+        return {
+          id,
+          title: "未知任务",
+          done: false,
+          percent: 0,
+          statusLabel: "依赖缺失",
+          reason: "前置任务配置缺失。"
+        };
+      }
+      if (visited.has(dependency.id)) {
+        return {
+          id: dependency.id,
+          title: dependency.taskTitle,
+          done: false,
+          percent: 0,
+          statusLabel: "依赖循环",
+          reason: "前置任务配置存在循环依赖。"
+        };
+      }
+      const progress = getTaskProgress(dependency.id, { visited });
+      return {
+        id: dependency.id,
+        title: dependency.taskTitle,
+        done: Boolean(progress.complete),
+        percent: progress.percent,
+        statusLabel: progress.statusLabel,
+        reason: progress.complete
+          ? `已完成前置任务“${dependency.taskTitle}”。`
+          : `前置任务“${dependency.taskTitle}”尚未完成。`
+      };
+    });
+    const doneCount = dependencies.filter((item) => item.done).length;
+    const locked = doneCount < dependencies.length;
+    const pendingTitles = dependencies.filter((item) => !item.done).map((item) => item.title).join("、");
+    return {
+      locked,
+      label: locked ? `前置 ${doneCount}/${dependencies.length}` : "前置已完成",
+      reason: locked ? `请先完成前置任务：${pendingTitles}。` : "所有前置任务已完成。",
+      dependencies
+    };
+  }
+
   function getTaskLibrary(mode = state.activeMode) {
     const tasks = getTasksForMode(mode);
     const currentTask = getCurrentTask();
@@ -854,15 +1012,20 @@
         ...currentTask,
         progress: getTaskProgress(currentTask.id)
       }) : null,
-      tasks: clone(tasks.map((task) => ({
-        ...task,
-        active: task.id === currentTask?.id,
-        progress: getTaskProgress(task.id)
-      })))
+      tasks: clone(tasks.map((task) => {
+        const progress = getTaskProgress(task.id);
+        return {
+          ...task,
+          active: task.id === currentTask?.id,
+          progress,
+          locked: progress.locked,
+          dependencyStatus: progress.dependencyStatus
+        };
+      }))
     };
   }
 
-  function getTaskProgress(taskId = getCurrentTask()?.id) {
+  function getTaskProgress(taskId = getCurrentTask()?.id, options = {}) {
     const task = getTaskById(String(taskId || ""));
     if (!task) {
       return {
@@ -870,6 +1033,15 @@
         status: "unknown",
         statusLabel: "未知任务",
         percent: 0,
+        complete: false,
+        locked: false,
+        ruleSummary: "未知任务",
+        dependencyStatus: {
+          locked: false,
+          label: "未知任务",
+          reason: "未找到任务配置。",
+          dependencies: []
+        },
         sessionCount: 0,
         savedSessionCount: 0,
         artworkCount: 0,
@@ -886,11 +1058,13 @@
     const artworks = state.artworks.filter((artwork) => getArtworkTaskId(artwork) === task.id);
     const reports = state.reports.filter((report) => getReportTaskId(report) === task.id);
     const stageProgress = getStageProgress(task.id);
+    const rules = getTaskCompletionRules(task);
     const hasStage = (stage) => stageProgress.stages.some((item) => item.stage === stage && item.done);
     const scores = [
       ...practicedSessions.map((session) => session.score),
       ...artworks.map((artwork) => artwork.score)
     ].filter((score) => Number.isFinite(score) && score > 0);
+    const averageScore = scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0;
     const latestAt = [
       ...stageProgress.records.map((record) => record.completedAt || record.createdAt),
       ...sessions.map((session) => session.endedAt || session.snapshotAt || session.startedAt),
@@ -902,34 +1076,88 @@
       .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
 
     const milestones = [
-      { id: "strokeBreakdown", label: "笔画拆解", done: hasStage("strokeBreakdown") },
-      { id: "practice", label: "完成练习", done: practicedSessions.length > 0 },
-      { id: "creation", label: "进入创作", done: hasStage("creation") || artworks.length > 0 },
-      { id: "report", label: "导出报告", done: reports.length > 0 },
-      { id: "review", label: "复习巩固", done: hasStage("review") }
+      ...rules.requiredStages.map((stage) => ({
+        id: stage,
+        label: LEARNING_STAGE_CONFIG[stage].label,
+        done: hasStage(stage)
+      }))
     ];
+    if (rules.minPractices > 0) {
+      milestones.push({
+        id: "practice",
+        label: rules.minPractices > 1 ? `完成${rules.minPractices}次练习` : "完成练习",
+        done: practicedSessions.length >= rules.minPractices,
+        current: practicedSessions.length,
+        target: rules.minPractices
+      });
+    }
+    if (rules.minArtworks > 0) {
+      milestones.push({
+        id: "artwork",
+        label: rules.minArtworks > 1 ? `保存${rules.minArtworks}幅作品` : "保存作品",
+        done: artworks.length >= rules.minArtworks,
+        current: artworks.length,
+        target: rules.minArtworks
+      });
+    }
+    if (rules.minReports > 0) {
+      milestones.push({
+        id: "report",
+        label: rules.minReports > 1 ? `导出${rules.minReports}份报告` : "导出报告",
+        done: reports.length >= rules.minReports,
+        current: reports.length,
+        target: rules.minReports
+      });
+    }
+    if (rules.minAverageScore > 0) {
+      milestones.push({
+        id: "averageScore",
+        label: `均分达到${rules.minAverageScore}`,
+        done: averageScore >= rules.minAverageScore,
+        current: averageScore,
+        target: rules.minAverageScore
+      });
+    }
     const doneCount = milestones.filter((item) => item.done).length;
-    const status = reports.length > 0
-      ? "reported"
-      : hasStage("review")
-        ? "reviewed"
-      : artworks.length > 0 || savedSessions.length > 0
-        ? "artwork"
-        : hasStage("creation")
-          ? "creating"
-        : activeSessions.length > 0
-          ? "active"
-        : practicedSessions.length > 0
-          ? "practiced"
-          : hasStage("strokeBreakdown")
-            ? "breakdown"
-            : "todo";
+    const percent = milestones.length ? Math.round((doneCount / milestones.length) * 100) : 100;
+    const shouldCheckDependencies = options.includeDependencies !== false;
+    const nextVisited = options.visited instanceof Set ? new Set(options.visited) : new Set();
+    nextVisited.add(task.id);
+    const dependencyStatus = shouldCheckDependencies
+      ? getTaskDependencyStatus(task, nextVisited)
+      : { locked: false, label: "未检查前置", reason: "本次进度计算未检查前置任务。", dependencies: [] };
+    const locked = Boolean(dependencyStatus.locked);
+    const complete = !locked && percent === 100;
+    const status = locked
+      ? "locked"
+      : complete
+        ? "complete"
+        : reports.length > 0
+          ? "reported"
+          : hasStage("review")
+            ? "reviewed"
+        : artworks.length > 0 || savedSessions.length > 0
+          ? "artwork"
+          : hasStage("creation")
+            ? "creating"
+          : activeSessions.length > 0
+            ? "active"
+          : practicedSessions.length > 0
+            ? "practiced"
+            : hasStage("strokeBreakdown")
+              ? "breakdown"
+              : "todo";
 
     return {
       taskId: task.id,
       status,
       statusLabel: getTaskProgressLabel(status),
-      percent: Math.round((doneCount / milestones.length) * 100),
+      percent,
+      complete,
+      locked,
+      ruleSummary: getTaskRuleSummary(rules),
+      completionRules: clone(rules),
+      dependencyStatus: clone(dependencyStatus),
       milestones: clone(milestones),
       stageCount: stageProgress.records.length,
       latestStage: stageProgress.latestRecord,
@@ -939,8 +1167,33 @@
       activeSessionCount: activeSessions.length,
       artworkCount: artworks.length,
       reportCount: reports.length,
-      averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : 0,
+      averageScore,
       latestAt
+    };
+  }
+
+  function isTaskSelectable(task) {
+    return Boolean(task?.id) && !getTaskProgress(task.id).locked;
+  }
+
+  function getNextSelectableTask(tasks, currentIndex, predicate = () => true) {
+    if (!tasks.length) return null;
+    const start = Math.max(0, currentIndex + 1);
+    const orderedTasks = [
+      ...tasks.slice(start),
+      ...tasks.slice(0, start)
+    ];
+    return orderedTasks.find((task) => predicate(task) && isTaskSelectable(task)) || null;
+  }
+
+  function getTaskLockedResult(task) {
+    const progress = getTaskProgress(task?.id);
+    return {
+      ok: false,
+      locked: true,
+      task: task ? clone(task) : null,
+      progress,
+      message: progress.dependencyStatus?.reason || "请先完成前置任务和当前完成条件。"
     };
   }
 
@@ -948,6 +1201,8 @@
     const labels = {
       reported: "已报告",
       reviewed: "已复习",
+      complete: "已完成",
+      locked: "未解锁",
       artwork: "已保存",
       creating: "创作中",
       active: "练习中",
@@ -1358,7 +1613,16 @@
     const tasks = getTasksForMode(state.activeMode);
     const currentTask = getCurrentTask();
     const currentIndex = tasks.findIndex((task) => task.id === currentTask?.id);
-    const task = tasks[(currentIndex + 1 + tasks.length) % tasks.length] || currentTask;
+    const task = getNextSelectableTask(tasks, currentIndex) || null;
+    if (!task) {
+      return {
+        ok: false,
+        locked: true,
+        task: currentTask ? clone(currentTask) : null,
+        progress: getTaskProgress(currentTask?.id),
+        message: "后续任务尚未解锁，请先完成当前任务的阶段、练习、作品和报告条件。"
+      };
+    }
     applyTask(task);
     addEvent("task", task.taskTitle);
     saveState();
@@ -1373,13 +1637,18 @@
     const tasks = getTasksForMode(state.activeMode);
     const currentTask = getCurrentTask();
     const currentIndex = tasks.findIndex((task) => task.id === currentTask?.id);
-    const orderedTasks = [
-      ...tasks.slice(Math.max(0, currentIndex + 1)),
-      ...tasks.slice(0, Math.max(0, currentIndex + 1))
-    ];
-    const task = orderedTasks.find((item) => item.copybook !== state.selectedCopybook)
-      || tasks[(currentIndex + 1 + tasks.length) % tasks.length]
-      || currentTask;
+    const task = getNextSelectableTask(tasks, currentIndex, (item) => item.copybook !== state.selectedCopybook)
+      || getNextSelectableTask(tasks, currentIndex)
+      || null;
+    if (!task) {
+      return {
+        ok: false,
+        locked: true,
+        task: currentTask ? clone(currentTask) : null,
+        progress: getTaskProgress(currentTask?.id),
+        message: "可切换的碑帖任务尚未解锁，请先完成当前任务条件。"
+      };
+    }
     applyTask(task);
     addEvent("copybook", `切换碑帖：${task.copybook}`);
     saveState();
@@ -1394,6 +1663,9 @@
     const task = getTaskById(String(taskId || ""));
     if (!task) {
       return { ok: false, message: "未找到这个学习任务。" };
+    }
+    if (!isTaskSelectable(task)) {
+      return getTaskLockedResult(task);
     }
     applyTask(task);
     addEvent("task", `选择任务：${task.taskTitle}`);

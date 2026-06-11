@@ -163,6 +163,14 @@ assert(
 const stateAfterPractice = window.MRAppState.getState();
 assert(stateAfterPractice.sessions.at(-1).scoreEvidence.reasons.length === 5, "练习会话应持久化五项评分理由。");
 
+const lockedLibraryBeforeStages = window.MRAppState.getTaskLibrary("single");
+const lockedRenBeforeStages = lockedLibraryBeforeStages.tasks.find((item) => item.id === "single-ren-structure");
+assert(lockedRenBeforeStages.locked, "前置任务未完成时，后续单字任务应显示锁定。");
+assert(lockedRenBeforeStages.dependencyStatus.reason.includes("前置任务"), "锁定任务应返回前置任务原因。");
+
+const deniedRenBeforeStages = window.MRAppState.selectTask("single-ren-structure");
+assert(!deniedRenBeforeStages.ok && deniedRenBeforeStages.locked, "前置任务未完成时不应允许选择后续任务。");
+
 const breakdownStage = window.MRAppState.recordLearningStage("strokeBreakdown", { target: 4 });
 assert(breakdownStage.ok, "进入笔画拆解应写入本机阶段记录。");
 assert(breakdownStage.stageRecord.stage === "strokeBreakdown", "笔画拆解阶段记录应保留阶段类型。");
@@ -183,6 +191,19 @@ assert(taskProgress.stageCount === 3, "任务进度应统计阶段记录数量�
 assert(taskProgress.milestones.some((item) => item.id === "strokeBreakdown" && item.done), "任务里程碑应包含笔画拆解。");
 assert(taskProgress.milestones.some((item) => item.id === "creation" && item.done), "任务里程碑应包含创作实践。");
 assert(taskProgress.milestones.some((item) => item.id === "review" && item.done), "任务里程碑应包含复习巩固。");
+assert(taskProgress.complete, "满足阶段、练习、作品和报告条件后，当前任务应标记完成。");
+
+const unlockedRenAfterStages = window.MRAppState.getTaskProgress("single-ren-structure");
+assert(!unlockedRenAfterStages.locked, "前置任务完成后，下一单字任务应解锁。");
+assert(unlockedRenAfterStages.dependencyStatus.dependencies[0].done, "解锁任务应标记前置任务已完成。");
+
+const deniedHeAfterStages = window.MRAppState.selectTask("single-he-balance");
+assert(!deniedHeAfterStages.ok && deniedHeAfterStages.locked, "中间任务未完成时，挑战任务仍应锁定。");
+
+const selectedRenAfterStages = window.MRAppState.selectTask("single-ren-structure");
+assert(selectedRenAfterStages.ok, "已解锁任务应允许选择。");
+const selectedBackToYong = window.MRAppState.selectTask("single-yong-basic");
+assert(selectedBackToYong.ok, "无前置的基础任务应可重新选择。");
 
 const statsWithStages = window.MRAppState.getStats();
 assert(statsWithStages.stageRecordCount === 3, "学习统计应返回阶段记录数量。");
@@ -242,7 +263,7 @@ assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化�
 assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录和学习计划提醒复盘已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则和学习计划提醒复盘已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

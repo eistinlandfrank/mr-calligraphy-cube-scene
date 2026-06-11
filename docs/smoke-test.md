@@ -7,7 +7,7 @@
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态，并验证 localStorage JSON 导入预览会显示字段级差异、字段恢复影响提示、字段 JSON 片段且支持深层字段选择性恢复；同时验证 IndexedDB 模型仓库会显示单模型新增/修改差异、当前/档案元数据片段、完整模型 JSON 安全预览、命名冲突提示，并支持只恢复勾选模型、冲突自动改名、替换本机同名模型和自定义档案模型名称。
 - 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
 - 项目 Schema 检查：模拟主后台和写实后台发布版本列表及导入模型，确认 `projectSchema` 会统计发布版本、发布说明、回滚动作和资产哈希。
-- 学习状态检查：模拟同字两幅作品，确认 `MRAppState.getArtworkComparison()` 会生成前后作品、评分差、笔画差、采样差、截图和维度差，并验证作品集搜索、标签筛选、标签编辑、localStorage 持久化、作品分享页 HTML、报告对比离线 HTML、评分证据、学习阶段记录、学习计划提醒、顺延和复盘状态生成。
+- 学习状态检查：模拟同字两幅作品，确认 `MRAppState.getArtworkComparison()` 会生成前后作品、评分差、笔画差、采样差、截图和维度差，并验证作品集搜索、标签筛选、标签编辑、localStorage 持久化、作品分享页 HTML、报告对比离线 HTML、评分证据、学习阶段记录、任务依赖与完成规则、学习计划提醒、顺延和复盘状态生成。
 - 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记，包括学习步骤路由、模型展示路由、AI 讲解本机语音状态、学习计划提醒摘要、报告对比、报告对比导出、多报告趋势、字段多选控件、字段分组模板、趋势悬浮提示入口、提示固定/复制入口、趋势缩放入口以及逐点明细入口。
 
 ## 直接运行
@@ -70,7 +70,7 @@ node scripts/project-schema-check.js
 node scripts/learning-state-check.js
 ```
 
-该命令会模拟同一个字的两幅作品和关联练习，验证学习状态层能生成真实作品对比数据，包括较早作品、最新作品、评分差、笔画差、采样差、截图和维度差；同时验证 `MRAppState.getArtworkGallery()` 能按标题搜索、按默认字标签筛选，验证 `MRAppState.updateArtworkTags()` 会把自定义标签写回 localStorage，验证 `MRAppState.getArtworkSharePackage()` 会生成包含作品图、评分、边界说明和能力维度的 HTML 分享页，并验证 `MRAppState.getReportComparison()` 会基于两份本机报告生成平均分、次数和字段级能力差值，验证 `MRAppState.getReportComparisonExport()` 会生成可离线打开并可打印保存 PDF 的报告对比 HTML，验证 `MRAppState.getReportSeries()` 会基于三份本机报告生成报告序列和字段级首末趋势，验证 `MRAppState.recordPracticeResult()` 会保存基础评分证据和五项维度理由，验证 `MRAppState.recordLearningStage()` 会生成并持久化笔画拆解、创作实践和复习巩固阶段记录，验证 `MRAppState.createPlan()`、`snoozePlanItem()` 和 `completePlanItemReview()` 会生成并持久化学习计划提醒、顺延和复盘状态。
+该命令会模拟同一个字的两幅作品和关联练习，验证学习状态层能生成真实作品对比数据，包括较早作品、最新作品、评分差、笔画差、采样差、截图和维度差；同时验证 `MRAppState.getArtworkGallery()` 能按标题搜索、按默认字标签筛选，验证 `MRAppState.updateArtworkTags()` 会把自定义标签写回 localStorage，验证 `MRAppState.getArtworkSharePackage()` 会生成包含作品图、评分、边界说明和能力维度的 HTML 分享页，并验证 `MRAppState.getReportComparison()` 会基于两份本机报告生成平均分、次数和字段级能力差值，验证 `MRAppState.getReportComparisonExport()` 会生成可离线打开并可打印保存 PDF 的报告对比 HTML，验证 `MRAppState.getReportSeries()` 会基于三份本机报告生成报告序列和字段级首末趋势，验证 `MRAppState.recordPracticeResult()` 会保存基础评分证据和五项维度理由，验证 `MRAppState.recordLearningStage()` 会生成并持久化笔画拆解、创作实践和复习巩固阶段记录，验证任务依赖会在前置未完成时锁定后续任务、完成后解锁下一任务且继续锁定挑战任务，验证 `MRAppState.createPlan()`、`snoozePlanItem()` 和 `completePlanItemReview()` 会生成并持久化学习计划提醒、顺延和复盘状态。
 
 ## 浏览器级验收
 
