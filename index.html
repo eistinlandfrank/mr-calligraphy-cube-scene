@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法 360° 全景交互演示</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=report-verification-20260612">
+  <link rel="stylesheet" href="style.css?v=report-repository-20260612">
 </head>
 <body>
   <main class="app-shell">
@@ -224,6 +224,26 @@
               <button data-feature-state="real-local" id="reportTeacherReviewClear" type="button">清除批注</button>
             </div>
           </div>
+          <div id="reportRepositorySummary" class="report-repository-summary" data-report-repository-summary="reportRepositorySummary">报告仓库尚未检查</div>
+          <details class="report-repository-remote">
+            <summary>远端报告 API</summary>
+            <div class="report-repository-fields">
+              <label>
+                <span>Endpoint</span>
+                <input id="reportRepositoryEndpointInput" type="url" inputmode="url" placeholder="https://example.com/api/report-repository">
+              </label>
+              <label>
+                <span>Token</span>
+                <input id="reportRepositoryTokenInput" type="password" autocomplete="off" placeholder="可选 Bearer token">
+              </label>
+            </div>
+            <div class="report-repository-actions">
+              <button data-feature-state="real-local" id="reportRepositorySaveRemoteButton" type="button">保存远端</button>
+              <button data-feature-state="real-local" id="reportRepositoryRemoteButton" type="button">检查远端</button>
+              <button data-feature-state="real-local" id="reportRepositoryPushButton" type="button">推送报告</button>
+              <button data-feature-state="real-local" id="reportRepositoryPullButton" type="button">拉取报告</button>
+            </div>
+          </details>
           <div class="report-actions">
             <button data-feature-state="real-local" id="reportDetailCopyLink" type="button">复制报告链接</button>
             <button data-feature-state="real-export" id="reportDetailDownload" type="button">下载 HTML</button>
@@ -553,8 +573,8 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
-  <script src="app-state.js?v=report-verification-20260612"></script>
+  <script src="app-state.js?v=report-repository-20260612"></script>
   <script src="practice-canvas.js?v=practice-canvas-20260611"></script>
-  <script src="script.js?v=report-verification-20260612"></script>
+  <script src="script.js?v=report-repository-20260612"></script>
 </body>
 </html>

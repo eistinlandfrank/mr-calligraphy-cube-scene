@@ -19,6 +19,8 @@
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包并按 nextPageUrl 追取分页，但仍不包含账号权限、教师批注审计或公开作品墙。";
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
+  const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
+  const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，但仍不包含账号化教师端、服务端签章、不可篡改审计或云端 PDF 渲染。";
   const REPORT_VERIFICATION_KIND = "mr-calligraphy-report-verification-v1";
   const REPORT_VERIFICATION_ALGORITHM = "sha256-stable-json";
   const REPORT_VERIFICATION_BOUNDARY = "本机报告验真摘要由当前浏览器用报告核心字段、关联练习和最近作品截图摘要计算 SHA-256；它不是服务端证书、教师签名或不可篡改审计。";
@@ -351,6 +353,7 @@
       planReminderService: normalizePlanReminderService(source?.planReminderService),
       planRepository: normalizePlanRepository(source?.planRepository),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
+      reportRepository: normalizeReportRepository(source?.reportRepository),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
@@ -738,6 +741,30 @@
       lastRemoteRecordCount: normalizeInteger(source.lastRemoteRecordCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
+      lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+    };
+  }
+
+  function normalizeReportRepository(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
+      ? source.lastRemoteDirection
+      : "";
+    return {
+      mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
+      remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
+      remoteToken: typeof source.remoteToken === "string" ? source.remoteToken.trim() : "",
+      lastExportedAt: normalizePlanDate(source.lastExportedAt),
+      lastImportedAt: normalizePlanDate(source.lastImportedAt),
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
+      lastRemoteDirection,
+      lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).slice(0, 180) : "",
+      lastExportedReportCount: normalizeInteger(source.lastExportedReportCount, 0, 0, 99999),
+      lastImportedReportCount: normalizeInteger(source.lastImportedReportCount, 0, 0, 99999),
+      lastRemoteReportCount: normalizeInteger(source.lastRemoteReportCount, 0, 0, 99999),
+      lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
@@ -4275,6 +4302,540 @@
       digest: verification.digest,
       message: "已根据本机报告核心字段重新计算验真摘要。"
     };
+  }
+
+  function getReportRepositoryStatus() {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const reports = state.reports.map(normalizeReport).filter(Boolean);
+    const reportCount = reports.length;
+    const remoteConfigured = Boolean(repository.remoteEndpoint);
+    let tone = "idle";
+    let message = remoteConfigured
+      ? `远端报告 API 已配置：${repository.remoteEndpoint}。`
+      : reportCount
+        ? `本机报告仓库有 ${reportCount} 份报告，可推送到远端 API adapter。`
+        : "还没有可同步的学习报告。";
+
+    if (repository.lastRemoteSyncAt) {
+      const directionLabel = {
+        check: "检查",
+        push: "推送",
+        pull: "拉取"
+      }[repository.lastRemoteDirection] || "同步";
+      tone = "ready";
+      message = repository.lastRemoteStatus
+        || `最近${directionLabel}远端报告仓库：${formatPlanDate(repository.lastRemoteSyncAt)}，${repository.lastRemoteReportCount} 份报告。`;
+    } else if (repository.lastImportedAt) {
+      tone = "ready";
+      message = `最近导入 ${repository.lastImportedReportCount} 份报告：${formatPlanDate(repository.lastImportedAt)}。`;
+    } else if (repository.lastExportedAt) {
+      tone = "ready";
+      message = `最近导出 ${repository.lastExportedReportCount} 份报告：${formatPlanDate(repository.lastExportedAt)}。`;
+    }
+    if (repository.lastSkippedConflictCount > 0) {
+      tone = "warning";
+      message = `远端报告有 ${repository.lastSkippedConflictCount} 份同 ID 差异已跳过，未覆盖本机报告。`;
+    }
+    if (repository.lastError) {
+      tone = "warning";
+      message = repository.lastError;
+    }
+
+    return {
+      ok: true,
+      kind: REPORT_REPOSITORY_KIND,
+      mode: repository.mode,
+      remoteConfigured,
+      remoteEndpoint: remoteConfigured ? repository.remoteEndpoint : "",
+      hasRemoteToken: Boolean(repository.remoteToken),
+      fetchSupported: typeof fetch === "function",
+      reportCount,
+      teacherReviewedReportCount: reports.filter((report) => report.teacherReview?.note).length,
+      verifiedReportCount: reports.filter((report) => Boolean(createReportVerification(report)?.digest)).length,
+      tone,
+      message,
+      boundary: REPORT_REPOSITORY_BOUNDARY,
+      lastExportedAt: repository.lastExportedAt,
+      lastImportedAt: repository.lastImportedAt,
+      lastCheckedAt: repository.lastCheckedAt,
+      lastRemoteSyncAt: repository.lastRemoteSyncAt,
+      lastRemoteDirection: repository.lastRemoteDirection,
+      lastRemoteStatus: repository.lastRemoteStatus,
+      lastExportedReportCount: repository.lastExportedReportCount,
+      lastImportedReportCount: repository.lastImportedReportCount,
+      lastRemoteReportCount: repository.lastRemoteReportCount,
+      lastSkippedConflictCount: repository.lastSkippedConflictCount,
+      lastPackageId: repository.lastPackageId,
+      lastError: repository.lastError
+    };
+  }
+
+  function getReportRepositoryRemoteConfig() {
+    const repository = normalizeReportRepository(state.reportRepository);
+    return {
+      ok: true,
+      mode: repository.mode,
+      remoteEndpoint: repository.remoteEndpoint,
+      remoteToken: repository.remoteToken,
+      hasRemoteToken: Boolean(repository.remoteToken),
+      boundary: REPORT_REPOSITORY_BOUNDARY
+    };
+  }
+
+  function getReportRepositoryPackage(options = {}) {
+    const selectedIds = Array.isArray(options.ids)
+      ? new Set(options.ids.map(String).filter(Boolean))
+      : null;
+    const reports = state.reports
+      .filter((report) => !selectedIds || selectedIds.has(report.id))
+      .map(normalizeReport)
+      .filter(Boolean);
+    if (!reports.length) {
+      return {
+        ok: false,
+        message: "还没有可生成同步包的学习报告。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const packageId = `report-repository-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const verifications = reports
+      .map(createReportVerification)
+      .filter(Boolean);
+    return {
+      ok: true,
+      filename: `mr-calligraphy-report-repository-${Date.now()}.json`,
+      package: {
+        kind: REPORT_REPOSITORY_KIND,
+        version: VERSION,
+        packageId,
+        exportedAt,
+        storageKey: STORAGE_KEY,
+        source: {
+          mode: getReportRepositoryStatus().mode,
+          boundary: REPORT_REPOSITORY_BOUNDARY
+        },
+        summary: getReportRepositorySummary(reports, verifications),
+        reports: clone(reports),
+        verifications: clone(verifications)
+      },
+      message: `已生成 ${reports.length} 份报告的本机报告仓库同步包。${REPORT_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function getReportRepositorySummary(reports = [], verifications = []) {
+    const reportCount = reports.length;
+    const averageScore = reportCount
+      ? Math.round(reports.reduce((sum, report) => sum + normalizeScore(report.averageScore, 0), 0) / reportCount)
+      : 0;
+    const latestReport = reports
+      .slice()
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0] || null;
+    return {
+      total: reportCount,
+      teacherReviewedReportCount: reports.filter((report) => report.teacherReview?.note).length,
+      verifiedReportCount: verifications.filter((verification) => /^[a-f0-9]{64}$/.test(verification.digest || "")).length,
+      averageScore,
+      latestReportId: latestReport?.id || null,
+      latestReportAt: latestReport?.createdAt || null
+    };
+  }
+
+  function parseReportRepositoryPackage(input) {
+    let source = input;
+    if (typeof input === "string") {
+      try {
+        source = JSON.parse(input);
+      } catch (error) {
+        return { ok: false, message: "报告仓库同步包 JSON 解析失败。" };
+      }
+    }
+    if (!source || typeof source !== "object") {
+      return { ok: false, message: "报告仓库同步包格式无效。" };
+    }
+    if (source.kind !== REPORT_REPOSITORY_KIND) {
+      return { ok: false, message: "这不是 MR 书法学习报告仓库同步包。" };
+    }
+    if (!Array.isArray(source.reports)) {
+      return { ok: false, message: "报告仓库同步包缺少 reports 数组。" };
+    }
+    return { ok: true, package: source };
+  }
+
+  function recordReportRepositoryError(message) {
+    state.reportRepository = normalizeReportRepository({
+      ...state.reportRepository,
+      lastCheckedAt: new Date().toISOString(),
+      lastError: message
+    });
+    saveState();
+  }
+
+  function importReportRepositoryPackage(input) {
+    const parsed = parseReportRepositoryPackage(input);
+    if (!parsed.ok) {
+      recordReportRepositoryError(parsed.message);
+      return parsed;
+    }
+    const incomingReports = parsed.package.reports.map(normalizeReport).filter(Boolean);
+    if (!incomingReports.length) {
+      const message = "报告仓库同步包里没有可导入的报告。";
+      recordReportRepositoryError(message);
+      return { ok: false, message };
+    }
+
+    const existingIndex = new Map(state.reports.map((report, index) => [report.id, index]));
+    let importedCount = 0;
+    let skippedConflictCount = 0;
+    incomingReports.forEach((report) => {
+      if (!existingIndex.has(report.id)) {
+        state.reports.push(report);
+        existingIndex.set(report.id, state.reports.length - 1);
+        importedCount += 1;
+        return;
+      }
+      const existing = normalizeReport(state.reports[existingIndex.get(report.id)]);
+      if (stablePlanStringify(existing) !== stablePlanStringify(report)) {
+        skippedConflictCount += 1;
+      }
+    });
+
+    const now = new Date().toISOString();
+    state.reportRepository = normalizeReportRepository({
+      ...state.reportRepository,
+      mode: "local-json",
+      lastImportedAt: now,
+      lastCheckedAt: now,
+      lastImportedReportCount: importedCount,
+      lastSkippedConflictCount: skippedConflictCount,
+      lastPackageId: parsed.package.packageId || null,
+      lastError: skippedConflictCount
+        ? `有 ${skippedConflictCount} 份同 ID 差异报告已跳过，未覆盖本机报告。`
+        : ""
+    });
+    addEvent("report-repository-import", `导入报告仓库同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}`);
+    saveState();
+    return {
+      ok: true,
+      importedCount,
+      skippedConflictCount,
+      totalReportCount: state.reports.length,
+      status: getReportRepositoryStatus(),
+      message: skippedConflictCount
+        ? `已导入报告仓库同步包：新增 ${importedCount} 份，跳过 ${skippedConflictCount} 份同 ID 差异报告。${REPORT_REPOSITORY_BOUNDARY}`
+        : `已导入报告仓库同步包：新增 ${importedCount} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function configureReportRepositoryRemote(config = {}) {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
+    const tokenInput = config.remoteToken ?? config.token;
+    const remoteEndpoint = String(endpointInput || "").trim();
+    const remoteToken = tokenInput === undefined
+      ? repository.remoteToken
+      : String(tokenInput || "").trim();
+
+    if (!remoteEndpoint) {
+      state.reportRepository = normalizeReportRepository({
+        ...repository,
+        mode: "local-json",
+        remoteEndpoint: "",
+        remoteToken: "",
+        lastCheckedAt: new Date().toISOString(),
+        lastRemoteStatus: "",
+        lastError: ""
+      });
+      addEvent("report-repository-remote", "清除远端报告 API 配置");
+      saveState();
+      return {
+        ok: true,
+        status: getReportRepositoryStatus(),
+        message: "已清除远端报告 API 配置，当前回到本机报告仓库。"
+      };
+    }
+
+    const validation = validatePlanRepositoryEndpoint(remoteEndpoint);
+    if (!validation.ok) {
+      const message = validation.message.replace("远端计划 API", "远端报告 API");
+      recordReportRepositoryError(message);
+      return { ok: false, status: getReportRepositoryStatus(), message };
+    }
+
+    state.reportRepository = normalizeReportRepository({
+      ...repository,
+      mode: "remote-api",
+      remoteEndpoint: validation.endpoint,
+      remoteToken,
+      lastCheckedAt: new Date().toISOString(),
+      lastRemoteStatus: "远端报告 API 配置已保存，尚未检查服务可用性。",
+      lastError: ""
+    });
+    addEvent("report-repository-remote", `配置远端报告 API：${validation.endpoint}`);
+    saveState();
+    return {
+      ok: true,
+      status: getReportRepositoryStatus(),
+      message: "已保存远端报告 API 配置。请点击“检查远端”确认服务可用。"
+    };
+  }
+
+  function buildReportRepositoryRequest(repository, options = {}) {
+    return buildPlanRepositoryRequest(repository, options);
+  }
+
+  async function parseRemoteReportRepositoryResponse(response) {
+    if (!response || response.ok === false) {
+      const status = response?.status ? `HTTP ${response.status}` : "无响应";
+      return { ok: false, message: `远端报告 API 请求失败：${status}。` };
+    }
+
+    let payload = {};
+    try {
+      const text = typeof response.text === "function"
+        ? await response.text()
+        : JSON.stringify(typeof response.json === "function" ? await response.json() : {});
+      payload = text ? JSON.parse(text) : {};
+    } catch (error) {
+      return { ok: false, message: "远端报告 API 返回的不是可解析 JSON。" };
+    }
+
+    const candidate = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : payload.repository && typeof payload.repository === "object"
+        ? payload.repository
+        : payload;
+    const parsed = parseReportRepositoryPackage(candidate);
+    if (parsed.ok) {
+      return {
+        ok: true,
+        package: parsed.package,
+        message: payload.message || `远端报告仓库包含 ${parsed.package.reports.length} 份报告。`
+      };
+    }
+    if (payload.ok === true) {
+      return {
+        ok: true,
+        package: null,
+        message: payload.message || "远端报告 API 检查通过，但没有返回报告包。"
+      };
+    }
+    return {
+      ok: false,
+      message: payload.message || parsed.message || "远端报告 API 返回格式无效。"
+    };
+  }
+
+  function formatReportRepositoryNetworkError(action, error) {
+    const detail = String(error?.message || "").trim();
+    return detail
+      ? `远端报告 API ${action}失败：网络请求异常（${detail}）。`
+      : `远端报告 API ${action}失败：网络请求异常。`;
+  }
+
+  function checkRemoteReportRepository() {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const remoteConfigured = Boolean(repository.remoteEndpoint);
+    const fetchApi = getPlanRepositoryFetch();
+    const now = new Date().toISOString();
+    state.reportRepository = normalizeReportRepository({
+      ...repository,
+      mode: remoteConfigured ? "remote-api" : "local-json",
+      lastCheckedAt: now,
+      lastError: remoteConfigured ? "" : "尚未配置远端报告 repository；当前只能使用本机报告仓库。"
+    });
+    if (!remoteConfigured || !fetchApi) {
+      if (remoteConfigured && !fetchApi) {
+        state.reportRepository = normalizeReportRepository({
+          ...state.reportRepository,
+          lastError: "当前运行环境不支持 fetch，无法检查远端报告 API。"
+        });
+      }
+      saveState();
+      const status = getReportRepositoryStatus();
+      return { ok: false, status, message: `${status.message} ${REPORT_REPOSITORY_BOUNDARY}` };
+    }
+    return checkRemoteReportRepositoryAsync(repository, fetchApi);
+  }
+
+  async function checkRemoteReportRepositoryAsync(repository, fetchApi) {
+    try {
+      const response = await fetchApi(repository.remoteEndpoint, buildReportRepositoryRequest(repository));
+      const parsed = await parseRemoteReportRepositoryResponse(response);
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.reportRepository = normalizeReportRepository({
+          ...repository,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
+      }
+      const reportCount = parsed.package?.reports?.length || 0;
+      state.reportRepository = normalizeReportRepository({
+        ...repository,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "check",
+        lastRemoteReportCount: reportCount,
+        lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastRemoteStatus: parsed.message,
+        lastError: ""
+      });
+      addEvent("report-repository-remote-check", `检查远端报告 API：${reportCount} 份报告`);
+      saveState();
+      return {
+        ok: true,
+        status: getReportRepositoryStatus(),
+        package: parsed.package || null,
+        message: `${parsed.message} ${REPORT_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = formatReportRepositoryNetworkError("检查", error);
+      recordReportRepositoryError(message);
+      return { ok: false, status: getReportRepositoryStatus(), message };
+    }
+  }
+
+  function pushReportRepositoryToRemote(options = {}) {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const fetchApi = getPlanRepositoryFetch();
+    if (!repository.remoteEndpoint) {
+      return checkRemoteReportRepository();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法推送报告到远端 API。";
+      recordReportRepositoryError(message);
+      return { ok: false, status: getReportRepositoryStatus(), message };
+    }
+    const packageResult = getReportRepositoryPackage(options);
+    if (!packageResult.ok) {
+      return packageResult;
+    }
+    return pushReportRepositoryToRemoteAsync(repository, fetchApi, packageResult.package);
+  }
+
+  async function pushReportRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage) {
+    try {
+      const response = await fetchApi(
+        repository.remoteEndpoint,
+        buildReportRepositoryRequest(repository, {
+          method: "PUT",
+          body: repositoryPackage
+        })
+      );
+      const parsed = await parseRemoteReportRepositoryResponse(response);
+      const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
+      const reportCount = repositoryPackage.reports.length;
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.reportRepository = normalizeReportRepository({
+          ...repository,
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
+      }
+
+      state.reportRepository = normalizeReportRepository({
+        ...repository,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "push",
+        lastRemoteReportCount: reportCount,
+        lastExportedAt: now,
+        lastExportedReportCount: reportCount,
+        lastPackageId: acceptedPackageId,
+        lastSkippedConflictCount: 0,
+        lastRemoteStatus: `已推送 ${reportCount} 份报告到远端 API。`,
+        lastError: ""
+      });
+      addEvent("report-repository-remote-push", `推送报告到远端 API：${reportCount} 份报告`);
+      saveState();
+      return {
+        ok: true,
+        status: getReportRepositoryStatus(),
+        packageId: acceptedPackageId,
+        pushedReportCount: reportCount,
+        message: `已推送 ${reportCount} 份报告到远端 API。${REPORT_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = formatReportRepositoryNetworkError("推送", error);
+      recordReportRepositoryError(message);
+      return { ok: false, status: getReportRepositoryStatus(), message };
+    }
+  }
+
+  function pullReportRepositoryFromRemote() {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const fetchApi = getPlanRepositoryFetch();
+    if (!repository.remoteEndpoint) {
+      return checkRemoteReportRepository();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法从远端 API 拉取报告。";
+      recordReportRepositoryError(message);
+      return { ok: false, status: getReportRepositoryStatus(), message };
+    }
+    return pullReportRepositoryFromRemoteAsync(repository, fetchApi);
+  }
+
+  async function pullReportRepositoryFromRemoteAsync(repository, fetchApi) {
+    try {
+      const response = await fetchApi(repository.remoteEndpoint, buildReportRepositoryRequest(repository));
+      const parsed = await parseRemoteReportRepositoryResponse(response);
+      if (!parsed.ok) {
+        recordReportRepositoryError(parsed.message);
+        return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
+      }
+      if (!parsed.package) {
+        const message = "远端报告 API 没有返回可导入的报告包。";
+        recordReportRepositoryError(message);
+        return { ok: false, status: getReportRepositoryStatus(), message };
+      }
+
+      const imported = importReportRepositoryPackage(parsed.package);
+      const now = new Date().toISOString();
+      state.reportRepository = normalizeReportRepository({
+        ...state.reportRepository,
+        mode: "remote-api",
+        remoteEndpoint: repository.remoteEndpoint,
+        remoteToken: repository.remoteToken,
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "pull",
+        lastRemoteReportCount: parsed.package.reports.length,
+        lastImportedAt: now,
+        lastImportedReportCount: imported.importedCount || 0,
+        lastPackageId: parsed.package.packageId || repository.lastPackageId || null,
+        lastSkippedConflictCount: imported.skippedConflictCount || 0,
+        lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
+        lastError: imported.skippedConflictCount
+          ? `有 ${imported.skippedConflictCount} 份同 ID 差异报告已跳过，未覆盖本机报告。`
+          : ""
+      });
+      addEvent("report-repository-remote-pull", `从远端 API 拉取报告：${parsed.package.reports.length} 份报告`);
+      saveState();
+      return {
+        ok: true,
+        status: getReportRepositoryStatus(),
+        importedCount: imported.importedCount || 0,
+        skippedConflictCount: imported.skippedConflictCount || 0,
+        pulledReportCount: parsed.package.reports.length,
+        message: imported.skippedConflictCount
+          ? `已从远端 API 拉取报告：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告。${REPORT_REPOSITORY_BOUNDARY}`
+          : `已从远端 API 拉取报告：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = formatReportRepositoryNetworkError("拉取", error);
+      recordReportRepositoryError(message);
+      return { ok: false, status: getReportRepositoryStatus(), message };
+    }
   }
 
   function createReportHtml(report, verification = null) {
@@ -8766,6 +9327,9 @@
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,
+    getReportRepositoryStatus,
+    getReportRepositoryRemoteConfig,
+    getReportRepositoryPackage,
     getPlanExport,
     getReportPreview,
     getReportDetail,
@@ -8794,16 +9358,21 @@
     downloadHistoryRepository,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
+    configureReportRepositoryRemote,
     queuePlanRepositorySync,
     flushPlanRepositoryAutoSync,
     importPlanRepositoryPackage,
     importHistoryRepositoryPackage,
+    importReportRepositoryPackage,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
+    checkRemoteReportRepository,
     pushPlanRepositoryToRemote,
     pushHistoryRepositoryToRemote,
+    pushReportRepositoryToRemote,
     pullPlanRepositoryFromRemote,
     pullHistoryRepositoryFromRemote,
+    pullReportRepositoryFromRemote,
     resolvePlanRepositoryConflict,
     resolveHistoryRepositoryConflict,
     setMode,

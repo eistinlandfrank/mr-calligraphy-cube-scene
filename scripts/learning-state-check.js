@@ -77,6 +77,7 @@ global.localStorage = {
 const nativeFetch = typeof global.fetch === "function" ? global.fetch.bind(global) : null;
 const { startPlanRepositoryMockServer } = require("./plan-repository-mock-server.js");
 const { startHistoryRepositoryMockServer } = require("./history-repository-mock-server.js");
+const { startReportRepositoryMockServer } = require("./report-repository-mock-server.js");
 
 require("../app-state.js");
 
@@ -311,6 +312,22 @@ assert(reviewedPdf.features.teacherReview, "PDF 报告应声明包含教师批�
 assert(reviewedPdf.features.verification, "批注后的 PDF 报告应继续包含本机验真摘要。");
 assert(reviewedPdf.pdf.includes("TeacherReview: yes"), "PDF 内容应包含教师批注标记。");
 assert(reviewedPdf.pdf.includes(`ReportDigest: ${reviewedHtml.verification.digest}`), "批注后的 PDF 摘要应与 HTML 导出一致。");
+
+const reportRepositoryStatus = window.MRAppState.getReportRepositoryStatus();
+assert(reportRepositoryStatus.ok && reportRepositoryStatus.reportCount >= 3, "报告 repository 应统计本机报告数量。");
+assert(!reportRepositoryStatus.remoteConfigured, "未配置远端时不应伪造云端报告仓库。");
+assert(reportRepositoryStatus.boundary.includes("不包含账号化教师端"), "报告 repository 应说明远端 adapter 边界。");
+const reportRepositoryPackage = window.MRAppState.getReportRepositoryPackage();
+assert(reportRepositoryPackage.ok, "报告 repository 应能生成 JSON 同步包。");
+assert(reportRepositoryPackage.package.kind === "mr-calligraphy-report-repository-v1", "报告同步包应包含稳定 kind。");
+assert(reportRepositoryPackage.package.reports.length >= 3, "报告同步包应包含本机报告列表。");
+assert(reportRepositoryPackage.package.verifications.length === reportRepositoryPackage.package.reports.length, "报告同步包应为每份报告生成验真摘要。");
+assert(reportRepositoryPackage.package.summary.teacherReviewedReportCount === 1, "报告同步包应统计带教师批注报告数量。");
+assert(reportRepositoryPackage.package.summary.verifiedReportCount === reportRepositoryPackage.package.reports.length, "报告同步包应统计验真报告数量。");
+const reviewedReportPackage = reportRepositoryPackage.package.reports.find((item) => item.id === "report-2");
+assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "报告同步包应保留教师批注内容。");
+const reviewedReportVerificationPackage = reportRepositoryPackage.package.verifications.find((item) => item.reportId === "report-2");
+assert(reviewedReportVerificationPackage.digest === reviewedHtml.verification.digest, "报告同步包应保留批注后的验真摘要。");
 
 const persistedReviewedState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 const persistedReviewedReport = persistedReviewedState.reports.find((item) => item.id === "report-2");
@@ -776,10 +793,72 @@ async function runRemoteRepositoryChecks() {
   assert(persistedRemotePlan.items[0].title === "字段合并保留本机任务标题", "字段级合并后的本机任务标题应持久化到 localStorage。");
   assert(persistedRemotePlan.items[0].detail === "字段合并时采用的远端任务说明。", "字段级合并后的远端任务说明应持久化到 localStorage。");
 
+  await runReportRepositoryMockServerChecks(nativeFetch);
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告本机验真摘要、报告仓库远端 API adapter、报告仓库 mock 服务、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+}
+
+async function runReportRepositoryMockServerChecks(fetchApi) {
+  assert(fetchApi, "当前 Node 环境需要支持 fetch 以验证报告仓库 mock 服务。");
+  const packageResult = window.MRAppState.getReportRepositoryPackage();
+  assert(packageResult.ok, "报告 repository 应能生成 JSON 同步包。");
+  assert(packageResult.package.kind === "mr-calligraphy-report-repository-v1", "报告同步包应包含稳定 kind。");
+  assert(packageResult.package.reports.length >= 3, "报告同步包应包含报告记录。");
+  assert(packageResult.package.verifications.length === packageResult.package.reports.length, "报告同步包应包含每份报告的验真摘要。");
+  const reviewedReportPackage = packageResult.package.reports.find((item) => item.id === "report-2");
+  assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "报告同步包应保留教师批注内容。");
+
+  const previousFetch = global.fetch;
+  const mock = await startReportRepositoryMockServer({ token: "report-token" });
+  try {
+    global.fetch = fetchApi;
+    const configuredMock = window.MRAppState.configureReportRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "report-token"
+    });
+    assert(configuredMock.ok, "报告仓库 mock endpoint 应可保存为远端配置。");
+
+    const checkedBeforePush = await window.MRAppState.checkRemoteReportRepository();
+    assert(checkedBeforePush.ok, "报告仓库 mock GET 检查应真实可访问。");
+    assert(checkedBeforePush.package === null, "报告仓库 mock 初始未接收包时不应伪造远端报告。");
+
+    const pushedMock = await window.MRAppState.pushReportRepositoryToRemote();
+    assert(pushedMock.ok, "报告仓库 mock 应接收真实 PUT 推送。");
+    assert(pushedMock.packageId.startsWith("mock-report-repository-"), "报告仓库 mock 应返回服务端 packageId。");
+    assert(mock.state.package.packageId === pushedMock.packageId, "报告仓库 mock 应在内存中保存最近报告包。");
+    assert(mock.state.package.summary.teacherReviewedReportCount === 1, "报告仓库 mock 应保存带教师批注报告计数。");
+    assert(mock.state.package.verifications.every((item) => /^[a-f0-9]{64}$/.test(item.digest)), "报告仓库 mock 应保存 64 位报告摘要。");
+    assert(mock.state.receipts[0].repositoryDigest, "报告仓库 mock 应返回 repositoryDigest 回执。");
+
+    const checkedAfterPush = await window.MRAppState.checkRemoteReportRepository();
+    assert(checkedAfterPush.ok && checkedAfterPush.package.reports.length === mock.state.package.reports.length, "报告仓库 mock GET 应返回最近 PUT 保存的报告包。");
+
+    const pulledMock = await window.MRAppState.pullReportRepositoryFromRemote();
+    assert(pulledMock.ok, "报告仓库 mock 应支持真实 GET 拉取。");
+    assert(pulledMock.pulledReportCount === mock.state.package.reports.length, "报告仓库 mock 拉取结果应保留远端报告数量。");
+    assert(pulledMock.skippedConflictCount === 0, "相同报告包拉取不应伪造冲突。");
+
+    mock.state.package.reports[0] = {
+      ...mock.state.package.reports[0],
+      summary: "远端报告修改不应覆盖本机同 ID 报告。"
+    };
+    const conflictPull = await window.MRAppState.pullReportRepositoryFromRemote();
+    assert(conflictPull.ok && conflictPull.skippedConflictCount >= 1, "报告仓库同 ID 差异应跳过并提示冲突。");
+    assert(window.MRAppState.getReportRepositoryStatus().lastSkippedConflictCount >= 1, "报告仓库状态应记录跳过冲突数量。");
+
+    const badTokenConfig = window.MRAppState.configureReportRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "bad-token"
+    });
+    assert(badTokenConfig.ok, "报告仓库 mock 错误 token 配置应仍可保存以便检查失败态。");
+    const rejected = await window.MRAppState.checkRemoteReportRepository();
+    assert(!rejected.ok && rejected.message.includes("HTTP 401"), "报告仓库 mock 应拒绝错误 Bearer token。");
+  } finally {
+    global.fetch = previousFetch;
+    await mock.close();
+  }
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {

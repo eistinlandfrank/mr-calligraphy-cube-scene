@@ -34,8 +34,11 @@ test.beforeEach(async ({ page }) => {
 
 test("front practice saves real strokes and exports a report", async ({ page }) => {
   const historyEndpointPath = "/e2e-history-repository";
+  const reportEndpointPath = "/e2e-report-repository";
   const historyRequests = [];
+  const reportRequests = [];
   let remoteHistoryPackage = null;
+  let remoteReportPackage = null;
 
   await page.route(`**${historyEndpointPath}`, async (route) => {
     const request = route.request();
@@ -75,6 +78,48 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
           : "远端学习档案 E2E 可访问，当前尚未接收档案包。",
         remoteVersion: "e2e-history-v1",
         package: remoteHistoryPackage
+      })
+    });
+  });
+
+  await page.route(`**${reportEndpointPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    reportRequests.push({
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+    if (method === "PUT") {
+      remoteReportPackage = {
+        ...body,
+        packageId: "e2e-report-package",
+        acceptedAt: new Date().toISOString()
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `远端报告 E2E 已接收 ${body.summary.total} 份报告。`,
+          remoteVersion: "e2e-report-v1",
+          packageId: remoteReportPackage.packageId,
+          package: remoteReportPackage
+        })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: remoteReportPackage
+          ? `远端报告 E2E 可读，当前包含 ${remoteReportPackage.summary.total} 份报告。`
+          : "远端报告 E2E 可访问，当前尚未接收报告包。",
+        remoteVersion: "e2e-report-v1",
+        package: remoteReportPackage
       })
     });
   });
@@ -119,6 +164,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#sceneTitle")).toContainText("今日单字：永");
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);
+  const reportEndpoint = await getSameOriginEndpoint(page, reportEndpointPath);
 
   await page.getByRole("button", { name: /切换到步骤 3/ }).click();
   await page.getByRole("button", { name: "播放讲解" }).click();
@@ -201,6 +247,35 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports[0].teacherReview.reviewer).toBe("王老师");
   expect(learningState.reports[0].teacherReview.note).toContain("竖钩");
+
+  await expect(page.locator("#reportVerification")).toContainText("本机验真摘要");
+  await page.locator(".report-repository-remote summary").click();
+  await page.locator("#reportRepositoryEndpointInput").fill(reportEndpoint);
+  await page.locator("#reportRepositoryTokenInput").fill("report-token");
+  await page.locator("#reportRepositorySaveRemoteButton").click();
+  await expect(page.locator("#reportRepositorySummary")).toContainText("已配置");
+
+  await page.locator("#reportRepositoryRemoteButton").click();
+  await expect(page.locator("#reportRepositorySummary")).toContainText("E2E 可访问");
+
+  await page.locator("#reportRepositoryPushButton").click();
+  await expect(page.locator("#reportRepositorySummary")).toContainText("已推送 1 份报告");
+
+  const reportPutRequest = reportRequests.find((item) => item.method === "PUT");
+  expect(reportPutRequest.authorization).toBe("Bearer report-token");
+  expect(reportPutRequest.body.kind).toBe("mr-calligraphy-report-repository-v1");
+  expect(reportPutRequest.body.summary.total).toBe(1);
+  expect(reportPutRequest.body.reports[0].teacherReview.note).toContain("竖钩");
+  expect(reportPutRequest.body.verifications).toHaveLength(1);
+  expect(reportPutRequest.body.verifications[0].digest).toMatch(/^[a-f0-9]{64}$/);
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastRemoteDirection).toBe("push");
+  expect(learningState.reportRepository.lastPackageId).toBe("e2e-report-package");
+
+  await page.locator("#reportRepositoryPullButton").click();
+  await expect(page.locator("#reportRepositorySummary")).toContainText("已从远端 API 拉取 1 份报告");
+  expect(reportRequests.some((item) => item.method === "GET" && item.authorization === "Bearer report-token")).toBe(true);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();

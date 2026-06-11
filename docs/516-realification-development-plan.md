@@ -47,7 +47,7 @@
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
-| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、本机教师批注和本机验真摘要 | 还没有云端长期报告、账号化教师端、服务端签名验真和服务端报告仓库 |
+| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、本机教师批注、本机验真摘要和报告仓库远端 API adapter | 还没有账号化教师端、服务端签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
@@ -57,7 +57,7 @@
 - 评分算法仍需升级：当前结构、笔画、笔法、力度、流畅度由启发式算法计算，并已保存基础评分证据和维度理由，但还不是专业模型。
 - 任务系统已有第一版本机任务库、任务依赖和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、前置任务、完成条件、锁定状态、笔画拆解/创作实践/复习巩固阶段记录、练习次数、作品数、报告数和完成百分比可写入或刷新读取；仍缺云端课程库、更细逐步骤评分规则和教师端任务下发。
 - 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、同步仓库、远端 API adapter、计划仓库 API 合同、本机 mock 服务、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测、保留本机、采用远端、另存远端副本和字段级合并第一版；仍缺账号化托管仓库、远端提醒、教师端通知、计划项增删合并和服务端合并审计。
-- 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出、远端学习档案 API adapter、`nextPageUrl` 分页追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务，但还没有账号化托管仓库、生产级分页查询、服务端教师批注审计和长期归档。
+- 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出、远端学习档案 API adapter、报告仓库远端 API adapter、`nextPageUrl` 分页追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务，但还没有账号化托管仓库、生产级分页查询、服务端教师批注审计和长期归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
 - 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览、单模型选择恢复、模型元数据片段对照、模型完整 JSON 安全预览、命名冲突策略选择、自定义命名、远端发布包资产清单、本机发布锁、服务端锁预检、服务端合同文档和 mock server 已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树和生产服务端资产签名。
 - 没有真正的账号权限保护；主后台和写实后台已补第一版“本机静态后台 / 无登录角色审计”的风险提示和本机确认状态，主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，远端发布 adapter 也已有审核、发布锁、服务端锁预检和回执审计第一版，但还没有后端账号权限、CDN 托管和不可篡改审计。
@@ -6064,3 +6064,73 @@
 提交：
 
 - 中文 commit message：`新增报告本机验真摘要`
+
+### 2026-06-12：新增报告仓库远端同步
+
+功能名：站内学习报告 `ReportRepository` 远端 API adapter 第一版。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/report-repository-mock-server.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/report-repository-api-contract.md`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 学习状态新增 `reportRepository`，记录同步模式、远端 endpoint/token、最近检查、推送、拉取、远端报告数、跳过冲突数、packageId 和错误信息。
+- `MRAppState.getReportRepositoryPackage()` 会生成 `mr-calligraphy-report-repository-v1` 报告包，包含本机报告、教师批注、本机验真摘要和 summary。
+- `MRAppState.configureReportRepositoryRemote()`、`checkRemoteReportRepository()`、`pushReportRepositoryToRemote()` 和 `pullReportRepositoryFromRemote()` 支持真实 GET/PUT。
+- 站内报告面板新增“远端报告 API”折叠区，提供 endpoint/token、保存远端、检查远端、推送报告和拉取报告。
+- 拉取远端报告时，同 ID 且内容不同的报告不会静默覆盖本机报告，会记录跳过冲突数量。
+- 新增 `scripts/report-repository-mock-server.js`，校验报告包 kind/version、summary、reports、verifications、Bearer token，并返回 receipt。
+- 新增 `docs/report-repository-api-contract.md`，记录 endpoint、请求方法、报告包结构、回执、失败响应、同 ID 差异策略和本机 mock 服务。
+- smoke test 新增报告仓库 mock server 和前台远端报告 API 控件标记。
+- 学习状态检查新增报告仓库包、远端检查、推送、拉取、验真摘要、教师批注、错误 token 和同 ID 差异跳过断言。
+- Playwright 前台用例新增浏览器路由模拟报告仓库 API，覆盖保存 endpoint/token、检查、推送、拉取、Bearer token 和本机状态持久化。
+
+真实化说明：
+
+- 数据来源：当前浏览器里的 `ReportRecord`、`teacherReview`、`getReportVerification()` 摘要和用户填写的远端 endpoint/token。
+- 写入状态：远端配置与同步状态写入 `mr-calligraphy-learning-state-v1.reportRepository`；拉取到的新报告写入本机 `reports`。
+- 网络行为：检查和拉取使用真实 `GET`；推送使用真实 `PUT`；配置 token 时携带 `Authorization: Bearer <token>`。
+- 成功反馈：站内报告面板展示远端检查、推送或拉取结果；mock server 返回 receipt、repositoryDigest 和 packageId。
+- 失败反馈：未配置远端、非法 URL、401、422、网络失败和响应结构错误都会返回明确错误，不清空本机报告。
+- 刷新后复现方式：刷新前台后重新打开报告，仍能读取 `reportRepository` 配置和最近同步状态。
+
+已知限制：
+
+- 当前是前端 adapter 和本机 mock 服务，不是账号化教师端、服务端签章、不可篡改审计、服务端 PDF 渲染或生产长期报告仓库。
+- 同 ID 差异第一版只跳过并计数；后续需要补报告冲突审计 UI、字段级合并和服务端版本策略。
+- 本机验真摘要仍是本机 SHA-256 提示，不替代服务端证书或教师身份签名。
+
+验收方式：
+
+- 手工验收：运行 `node scripts/report-repository-mock-server.js`，打开前台生成或打开一份站内报告，配置 `http://127.0.0.1:8791/api/report-repository`，点击“检查远端 / 推送报告 / 拉取报告”，应看到真实远端状态和同步结果。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖报告仓库包、mock server、Bearer token、推送/拉取和冲突跳过；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证页面入口；`npm run test:e2e -- --grep "front practice saves real strokes"` 覆盖浏览器级报告仓库闭环。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库远端同步`

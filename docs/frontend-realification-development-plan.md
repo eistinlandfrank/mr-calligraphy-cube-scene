@@ -19,7 +19,7 @@
 
 ## 2. 我对当前版本的判断
 
-这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
+这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库远端 API adapter、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
 
 但它还不是一个真实可交付产品。最大问题不是“按钮没有绑定”，而是“按钮看起来像生产功能，实际只是本机原型能力”。用户看到 AI、评分、分享、同步、发布、后台这些词时，会自然期待账号、后端、权限、云端数据和端到端稳定性；当前很多地方还只做到本机状态或文件导出。
 
@@ -37,11 +37,11 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 58 | 13 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 32 | 4 | 1 | 0 | 0 | 0 |
+| `index.html` | 66 | 13 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
-| `script.js dynamic` | 26 | 1 | 0 | 0 | 1 | 0 |
+| `script.js dynamic` | 28 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
 
@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注和本机验真摘要已有第一版 | 仍是本机报告，没有云端长期报告、账号教师端、服务端签名证书和服务端生成 | 增加报告 schema、服务端保存、账号化教师批注、服务端验真签名和 PDF 资源嵌入验收 |
+| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要和报告仓库远端 API adapter 已有第一版 | 仍主要是本机报告；远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和 PDF 资源嵌入验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -135,7 +135,7 @@ node scripts/control-inventory.js --check
 目标：学习计划和学习档案不再只靠单浏览器。
 
 - 继续推进账号化计划 repository；计划 API 合同、mock 服务、自动同步队列、冲突检测和手动解决 UI 第一版已完成。
-- 增加账号化计划 repository 和学习档案 repository；学习档案远端 API adapter、合同和 mock 服务第一版已完成。
+- 增加账号化计划 repository、学习档案 repository 和报告 repository；学习档案远端 API adapter、报告仓库远端 API adapter、合同和 mock 服务第一版已完成。
 - 增加跨设备提醒、教师端通知和远端任务下发。
 - 拉取远端数据时不得静默覆盖本机待同步修改。
 
@@ -144,8 +144,8 @@ node scripts/control-inventory.js --check
 目标：评分不再像固定模板，报告能被复盘和验证。
 
 - 评分结果显示证据点、覆盖范围、重心、停顿、压感和维度理由；本机 `ScoreService` 已记录并展示最近评分证据摘要。
-- 原生 PDF 继续增强图表、作品截图、报告 ID 和服务端验真回执；本机验真摘要第一版已完成。
-- 报告 schema 固定版本，支持服务端保存和教师批注。
+- 原生 PDF 继续增强图表、作品截图、报告 ID 和服务端验真回执；本机验真摘要和报告仓库远端 API adapter 第一版已完成。
+- 报告 schema 固定版本，继续支持账号化服务端保存、教师批注和签名审计。
 - 分享页和报告页必须带本机/云端来源说明。
 
 ### P2：补浏览器级验收
@@ -159,7 +159,7 @@ node scripts/control-inventory.js --check
 
 ## 8. 下一批建议开发顺序
 
-1. 给计划 repository、学习档案 repository、项目仓库 repository 和远端发布 adapter 继续补生产服务端实现，明确账号权限、服务端合并、分页、资产签名和不可篡改审计字段；远端发布的服务端锁 / 最近回执预检第一版已完成。
+1. 给计划 repository、学习档案 repository、报告 repository、项目仓库 repository 和远端发布 adapter 继续补生产服务端实现，明确账号权限、服务端合并、分页、资产签名和不可篡改审计字段；远端发布的服务端锁 / 最近回执预检第一版已完成。
 2. 继续扩展主后台和写实后台统一项目仓库：字段迁移、完整 diff、账号化保存和多人协作接口。
 3. 补 Playwright 可运行环境并扩展端到端用例。
 4. 开始账号化 repository 设计，把计划、档案、作品、报告从本机状态抽象成可替换数据源。
@@ -891,3 +891,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告本机验真摘要`
+
+## 30. 2026-06-12 报告仓库远端 API adapter
+
+本次把站内报告从“只能本机查看和导出”推进到“可通过用户配置的远端 API 保存和拉取报告包”。
+
+完成内容：
+
+- `MRAppState` 新增 `reportRepository` 状态，持久化 endpoint/token、最近检查、最近推送、最近拉取、远端报告数、packageId、冲突跳过数和错误信息。
+- 新增 `getReportRepositoryPackage()`，会打包本机 `ReportRecord`、教师批注、本机验真摘要和仓库 summary。
+- 新增 `configureReportRepositoryRemote()`、`checkRemoteReportRepository()`、`pushReportRepositoryToRemote()` 和 `pullReportRepositoryFromRemote()`。
+- 前台站内报告面板新增“远端报告 API”折叠区，提供保存远端、检查远端、推送报告和拉取报告。
+- 新增 `scripts/report-repository-mock-server.js` 和 `docs/report-repository-api-contract.md`。
+- 自动化覆盖真实 GET/PUT、Bearer token、回执、教师批注、本机验真摘要、拉取新增报告和同 ID 差异跳过。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.reports`、报告教师批注、本机验真摘要和用户填写的远端 endpoint/token。
+- 写入状态：远端配置和同步状态写入 `reportRepository`；远端新增报告写入本机 `reports`。
+- 成功反馈：报告面板展示远端检查、推送或拉取结果，远端 mock 返回 receipt 和 packageId。
+- 失败反馈：未配置、非法 URL、401、422、网络错误和响应结构错误都会显示明确失败，不清空本机报告。
+- 刷新后复现方式：刷新后仍能看到远端配置、最近同步状态和已拉取报告。
+
+仍待补：
+
+- 这仍是前端 adapter，不是账号化教师端、服务端签章、不可篡改审计、服务端 PDF 渲染或生产长期报告仓库。
+- 同 ID 差异第一版只跳过并计数，后续需要补报告冲突审计 UI 和账号化服务端合并。
+
+验收：
+
+- `node --check app-state.js && node --check script.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库远端同步`

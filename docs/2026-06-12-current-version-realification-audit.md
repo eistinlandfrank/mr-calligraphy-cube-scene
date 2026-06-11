@@ -48,14 +48,16 @@
 - 已增加评分版本号、评分证据说明和 `ScoreService` adapter。
 - 后续在 `ScoreService` 上扩展服务端模型、教师标定和硬件适配来源。
 
-### 2.5 报告和教师批注还停留在本机
+### 2.5 报告和教师批注已有远端 adapter，但生产报告仓库还没完成
 
-HTML 报告、原生 PDF、报告对比、多报告趋势、本机教师批注和本机验真摘要已经可用，刷新后也能复现。`MRAppState.getReportVerification()` 会用稳定 JSON 为报告核心字段、教师批注、关联练习和最近作品截图摘要计算 SHA-256，并写入 HTML/PDF 导出。但教师批注仍只是当前浏览器里的报告字段，本机验真摘要也不是账号化教师签名、服务端证书、不可篡改审计或长期归档。
+HTML 报告、原生 PDF、报告对比、多报告趋势、本机教师批注、本机验真摘要和报告仓库远端 API adapter 已经可用，刷新后也能复现。`MRAppState.getReportVerification()` 会用稳定 JSON 为报告核心字段、教师批注、关联练习和最近作品截图摘要计算 SHA-256，并写入 HTML/PDF 导出；`MRAppState.getReportRepositoryPackage()` 会把报告和摘要打包成 `mr-calligraphy-report-repository-v1`，前台可配置 endpoint/token 后真实 GET 检查、PUT 推送和 GET 拉取。
+
+但它仍不是生产报告产品。教师批注默认仍来自当前浏览器里的报告字段，本机验真摘要不是账号化教师签名、服务端证书或不可篡改审计；报告仓库远端 API 也只是可替换后端的第一版 adapter，不是账号空间、教师权限、长期归档或服务端 PDF 渲染。
 
 真实化方向：
 
 - 固定 `ReportRecord` schema 和版本迁移。
-- 新增账号化 `ReportRepository`。
+- 把当前 `ReportRepository` 远端 adapter 升级为账号化服务端仓库。
 - 教师批注增加 reviewerId、role、签名、审计记录和服务端时间。
 - PDF 继续增加作品截图嵌入、图表增强、服务端签名回执和验真证书。
 
@@ -84,7 +86,7 @@ HTML 报告、原生 PDF、报告对比、多报告趋势、本机教师批注�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、项目仓库和后台远端发布都已有 API 合同、mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化。这个方向是对的，但它目前证明的是“前端能对接 API”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化。这个方向是对的，但它目前证明的是“前端能对接 API”，不是“项目已有生产后端”。
 
 真实化方向：
 
@@ -116,11 +118,11 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 58 | 13 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 32 | 4 | 1 | 0 | 0 | 0 |
+| `index.html` | 66 | 13 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
-| `script.js dynamic` | 26 | 1 | 0 | 0 | 1 | 0 |
+| `script.js dynamic` | 28 | 1 | 0 | 0 | 1 | 0 |
 
 判断：控件标记层面已经过关，没有明显未标记按钮。下一步不是继续数按钮，而是逐个验证 `real-local` 的真实边界是否在 UI、文档、状态和测试里讲清楚。
 
@@ -269,6 +271,7 @@ npm run test:e2e
 - 追加学习档案字段级合并记录：前台冲突审计区可逐字段选择本机或远端，数据层和 E2E 已验证只写回用户选择的远端字段。
 - 追加远端项目仓库版本历史记录：主后台远端项目仓库 API 已支持 `versions`、版本选择和 `GET ?packageId=` 指定版本拉取，E2E 已验证两次推送后选择旧版本进入恢复预览。
 - 追加报告本机验真摘要记录：前台报告详情、HTML 导出和原生 PDF 都会展示同一份 SHA-256 摘要，`learning-state-check.js` 已验证摘要可复算且会随教师批注变化。
+- 追加报告仓库远端同步记录：站内报告面板已支持远端报告 API endpoint/token、检查、推送、拉取；数据层、mock server 和 E2E 已验证报告包、教师批注、本机验真摘要、Bearer token、远端回执和同 ID 差异跳过。
 
 已知限制：
 

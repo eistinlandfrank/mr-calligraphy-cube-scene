@@ -4712,6 +4712,99 @@ body.is-model-view .notice-panel {
   line-height: 1.45;
 }
 
+.report-repository-summary {
+  padding: 7px 8px;
+  border: 1px solid rgba(160, 197, 255, 0.2);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.78);
+  background: rgba(49, 74, 122, 0.18);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.report-repository-summary[data-repository-tone="ready"] {
+  border-color: rgba(116, 255, 219, 0.32);
+  color: #e8fff9;
+  background: rgba(47, 111, 104, 0.24);
+}
+
+.report-repository-summary[data-repository-tone="warning"] {
+  border-color: rgba(247, 215, 139, 0.42);
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.22);
+}
+
+.report-repository-remote {
+  padding: 8px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.report-repository-remote summary {
+  cursor: pointer;
+  color: rgba(255, 250, 241, 0.8);
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.report-repository-fields {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.report-repository-fields label {
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-repository-fields input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.report-repository-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.report-repository-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(160, 197, 255, 0.28);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(49, 74, 122, 0.34);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.report-repository-actions button:hover,
+.report-repository-actions button:focus-visible {
+  border-color: rgba(160, 197, 255, 0.56);
+  outline: none;
+  background: rgba(49, 74, 122, 0.54);
+}
+
+.report-repository-actions button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .report-metrics,
 .report-trend,
 .report-comparison,

@@ -57,7 +57,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
-| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势、本机教师批注和本机验真摘要 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、账号教师端和服务端签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口、账号化教师批注和导出验收 |
+| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势、本机教师批注、本机验真摘要和报告仓库远端 API adapter 第一版 | 原生 PDF 第一版以文本摘要为主；报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT，还没有账号化教师端、服务端签名验真、不可篡改审计和云端长期报告产品 | 继续增加 PDF 图表/截图嵌入、账号化 ReportRepository、教师身份审计、服务端签名回执和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
 
@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
-| P2 | 报告 PDF/云端适配 | 原生 PDF 第一版、本机教师批注和导出批注标记已完成，但仍缺图表/作品嵌入、云端长期报告和账号教师端 | PDF 图表/截图增强、服务端接口草案、教师端身份与审计 |
+| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要和报告仓库远端 API adapter 第一版已完成，但仍缺账号化教师端、服务端签名验真、不可篡改审计和生产长期报告仓库 | PDF 图表/截图增强、账号化 ReportRepository、教师端身份与服务端审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、服务端资产签名和不可篡改审计 | 服务端审批合同强化、服务端资产签名、账号权限和审计签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
@@ -1546,3 +1546,41 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增报告本机验真摘要`
+
+### 2026-06-12：新增报告仓库远端同步
+
+完成内容：
+
+- `MRAppState` 新增 `reportRepository` 状态，记录远端 endpoint/token、最近检查、推送、拉取、packageId、远端报告数、跳过冲突数和错误信息。
+- 新增 `getReportRepositoryPackage()`，会把本机 `ReportRecord` 和对应 `getReportVerification()` 摘要打包为 `mr-calligraphy-report-repository-v1`。
+- 新增 `configureReportRepositoryRemote()`、`checkRemoteReportRepository()`、`pushReportRepositoryToRemote()` 和 `pullReportRepositoryFromRemote()`，通过真实 `fetch` 对用户配置 endpoint 做 GET/PUT。
+- 站内报告面板新增“远端报告 API”折叠区，提供 endpoint/token、保存远端、检查远端、推送报告和拉取报告。
+- 新增 `scripts/report-repository-mock-server.js`，校验报告包、Bearer token、验真摘要和回执。
+- 新增 `docs/report-repository-api-contract.md`，记录 endpoint、包结构、回执、失败响应、同 ID 差异策略和本机验收方式。
+- `learning-state-check.js` 和 Playwright 前台用例覆盖报告包生成、远端检查、推送、拉取、Bearer token、教师批注、验真摘要和同 ID 差异跳过。
+
+真实化说明：
+
+- 数据来源：当前浏览器里的 `ReportRecord`、教师批注、本机报告验真摘要和用户配置的远端 endpoint/token。
+- 写入状态：远端配置与同步状态写入 `mr-calligraphy-learning-state-v1.reportRepository`；拉取到的新报告写入本机 `reports`。
+- 成功反馈：报告面板显示远端检查、推送或拉取结果；远端 mock server 返回 receipt 和 packageId。
+- 失败反馈：未配置 endpoint、非法 URL、401、422、网络错误或远端结构错误都会返回明确失败，不清空本机报告。
+- 刷新后复现方式：刷新前台后仍能看到远端配置和最近同步状态；报告记录继续从本机学习状态读取。
+
+仍待补：
+
+- 当前是前端远端 API adapter，不是账号化教师端、服务端签章、不可篡改审计、服务端 PDF 渲染或生产长期报告仓库。
+- 同 ID 差异第一版只跳过并计数，后续要补报告字段级冲突审计和账号化服务端合并策略。
+
+验收：
+
+- `node --check app-state.js && node --check script.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库远端同步`

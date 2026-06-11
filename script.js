@@ -854,6 +854,13 @@ const els = {
   reportTeacherReviewInput: document.getElementById("reportTeacherReviewInput"),
   reportTeacherReviewSave: document.getElementById("reportTeacherReviewSave"),
   reportTeacherReviewClear: document.getElementById("reportTeacherReviewClear"),
+  reportRepositorySummary: document.getElementById("reportRepositorySummary"),
+  reportRepositoryEndpointInput: document.getElementById("reportRepositoryEndpointInput"),
+  reportRepositoryTokenInput: document.getElementById("reportRepositoryTokenInput"),
+  reportRepositorySaveRemoteButton: document.getElementById("reportRepositorySaveRemoteButton"),
+  reportRepositoryRemoteButton: document.getElementById("reportRepositoryRemoteButton"),
+  reportRepositoryPushButton: document.getElementById("reportRepositoryPushButton"),
+  reportRepositoryPullButton: document.getElementById("reportRepositoryPullButton"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
   reportDetailDownload: document.getElementById("reportDetailDownload"),
   reportDetailDownloadPdf: document.getElementById("reportDetailDownloadPdf"),
@@ -3658,6 +3665,10 @@ function bindReportControls() {
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
   els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
   els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
+  els.reportRepositorySaveRemoteButton?.addEventListener("click", saveReportRepositoryRemoteConfig);
+  els.reportRepositoryRemoteButton?.addEventListener("click", checkReportRepositoryRemote);
+  els.reportRepositoryPushButton?.addEventListener("click", pushReportRepositoryRemote);
+  els.reportRepositoryPullButton?.addEventListener("click", pullReportRepositoryRemote);
   els.reportMetrics?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-report-metric]");
     if (!button) return;
@@ -4632,6 +4643,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   renderReportLatest(detail);
   renderReportRecommendations(detail.recommendations || []);
   renderReportTeacherReview(detail);
+  renderReportRepositoryStatus(detail);
   setReportDetailActions(detail);
 }
 
@@ -4659,6 +4671,7 @@ function renderReportEmptyState() {
     els.reportStats.appendChild(empty);
   }
   renderReportTeacherReview(null);
+  renderReportRepositoryStatus(null);
 }
 
 function renderReportVerification(detail) {
@@ -5487,6 +5500,39 @@ function renderReportTeacherReview(detail) {
   if (els.reportTeacherReviewClear) els.reportTeacherReviewClear.disabled = !hasDetail || !review;
 }
 
+function renderReportRepositoryStatus(detail) {
+  const status = window.MRAppState?.getReportRepositoryStatus?.();
+  const config = window.MRAppState?.getReportRepositoryRemoteConfig?.();
+  if (els.reportRepositorySummary) {
+    els.reportRepositorySummary.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "报告仓库尚未初始化。";
+    els.reportRepositorySummary.dataset.repositoryTone = status?.tone || "idle";
+  }
+  if (els.reportRepositoryEndpointInput && document.activeElement !== els.reportRepositoryEndpointInput) {
+    els.reportRepositoryEndpointInput.value = config?.remoteEndpoint || "";
+  }
+  if (els.reportRepositoryTokenInput && document.activeElement !== els.reportRepositoryTokenInput) {
+    els.reportRepositoryTokenInput.value = config?.remoteToken || "";
+  }
+  if (els.reportRepositoryRemoteButton) {
+    els.reportRepositoryRemoteButton.disabled = false;
+    els.reportRepositoryRemoteButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
+  }
+  if (els.reportRepositoryPushButton) {
+    els.reportRepositoryPushButton.disabled = !status?.remoteConfigured || !status?.reportCount;
+  }
+  if (els.reportRepositoryPullButton) {
+    els.reportRepositoryPullButton.disabled = !status?.remoteConfigured;
+  }
+  if (els.reportRepositorySaveRemoteButton) {
+    els.reportRepositorySaveRemoteButton.disabled = false;
+  }
+  if (!detail && els.reportRepositoryPushButton) {
+    els.reportRepositoryPushButton.disabled = true;
+  }
+}
+
 function setReportDetailActions(detail) {
   const hasDetail = Boolean(detail);
   if (els.reportDetailCopyLink) els.reportDetailCopyLink.disabled = !hasDetail;
@@ -5527,6 +5573,78 @@ function clearReportTeacherReview() {
     renderReportPanel(currentIndex);
   }
   showNotice(result?.message || "教师批注清除失败。");
+}
+
+function saveReportRepositoryRemoteConfig() {
+  const endpoint = els.reportRepositoryEndpointInput?.value || "";
+  const token = els.reportRepositoryTokenInput?.value || "";
+  const result = window.MRAppState?.configureReportRepositoryRemote?.({
+    remoteEndpoint: endpoint,
+    remoteToken: token
+  });
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderReportPanel(currentIndex);
+}
+
+async function checkReportRepositoryRemote() {
+  setReportRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.checkRemoteReportRepository?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端报告 API 检查失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setReportRepositoryRemoteBusy(false);
+    renderReportPanel(currentIndex);
+  }
+}
+
+async function pushReportRepositoryRemote() {
+  setReportRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pushReportRepositoryToRemote?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端报告 API 推送失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setReportRepositoryRemoteBusy(false);
+    renderReportPanel(currentIndex);
+  }
+}
+
+async function pullReportRepositoryRemote() {
+  setReportRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pullReportRepositoryFromRemote?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+    renderLearningStateSummary();
+  } catch (error) {
+    showNotice(`远端报告 API 拉取失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setReportRepositoryRemoteBusy(false);
+    renderReportPanel(currentIndex);
+  }
+}
+
+function setReportRepositoryRemoteBusy(isBusy) {
+  [
+    els.reportRepositorySaveRemoteButton,
+    els.reportRepositoryRemoteButton,
+    els.reportRepositoryPushButton,
+    els.reportRepositoryPullButton
+  ].forEach((button) => {
+    if (button) {
+      button.disabled = Boolean(isBusy);
+    }
+  });
 }
 
 function updateReportSeriesZoom(action) {
