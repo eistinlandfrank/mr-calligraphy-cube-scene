@@ -51,6 +51,13 @@ const storage = new Map([
           technique: 87,
           fluency: 83,
           force: 85
+        }),
+        createReport("report-3", 90, "2026-06-11T09:20:00.000Z", {
+          structure: 88,
+          stroke: 89,
+          technique: 90,
+          fluency: 87,
+          force: 88
         })
       ],
       plans: [],
@@ -126,7 +133,18 @@ assert(
 );
 assert(!window.MRAppState.getReportComparison("report-1").ok, "第一份报告不应伪造上一份对比。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页和报告对比已生成。");
+const reportSeries = window.MRAppState.getReportSeries("report-3");
+assert(reportSeries.ok, "三份报告应生成多报告趋势。");
+assert(reportSeries.points.length === 3, "多报告趋势应返回报告序列点。");
+assert(reportSeries.currentId === "report-3", "多报告趋势应标记当前报告。");
+assert(reportSeries.averageDelta === 14, "多报告趋势应计算首末平均分变化。");
+assert(
+  reportSeries.metricSeries.some((metric) => metric.key === "structure" && metric.delta === 16 && metric.points.length === 3),
+  "多报告趋势应计算字段级首末变化。"
+);
+assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应伪造多报告趋势。");
+
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比和多报告趋势已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

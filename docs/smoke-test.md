@@ -70,7 +70,7 @@ node scripts/project-schema-check.js
 node scripts/learning-state-check.js
 ```
 
-该命令会模拟同一个字的两幅作品和关联练习，验证学习状态层能生成真实作品对比数据，包括较早作品、最新作品、评分差、笔画差、采样差、截图和维度差；同时验证 `MRAppState.getArtworkGallery()` 能按标题搜索、按默认字标签筛选，验证 `MRAppState.updateArtworkTags()` 会把自定义标签写回 localStorage，验证 `MRAppState.getArtworkSharePackage()` 会生成包含作品图、评分、边界说明和能力维度的 HTML 分享页，并验证 `MRAppState.getReportComparison()` 会基于两份本机报告生成平均分、次数和字段级能力差值。
+该命令会模拟同一个字的两幅作品和关联练习，验证学习状态层能生成真实作品对比数据，包括较早作品、最新作品、评分差、笔画差、采样差、截图和维度差；同时验证 `MRAppState.getArtworkGallery()` 能按标题搜索、按默认字标签筛选，验证 `MRAppState.updateArtworkTags()` 会把自定义标签写回 localStorage，验证 `MRAppState.getArtworkSharePackage()` 会生成包含作品图、评分、边界说明和能力维度的 HTML 分享页，并验证 `MRAppState.getReportComparison()` 会基于两份本机报告生成平均分、次数和字段级能力差值，验证 `MRAppState.getReportSeries()` 会基于三份本机报告生成报告序列和字段级首末趋势。
 
 ## 浏览器级验收
 

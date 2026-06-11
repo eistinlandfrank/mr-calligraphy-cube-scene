@@ -2075,10 +2075,7 @@
   }
 
   function getReportComparison(reportId = null) {
-    const reports = state.reports
-      .map(normalizeReport)
-      .filter(Boolean)
-      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    const reports = getSortedReports();
     const total = reports.length;
     if (total < 2) {
       return {
@@ -2147,6 +2144,92 @@
     };
   }
 
+  function getReportSeries(reportId = null) {
+    const reports = getSortedReports();
+    const total = reports.length;
+    if (!total) {
+      return {
+        ok: false,
+        total,
+        points: [],
+        metricSeries: [],
+        message: "还没有可生成趋势的本机学习报告。"
+      };
+    }
+
+    const recordId = String(reportId || "").trim();
+    const currentIndex = recordId
+      ? reports.findIndex((item) => item.id === recordId)
+      : total - 1;
+    if (currentIndex < 0) {
+      return {
+        ok: false,
+        total,
+        points: [],
+        metricSeries: [],
+        message: "未找到要生成趋势的本机学习报告。"
+      };
+    }
+
+    const current = reports[currentIndex];
+    const points = reports
+      .slice(0, currentIndex + 1)
+      .slice(-8)
+      .map((report) => makeReportSeriesPoint(report, reports.indexOf(report) + 1, current.id));
+    if (points.length < 2) {
+      return {
+        ok: false,
+        total,
+        currentId: current.id,
+        points,
+        metricSeries: [],
+        message: "至少需要两份本机学习报告，才能生成多报告趋势。"
+      };
+    }
+
+    const first = points[0];
+    const latest = points[points.length - 1];
+    const metricSeries = SCORE_METRICS.map((metric) => {
+      const metricPoints = points
+        .map((point) => ({
+          id: point.id,
+          title: point.title,
+          createdAt: point.createdAt,
+          value: normalizeScore(point.scoreBreakdown[metric.key], 0)
+        }))
+        .filter((point) => point.value > 0);
+      const firstMetric = metricPoints[0]?.value || 0;
+      const latestMetric = metricPoints[metricPoints.length - 1]?.value || 0;
+      return {
+        key: metric.key,
+        label: metric.label,
+        points: metricPoints,
+        first: firstMetric,
+        latest: latestMetric,
+        delta: latestMetric - firstMetric
+      };
+    });
+    const averageDelta = latest.averageScore - first.averageScore;
+
+    return {
+      ok: true,
+      total,
+      currentId: current.id,
+      points,
+      averageDelta,
+      metricSeries,
+      summary: `已汇总最近 ${points.length} 份本机报告，平均分较首份${formatReportDeltaText(averageDelta)}。`,
+      message: "已生成本机多报告趋势。"
+    };
+  }
+
+  function getSortedReports() {
+    return state.reports
+      .map(normalizeReport)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+  }
+
   function makeReportComparisonSnapshot(report) {
     return {
       id: report.id,
@@ -2158,6 +2241,28 @@
       learningMinutes: report.learningMinutes || 0,
       scoreBreakdown: clone(report.scoreBreakdown || normalizeMetrics(null))
     };
+  }
+
+  function makeReportSeriesPoint(report, sequence, currentId) {
+    return {
+      id: report.id,
+      sequence,
+      title: report.title || "学习报告",
+      createdAt: report.createdAt,
+      averageScore: report.averageScore || 0,
+      sessionCount: report.sessionCount || 0,
+      artworkCount: report.artworkCount || 0,
+      learningMinutes: report.learningMinutes || 0,
+      scoreBreakdown: clone(report.scoreBreakdown || normalizeMetrics(null)),
+      current: report.id === currentId
+    };
+  }
+
+  function formatReportDeltaText(value) {
+    const number = Number(value) || 0;
+    if (number > 0) return `提升 ${number} 分`;
+    if (number < 0) return `回落 ${Math.abs(number)} 分`;
+    return "持平";
   }
 
   function downloadReport(reportId = null) {
@@ -3115,6 +3220,7 @@
     getReportPreview,
     getReportDetail,
     getReportComparison,
+    getReportSeries,
     getArtworkSharePackage,
     getLatestReview,
     getHistory,

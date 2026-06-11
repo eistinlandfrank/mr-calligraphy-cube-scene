@@ -837,6 +837,7 @@ const els = {
   reportMetrics: document.getElementById("reportMetrics"),
   reportTrend: document.getElementById("reportTrend"),
   reportComparison: document.getElementById("reportComparison"),
+  reportSeries: document.getElementById("reportSeries"),
   reportLatest: document.getElementById("reportLatest"),
   reportRecommendations: document.getElementById("reportRecommendations"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
@@ -3555,6 +3556,11 @@ function bindReportControls() {
     if (!button) return;
     openReportDetailRoute(button.dataset.reportJump);
   });
+  els.reportSeries?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-report-jump]");
+    if (!button) return;
+    openReportDetailRoute(button.dataset.reportJump);
+  });
 }
 
 function bindHistoryControls() {
@@ -3992,6 +3998,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   renderReportMetrics(detail, activeReportMetricKey);
   renderReportTrend(detail, activeReportMetricKey);
   renderReportComparison(window.MRAppState.getReportComparison?.(detail.id));
+  renderReportSeries(window.MRAppState.getReportSeries?.(detail.id), activeReportMetricKey);
   renderReportLatest(detail);
   renderReportRecommendations(detail.recommendations || []);
   setReportDetailActions(detail);
@@ -4006,6 +4013,7 @@ function renderReportEmptyState() {
     els.reportMetrics,
     els.reportTrend,
     els.reportComparison,
+    els.reportSeries,
     els.reportLatest,
     els.reportRecommendations
   ].forEach((node) => {
@@ -4193,6 +4201,128 @@ function renderReportComparison(comparison) {
   });
 
   els.reportComparison.append(meta, summary, stats, metrics, actions);
+}
+
+function renderReportSeries(series, metricKey = activeReportMetricKey) {
+  if (!els.reportSeries) return;
+  els.reportSeries.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "多报告趋势";
+  els.reportSeries.appendChild(title);
+
+  if (!series?.ok) {
+    const empty = document.createElement("p");
+    empty.className = "report-empty";
+    empty.textContent = series?.message || "至少生成两份报告后，这里会显示多报告趋势。";
+    els.reportSeries.appendChild(empty);
+    return;
+  }
+
+  const activeKey = normalizeReportMetricKey(metricKey);
+  const metricLabel = getReportMetricLabel(activeKey);
+  const activeMetric = (series.metricSeries || []).find((item) => item.key === activeKey);
+  const summary = document.createElement("p");
+  summary.className = "report-series-summary";
+  summary.textContent = `${series.summary || "已读取本机报告序列。"} 当前字段：${metricLabel}${activeMetric ? ` ${formatSignedDelta(activeMetric.delta)}` : ""}。`;
+
+  const chart = createReportSeriesChart(series, activeMetric);
+  const points = document.createElement("div");
+  points.className = "report-series-points";
+  (series.points || []).forEach((point) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.reportJump = point.id;
+    button.setAttribute("aria-pressed", String(point.current));
+    const label = document.createElement("span");
+    label.textContent = `第${point.sequence}份`;
+    const score = document.createElement("strong");
+    score.textContent = `${point.averageScore || 0}`;
+    const meta = document.createElement("small");
+    meta.textContent = formatHistoryTime(point.createdAt);
+    button.append(label, score, meta);
+    points.appendChild(button);
+  });
+
+  els.reportSeries.append(summary, chart, points);
+}
+
+function createReportSeriesChart(series, activeMetric = null) {
+  const points = series.points || [];
+  const metricPointMap = new Map((activeMetric?.points || []).map((point) => [point.id, point.value]));
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  svg.setAttribute("class", "report-series-chart");
+  svg.setAttribute("viewBox", "0 0 320 128");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "多报告平均分和字段趋势图");
+
+  const axis = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  axis.setAttribute("class", "report-series-axis");
+  axis.setAttribute("d", "M24 12 V106 H304");
+  svg.appendChild(axis);
+
+  const averageCoords = points.map((point, index) => makeReportSeriesCoord(point.averageScore, index, points.length));
+  const metricCoords = points
+    .map((point, index) => {
+      const value = metricPointMap.get(point.id);
+      return Number.isFinite(value) && value > 0
+        ? makeReportSeriesCoord(value, index, points.length)
+        : null;
+    })
+    .filter(Boolean);
+  svg.appendChild(createReportSeriesPolyline(averageCoords, "report-series-line is-average"));
+  if (metricCoords.length > 1) {
+    svg.appendChild(createReportSeriesPolyline(metricCoords, "report-series-line is-metric"));
+  }
+
+  points.forEach((point, index) => {
+    const average = averageCoords[index];
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("class", point.current ? "report-series-dot is-current" : "report-series-dot");
+    circle.setAttribute("cx", average.x);
+    circle.setAttribute("cy", average.y);
+    circle.setAttribute("r", point.current ? "4.6" : "3.4");
+    circle.setAttribute("aria-label", `${point.title} 平均 ${point.averageScore || 0} 分`);
+    svg.appendChild(circle);
+
+    const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+    label.setAttribute("class", "report-series-label");
+    label.setAttribute("x", average.x);
+    label.setAttribute("y", "122");
+    label.setAttribute("text-anchor", "middle");
+    label.textContent = String(point.sequence);
+    svg.appendChild(label);
+  });
+
+  const legend = document.createElementNS("http://www.w3.org/2000/svg", "text");
+  legend.setAttribute("class", "report-series-legend");
+  legend.setAttribute("x", "304");
+  legend.setAttribute("y", "18");
+  legend.setAttribute("text-anchor", "end");
+  legend.textContent = activeMetric?.label ? `平均 / ${activeMetric.label}` : "平均";
+  svg.appendChild(legend);
+
+  return svg;
+}
+
+function createReportSeriesPolyline(coords, className) {
+  const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
+  polyline.setAttribute("class", className);
+  polyline.setAttribute("points", coords.map((point) => `${point.x},${point.y}`).join(" "));
+  return polyline;
+}
+
+function makeReportSeriesCoord(score, index, total) {
+  const left = 28;
+  const width = 272;
+  const top = 14;
+  const height = 88;
+  const x = total > 1 ? left + (width * index) / (total - 1) : left + width / 2;
+  const y = top + height - (clamp(Number(score) || 0, 0, 100) / 100) * height;
+  return {
+    x: Number(x.toFixed(2)),
+    y: Number(y.toFixed(2))
+  };
 }
 
 function renderReportLatest(detail) {

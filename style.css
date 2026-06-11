@@ -3878,6 +3878,7 @@ body.is-model-view .notice-panel {
 .report-metrics,
 .report-trend,
 .report-comparison,
+.report-series,
 .report-latest {
   display: grid;
   gap: 7px;
@@ -3890,6 +3891,7 @@ body.is-model-view .notice-panel {
 .report-metrics > strong,
 .report-trend > strong,
 .report-comparison > strong,
+.report-series > strong,
 .report-latest > strong {
   color: #fffaf1;
   font-size: 12px;
@@ -4114,6 +4116,103 @@ body.is-model-view .notice-panel {
   background: rgba(47, 111, 104, 0.58);
 }
 
+.report-series-summary {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.report-series-chart {
+  display: block;
+  width: 100%;
+  min-height: 118px;
+}
+
+.report-series-axis {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.16);
+  stroke-width: 1.5;
+}
+
+.report-series-line {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 3;
+}
+
+.report-series-line.is-average {
+  stroke: rgba(116, 255, 219, 0.88);
+}
+
+.report-series-line.is-metric {
+  stroke: rgba(247, 215, 139, 0.84);
+  stroke-dasharray: 5 4;
+}
+
+.report-series-dot {
+  fill: #74ffdb;
+  stroke: rgba(20, 38, 34, 0.9);
+  stroke-width: 1.5;
+}
+
+.report-series-dot.is-current {
+  fill: #f7d78b;
+  stroke: #fffaf1;
+  stroke-width: 2;
+}
+
+.report-series-label,
+.report-series-legend {
+  fill: rgba(255, 250, 241, 0.62);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.report-series-points {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+  gap: 6px;
+}
+
+.report-series-points button {
+  display: grid;
+  gap: 2px;
+  min-height: 52px;
+  padding: 6px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.report-series-points button:hover,
+.report-series-points button:focus-visible,
+.report-series-points button[aria-pressed="true"] {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.48);
+}
+
+.report-series-points span,
+.report-series-points small {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-series-points strong {
+  color: #ffffff;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
 .report-latest-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px;
@@ -4242,11 +4341,13 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-metrics > strong,
   body.is-report-printing .report-trend > strong,
   body.is-report-printing .report-comparison > strong,
+  body.is-report-printing .report-series > strong,
   body.is-report-printing .report-latest > strong,
   body.is-report-printing .report-stats strong,
   body.is-report-printing .report-metric-row em,
   body.is-report-printing .report-metric-detail span,
   body.is-report-printing .report-comparison-stats em,
+  body.is-report-printing .report-series-points strong,
   body.is-report-printing .report-latest-text span {
     color: #17221f;
   }
@@ -4256,9 +4357,11 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-metrics,
   body.is-report-printing .report-trend,
   body.is-report-printing .report-comparison,
+  body.is-report-printing .report-series,
   body.is-report-printing .report-latest,
   body.is-report-printing .report-comparison-meta span,
   body.is-report-printing .report-comparison-stats span,
+  body.is-report-printing .report-series-points button,
   body.is-report-printing .report-metric-detail {
     border: 1px solid #dbe8e2;
     color: #17221f;
@@ -4274,9 +4377,29 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-comparison-summary,
   body.is-report-printing .report-comparison-meta span,
   body.is-report-printing .report-comparison-stats small,
+  body.is-report-printing .report-series-summary,
+  body.is-report-printing .report-series-points span,
+  body.is-report-printing .report-series-points small,
   body.is-report-printing .report-latest-text small,
   body.is-report-printing .report-recommendations li {
     color: #61706a;
+  }
+
+  body.is-report-printing .report-series-axis {
+    stroke: #dbe8e2;
+  }
+
+  body.is-report-printing .report-series-line.is-average {
+    stroke: #247a67;
+  }
+
+  body.is-report-printing .report-series-line.is-metric {
+    stroke: #bb8138;
+  }
+
+  body.is-report-printing .report-series-label,
+  body.is-report-printing .report-series-legend {
+    fill: #61706a;
   }
 
   body.is-report-printing .report-actions,
