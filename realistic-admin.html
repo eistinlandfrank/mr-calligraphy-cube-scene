@@ -98,6 +98,25 @@
           <input id="realisticPublishNote" type="text" maxlength="80" placeholder="例如：更新宣纸摆放，准备样张展示">
         </label>
         <p id="realisticPublishStatus" class="realistic-panel-status">尚未读取发布状态。</p>
+        <details class="remote-publish-panel">
+          <summary>远端发布 API</summary>
+          <p id="realisticRemotePublishStatus" class="remote-publish-status">尚未配置远端发布 API。</p>
+          <div class="remote-publish-fields">
+            <label>
+              <span>Endpoint</span>
+              <input id="realisticRemotePublishEndpoint" type="url" inputmode="url" placeholder="https://example.com/api/realistic-publish">
+            </label>
+            <label>
+              <span>Token</span>
+              <input id="realisticRemotePublishToken" type="password" autocomplete="off" placeholder="可选 Bearer token">
+            </label>
+          </div>
+          <div class="remote-publish-actions">
+            <button data-feature-state="real-local" id="realisticRemotePublishSave" type="button">保存远端</button>
+            <button data-feature-state="real-local" id="realisticRemotePublishCheck" type="button">检查远端</button>
+            <button data-feature-state="real-local" id="realisticRemotePublishPush" type="button">推送发布包</button>
+          </div>
+        </details>
         <div class="realistic-publish-diff" aria-label="写实场景发布差异">
           <strong id="realisticPublishDiffSummary">尚未计算发布差异。</strong>
           <ul id="realisticPublishDiffList"></ul>
@@ -132,6 +151,7 @@
       }
     }
   </script>
+  <script src="project-remote-publish.js?v=remote-publish-20260611"></script>
   <script type="module" src="realistic-scene.js?v=admin-risk-20260611"></script>
 </body>
 </html>

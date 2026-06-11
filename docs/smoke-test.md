@@ -2,13 +2,14 @@
 
 本项目是静态网页项目。基础 smoke test 使用无依赖 Node 脚本完成语法、控件、项目档案、项目 Schema 和页面可访问检查；浏览器级真实交互使用 Playwright 覆盖高风险闭环。
 
-- 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、项目 Schema 检查、学习状态检查、Playwright 测试源码、前台状态层、书写画布、项目 schema、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
+- 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、项目 Schema 检查、远端发布检查、学习状态检查、Playwright 测试源码、前台状态层、书写画布、项目 schema、项目档案、远端发布 adapter、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
 - 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效；同时扫描前台脚本动态生成控件的 `dataset.featureState` 字面量，避免运行时按钮回退到 `demo-content`。
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态，并验证 localStorage JSON 导入预览会显示字段级差异、字段恢复影响提示、字段 JSON 片段且支持深层字段选择性恢复；同时验证 IndexedDB 模型仓库会显示单模型新增/修改差异、当前/档案元数据片段、完整模型 JSON 安全预览、命名冲突提示，并支持只恢复勾选模型、冲突自动改名、替换本机同名模型和自定义档案模型名称。
 - 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
 - 项目 Schema 检查：模拟主后台和写实后台发布版本列表及导入模型，确认 `projectSchema` 会统计发布版本、发布说明、回滚动作和资产哈希。
+- 远端发布检查：模拟主后台和写实后台本机发布版本，确认 `MRProjectRemotePublish` 会拒绝未配置/非法 endpoint，保存 HTTP endpoint/token，携带 Bearer header，GET 检查远端，POST 当前发布包，并持久化 packageId、releaseId 和远端状态。
 - 学习状态检查：模拟同字两幅作品，确认 `MRAppState.getArtworkComparison()` 会生成前后作品、评分差、笔画差、采样差、截图和维度差，并验证作品集搜索、标签筛选、标签编辑、localStorage 持久化、作品分享页 HTML、报告对比离线 HTML、评分证据、学习阶段记录、任务依赖与完成规则、学习计划提醒、顺延、复盘状态、学习计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、学习计划依赖图、学习计划周期循环和学习计划离线 HTML 导出。
-- 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记，包括学习步骤路由、学习热点路由、模型展示路由、前台写实样张入口、AI 讲解本机语音状态、学习档案重命名表单、作品标签编辑表单、学习计划提醒摘要、学习计划本机提醒服务状态/权限入口、学习计划同步仓库状态/导入/导出入口、远端计划 API endpoint/token/检查/推送/拉取入口、学习计划周期摘要、学习计划依赖图、学习计划项表单编辑入口、学习计划导出入口、学习计划下周期入口、报告对比、报告对比导出、多报告趋势、字段多选控件、字段分组模板、趋势悬浮提示入口、提示固定/复制入口、趋势缩放入口、逐点明细入口、写实样张相机控件以及两个后台的本机权限风险提示。
+- 页面可访问检查：覆盖 `/`、`/main-admin.html`、`/realistic-demo.html`、`/realistic-admin.html`，并确认页面包含关键 DOM / script 标记，包括学习步骤路由、学习热点路由、模型展示路由、前台写实样张入口、AI 讲解本机语音状态、学习档案重命名表单、作品标签编辑表单、学习计划提醒摘要、学习计划本机提醒服务状态/权限入口、学习计划同步仓库状态/导入/导出入口、远端计划 API endpoint/token/检查/推送/拉取入口、学习计划周期摘要、学习计划依赖图、学习计划项表单编辑入口、学习计划导出入口、学习计划下周期入口、报告对比、报告对比导出、多报告趋势、字段多选控件、字段分组模板、趋势悬浮提示入口、提示固定/复制入口、趋势缩放入口、逐点明细入口、主后台和写实后台远端发布 API 控件、写实样张相机控件以及两个后台的本机权限风险提示。
 
 ## 直接运行
 
@@ -63,6 +64,14 @@ node scripts/project-schema-check.js
 ```
 
 该命令会模拟主后台、写实后台本机发布版本历史和导入模型，验证 schema 摘要能统计 `mainReleases`、`realisticReleases`、当前发布说明、回滚动作和模型 SHA-256。
+
+## 单独检查远端发布
+
+```bash
+node scripts/remote-publish-check.js
+```
+
+该命令会模拟主后台和写实后台当前本机发布版本，验证远端发布 adapter 能生成 `mr-calligraphy-remote-publish-package-v1` 发布包，拒绝未配置或非法 endpoint，保存 HTTP endpoint 和 token，真实调用 mock `fetch` 做 GET 检查和 POST 推送，并确认 Authorization header、packageId、releaseId、远端版本和状态会写回 `mr-calligraphy-remote-publish-v1`。
 
 ## 单独检查学习状态
 

@@ -195,6 +195,25 @@
             <input id="mainPublishNote" type="text" maxlength="80" placeholder="例如：调好桌面布局，准备课堂演示">
           </label>
           <p id="mainPublishStatus" class="main-publish-status">尚未读取发布状态。</p>
+          <details class="remote-publish-panel">
+            <summary>远端发布 API</summary>
+            <p id="mainRemotePublishStatus" class="remote-publish-status">尚未配置远端发布 API。</p>
+            <div class="remote-publish-fields">
+              <label>
+                <span>Endpoint</span>
+                <input id="mainRemotePublishEndpoint" type="url" inputmode="url" placeholder="https://example.com/api/main-publish">
+              </label>
+              <label>
+                <span>Token</span>
+                <input id="mainRemotePublishToken" type="password" autocomplete="off" placeholder="可选 Bearer token">
+              </label>
+            </div>
+            <div class="remote-publish-actions">
+              <button data-feature-state="real-local" id="mainRemotePublishSave" type="button">保存远端</button>
+              <button data-feature-state="real-local" id="mainRemotePublishCheck" type="button">检查远端</button>
+              <button data-feature-state="real-local" id="mainRemotePublishPush" type="button">推送发布包</button>
+            </div>
+          </details>
           <div class="main-publish-diff" aria-label="主场景发布差异">
             <strong id="mainPublishDiffSummary">尚未计算发布差异。</strong>
             <ul id="mainPublishDiffList"></ul>
@@ -257,6 +276,7 @@
   </script>
   <script src="project-schema-utils.js?v=archive-asset-hash-20260611"></script>
   <script src="project-archive.js?v=archive-asset-hash-20260611"></script>
+  <script src="project-remote-publish.js?v=remote-publish-20260611"></script>
   <script type="module" src="main-admin-scene.js?v=admin-risk-20260611"></script>
 </body>
 </html>

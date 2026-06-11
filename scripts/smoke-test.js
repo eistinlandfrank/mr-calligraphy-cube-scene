@@ -14,6 +14,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/archive-migration-check.js", parser: "script" },
   { file: "scripts/archive-asset-hash-check.js", parser: "script" },
   { file: "scripts/project-schema-check.js", parser: "script" },
+  { file: "scripts/remote-publish-check.js", parser: "script" },
   { file: "scripts/learning-state-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },
@@ -21,6 +22,7 @@ const SCRIPT_CHECKS = [
   { file: "practice-canvas.js", parser: "script" },
   { file: "project-schema-utils.js", parser: "script" },
   { file: "project-archive.js", parser: "script" },
+  { file: "project-remote-publish.js", parser: "script" },
   { file: "room-config.js", parser: "script" },
   { file: "model-import-utils.js", parser: "module" },
   { file: "script.js", parser: "module" },
@@ -46,6 +48,10 @@ const COMMAND_CHECKS = [
     command: [process.execPath, "scripts/project-schema-check.js"]
   },
   {
+    label: "远端发布检查",
+    command: [process.execPath, "scripts/remote-publish-check.js"]
+  },
+  {
     label: "学习状态检查",
     command: [process.execPath, "scripts/learning-state-check.js"]
   }
@@ -60,7 +66,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "project-schema-utils.js", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",
@@ -70,7 +76,7 @@ const PAGE_CHECKS = [
   {
     path: "/realistic-admin.html",
     label: "写实后台",
-    markers: ["MR 书法场景管理页", "designObjectSelect", "realisticAdminRiskBanner", "realisticPublishNote", "realisticPublishDiffSummary", "realisticPublishHistoryList", "realistic-scene.js"]
+    markers: ["MR 书法场景管理页", "designObjectSelect", "realisticAdminRiskBanner", "realisticPublishNote", "realisticPublishDiffSummary", "realisticPublishHistoryList", "realisticRemotePublishStatus", "realisticRemotePublishEndpoint", "realisticRemotePublishToken", "realisticRemotePublishSave", "realisticRemotePublishCheck", "realisticRemotePublishPush", "project-remote-publish.js", "realistic-scene.js"]
   }
 ];
 

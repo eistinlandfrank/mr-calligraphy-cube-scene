@@ -31,9 +31,9 @@ node scripts/control-inventory.js
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `index.html` | 48 | 11 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 25 | 1 | 1 | 0 | 0 | 0 |
+| `main-admin.html` | 28 | 1 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 15 | 0 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 18 | 0 | 1 | 0 | 0 | 0 |
 
 结论：四个入口 HTML 的静态按钮和导航链接已经没有 `demo-content` 或缺失标记；前台动态场景热点按钮也已纳入清单脚本并改为本机真实交互。下一步要审计的是“标为真实的控件是否足够真实”。
 
@@ -64,9 +64,9 @@ node scripts/control-inventory.js
 
 | 模块 | 当前可用内容 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
-| 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局 | 保存主要在 localStorage / IndexedDB | 抽象项目配置 repository，为远端保存留接口 |
+| 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局 | 保存主要在 localStorage / IndexedDB | 抽象项目配置 repository，为远端保存和协作留接口 |
 | 写实后台编辑 | 能编辑写实样张对象、导入模型、保存快照和发布到演示 | 与主后台对象模型仍有差异 | 统一对象 schema、字段迁移和资产引用规则 |
-| 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚 | 容易被误解成线上发布 | UI 和文档持续写成本机发布；后续增加远端发布适配、审核流和权限 |
+| 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包 | 远端发布 adapter 已完成第一版，但还不是账号权限、审核流、CDN 部署或服务器托管 | 继续增加远端发布 diff、审核流、账号权限、发布锁和远端资产签名 |
 | 项目档案 | 可导出/导入 JSON，含 schema、迁移、模型哈希和选择恢复 | 三方合并、完整 JSON 树、远端资产服务仍弱 | 增加字段级 merge 策略、冲突解决界面、远端资产完整性校验 |
 | 后台权限 | 当前无需登录即可编辑，主后台和写实后台已增加本机无权限保护提示与确认状态 | 任何人打开后台仍能改本机内容 | 后端版加入账号、角色、审计和发布权限 |
 
@@ -75,7 +75,7 @@ node scripts/control-inventory.js
 1. 部分热点说明仍来自静态场景导览；学习动作里的笔画拆解、创作实践、复习巩固已开始写入本机阶段记录。
 2. AI 讲解、评分、发布、分享、PDF 这些词天然会让用户期待生产级能力，但当前多为本机原型或导出文件。
 3. 学习计划已有到期、提醒、顺延、复盘、依赖图、周期循环、离线导出、本机提醒权限边界、JSON 同步包和远端 API adapter；真正账号系统、后台托管仓库、远端提醒和教师端通知仍未接入。
-4. 后台发布已可用，但只是本机发布版本，不是部署、审核或远端同步。
+4. 后台本机发布和远端发布 API adapter 已可用，但远端 adapter 只是把发布包发给用户配置的 endpoint，不是部署、审核、账号权限或 CDN 托管。
 5. 现有 smoke test 能证明页面和脚本不坏，但还不能证明所有深层交互都真实可用。
 6. 前台主脚本已清零 `window.prompt()`；学习计划新增/编辑、作品标签编辑和历史记录重命名都已升级为表单弹层。删除、清空等高风险动作仍保留浏览器确认框。
 
@@ -228,6 +228,7 @@ node scripts/control-inventory.js
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P2 | 报告 PDF/云端适配 | 当前只有 HTML/打印路径 | PDF adapter、服务端接口草案 |
 | P2 | 项目档案 merge 和冲突解决 | 导入导出已可用，但长期项目需要更稳 | 字段级 merge、冲突 UI、测试 |
+| P2 | 后台远端发布生产化 | 远端发布 API adapter 第一版已完成，但仍缺审核流、发布锁和远端资产签名 | 远端发布 diff、审批状态、发布锁、资产签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
 ## 8. 每个功能完成时的记录格式
@@ -257,11 +258,39 @@ node scripts/control-inventory.js
 
 ## 9. 本轮结论
 
-目前版本的基础已经比最早的静态页面强很多，但还没有达到“真实产品”的标准。下一阶段不应该继续堆新 Demo，而应该继续补真实闭环，尤其是账号化计划 repository、浏览器级自动化验收、报告 PDF/云端适配和后台远端发布边界。
+目前版本的基础已经比最早的静态页面强很多，但还没有达到“真实产品”的标准。下一阶段不应该继续堆新 Demo，而应该继续补真实闭环，尤其是账号化计划 repository、浏览器级自动化验收、报告 PDF/云端适配和后台远端发布生产化。
 
 最重要的原则是：可以先做本机能力，但必须说清楚是本机能力；可以保留演示内容，但不能让用户误以为它已经接入真实业务。
 
 ## 10. 开发记录
+
+### 2026-06-11：后台远端发布 API adapter
+
+完成内容：
+
+- 新增共享 `project-remote-publish.js`，定义 `mr-calligraphy-remote-publish-package-v1` 远端发布包。
+- 远端发布状态写入 `mr-calligraphy-remote-publish-v1`，按 `mainScene` 和 `realisticScene` 分别保存 endpoint、token、最近检查/推送时间、packageId、releaseId、远端版本和错误。
+- 主后台发布面板新增“远端发布 API”折叠区，包含 endpoint、token、“保存远端”“检查远端”“推送发布包”控件。
+- 写实后台发布面板使用同一套 adapter 和同名能力，推送 `mr-calligraphy-realistic-published-v1` 当前发布版本。
+- 新增 `scripts/remote-publish-check.js`，用 mock `fetch` 验证非 HTTP 地址拒绝、未配置失败、Bearer token、GET 检查、POST 推送、发布包内容和状态持久化。
+- smoke test 新增远端发布脚本、页面控件和 `project-remote-publish.js` 加载检查。
+
+真实化说明：
+
+- 数据来源：主后台 `mr-calligraphy-main-scene-published-v1` 和写实后台 `mr-calligraphy-realistic-published-v1` 当前本机发布版本。
+- 写入状态：远端 endpoint/token、最近远端 packageId、releaseId、远端版本和错误会写入 `mr-calligraphy-remote-publish-v1`。
+- 成功反馈：检查远端会显示服务返回状态；推送成功会显示远端接收消息并记录 packageId；刷新后台后仍能看到最近远端状态。
+- 失败反馈：未配置 endpoint、非 HTTP 地址、无本机发布版本、浏览器不支持 `fetch`、HTTP 失败或返回非 JSON 时都明确失败，不显示“已部署上线”。
+- 刷新后复现方式：保存远端配置或推送后刷新后台，对应场景的 endpoint 和最近远端发布状态仍保留。
+
+验收：
+
+- 手工验收：在主后台或写实后台先完成一次本机发布，展开“远端发布 API”，保存 HTTP/HTTPS endpoint 后点击“检查远端 / 推送发布包”；服务不可用时应显示具体失败，mock 服务可接收当前发布包。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证主后台和写实后台远端发布包、endpoint/token、fetch 检查、POST 推送和状态持久化；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 覆盖页面入口。
+
+提交：
+
+- 中文 commit message：`新增后台远端发布适配`
 
 ### 2026-06-11：远端计划 API adapter
 

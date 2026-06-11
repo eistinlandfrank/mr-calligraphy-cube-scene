@@ -4433,3 +4433,52 @@
 
 - 远端 API adapter 只是静态前端可配置的 HTTP 同步边界，不包含账号登录、权限、后台托管仓库、教师端排课或服务器推送。
 - 跨设备提醒目前只能通过计划包同步到其他设备后由当地浏览器本机提醒处理，还不是远端推送提醒。
+
+### 2026-06-11：新增后台远端发布适配
+
+功能名：主后台和写实后台远端发布 API adapter。
+
+涉及文件：
+
+- `main-admin.html`
+- `realistic-admin.html`
+- `main-admin-scene.js`
+- `realistic-scene.js`
+- `style.css`
+- `realistic-demo.css`
+- `project-remote-publish.js`
+- `scripts/remote-publish-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 新增共享 `project-remote-publish.js`，生成稳定的 `mr-calligraphy-remote-publish-package-v1` 发布包。
+- 远端发布配置和状态写入 `mr-calligraphy-remote-publish-v1`，按 `mainScene` 和 `realisticScene` 分别保存 endpoint、token、最近检查/推送时间、packageId、releaseId、远端版本和错误。
+- 主后台发布面板新增“远端发布 API”折叠区，可保存远端、检查远端、推送当前主场景发布包。
+- 写实后台发布面板接入同一套远端发布 adapter，可推送当前写实场景发布包。
+- 新增 `scripts/remote-publish-check.js`，用 mock `fetch` 验证主后台和写实后台发布包、Bearer token、GET 检查、POST 推送和状态持久化。
+- smoke test 新增远端发布脚本、共享 adapter 和两个后台远端发布控件检查。
+
+验收方式：
+
+- 打开 `http://localhost:41496/main-admin.html` 或 `http://localhost:41496/realistic-admin.html`，先完成一次本机发布。
+- 展开“远端发布 API”，输入 HTTP/HTTPS endpoint 和可选 token，点击“保存远端”。
+- 点击“检查远端”应对 endpoint 发起 GET 请求；点击“推送发布包”应 POST 当前本机发布版本。
+- 未配置 endpoint、endpoint 非 HTTP、没有本机发布版本、服务不可用或返回非 JSON 时应显示明确失败，不应提示已经部署上线。
+
+当前验证结果：
+
+- `node --check project-remote-publish.js`
+- `node scripts/remote-publish-check.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node scripts/control-inventory.js --check`
+
+已知限制：
+
+- 远端发布 adapter 只负责把本机发布包真实发送给用户配置的 API，不包含账号登录、审核流、发布锁、CDN 部署或远端资产签名。
+- 主后台和写实后台对象 schema 仍未完全统一；后续需要继续做字段迁移、远端 diff 和资产完整性校验。

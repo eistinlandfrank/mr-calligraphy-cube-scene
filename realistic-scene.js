@@ -45,6 +45,12 @@ const publishNoteInput = document.getElementById("realisticPublishNote");
 const publishDiffSummary = document.getElementById("realisticPublishDiffSummary");
 const publishDiffList = document.getElementById("realisticPublishDiffList");
 const publishHistoryList = document.getElementById("realisticPublishHistoryList");
+const remotePublishStatus = document.getElementById("realisticRemotePublishStatus");
+const remotePublishEndpointInput = document.getElementById("realisticRemotePublishEndpoint");
+const remotePublishTokenInput = document.getElementById("realisticRemotePublishToken");
+const remotePublishSaveButton = document.getElementById("realisticRemotePublishSave");
+const remotePublishCheckButton = document.getElementById("realisticRemotePublishCheck");
+const remotePublishPushButton = document.getElementById("realisticRemotePublishPush");
 const snapshotCreateButton = document.getElementById("realisticSnapshotCreate");
 const snapshotRefreshButton = document.getElementById("realisticSnapshotRefresh");
 const historyStatus = document.getElementById("realisticHistoryStatus");
@@ -1007,6 +1013,7 @@ function renderPublishPanel() {
     setPublishStatus("尚未发布。写实演示页会临时读取当前草稿。", "normal");
     renderPublishDiff(record);
     renderPublishHistory(record);
+    renderRemotePublishPanel(record);
     return;
   }
 
@@ -1014,6 +1021,7 @@ function renderPublishPanel() {
   setPublishStatus(`已发布 v${record.releaseNumber || 1}：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(normalizeLayoutStats(record.stats, record.layout))}${note}`, "success");
   renderPublishDiff(record);
   renderPublishHistory(record);
+  renderRemotePublishPanel(record);
 }
 
 function setPublishStatus(message, tone = "normal") {
@@ -1022,6 +1030,85 @@ function setPublishStatus(message, tone = "normal") {
   }
   publishStatus.textContent = message;
   publishStatus.dataset.tone = tone;
+}
+
+function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
+  const adapter = window.MRProjectRemotePublish;
+  const hasLocalRelease = Boolean(record?.layout);
+  const status = adapter?.getStatus?.("realisticScene", { hasLocalRelease });
+  const config = adapter?.getConfig?.("realisticScene");
+
+  if (remotePublishStatus) {
+    remotePublishStatus.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "远端发布 adapter 尚未加载。";
+    remotePublishStatus.dataset.remoteTone = status?.tone || "idle";
+  }
+  if (remotePublishEndpointInput && document.activeElement !== remotePublishEndpointInput) {
+    remotePublishEndpointInput.value = config?.endpoint || "";
+  }
+  if (remotePublishTokenInput && document.activeElement !== remotePublishTokenInput) {
+    remotePublishTokenInput.value = config?.token || "";
+  }
+  if (remotePublishSaveButton) {
+    remotePublishSaveButton.disabled = !adapter;
+  }
+  if (remotePublishCheckButton) {
+    remotePublishCheckButton.disabled = !adapter || !status?.remoteConfigured;
+  }
+  if (remotePublishPushButton) {
+    remotePublishPushButton.disabled = !adapter || !status?.remoteConfigured || !hasLocalRelease;
+  }
+}
+
+function saveRemotePublishConfig() {
+  const result = window.MRProjectRemotePublish?.configure?.("realisticScene", {
+    endpoint: remotePublishEndpointInput?.value || "",
+    token: remotePublishTokenInput?.value || ""
+  });
+  renderRemotePublishPanel();
+  showNotice(result?.message || "远端发布配置保存失败。");
+}
+
+async function checkRemotePublishApi() {
+  setRemotePublishBusy(true);
+  try {
+    const result = await window.MRProjectRemotePublish?.check?.("realisticScene");
+    showNotice(result?.message || "远端发布 API 检查失败。");
+  } catch (error) {
+    showNotice(`远端发布 API 检查失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setRemotePublishBusy(false);
+    renderRemotePublishPanel();
+  }
+}
+
+async function pushRemotePublishedLayout() {
+  const record = loadPublishedLayoutRecord();
+  const release = record.releases.find((item) => item.id === record.currentReleaseId) || record.releases[0] || record;
+  setRemotePublishBusy(true);
+  try {
+    const result = await window.MRProjectRemotePublish?.push?.("realisticScene", {
+      sceneLabel: "写实场景",
+      storageKey: SCENE_PUBLISHED_STORAGE_KEY,
+      record,
+      release
+    });
+    showNotice(result?.message || "远端发布包推送失败。");
+  } catch (error) {
+    showNotice(`远端发布包推送失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setRemotePublishBusy(false);
+    renderRemotePublishPanel(record);
+  }
+}
+
+function setRemotePublishBusy(isBusy) {
+  [remotePublishSaveButton, remotePublishCheckButton, remotePublishPushButton].forEach((button) => {
+    if (button) {
+      button.disabled = Boolean(isBusy);
+    }
+  });
 }
 
 function renderPublishDiff(record = loadPublishedLayoutRecord()) {
@@ -1870,6 +1957,9 @@ function bindUi() {
     previewDraftButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html?realisticPreview=draft"));
     openLiveButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html"));
     publishLayoutButton?.addEventListener("click", publishLayoutToDemo);
+    remotePublishSaveButton?.addEventListener("click", saveRemotePublishConfig);
+    remotePublishCheckButton?.addEventListener("click", checkRemotePublishApi);
+    remotePublishPushButton?.addEventListener("click", pushRemotePublishedLayout);
     snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
     snapshotRefreshButton?.addEventListener("click", () => {
       layoutHistory = loadLayoutHistory();

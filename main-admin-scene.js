@@ -86,6 +86,12 @@ const publishNoteInput = document.getElementById("mainPublishNote");
 const publishDiffSummary = document.getElementById("mainPublishDiffSummary");
 const publishDiffList = document.getElementById("mainPublishDiffList");
 const publishHistoryList = document.getElementById("mainPublishHistoryList");
+const remotePublishStatus = document.getElementById("mainRemotePublishStatus");
+const remotePublishEndpointInput = document.getElementById("mainRemotePublishEndpoint");
+const remotePublishTokenInput = document.getElementById("mainRemotePublishToken");
+const remotePublishSaveButton = document.getElementById("mainRemotePublishSave");
+const remotePublishCheckButton = document.getElementById("mainRemotePublishCheck");
+const remotePublishPushButton = document.getElementById("mainRemotePublishPush");
 const adminRiskBanner = document.getElementById("mainAdminRiskBanner");
 const adminRiskAcknowledgeButton = document.getElementById("mainAdminRiskAcknowledge");
 const adminRiskStatus = document.getElementById("mainAdminRiskStatus");
@@ -1240,6 +1246,7 @@ function renderPublishPanel() {
     setPublishStatus("尚未发布。正式前台会临时读取当前草稿布局。", "normal");
     renderPublishDiff(record);
     renderPublishHistory(record);
+    renderRemotePublishPanel(record);
     return;
   }
 
@@ -1248,6 +1255,86 @@ function renderPublishPanel() {
   setPublishStatus(`已发布 v${record.releaseNumber || 1}：${formatDateTime(record.publishedAt)} · ${formatSnapshotStats(stats)}${note}`, "success");
   renderPublishDiff(record);
   renderPublishHistory(record);
+  renderRemotePublishPanel(record);
+}
+
+function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
+  const adapter = window.MRProjectRemotePublish;
+  const hasLocalRelease = Boolean(record?.layout);
+  const status = adapter?.getStatus?.("mainScene", { hasLocalRelease });
+  const config = adapter?.getConfig?.("mainScene");
+
+  if (remotePublishStatus) {
+    remotePublishStatus.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "远端发布 adapter 尚未加载。";
+    remotePublishStatus.dataset.remoteTone = status?.tone || "idle";
+  }
+  if (remotePublishEndpointInput && document.activeElement !== remotePublishEndpointInput) {
+    remotePublishEndpointInput.value = config?.endpoint || "";
+  }
+  if (remotePublishTokenInput && document.activeElement !== remotePublishTokenInput) {
+    remotePublishTokenInput.value = config?.token || "";
+  }
+  if (remotePublishSaveButton) {
+    remotePublishSaveButton.disabled = !adapter;
+  }
+  if (remotePublishCheckButton) {
+    remotePublishCheckButton.disabled = !adapter || !status?.remoteConfigured;
+  }
+  if (remotePublishPushButton) {
+    remotePublishPushButton.disabled = !adapter || !status?.remoteConfigured || !hasLocalRelease;
+  }
+}
+
+function saveRemotePublishConfig() {
+  const result = window.MRProjectRemotePublish?.configure?.("mainScene", {
+    endpoint: remotePublishEndpointInput?.value || "",
+    token: remotePublishTokenInput?.value || ""
+  });
+  renderRemotePublishPanel();
+  showNotice(result?.message || "远端发布配置保存失败。");
+}
+
+async function checkRemotePublishApi() {
+  setRemotePublishBusy(true);
+  try {
+    const result = await window.MRProjectRemotePublish?.check?.("mainScene");
+    showNotice(result?.message || "远端发布 API 检查失败。");
+  } catch (error) {
+    showNotice(`远端发布 API 检查失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setRemotePublishBusy(false);
+    renderRemotePublishPanel();
+  }
+}
+
+async function pushRemotePublishedLayout() {
+  const record = loadPublishedLayoutRecord();
+  const release = record.releases.find((item) => item.id === record.currentReleaseId) || record.releases[0] || record;
+  setRemotePublishBusy(true);
+  try {
+    const result = await window.MRProjectRemotePublish?.push?.("mainScene", {
+      sceneLabel: "主场景",
+      storageKey: PUBLISHED_KEY,
+      record,
+      release
+    });
+    showNotice(result?.message || "远端发布包推送失败。");
+  } catch (error) {
+    showNotice(`远端发布包推送失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setRemotePublishBusy(false);
+    renderRemotePublishPanel(record);
+  }
+}
+
+function setRemotePublishBusy(isBusy) {
+  [remotePublishSaveButton, remotePublishCheckButton, remotePublishPushButton].forEach((button) => {
+    if (button) {
+      button.disabled = Boolean(isBusy);
+    }
+  });
 }
 
 function setPublishStatus(message, tone = "normal") {
@@ -2976,6 +3063,9 @@ function bindUi() {
   openLiveButton?.addEventListener("click", () => openFrontPreview("index.html"));
   publishLayoutButton?.addEventListener("click", publishLayoutToFront);
   publishHistoryList?.addEventListener("click", handlePublishHistoryClick);
+  remotePublishSaveButton?.addEventListener("click", saveRemotePublishConfig);
+  remotePublishCheckButton?.addEventListener("click", checkRemotePublishApi);
+  remotePublishPushButton?.addEventListener("click", pushRemotePublishedLayout);
   renderPublishPanel();
   snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
   snapshotRefreshButton?.addEventListener("click", () => {
