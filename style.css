@@ -4242,6 +4242,33 @@ body.is-model-view .notice-panel {
   white-space: nowrap;
 }
 
+.report-series-template-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.report-series-template-controls button {
+  min-width: 0;
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.report-series-template-controls button:hover,
+.report-series-template-controls button:focus-visible,
+.report-series-template-controls button[aria-pressed="true"] {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.48);
+}
+
 .report-series-metric-controls {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -4670,6 +4697,7 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-comparison-stats span,
   body.is-report-printing .report-series-metric-controls button,
   body.is-report-printing .report-series-zoom-controls button,
+  body.is-report-printing .report-series-template-controls button,
   body.is-report-printing .report-series-point-card,
   body.is-report-printing .report-series-point-actions button,
   body.is-report-printing .report-series-point-detail,

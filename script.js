@@ -961,6 +961,12 @@ const REPORT_METRIC_LABELS = [
   ["fluency", "流畅"],
   ["force", "力度"]
 ];
+const REPORT_SERIES_TEMPLATES = [
+  { key: "shape", label: "字形", keys: ["structure", "stroke"] },
+  { key: "brush", label: "笔势", keys: ["technique", "force"] },
+  { key: "rhythm", label: "节奏", keys: ["fluency", "force"] },
+  { key: "all", label: "全部", keys: ["structure", "stroke", "technique", "fluency", "force"] }
+];
 const REPORT_METRIC_GUIDES = {
   structure: {
     focus: "结构稳定度",
@@ -3585,6 +3591,13 @@ function bindReportControls() {
       return;
     }
 
+    const templateButton = event.target.closest("[data-report-series-template]");
+    if (templateButton) {
+      applyReportSeriesTemplate(templateButton.dataset.reportSeriesTemplate);
+      renderReportPanel(currentIndex);
+      return;
+    }
+
     const metricButton = event.target.closest("[data-report-series-metric]");
     if (metricButton) {
       toggleReportSeriesMetric(metricButton.dataset.reportSeriesMetric);
@@ -4318,6 +4331,7 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
   summary.textContent = `${visibleSeries.summary || series.summary || "已读取本机报告序列。"} 字段对比：${metricText}。`;
 
   const zoomControls = createReportSeriesZoomControls(series, visibleSeries);
+  const templateControls = createReportSeriesTemplateControls(selectedKeys);
   const controls = createReportSeriesMetricControls(selectedKeys, visibleSeries.metricSeries || []);
   const chart = createReportSeriesChart(visibleSeries, selectedMetrics, pointSelection.point?.id);
   const points = document.createElement("div");
@@ -4357,7 +4371,7 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
   });
   const pointDetail = createReportSeriesPointDetail(pointSelection, visibleSeries);
 
-  els.reportSeries.append(summary, zoomControls, controls, chart, points, pointDetail, createReportSeriesTooltip());
+  els.reportSeries.append(summary, zoomControls, templateControls, controls, chart, points, pointDetail, createReportSeriesTooltip());
 }
 
 function createReportSeriesZoomControls(series, visibleSeries) {
@@ -4388,6 +4402,25 @@ function createReportSeriesZoomControls(series, visibleSeries) {
   });
 
   controls.appendChild(status);
+  return controls;
+}
+
+function createReportSeriesTemplateControls(selectedKeys) {
+  const controls = document.createElement("div");
+  controls.id = "reportSeriesTemplates";
+  controls.className = "report-series-template-controls";
+  const activeTemplateKey = getActiveReportSeriesTemplateKey(selectedKeys);
+
+  REPORT_SERIES_TEMPLATES.forEach((template) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.reportSeriesTemplate = template.key;
+    button.setAttribute("aria-pressed", String(template.key === activeTemplateKey));
+    button.textContent = template.label;
+    controls.appendChild(button);
+  });
+
   return controls;
 }
 
@@ -4904,6 +4937,15 @@ function updateReportSeriesZoom(action) {
   showNotice("已重置为全部报告趋势。");
 }
 
+function applyReportSeriesTemplate(templateKey) {
+  const template = REPORT_SERIES_TEMPLATES.find((item) => item.key === templateKey);
+  if (!template) return;
+  const keys = template.keys.map(normalizeReportMetricKey);
+  activeReportSeriesMetricKeys = new Set(keys);
+  activeReportMetricKey = keys[0] || REPORT_METRIC_LABELS[0][0];
+  showNotice(`已切换到${template.label}字段模板。`);
+}
+
 function toggleReportSeriesMetric(key) {
   const metricKey = normalizeReportMetricKey(key);
   if (activeReportSeriesMetricKeys.has(metricKey)) {
@@ -4931,6 +4973,12 @@ function getActiveReportSeriesMetricKeys(fallbackKey = activeReportMetricKey) {
   }
   activeReportSeriesMetricKeys = new Set(keys);
   return keys;
+}
+
+function getActiveReportSeriesTemplateKey(selectedKeys) {
+  const normalized = selectedKeys.map(normalizeReportMetricKey).sort().join("|");
+  const template = REPORT_SERIES_TEMPLATES.find((item) => item.keys.map(normalizeReportMetricKey).sort().join("|") === normalized);
+  return template?.key || "";
 }
 
 function normalizeReportMetricKey(key) {
