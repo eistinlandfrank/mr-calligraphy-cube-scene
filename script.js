@@ -943,6 +943,7 @@ let activeReportDetailId = null;
 let activeArtworkSearch = "";
 let activeArtworkTag = "";
 let activeReportMetricKey = "structure";
+let activeReportSeriesMetricKeys = new Set(["structure"]);
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
@@ -3549,6 +3550,7 @@ function bindReportControls() {
     const button = event.target.closest("[data-report-metric]");
     if (!button) return;
     activeReportMetricKey = normalizeReportMetricKey(button.dataset.reportMetric);
+    activeReportSeriesMetricKeys.add(activeReportMetricKey);
     renderReportPanel(currentIndex);
   });
   els.reportComparison?.addEventListener("click", (event) => {
@@ -3557,6 +3559,13 @@ function bindReportControls() {
     openReportDetailRoute(button.dataset.reportJump);
   });
   els.reportSeries?.addEventListener("click", (event) => {
+    const metricButton = event.target.closest("[data-report-series-metric]");
+    if (metricButton) {
+      toggleReportSeriesMetric(metricButton.dataset.reportSeriesMetric);
+      renderReportPanel(currentIndex);
+      return;
+    }
+
     const button = event.target.closest("[data-report-jump]");
     if (!button) return;
     openReportDetailRoute(button.dataset.reportJump);
@@ -4218,14 +4227,19 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
     return;
   }
 
-  const activeKey = normalizeReportMetricKey(metricKey);
-  const metricLabel = getReportMetricLabel(activeKey);
-  const activeMetric = (series.metricSeries || []).find((item) => item.key === activeKey);
+  const selectedKeys = getActiveReportSeriesMetricKeys(metricKey);
+  const selectedMetrics = selectedKeys
+    .map((key) => (series.metricSeries || []).find((item) => item.key === key))
+    .filter(Boolean);
+  const metricText = selectedMetrics.length
+    ? selectedMetrics.map((metric) => `${metric.label}${formatSignedDelta(metric.delta)}`).join(" / ")
+    : "未选择字段";
   const summary = document.createElement("p");
   summary.className = "report-series-summary";
-  summary.textContent = `${series.summary || "已读取本机报告序列。"} 当前字段：${metricLabel}${activeMetric ? ` ${formatSignedDelta(activeMetric.delta)}` : ""}。`;
+  summary.textContent = `${series.summary || "已读取本机报告序列。"} 字段对比：${metricText}。`;
 
-  const chart = createReportSeriesChart(series, activeMetric);
+  const controls = createReportSeriesMetricControls(selectedKeys, series.metricSeries || []);
+  const chart = createReportSeriesChart(series, selectedMetrics);
   const points = document.createElement("div");
   points.className = "report-series-points";
   (series.points || []).forEach((point) => {
@@ -4234,6 +4248,7 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
     button.dataset.featureState = "real-local";
     button.dataset.reportJump = point.id;
     button.setAttribute("aria-pressed", String(point.current));
+    button.title = `${point.title} / 平均 ${point.averageScore || 0} 分 / ${formatHistoryTime(point.createdAt)}`;
     const label = document.createElement("span");
     label.textContent = `第${point.sequence}份`;
     const score = document.createElement("strong");
@@ -4244,17 +4259,37 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
     points.appendChild(button);
   });
 
-  els.reportSeries.append(summary, chart, points);
+  els.reportSeries.append(summary, controls, chart, points);
 }
 
-function createReportSeriesChart(series, activeMetric = null) {
+function createReportSeriesMetricControls(selectedKeys, metricSeries = []) {
+  const controls = document.createElement("div");
+  controls.className = "report-series-metric-controls";
+  REPORT_METRIC_LABELS.forEach(([key, label]) => {
+    const metric = metricSeries.find((item) => item.key === key);
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.reportSeriesMetric = key;
+    button.setAttribute("aria-pressed", String(selectedKeys.includes(key)));
+    button.title = `${label}趋势 ${metric ? formatSignedDelta(metric.delta) : "暂无变化"}`;
+    const name = document.createElement("span");
+    name.textContent = label;
+    const delta = document.createElement("em");
+    delta.textContent = metric ? formatSignedDelta(metric.delta) : "-";
+    button.append(name, delta);
+    controls.appendChild(button);
+  });
+  return controls;
+}
+
+function createReportSeriesChart(series, selectedMetrics = []) {
   const points = series.points || [];
-  const metricPointMap = new Map((activeMetric?.points || []).map((point) => [point.id, point.value]));
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "report-series-chart");
   svg.setAttribute("viewBox", "0 0 320 128");
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", "多报告平均分和字段趋势图");
+  svg.setAttribute("aria-label", "多报告平均分和多字段趋势图");
 
   const axis = document.createElementNS("http://www.w3.org/2000/svg", "path");
   axis.setAttribute("class", "report-series-axis");
@@ -4262,18 +4297,21 @@ function createReportSeriesChart(series, activeMetric = null) {
   svg.appendChild(axis);
 
   const averageCoords = points.map((point, index) => makeReportSeriesCoord(point.averageScore, index, points.length));
-  const metricCoords = points
-    .map((point, index) => {
-      const value = metricPointMap.get(point.id);
-      return Number.isFinite(value) && value > 0
-        ? makeReportSeriesCoord(value, index, points.length)
-        : null;
-    })
-    .filter(Boolean);
-  svg.appendChild(createReportSeriesPolyline(averageCoords, "report-series-line is-average"));
-  if (metricCoords.length > 1) {
-    svg.appendChild(createReportSeriesPolyline(metricCoords, "report-series-line is-metric"));
-  }
+  svg.appendChild(createReportSeriesPolyline(averageCoords, "report-series-line is-average", "平均分趋势"));
+  selectedMetrics.forEach((metric, metricIndex) => {
+    const metricPointMap = new Map((metric.points || []).map((point) => [point.id, point.value]));
+    const metricCoords = points
+      .map((point, index) => {
+        const value = metricPointMap.get(point.id);
+        return Number.isFinite(value) && value > 0
+          ? makeReportSeriesCoord(value, index, points.length)
+          : null;
+      })
+      .filter(Boolean);
+    if (metricCoords.length > 1) {
+      svg.appendChild(createReportSeriesPolyline(metricCoords, `report-series-line is-metric is-metric-${metricIndex}`, `${metric.label}趋势 ${formatSignedDelta(metric.delta)}`));
+    }
+  });
 
   points.forEach((point, index) => {
     const average = averageCoords[index];
@@ -4283,6 +4321,9 @@ function createReportSeriesChart(series, activeMetric = null) {
     circle.setAttribute("cy", average.y);
     circle.setAttribute("r", point.current ? "4.6" : "3.4");
     circle.setAttribute("aria-label", `${point.title} 平均 ${point.averageScore || 0} 分`);
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = `${point.title} / 平均 ${point.averageScore || 0} 分 / ${formatHistoryTime(point.createdAt)}`;
+    circle.appendChild(title);
     svg.appendChild(circle);
 
     const label = document.createElementNS("http://www.w3.org/2000/svg", "text");
@@ -4299,16 +4340,23 @@ function createReportSeriesChart(series, activeMetric = null) {
   legend.setAttribute("x", "304");
   legend.setAttribute("y", "18");
   legend.setAttribute("text-anchor", "end");
-  legend.textContent = activeMetric?.label ? `平均 / ${activeMetric.label}` : "平均";
+  legend.textContent = selectedMetrics.length
+    ? `平均 / ${selectedMetrics.map((metric) => metric.label).join(" / ")}`
+    : "平均";
   svg.appendChild(legend);
 
   return svg;
 }
 
-function createReportSeriesPolyline(coords, className) {
+function createReportSeriesPolyline(coords, className, label = "") {
   const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   polyline.setAttribute("class", className);
   polyline.setAttribute("points", coords.map((point) => `${point.x},${point.y}`).join(" "));
+  if (label) {
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = label;
+    polyline.appendChild(title);
+  }
   return polyline;
 }
 
@@ -4379,6 +4427,35 @@ function setReportDetailActions(detail) {
   if (els.reportDetailDownload) els.reportDetailDownload.disabled = !hasDetail;
   if (els.reportDetailPrint) els.reportDetailPrint.disabled = !hasDetail;
   if (els.reportDetailOpenHistory) els.reportDetailOpenHistory.disabled = !hasDetail;
+}
+
+function toggleReportSeriesMetric(key) {
+  const metricKey = normalizeReportMetricKey(key);
+  if (activeReportSeriesMetricKeys.has(metricKey)) {
+    if (activeReportSeriesMetricKeys.size > 1) {
+      activeReportSeriesMetricKeys.delete(metricKey);
+    }
+  } else {
+    activeReportSeriesMetricKeys.add(metricKey);
+    activeReportMetricKey = metricKey;
+  }
+
+  if (!activeReportSeriesMetricKeys.has(activeReportMetricKey)) {
+    activeReportMetricKey = activeReportSeriesMetricKeys.values().next().value || REPORT_METRIC_LABELS[0][0];
+  }
+}
+
+function getActiveReportSeriesMetricKeys(fallbackKey = activeReportMetricKey) {
+  const keys = [...activeReportSeriesMetricKeys]
+    .map(normalizeReportMetricKey)
+    .filter((key, index, list) => list.indexOf(key) === index);
+  if (!keys.length) {
+    const metricKey = normalizeReportMetricKey(fallbackKey);
+    activeReportSeriesMetricKeys = new Set([metricKey]);
+    return [metricKey];
+  }
+  activeReportSeriesMetricKeys = new Set(keys);
+  return keys;
 }
 
 function normalizeReportMetricKey(key) {

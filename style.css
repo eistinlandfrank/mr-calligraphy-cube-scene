@@ -4123,6 +4123,50 @@ body.is-model-view .notice-panel {
   line-height: 1.45;
 }
 
+.report-series-metric-controls {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.report-series-metric-controls button {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.68);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+
+.report-series-metric-controls button:hover,
+.report-series-metric-controls button:focus-visible,
+.report-series-metric-controls button[aria-pressed="true"] {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.48);
+}
+
+.report-series-metric-controls span,
+.report-series-metric-controls em {
+  overflow: hidden;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-series-metric-controls em {
+  color: #ffffff;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .report-series-chart {
   display: block;
   width: 100%;
@@ -4149,6 +4193,22 @@ body.is-model-view .notice-panel {
 .report-series-line.is-metric {
   stroke: rgba(247, 215, 139, 0.84);
   stroke-dasharray: 5 4;
+}
+
+.report-series-line.is-metric-1 {
+  stroke: rgba(138, 179, 255, 0.84);
+}
+
+.report-series-line.is-metric-2 {
+  stroke: rgba(255, 156, 178, 0.84);
+}
+
+.report-series-line.is-metric-3 {
+  stroke: rgba(196, 241, 122, 0.8);
+}
+
+.report-series-line.is-metric-4 {
+  stroke: rgba(211, 167, 255, 0.82);
 }
 
 .report-series-dot {
@@ -4347,6 +4407,7 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-metric-row em,
   body.is-report-printing .report-metric-detail span,
   body.is-report-printing .report-comparison-stats em,
+  body.is-report-printing .report-series-metric-controls em,
   body.is-report-printing .report-series-points strong,
   body.is-report-printing .report-latest-text span {
     color: #17221f;
@@ -4361,6 +4422,7 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-latest,
   body.is-report-printing .report-comparison-meta span,
   body.is-report-printing .report-comparison-stats span,
+  body.is-report-printing .report-series-metric-controls button,
   body.is-report-printing .report-series-points button,
   body.is-report-printing .report-metric-detail {
     border: 1px solid #dbe8e2;
@@ -4378,6 +4440,7 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-comparison-meta span,
   body.is-report-printing .report-comparison-stats small,
   body.is-report-printing .report-series-summary,
+  body.is-report-printing .report-series-metric-controls span,
   body.is-report-printing .report-series-points span,
   body.is-report-printing .report-series-points small,
   body.is-report-printing .report-latest-text small,
@@ -4395,6 +4458,22 @@ body.is-model-view .notice-panel {
 
   body.is-report-printing .report-series-line.is-metric {
     stroke: #bb8138;
+  }
+
+  body.is-report-printing .report-series-line.is-metric-1 {
+    stroke: #5579c6;
+  }
+
+  body.is-report-printing .report-series-line.is-metric-2 {
+    stroke: #c05f77;
+  }
+
+  body.is-report-printing .report-series-line.is-metric-3 {
+    stroke: #6e8f2d;
+  }
+
+  body.is-report-printing .report-series-line.is-metric-4 {
+    stroke: #8b5dc1;
   }
 
   body.is-report-printing .report-series-label,
