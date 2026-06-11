@@ -147,6 +147,13 @@ assert(reportPdfExport.filename.endsWith(".pdf"), "PDF 报告应返回 .pdf 文�
 assert(reportPdfExport.mimeType === "application/pdf", "PDF 报告应返回 application/pdf MIME。");
 assert(reportPdfExport.pdf.startsWith("%PDF-1.4"), "PDF 报告内容应包含 PDF 文件头。");
 assert(reportPdfExport.pdf.includes("mr-calligraphy-learning-state-v1"), "PDF 报告应包含本机数据来源。");
+assert(reportPdfExport.features.metricBars, "PDF 报告应声明包含能力条形图。");
+assert(reportPdfExport.features.metricCount === 5, "PDF 报告应包含五项能力条形图。");
+assert(reportPdfExport.features.artworkCard, "PDF 报告应声明包含最近作品卡片。");
+assert(reportPdfExport.features.artworkAvailable, "PDF 报告应识别最近作品记录。");
+assert(reportPdfExport.features.artworkImageAvailable, "PDF 报告应识别最近作品截图来源。");
+assert(reportPdfExport.pdf.includes("MetricBars: 5"), "PDF 内容应包含能力条形图标记。");
+assert(reportPdfExport.pdf.includes("ArtworkCard: yes"), "PDF 内容应包含作品卡片标记。");
 assert(reportPdfExport.byteLength > 1000, "PDF 报告不应是空壳文件。");
 
 const reportSeries = window.MRAppState.getReportSeries("report-3");

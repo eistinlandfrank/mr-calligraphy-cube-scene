@@ -3364,6 +3364,7 @@
 
     const normalizedReport = normalizeReport(report);
     const pdf = createReportPdf(normalizedReport);
+    const latestArtwork = findReportArtwork(normalizedReport);
     return {
       ok: true,
       report: clone(normalizedReport),
@@ -3371,7 +3372,14 @@
       mimeType: "application/pdf",
       pdf,
       byteLength: pdf.length,
-      message: "已生成原生 PDF 学习报告，不依赖浏览器打印流程。"
+      features: {
+        metricBars: true,
+        metricCount: 5,
+        artworkCard: true,
+        artworkAvailable: Boolean(latestArtwork),
+        artworkImageAvailable: Boolean(latestArtwork?.imageData)
+      },
+      message: "已生成包含能力条形图和最近作品卡片的原生 PDF 学习报告。"
     };
   }
 
@@ -3386,6 +3394,11 @@
       ["fluency", "流畅"],
       ["force", "力度"]
     ];
+    const metricItems = metricLabels.map(([key, label]) => ({
+      key,
+      label,
+      value: normalizeScore(normalizedReport.scoreBreakdown?.[key], 0)
+    }));
     const lines = [
       { text: "MR 书法学习报告", size: 22 },
       { text: `报告 ID：${normalizedReport.id}`, size: 11 },
@@ -3396,7 +3409,7 @@
       { text: `练习次数：${normalizedReport.sessionCount}    保存作品：${normalizedReport.artworkCount}    平均评分：${normalizedReport.averageScore}    学习分钟：${normalizedReport.learningMinutes}`, size: 12 },
       { text: "", size: 6 },
       { text: "能力维度", size: 16 },
-      ...metricLabels.map(([key, label]) => ({ text: `${label}：${normalizeScore(normalizedReport.scoreBreakdown?.[key], 0)} 分`, size: 12 })),
+      { type: "metricBars", items: metricItems },
       { text: "", size: 6 },
       { text: "最近练习与作品", size: 16 },
       {
@@ -3411,6 +3424,7 @@
           : "最近作品：暂无保存作品。",
         size: 12
       },
+      { type: "artworkCard", artwork: latestArtwork, session: latestSession },
       { text: "", size: 6 },
       { text: "练习建议", size: 16 },
       ...(normalizedReport.recommendations.length ? normalizedReport.recommendations : ["完成一次书写并保存作品后，会生成更具体的复盘建议。"])
@@ -3421,7 +3435,11 @@
     return createSimplePdf(lines, {
       title: "MR Calligraphy Report",
       subject: normalizedReport.id,
-      source: STORAGE_KEY
+      source: STORAGE_KEY,
+      metricCount: metricItems.length,
+      artworkCard: true,
+      artworkAvailable: Boolean(latestArtwork),
+      artworkImageAvailable: Boolean(latestArtwork?.imageData)
     });
   }
 
@@ -3434,14 +3452,94 @@
     const maxChars = 38;
     const content = [];
     let y = startY;
+    const drawTextAt = (text, size, x, textY) => {
+      content.push(`0.07 0.11 0.10 rg BT /F1 ${size} Tf ${x} ${textY} Td <${toUtf16BEHex(text)}> Tj ET`);
+    };
+    const drawRect = (x, rectY, width, height, color = "0.90 0.94 0.92") => {
+      content.push(`${color} rg ${x} ${rectY} ${width} ${height} re f`);
+    };
+    const strokeRect = (x, rectY, width, height, color = "0.72 0.78 0.75") => {
+      content.push(`${color} RG 0.8 w ${x} ${rectY} ${width} ${height} re S`);
+    };
     const drawLine = (text, size = 12) => {
       const lineHeight = Math.max(14, Math.round(size * 1.45));
       if (y < minY) return;
-      content.push(`BT /F1 ${size} Tf ${marginX} ${y} Td <${toUtf16BEHex(text)}> Tj ET`);
+      drawTextAt(text, size, marginX, y);
       y -= lineHeight;
+    };
+    const drawMetricBars = (items = []) => {
+      const normalizedItems = items
+        .map((item) => ({
+          label: String(item.label || item.key || "维度"),
+          value: normalizeScore(item.value, 0)
+        }))
+        .filter((item) => item.label);
+      if (!normalizedItems.length) return;
+
+      const rowHeight = 23;
+      const labelX = marginX;
+      const trackX = marginX + 68;
+      const trackWidth = 310;
+      const trackHeight = 9;
+      const valueX = trackX + trackWidth + 14;
+      const blockHeight = normalizedItems.length * rowHeight + 12;
+      if (y - blockHeight < minY) return;
+
+      content.push(`% MetricBars: ${normalizedItems.length}`);
+      drawRect(marginX - 10, y - blockHeight + 6, 466, blockHeight, "0.97 0.99 0.97");
+      strokeRect(marginX - 10, y - blockHeight + 6, 466, blockHeight, "0.81 0.87 0.84");
+      normalizedItems.forEach((item, index) => {
+        const rowY = y - 18 - index * rowHeight;
+        const fillWidth = Number(((trackWidth * item.value) / 100).toFixed(2));
+        drawTextAt(item.label, 10, labelX, rowY);
+        drawRect(trackX, rowY - 1, trackWidth, trackHeight, "0.86 0.91 0.88");
+        drawRect(trackX, rowY - 1, fillWidth, trackHeight, "0.14 0.48 0.40");
+        drawTextAt(`${item.value} 分`, 10, valueX, rowY);
+      });
+      y -= blockHeight + 8;
+    };
+    const drawArtworkCard = (artwork, session) => {
+      const blockHeight = artwork ? 92 : 52;
+      if (y - blockHeight < minY) return;
+
+      const cardX = marginX - 10;
+      const cardY = y - blockHeight + 8;
+      content.push(`% ArtworkCard: ${artwork ? "yes" : "empty"}`);
+      content.push(`% ArtworkImageAvailable: ${artwork?.imageData ? "yes" : "no"}`);
+      drawRect(cardX, cardY, 466, blockHeight, "0.99 0.97 0.92");
+      strokeRect(cardX, cardY, 466, blockHeight, "0.83 0.78 0.68");
+
+      if (!artwork) {
+        drawTextAt("暂无保存作品。保存作品后，PDF 会写入最近作品卡片。", 11, marginX, y - 18);
+        y -= blockHeight + 8;
+        return;
+      }
+
+      const previewX = marginX;
+      const previewY = cardY + 16;
+      drawRect(previewX, previewY, 86, 54, "0.92 0.96 0.94");
+      strokeRect(previewX, previewY, 86, 54, "0.66 0.74 0.70");
+      drawTextAt("作品截图", 9, previewX + 18, previewY + 34);
+      drawTextAt(artwork.imageData ? "已保存" : "未保存", 9, previewX + 24, previewY + 19);
+
+      const title = artwork.title || `${artwork.glyph || "作品"}练习作品`;
+      const score = normalizeScore(artwork.score || session?.score, 0);
+      drawTextAt(`最近作品：${title}`, 12, marginX + 104, y - 18);
+      drawTextAt(`评分：${score}    笔画：${artwork.strokeCount || 0}    采样点：${artwork.pointCount || 0}`, 10, marginX + 104, y - 38);
+      drawTextAt(`保存时间：${formatDateTime(artwork.createdAt)}`, 10, marginX + 104, y - 56);
+      drawTextAt("HTML 报告会嵌入原图；本 PDF 使用轻量作品卡片保证离线稳定打开。", 9, marginX + 104, y - 74);
+      y -= blockHeight + 8;
     };
 
     lines.forEach((line) => {
+      if (line.type === "metricBars") {
+        drawMetricBars(line.items);
+        return;
+      }
+      if (line.type === "artworkCard") {
+        drawArtworkCard(line.artwork, line.session);
+        return;
+      }
       const size = Number(line.size) || 12;
       const text = String(line.text ?? "");
       if (!text) {
@@ -3456,6 +3554,14 @@
     const stream = `${content.join("\n")}\n`;
     const title = sanitizePdfInfo(metadata.title || "MR Calligraphy Report");
     const subject = sanitizePdfInfo(metadata.subject || "");
+    const source = sanitizePdfInfo(metadata.source || "");
+    const pdfComments = [
+      `% Source: ${source}`,
+      `% MetricBars: ${Number(metadata.metricCount) || 0}`,
+      `% ArtworkCard: ${metadata.artworkCard ? "yes" : "no"}`,
+      `% ArtworkAvailable: ${metadata.artworkAvailable ? "yes" : "no"}`,
+      `% ArtworkImageAvailable: ${metadata.artworkImageAvailable ? "yes" : "no"}`
+    ].join("\n");
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
       "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
@@ -3466,8 +3572,7 @@
       "<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >>",
       `<< /Title (${title}) /Subject (${subject}) /Creator (MR Calligraphy) >>`
     ];
-    const source = sanitizePdfInfo(metadata.source || "");
-    let pdf = `%PDF-1.4\n%\xE2\xE3\xCF\xD3\n% Source: ${source}\n`;
+    let pdf = `%PDF-1.4\n%\xE2\xE3\xCF\xD3\n${pdfComments}\n`;
     const offsets = [0];
     objects.forEach((object, index) => {
       offsets.push(pdf.length);

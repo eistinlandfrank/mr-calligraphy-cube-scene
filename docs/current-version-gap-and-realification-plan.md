@@ -291,6 +291,38 @@ node scripts/control-inventory.js
 
 - 中文 commit message：`新增学习报告原生PDF导出`
 
+### 2026-06-11：增强学习报告 PDF 图表与作品卡片
+
+完成内容：
+
+- `MRAppState.createReportPdf()` 改为输出带块级内容的 PDF 报告，不再只堆叠文字行。
+- PDF 内容流新增五项能力原生条形图，使用 PDF 矩形绘制能力轨道和分值填充。
+- PDF 新增最近作品卡片，写入作品标题、评分、笔画数、采样点、保存时间和截图来源状态。
+- `getReportPdfExport()` 返回 `features.metricBars`、`features.metricCount`、`features.artworkCard`、`features.artworkAvailable` 和 `features.artworkImageAvailable`，便于前端、后台和脚本判断导出能力。
+- 学习状态检查新增 PDF 图表标记、作品卡片标记和导出 feature 断言。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.reports`、最近练习会话和最近保存作品。
+- 写入状态：PDF 导出仍不改写学习状态，只读取本机报告、练习和作品数据生成文件。
+- 成功反馈：生成的 PDF 内含 `MetricBars: 5` 和 `ArtworkCard: yes` 标记，可被自动化脚本验证。
+- 失败反馈：没有报告时仍返回明确失败；没有作品时 PDF 会生成空作品卡片，不伪造截图。
+- 刷新后复现方式：刷新后重新打开同一份报告，因报告和作品保存在本机状态中，仍可导出同样的 PDF 图表和作品卡片。
+
+验收：
+
+- 手工验收：生成报告后下载 PDF，应看到五项能力条形图和最近作品信息卡片。
+- 脚本验收：`node scripts/learning-state-check.js` 验证 PDF feature、条形图标记和作品卡片标记。
+
+已知限制：
+
+- HTML 报告继续真实嵌入作品原图；当前轻量原生 PDF 为保证离线打开稳定，先使用作品卡片和截图来源标记，不直接嵌入 PNG 位图流。
+- 未来如果要在原生 PDF 中嵌入完整位图，需要补浏览器端图片转码或服务端 PDF 渲染管线。
+
+提交：
+
+- 中文 commit message：`增强学习报告PDF图表`
+
 ### 2026-06-11：后台远端发布 API adapter
 
 完成内容：

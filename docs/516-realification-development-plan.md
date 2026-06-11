@@ -4526,3 +4526,52 @@
 
 - 第一版原生 PDF 是文本摘要型 PDF，尚未把雷达图、趋势图和作品截图嵌入 PDF 页面。
 - 云端长期报告、教师批注、签名验真和服务端 PDF 渲染仍未接入。
+
+### 2026-06-11：增强学习报告 PDF 图表
+
+功能名：学习报告 PDF 能力条形图与最近作品卡片。
+
+涉及文件：
+
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `createReportPdf()` 新增 PDF 块级内容输出，能力维度不再只是文字列表。
+- `createSimplePdf()` 新增原生 PDF 矩形绘制能力，可绘制五项能力条形图。
+- PDF 报告新增最近作品卡片，展示作品标题、评分、笔画数、采样点、保存时间和截图来源状态。
+- `getReportPdfExport()` 新增 `features` 字段，声明 PDF 是否包含能力条形图、能力数量、作品卡片、作品记录和作品截图来源。
+- 学习状态检查新增 PDF feature、`MetricBars: 5` 和 `ArtworkCard: yes` 断言。
+
+真实化说明：
+
+- 数据来源：本机 `ReportRecord`、最近练习会话和最近保存作品，全部来自 `mr-calligraphy-learning-state-v1`。
+- 写入状态：导出动作不修改学习数据，只生成可下载 PDF。
+- 成功反馈：导出返回 `application/pdf`、`.pdf` 文件名、能力图表 feature 和作品卡片 feature。
+- 失败反馈：没有报告时继续返回失败，不生成空壳 PDF；没有作品时只显示空作品卡片，不伪造作品。
+- 刷新后复现方式：刷新后重新打开报告并点击“下载 PDF”，仍能从本机状态生成同样的能力图表和作品卡片。
+
+验收方式：
+
+- 手工验收：打开 `http://localhost:41496/`，完成练习、生成报告并下载 PDF；PDF 应包含五项能力条形图和最近作品卡片。
+- 脚本验收：`node scripts/learning-state-check.js` 验证 PDF feature、条形图标记、作品卡片标记、文件头、MIME 和文件大小。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+已知限制：
+
+- HTML 报告继续真实嵌入作品截图；当前原生 PDF 为轻量实现，先展示作品卡片和截图来源状态，不直接嵌入 PNG 位图。
+- 雷达图、趋势图、教师批注、签名验真和服务端 PDF 渲染仍未接入。
+
+提交：
+
+- 中文 commit message：`增强学习报告PDF图表`
