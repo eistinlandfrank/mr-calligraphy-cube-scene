@@ -6881,13 +6881,15 @@ body.is-model-view .notice-panel {
   overflow-wrap: anywhere;
 }
 
-.plan-repository-merge-fields {
+.plan-repository-merge-fields,
+.history-repository-conflict-fields {
   display: grid;
   gap: 6px;
   margin-top: 4px;
 }
 
-.plan-repository-merge-choice {
+.plan-repository-merge-choice,
+.history-repository-merge-choice {
   display: grid;
   gap: 5px;
   margin: 0;
@@ -6897,20 +6899,23 @@ body.is-model-view .notice-panel {
   background: rgba(255, 250, 241, 0.04);
 }
 
-.plan-repository-merge-choice legend {
+.plan-repository-merge-choice legend,
+.history-repository-merge-choice legend {
   padding: 0 3px;
   color: rgba(255, 244, 203, 0.9);
   font-size: 10px;
   font-weight: 850;
 }
 
-.plan-repository-merge-options {
+.plan-repository-merge-options,
+.history-repository-merge-options {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 5px;
 }
 
-.plan-repository-merge-options label {
+.plan-repository-merge-options label,
+.history-repository-merge-options label {
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 3px 5px;
@@ -6923,18 +6928,21 @@ body.is-model-view .notice-panel {
   cursor: pointer;
 }
 
-.plan-repository-merge-options input {
+.plan-repository-merge-options input,
+.history-repository-merge-options input {
   grid-row: span 2;
   margin: 0;
 }
 
-.plan-repository-merge-options strong {
+.plan-repository-merge-options strong,
+.history-repository-merge-options strong {
   min-width: 0;
   font-size: 10px;
   line-height: 1.2;
 }
 
-.plan-repository-merge-options span {
+.plan-repository-merge-options span,
+.history-repository-merge-options span {
   display: block;
   min-width: 0;
   color: rgba(255, 250, 241, 0.68);
@@ -6946,7 +6954,7 @@ body.is-model-view .notice-panel {
 .plan-repository-conflict-actions,
 .history-repository-conflict-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 6px;
 }
 

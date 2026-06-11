@@ -5611,11 +5611,11 @@ function renderHistoryRepositoryConflictPanel(status) {
   }
 
   if (els.historyRepositoryConflictStatus) {
-    els.historyRepositoryConflictStatus.textContent = `${conflicts.length} 条远端同 ID 差异记录已跳过，可另存副本或忽略审计。`;
+    els.historyRepositoryConflictStatus.textContent = `${conflicts.length} 条远端同 ID 差异记录已跳过，可字段合并、另存副本或忽略审计。`;
   }
   if (!els.historyRepositoryConflictList) return;
   els.historyRepositoryConflictList.innerHTML = "";
-  conflicts.forEach((conflict) => {
+  conflicts.forEach((conflict, conflictIndex) => {
     const item = document.createElement("li");
     const head = document.createElement("div");
     head.className = "history-repository-conflict-item-head";
@@ -5630,17 +5630,12 @@ function renderHistoryRepositoryConflictPanel(status) {
     if (fields.length) {
       const fieldList = document.createElement("div");
       fieldList.className = "history-repository-conflict-fields";
-      fields.slice(0, 6).forEach((field) => {
-        const row = document.createElement("div");
-        row.className = "history-repository-conflict-field";
-        const label = document.createElement("strong");
-        label.textContent = field.label || field.field || "字段";
-        const local = document.createElement("span");
-        local.textContent = `本机：${field.localValue || "空"}`;
-        const remote = document.createElement("span");
-        remote.textContent = `远端：${field.remoteValue || "空"}`;
-        row.append(label, local, remote);
-        fieldList.appendChild(row);
+      fields.slice(0, 8).forEach((field, fieldIndex) => {
+        fieldList.appendChild(createHistoryRepositoryMergeChoice({
+          conflictId: conflict.conflictId || "",
+          fieldDiff: field,
+          groupKey: `${conflictIndex}-${fieldIndex}`
+        }));
       });
       item.appendChild(fieldList);
     }
@@ -5648,6 +5643,7 @@ function renderHistoryRepositoryConflictPanel(status) {
     const actions = document.createElement("div");
     actions.className = "history-repository-conflict-actions";
     [
+      ["merge-fields", "应用字段合并"],
       ["copy-remote", "另存远端副本"],
       ["dismiss", "忽略审计"]
     ].forEach(([action, label]) => {
@@ -5662,6 +5658,36 @@ function renderHistoryRepositoryConflictPanel(status) {
     item.appendChild(actions);
     els.historyRepositoryConflictList.appendChild(item);
   });
+}
+
+function createHistoryRepositoryMergeChoice({ conflictId = "", fieldDiff = {}, groupKey = "" }) {
+  const wrapper = document.createElement("fieldset");
+  wrapper.className = "history-repository-merge-choice";
+  const legend = document.createElement("legend");
+  legend.textContent = fieldDiff.label || fieldDiff.field || "字段";
+  const options = document.createElement("div");
+  options.className = "history-repository-merge-options";
+  [
+    { value: "local", label: "本机", detail: fieldDiff.localValue || "空", checked: true },
+    { value: "remote", label: "远端", detail: fieldDiff.remoteValue || "空", checked: false }
+  ].forEach((choice) => {
+    const choiceLabel = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = `history-merge-${groupKey}`;
+    input.value = choice.value;
+    input.checked = choice.checked;
+    input.dataset.historyMergeConflictId = conflictId;
+    input.dataset.historyMergeField = fieldDiff.field || "";
+    const title = document.createElement("strong");
+    title.textContent = choice.label;
+    const detail = document.createElement("span");
+    detail.textContent = choice.detail;
+    choiceLabel.append(input, title, detail);
+    options.appendChild(choiceLabel);
+  });
+  wrapper.append(legend, options);
+  return wrapper;
 }
 
 function renderHistoryTrashList(trash = { entries: [] }) {
@@ -5812,9 +5838,25 @@ function handleHistoryRepositoryConflictAction(event) {
   if (!button) return;
   const action = button.dataset.historyConflictAction || "";
   const conflictId = button.dataset.historyConflictId || "";
-  const result = window.MRAppState?.resolveHistoryRepositoryConflict?.(action, { conflictId });
+  const options = action === "merge-fields"
+    ? { conflictId, selections: collectHistoryRepositoryMergeSelections(conflictId) }
+    : { conflictId };
+  const result = window.MRAppState?.resolveHistoryRepositoryConflict?.(action, options);
   refreshHistoryRepositoryViews();
   showNotice(result?.message || "学习档案冲突处理失败。");
+}
+
+function collectHistoryRepositoryMergeSelections(conflictId = "") {
+  const selections = {};
+  const panel = els.historyRepositoryConflictPanel;
+  if (!panel) return selections;
+  panel.querySelectorAll("input[data-history-merge-field]:checked").forEach((input) => {
+    const inputConflictId = input.dataset.historyMergeConflictId || "";
+    const field = input.dataset.historyMergeField || "";
+    if (!field || (conflictId && inputConflictId !== conflictId)) return;
+    selections[field] = input.value === "remote" ? "remote" : "local";
+  });
+  return selections;
 }
 
 function setHistoryRepositoryRemoteBusy(isBusy) {

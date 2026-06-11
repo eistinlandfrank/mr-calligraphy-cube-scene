@@ -7365,6 +7365,10 @@
       };
     }
 
+    if (strategy === "merge-fields") {
+      return mergeHistoryRepositoryConflictFields(repository, targets, options);
+    }
+
     if (strategy === "dismiss") {
       updateHistoryRepositoryConflictRecordsAfterResolve(repository, targets, `已忽略 ${targets.length} 条学习档案冲突审计。`);
       addEvent("history-repository-conflict-dismiss", `忽略学习档案冲突审计：${targets.length} 条`);
@@ -7382,6 +7386,96 @@
       status: getHistoryRepositoryStatus(),
       message: "未知的学习档案冲突处理方式。"
     };
+  }
+
+  function mergeHistoryRepositoryConflictFields(repository, targets, options = {}) {
+    let mergedCount = 0;
+    let remoteFieldCount = 0;
+    let localFieldCount = 0;
+
+    targets.forEach((conflict) => {
+      const collection = getHistoryRepositoryConflictCollection(conflict.type);
+      if (!collection) return;
+      const localIndex = collection.records.findIndex((record) => record.id === conflict.id);
+      const remoteRecord = normalizeHistoryConflictRemoteRecord(conflict.type, conflict.remoteRecord);
+      if (localIndex < 0 || !remoteRecord) return;
+
+      const localRecord = collection.normalize(collection.records[localIndex]);
+      if (!localRecord) return;
+      const nextRecord = clone(localRecord);
+      const selections = getHistoryRepositoryConflictMergeSelections(conflict, options);
+      const fields = getHistoryRepositoryMergeFields(conflict);
+      fields.forEach((field) => {
+        if (stablePlanStringify(localRecord[field] ?? "") === stablePlanStringify(remoteRecord[field] ?? "")) {
+          return;
+        }
+        const choice = selections[field] === "remote" ? "remote" : "local";
+        if (choice === "remote") {
+          nextRecord[field] = clone(remoteRecord[field]);
+          remoteFieldCount += 1;
+        } else {
+          localFieldCount += 1;
+        }
+      });
+
+      collection.records[localIndex] = collection.normalize(nextRecord);
+      mergedCount += 1;
+    });
+
+    if (!mergedCount) {
+      return {
+        ok: false,
+        status: getHistoryRepositoryStatus(),
+        message: "没有找到可字段合并的本机冲突档案。"
+      };
+    }
+
+    updateHistoryRepositoryConflictRecordsAfterResolve(
+      repository,
+      targets,
+      `已按字段合并 ${mergedCount} 条学习档案冲突，远端字段 ${remoteFieldCount} 项，本机字段 ${localFieldCount} 项。`
+    );
+    addEvent("history-repository-conflict-merge", `字段级合并学习档案冲突：${mergedCount} 条`);
+    saveState();
+    return {
+      ok: true,
+      mergedCount,
+      remoteFieldCount,
+      localFieldCount,
+      status: getHistoryRepositoryStatus(),
+      message: `已按字段合并 ${mergedCount} 条学习档案冲突：采用远端字段 ${remoteFieldCount} 项，保留本机字段 ${localFieldCount} 项。`
+    };
+  }
+
+  function getHistoryRepositoryConflictCollection(type) {
+    if (type === "session") return { records: state.sessions, normalize: normalizeSession };
+    if (type === "artwork") return { records: state.artworks, normalize: normalizeArtwork };
+    if (type === "report") return { records: state.reports, normalize: normalizeReport };
+    return null;
+  }
+
+  function getHistoryRepositoryMergeFields(conflict) {
+    const configuredFields = HISTORY_REPOSITORY_CONFLICT_FIELDS[conflict.type] || [];
+    const diffFields = Array.isArray(conflict.fieldDiffs)
+      ? conflict.fieldDiffs.map((field) => String(field.field || "").trim()).filter(Boolean)
+      : [];
+    return [...new Set([...diffFields, ...configuredFields])];
+  }
+
+  function getHistoryRepositoryConflictMergeSelections(conflict, options = {}) {
+    const source = options && typeof options === "object" ? options : {};
+    const selections = source.selections && typeof source.selections === "object"
+      ? source.selections
+      : source.fields && typeof source.fields === "object"
+        ? source.fields
+        : source;
+    const nested = selections?.[conflict.conflictId] || selections?.[conflict.id] || selections;
+    const result = {};
+    Object.entries(nested || {}).forEach(([field, value]) => {
+      if (["conflictId", "id", "selections", "fields"].includes(field)) return;
+      result[field] = value === "remote" ? "remote" : "local";
+    });
+    return result;
   }
 
   function updateHistoryRepositoryConflictRecordsAfterResolve(repository, targets, statusMessage) {
