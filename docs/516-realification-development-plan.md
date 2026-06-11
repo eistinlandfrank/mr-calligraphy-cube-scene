@@ -3944,3 +3944,40 @@
 
 - 这次修正的是控件状态标注和入口验收，不新增持久化视角保存。
 - 写实样张本身仍是本机演示页，不是云端发布页或公开资产库。
+
+### 2026-06-11：真实化前台写实入口
+
+功能名：前台“写实 3D 样张”导航入口从演示内容改为本机真实入口。
+
+涉及文件：
+
+- `index.html`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `index.html` 的“写实 3D 样张”入口从 `demo-content` 改为 `real-local`。
+- 该入口直接打开本机 `realistic-demo.html`，目标页已通过 smoke test 覆盖。
+- 前台 smoke test 标记新增 `realistic-demo.html`，避免入口被误删。
+- 控件清单现在显示四个入口 HTML 的静态 `demo-content` 均为 0。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`。
+- 点击“写实 3D 样张”，应打开 `http://localhost:41496/realistic-demo.html`。
+- 运行控件清单，应看到 `index.html` 为 35 个 `real-local`、0 个 `demo-content`。
+
+当前验证结果：
+
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 这次真实化的是本机导航入口，不代表写实样张页已经具备云端发布或公开资产库能力。
+- 前台动态场景热点仍由 `SCENES` 静态内容渲染，后续仍要继续治理。
