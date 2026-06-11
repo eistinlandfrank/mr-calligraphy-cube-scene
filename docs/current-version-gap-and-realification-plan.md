@@ -49,7 +49,7 @@ node scripts/control-inventory.js
 | AI 讲解 | 浏览器本机语音合成能朗读本机讲解段落 | 不是云端 AI 音频，也不是根据真实笔迹动态生成 | UI 保持“本机语音讲解”定位；后续抽象讲解服务接口，支持云端生成和音频资源 |
 | 书写练习 | 支持鼠标/触控笔迹、撤销、清空、回放和本机保存 | 缺压感、笔锋、笔画顺序模型和硬件适配 | 增加范字路径库、笔画顺序校验、压感字段、专业评分接口和离线 fallback |
 | 评分反馈 | 能从本机笔迹计算结构、笔画、笔法、力度、流畅度 | 仍是启发式评分，容易被误解为专业识别模型 | 明确标注为基础练习评分；补评分公式解释、证据点和后续模型适配层 |
-| 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本三种处理入口 | 缺真正账号登录、后台托管仓库、远端提醒和教师端通知 | 继续增加账号同步、后台计划仓库、教师端通知和远端提醒 |
+| 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本三种处理入口；远端计划仓库 API 合同和本机 mock 服务已完成第一版 | 缺真正账号登录、后台托管仓库、远端提醒和教师端通知 | 继续增加账号同步、后台计划仓库、教师端通知和远端提醒 |
 
 ### 3.2 作品、报告和分享
 
@@ -75,7 +75,7 @@ node scripts/control-inventory.js
 
 1. 部分热点说明仍来自静态场景导览；学习动作里的笔画拆解、创作实践、复习巩固已开始写入本机阶段记录。
 2. AI 讲解、评分、发布、分享、PDF 这些词天然会让用户期待生产级能力，但当前多为本机原型或导出文件。
-3. 学习计划已有到期、提醒、顺延、复盘、依赖图、周期循环、离线导出、本机提醒权限边界、JSON 同步包、远端 API adapter、自动同步队列、冲突检测和前端冲突解决入口；真正账号系统、后台托管仓库、远端提醒和教师端通知仍未接入。
+3. 学习计划已有到期、提醒、顺延、复盘、依赖图、周期循环、离线导出、本机提醒权限边界、JSON 同步包、远端 API adapter、API 合同、mock 服务、自动同步队列、冲突检测和前端冲突解决入口；真正账号系统、后台托管仓库、远端提醒和教师端通知仍未接入。
 4. 后台本机发布和远端发布 API adapter 已可用，但远端 adapter 只是把发布包发给用户配置的 endpoint，不是部署、审核、账号权限或 CDN 托管。
 5. 现有 smoke test 能证明页面和脚本不坏，但还不能证明所有深层交互都真实可用。
 6. 前台主脚本已清零 `window.prompt()`；学习计划新增/编辑、作品标签编辑和历史记录重命名都已升级为表单弹层。删除、清空等高风险动作仍保留浏览器确认框。
@@ -222,7 +222,7 @@ node scripts/control-inventory.js
 
 | 优先级 | 功能 | 原因 | 交付物 |
 | --- | --- | --- | --- |
-| P0 | 账号化计划仓库和跨设备提醒 | 远端 API adapter、自动同步队列、冲突检测和前端冲突解决入口第一版已完成，但还没有账号登录、后台托管仓库、教师端通知或后台推送 | 账号同步状态、服务端 repository 合同、跨设备提醒策略 |
+| P0 | 账号化计划仓库和跨设备提醒 | 远端 API adapter、服务端 repository 合同、mock 服务、自动同步队列、冲突检测和前端冲突解决入口第一版已完成，但还没有账号登录、后台托管仓库、教师端通知或后台推送 | 账号同步状态、托管 repository、跨设备提醒策略 |
 | P0 | 剩余 `demo-content` 动作治理 | 用户最容易觉得“按钮是假的” | 四个入口 HTML 静态控件和前台动态热点已清零；后续持续审计新增控件 |
 | P1 | 评分解释层 | 评分是核心信任点 | 第一版已完成：基础评分证据、缺数据状态、模型替换接口 |
 | P1 | 任务依赖和完成条件 | 10 步学习路径需要真实进度 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截和测试 |
@@ -581,6 +581,40 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增远端发布mock服务`
+
+### 2026-06-12：远端计划仓库合同与 mock 服务
+
+完成内容：
+
+- 新增 `docs/plan-repository-api-contract.md`，明确远端计划仓库 `GET` 检查/拉取、`PUT` 推送、`OPTIONS` 跨端口预检、Authorization、计划包字段、成功回执和失败状态码。
+- 新增 `scripts/plan-repository-mock-server.js`，使用 Node 标准库启动本地 HTTP mock 服务，不依赖 npm 包。
+- mock 服务会返回 `mr-calligraphy-plan-repository-contract-v1` 合同、`mr-calligraphy-plan-repository-receipt-v1` 回执，并校验计划包 kind、version、packageId、summary、plans 和计划项字段。
+- mock 服务支持可选 Bearer token 和浏览器跨端口 CORS 预检，便于直接在前台远端计划 API 面板配置使用。
+- `scripts/learning-state-check.js` 新增真实 HTTP mock server 验收，覆盖 GET 检查、PUT 推送、最近计划包拉取、回执 digest 和错误 token 拒绝。
+- `scripts/smoke-test.js` 把计划仓库 mock server 纳入语法检查。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.plans` 生成的 `mr-calligraphy-plan-repository-v1` 同步包。
+- 写入状态：前端 adapter 仍写入本机 `planRepository` 状态；mock server 在内存里保存最近计划包和 receipt。
+- 成功反馈：mock server 返回远端版本、服务端 packageId、repositoryDigest 和 receiptDigest；adapter 会把远端 packageId、计划数量和同步方向写回本机状态。
+- 失败反馈：HTTP 401、404、405、422 和 500 会返回结构化 JSON，不显示同步成功。
+- 刷新后复现方式：前端保存的 endpoint、最近同步方向和远端状态可刷新读取；mock server 内存状态只用于本地开发验收。
+
+验收：
+
+- 手工验收：运行 `node scripts/plan-repository-mock-server.js`，在前台计划同步面板配置输出的 endpoint，生成学习计划后点击“检查远端 / 推送计划 / 拉取计划”，应看到真实 HTTP 状态和同步结果。
+- 脚本验收：`node scripts/learning-state-check.js` 会启动临时 mock server，验证真实 HTTP GET/PUT、Bearer token、receipt 和错误 token 拒绝；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 会检查新脚本语法。
+
+已知限制：
+
+- mock server 是开发验收工具，不提供持久化数据库、账号权限、教师端排课、远端推送提醒或服务端合并审计。
+- 当前冲突解决仍在前端计划级处理，后续需要服务端版本、字段级 merge 和账号空间隔离。
+- 跨设备提醒目前只能同步计划数据，提醒仍由各设备本机浏览器处理。
+
+提交：
+
+- 中文 commit message：`新增计划仓库mock服务`
 
 ### 2026-06-11：学习计划自动同步队列
 

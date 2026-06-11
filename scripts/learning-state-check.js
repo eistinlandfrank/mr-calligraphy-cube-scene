@@ -74,6 +74,9 @@ global.localStorage = {
   removeItem: (key) => storage.delete(key)
 };
 
+const nativeFetch = typeof global.fetch === "function" ? global.fetch.bind(global) : null;
+const { startPlanRepositoryMockServer } = require("./plan-repository-mock-server.js");
+
 require("../app-state.js");
 
 const comparison = window.MRAppState.getArtworkComparison("永");
@@ -501,7 +504,51 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
   assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "自动同步成功后应清理冲突计数。");
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告原生 PDF、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、计划依赖图、计划周期循环和计划离线导出已生成。");
+  await runPlanRepositoryMockServerChecks(nativeFetch);
+
+  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告原生 PDF、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、计划依赖图、计划周期循环和计划离线导出已生成。");
+}
+
+async function runPlanRepositoryMockServerChecks(fetchApi) {
+  assert(fetchApi, "当前 Node 环境需要支持 fetch 以验证计划仓库 mock 服务。");
+  const previousFetch = global.fetch;
+  const mock = await startPlanRepositoryMockServer({ token: "plan-token" });
+  try {
+    global.fetch = fetchApi;
+    const configuredMock = window.MRAppState.configurePlanRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "plan-token"
+    });
+    assert(configuredMock.ok, "计划仓库 mock endpoint 应可保存为远端配置。");
+
+    const checkedBeforePush = await window.MRAppState.checkRemotePlanRepository();
+    assert(checkedBeforePush.ok, "计划仓库 mock GET 检查应真实可访问。");
+    assert(checkedBeforePush.package === null, "计划仓库 mock 初始未接收包时不应伪造远端计划。");
+
+    const pushedMock = await window.MRAppState.pushPlanRepositoryToRemote();
+    assert(pushedMock.ok, "计划仓库 mock 应接收真实 PUT 推送。");
+    assert(pushedMock.packageId.startsWith("mock-plan-repository-"), "计划仓库 mock 应返回服务端 packageId。");
+    assert(mock.state.package.packageId === pushedMock.packageId, "计划仓库 mock 应在内存中保存最近计划包。");
+    assert(mock.state.receipts[0].repositoryDigest, "计划仓库 mock 应返回 repositoryDigest 回执。");
+
+    const checkedAfterPush = await window.MRAppState.checkRemotePlanRepository();
+    assert(checkedAfterPush.ok && checkedAfterPush.package.plans.length === mock.state.package.plans.length, "计划仓库 mock GET 应返回最近 PUT 保存的计划包。");
+
+    const pulledMock = await window.MRAppState.pullPlanRepositoryFromRemote({ force: true });
+    assert(pulledMock.ok, "计划仓库 mock 应支持真实 GET 拉取。");
+    assert(pulledMock.pulledPlanCount === mock.state.package.plans.length, "计划仓库 mock 拉取结果应保留远端计划数量。");
+
+    const badTokenConfig = window.MRAppState.configurePlanRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "bad-token"
+    });
+    assert(badTokenConfig.ok, "计划仓库 mock 错误 token 配置应仍可保存以便检查失败态。");
+    const rejected = await window.MRAppState.checkRemotePlanRepository();
+    assert(!rejected.ok && rejected.message.includes("HTTP 401"), "计划仓库 mock 应拒绝错误 Bearer token。");
+  } finally {
+    global.fetch = previousFetch;
+    await mock.close();
+  }
 }
 
 function createJsonResponse(payload, ok = true, status = 200) {

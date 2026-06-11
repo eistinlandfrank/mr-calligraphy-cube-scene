@@ -16,6 +16,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/project-schema-check.js", parser: "script" },
   { file: "scripts/remote-publish-check.js", parser: "script" },
   { file: "scripts/remote-publish-mock-server.js", parser: "script" },
+  { file: "scripts/plan-repository-mock-server.js", parser: "script" },
   { file: "scripts/learning-state-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },

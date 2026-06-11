@@ -56,7 +56,7 @@
 - 书写练习仍是第一版：已有书写画布、笔迹采样、撤销、清空和回放，但还没有压感硬件适配和高级笔法识别。
 - 评分算法仍需升级：当前结构、笔画、笔法、力度、流畅度由启发式算法计算，并已保存基础评分证据和维度理由，但还不是专业模型。
 - 任务系统已有第一版本机任务库、任务依赖和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、前置任务、完成条件、锁定状态、笔画拆解/创作实践/复习巩固阶段记录、练习次数、作品数、报告数和完成百分比可写入或刷新读取；仍缺云端课程库、更细逐步骤评分规则和教师端任务下发。
-- 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、同步仓库、远端 API adapter、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测，以及保留本机、采用远端、另存远端副本三种处理方式；仍缺账号化托管仓库、远端提醒、教师端通知和字段级合并。
+- 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、同步仓库、远端 API adapter、计划仓库 API 合同、本机 mock 服务、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测，以及保留本机、采用远端、另存远端副本三种处理方式；仍缺账号化托管仓库、远端提醒、教师端通知和字段级合并。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
 - 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览、单模型选择恢复、模型元数据片段对照、模型完整 JSON 安全预览、命名冲突策略选择、自定义命名、远端发布包资产清单、本机发布锁、服务端合同文档和 mock server 已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树和生产服务端资产签名。
@@ -4522,6 +4522,55 @@
 - 冲突解决仍是计划级处理，尚未做到计划项字段级逐项合并。
 - “采用远端”会重新请求远端 endpoint，因此采用的是当下远端返回结果。
 - 仍缺账号化托管仓库、教师端通知、远端推送提醒和服务端审计。
+
+### 2026-06-12：新增计划仓库 mock 服务
+
+功能名：远端计划仓库服务端合同文档与本机 mock server。
+
+涉及文件：
+
+- `scripts/plan-repository-mock-server.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/plan-repository-api-contract.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 新增 `docs/plan-repository-api-contract.md`，描述远端计划仓库 endpoint、GET/PUT/OPTIONS、Authorization、计划包字段、receipt 和错误码。
+- 新增 `scripts/plan-repository-mock-server.js`，可直接运行本地 HTTP mock 服务，也可被测试脚本启动临时服务。
+- mock 服务 `GET` 返回合同、远端版本、最近 receipt 和最近保存的计划包；`PUT` 会校验 `mr-calligraphy-plan-repository-v1` 结构并写入内存。
+- mock 服务支持可选 Bearer token 和 CORS 预检，前台页面可直接配置 `http://127.0.0.1:<port>/api/plan-repository` 验证真实同步。
+- mock 服务成功接收后返回 `mr-calligraphy-plan-repository-receipt-v1` 回执，包含服务端 packageId、sourcePackageId、repositoryDigest、acceptedAt、planCount 和 receiptDigest。
+- `scripts/learning-state-check.js` 启动真实本机 mock server，使用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、回执、拉取最近计划包和错误 token 拒绝。
+- `scripts/smoke-test.js` 将新 mock server 纳入语法检查。
+
+验收方式：
+
+- 运行 `node scripts/plan-repository-mock-server.js`，复制输出的 endpoint。
+- 在前台生成学习计划，展开“远端 API 同步”，配置该 endpoint 和可选 token。
+- 点击“检查远端 / 推送计划 / 拉取计划”，应看到真实 HTTP 成功或失败反馈；错误 token 应返回 HTTP 401。
+
+当前验证结果：
+
+- `node --check scripts/plan-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+已知限制：
+
+- mock 服务只用于本机开发验收，不提供数据库、账号权限、教师端排课、服务端字段级合并或远端推送提醒。
+- 当前远端计划仓库仍是用户自配 HTTP endpoint；真正托管仓库需要后端账号、空间隔离和服务端冲突审计。
+- 跨设备提醒目前只同步计划数据，各设备仍需本机浏览器处理提醒。
+
+提交：
+
+- 中文 commit message：`新增计划仓库mock服务`
 
 ### 2026-06-11：新增后台远端发布适配
 
