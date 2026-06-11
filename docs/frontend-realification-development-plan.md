@@ -4,6 +4,8 @@
 适用版本：5.16 恢复线后的当前 `main` 分支  
 当前本地入口：`http://localhost:41496/`、`http://localhost:41496/main-admin.html`、`http://localhost:41496/realistic-demo.html`、`http://localhost:41496/realistic-admin.html`
 
+最新专项审计：[`docs/2026-06-12-current-version-realification-audit.md`](2026-06-12-current-version-realification-audit.md)。该文档专门回答“当前版本哪些功能不完善、哪些前端入口看起来像假的、后续如何真实化”。
+
 ## 1. 后台控制页面
 
 当前项目有两个后台控制页面：
@@ -217,3 +219,33 @@ git diff --check
 ```
 
 如果改动涉及 3D 画布、后台发布或下载功能，还要补 Playwright 或等价浏览器级验收。
+
+## 12. 2026-06-12 当前版本真实化审计
+
+本次新增专项审计文档：[`docs/2026-06-12-current-version-realification-audit.md`](2026-06-12-current-version-realification-audit.md)。
+
+完成内容：
+
+- 明确当前版本的后台入口、前台入口、写实演示入口和各自真实边界。
+- 汇总当前最不完善的能力：本机真实和生产真实混淆、学习路径静态剧本残留、本机语音不等于 AI 服务、启发式评分不等于专业模型、本机教师批注不等于教师端、导出分享不等于公开链接、后台不等于账号化 CMS、远端 adapter 不等于生产后端、Playwright 覆盖不足。
+- 重新记录控件清单结果，确认当前缺失/非法标记为 0，并指出下一步应验证 `real-local` 的真实边界。
+- 固化“假界面真实化标准”：数据来源、执行动作、成功反馈、失败反馈、持久化、自动验收和边界说明。
+- 给出 P0-P3 的真实化开发路线，便于后续长期开发逐项落地。
+
+真实化说明：
+
+- 数据来源：当前仓库 HTML、脚本、已有开发文档、控件清单脚本和当前本机服务。
+- 写入状态：本次只新增文档，不改变运行时学习、后台或发布状态。
+- 成功反馈：仓库新增可追踪的专项审计文档，README 和本文档均能跳转。
+- 失败反馈：不涉及运行时失败；文档明确指出当前仍缺生产后端、账号权限和更完整浏览器验收。
+- 刷新后复现方式：文档保存在仓库 `docs/` 目录，后续提交和拉取都能查看。
+
+验收：
+
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增当前版本真实化审计文档`

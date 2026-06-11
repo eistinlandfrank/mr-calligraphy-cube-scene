@@ -65,6 +65,14 @@ node scripts/control-inventory.js --check
 
 更多说明见 [docs/smoke-test.md](docs/smoke-test.md)。
 
+## 开发文档
+
+当前版本仍以本机静态项目为基础，很多能力已经是本机真实闭环，但还不是账号化、跨设备、服务端托管的生产产品。长期开发请优先参考：
+
+- [当前版本功能不足与真实化审计](docs/2026-06-12-current-version-realification-audit.md)：说明目前哪些功能不够完善、哪些界面容易被误认为生产能力，以及下一步怎么真实化。
+- [前端操作界面真实化开发文档](docs/frontend-realification-development-plan.md)：记录控件状态规范、真实化标准和持续开发记录。
+- [5.16 版本功能审计与真实化开发文档](docs/516-realification-development-plan.md)：记录从 5.16 恢复线开始的功能分级、开发路线和历史记录。
+
 ## 立方体贴图
 
 当前六面贴图读取：
