@@ -92,6 +92,11 @@ const remotePublishTokenInput = document.getElementById("mainRemotePublishToken"
 const remotePublishSaveButton = document.getElementById("mainRemotePublishSave");
 const remotePublishCheckButton = document.getElementById("mainRemotePublishCheck");
 const remotePublishPushButton = document.getElementById("mainRemotePublishPush");
+const remotePublishReviewStatus = document.getElementById("mainRemotePublishReviewStatus");
+const remotePublishRequestReviewButton = document.getElementById("mainRemotePublishRequestReview");
+const remotePublishApproveReviewButton = document.getElementById("mainRemotePublishApproveReview");
+const remotePublishRejectReviewButton = document.getElementById("mainRemotePublishRejectReview");
+const remotePublishUnlockButton = document.getElementById("mainRemotePublishUnlock");
 const adminRiskBanner = document.getElementById("mainAdminRiskBanner");
 const adminRiskAcknowledgeButton = document.getElementById("mainAdminRiskAcknowledge");
 const adminRiskStatus = document.getElementById("mainAdminRiskStatus");
@@ -1261,7 +1266,9 @@ function renderPublishPanel() {
 function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
   const adapter = window.MRProjectRemotePublish;
   const hasLocalRelease = Boolean(record?.layout);
-  const status = adapter?.getStatus?.("mainScene", { hasLocalRelease });
+  const context = createRemotePublishContext(record);
+  const status = adapter?.getStatus?.("mainScene", { ...context, hasLocalRelease });
+  const workflow = adapter?.getWorkflow?.("mainScene", context);
   const config = adapter?.getConfig?.("mainScene");
 
   if (remotePublishStatus) {
@@ -1269,6 +1276,12 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
       ? `${status.message} ${status.boundary}`
       : "远端发布 adapter 尚未加载。";
     remotePublishStatus.dataset.remoteTone = status?.tone || "idle";
+  }
+  if (remotePublishReviewStatus) {
+    remotePublishReviewStatus.textContent = workflow
+      ? workflow.message
+      : "远端发布工作流尚未加载。";
+    remotePublishReviewStatus.dataset.workflowTone = workflow?.tone || "idle";
   }
   if (remotePublishEndpointInput && document.activeElement !== remotePublishEndpointInput) {
     remotePublishEndpointInput.value = config?.endpoint || "";
@@ -1283,8 +1296,31 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
     remotePublishCheckButton.disabled = !adapter || !status?.remoteConfigured;
   }
   if (remotePublishPushButton) {
-    remotePublishPushButton.disabled = !adapter || !status?.remoteConfigured || !hasLocalRelease;
+    remotePublishPushButton.disabled = !adapter || !status?.remoteConfigured || !hasLocalRelease || !workflow?.canPush;
   }
+  if (remotePublishRequestReviewButton) {
+    remotePublishRequestReviewButton.disabled = !adapter || !hasLocalRelease || !workflow?.canRequestReview;
+  }
+  if (remotePublishApproveReviewButton) {
+    remotePublishApproveReviewButton.disabled = !adapter || !workflow?.canApprove;
+  }
+  if (remotePublishRejectReviewButton) {
+    remotePublishRejectReviewButton.disabled = !adapter || !workflow?.canReject;
+  }
+  if (remotePublishUnlockButton) {
+    remotePublishUnlockButton.disabled = !adapter || !workflow?.canUnlock;
+  }
+}
+
+function createRemotePublishContext(record = loadPublishedLayoutRecord()) {
+  const releases = Array.isArray(record?.releases) ? record.releases : [];
+  const release = releases.find((item) => item?.id === record?.currentReleaseId) || releases[0] || record;
+  return {
+    sceneLabel: "主场景",
+    storageKey: PUBLISHED_KEY,
+    record,
+    release
+  };
 }
 
 function saveRemotePublishConfig() {
@@ -1311,14 +1347,11 @@ async function checkRemotePublishApi() {
 
 async function pushRemotePublishedLayout() {
   const record = loadPublishedLayoutRecord();
-  const release = record.releases.find((item) => item.id === record.currentReleaseId) || record.releases[0] || record;
+  const context = createRemotePublishContext(record);
   setRemotePublishBusy(true);
   try {
     const result = await window.MRProjectRemotePublish?.push?.("mainScene", {
-      sceneLabel: "主场景",
-      storageKey: PUBLISHED_KEY,
-      record,
-      release
+      ...context
     });
     showNotice(result?.message || "远端发布包推送失败。");
   } catch (error) {
@@ -1329,8 +1362,53 @@ async function pushRemotePublishedLayout() {
   }
 }
 
+function requestRemotePublishReview() {
+  const record = loadPublishedLayoutRecord();
+  const result = window.MRProjectRemotePublish?.requestReview?.("mainScene", {
+    ...createRemotePublishContext(record),
+    note: publishNoteInput?.value || ""
+  });
+  renderRemotePublishPanel(record);
+  showNotice(result?.message || "远端发布审核提交失败。");
+}
+
+function approveRemotePublishReview() {
+  const record = loadPublishedLayoutRecord();
+  const result = window.MRProjectRemotePublish?.approveReview?.("mainScene", {
+    ...createRemotePublishContext(record),
+    note: publishNoteInput?.value || ""
+  });
+  renderRemotePublishPanel(record);
+  showNotice(result?.message || "远端发布审核通过失败。");
+}
+
+function rejectRemotePublishReview() {
+  const record = loadPublishedLayoutRecord();
+  const result = window.MRProjectRemotePublish?.rejectReview?.("mainScene", {
+    ...createRemotePublishContext(record),
+    reason: publishNoteInput?.value || ""
+  });
+  renderRemotePublishPanel(record);
+  showNotice(result?.message || "远端发布审核退回失败。");
+}
+
+function unlockRemotePublish() {
+  const record = loadPublishedLayoutRecord();
+  const result = window.MRProjectRemotePublish?.unlock?.("mainScene", createRemotePublishContext(record));
+  renderRemotePublishPanel(record);
+  showNotice(result?.message || "远端发布锁解除失败。");
+}
+
 function setRemotePublishBusy(isBusy) {
-  [remotePublishSaveButton, remotePublishCheckButton, remotePublishPushButton].forEach((button) => {
+  [
+    remotePublishSaveButton,
+    remotePublishCheckButton,
+    remotePublishPushButton,
+    remotePublishRequestReviewButton,
+    remotePublishApproveReviewButton,
+    remotePublishRejectReviewButton,
+    remotePublishUnlockButton
+  ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);
     }
@@ -3066,6 +3144,10 @@ function bindUi() {
   remotePublishSaveButton?.addEventListener("click", saveRemotePublishConfig);
   remotePublishCheckButton?.addEventListener("click", checkRemotePublishApi);
   remotePublishPushButton?.addEventListener("click", pushRemotePublishedLayout);
+  remotePublishRequestReviewButton?.addEventListener("click", requestRemotePublishReview);
+  remotePublishApproveReviewButton?.addEventListener("click", approveRemotePublishReview);
+  remotePublishRejectReviewButton?.addEventListener("click", rejectRemotePublishReview);
+  remotePublishUnlockButton?.addEventListener("click", unlockRemotePublish);
   renderPublishPanel();
   snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
   snapshotRefreshButton?.addEventListener("click", () => {

@@ -75,6 +75,14 @@ async function run() {
     tamperedValidation.errors.some((item) => item.includes("摘要不匹配")),
     "远端发布包预检应说明摘要不匹配。"
   );
+  const initialWorkflow = adapter.getWorkflow("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(initialWorkflow.canRequestReview, "未审核发布包应允许提交本机审核。");
+  assert(!initialWorkflow.canPush, "未审核发布包不应允许远端推送。");
 
   let pushedMainPackage = null;
   const fetchCalls = [];
@@ -102,6 +110,40 @@ async function run() {
   assert(fetchCalls[0].url === "https://example.test/main-publish", "主场景检查应请求已保存 endpoint。");
   assert(fetchCalls[0].options.headers.Authorization === "Bearer main-token", "主场景检查应携带 token。");
 
+  const blockedBeforeReview = await adapter.push("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(!blockedBeforeReview.ok && blockedBeforeReview.message.includes("审核"), "未审核发布包不应执行远端推送。");
+  assert(pushedMainPackage === null, "未审核发布包不应产生 POST body。");
+
+  const reviewRequest = adapter.requestReview("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0],
+    note: "课堂版审核"
+  });
+  assert(reviewRequest.ok && reviewRequest.workflow.canApprove, "提交审核后应进入可审核状态。");
+  const blockedDuringReview = await adapter.push("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(!blockedDuringReview.ok && blockedDuringReview.message.includes("审核"), "审核中发布包不应直接推送。");
+
+  const approval = adapter.approveReview("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0],
+    note: "同意推送"
+  });
+  assert(approval.ok && approval.workflow.canPush, "审核通过后应允许推送。");
+
   const mainPush = await adapter.push("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -114,8 +156,43 @@ async function run() {
   assert(mainPush.packageId === "accepted-mainScene", "主场景推送应记录远端接收 packageId。");
   assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
   assert(mainPush.validation.ok, "主场景推送结果应包含通过的预检结果。");
+  const lockedWorkflow = adapter.getWorkflow("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(lockedWorkflow.lockMatches && !lockedWorkflow.canPush, "推送成功后当前发布包应进入发布锁保护。");
+  const blockedByLock = await adapter.push("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(!blockedByLock.ok && blockedByLock.message.includes("发布锁"), "发布锁应阻止重复推送同一发布包。");
+  const unlocked = adapter.unlock("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(unlocked.ok && !unlocked.workflow.lock.lockedAt, "解除发布锁后应清空锁状态。");
 
   const realisticRecord = createPublishedRecord("realistic-release-1", "写实样张版");
+  const realisticReview = adapter.requestReview("realisticScene", {
+    sceneLabel: "写实场景",
+    storageKey: "mr-calligraphy-realistic-published-v1",
+    record: realisticRecord,
+    release: realisticRecord.releases[0]
+  });
+  assert(realisticReview.ok, "写实场景应可提交远端审核。");
+  const realisticApproval = adapter.approveReview("realisticScene", {
+    sceneLabel: "写实场景",
+    storageKey: "mr-calligraphy-realistic-published-v1",
+    record: realisticRecord,
+    release: realisticRecord.releases[0]
+  });
+  assert(realisticApproval.ok && realisticApproval.workflow.canPush, "写实场景审核通过后应允许推送。");
   const realisticPush = await adapter.push("realisticScene", {
     sceneLabel: "写实场景",
     storageKey: "mr-calligraphy-realistic-published-v1",
@@ -129,10 +206,13 @@ async function run() {
   assert(persisted.scenes.mainScene.lastPackageId === "accepted-mainScene", "主场景远端 packageId 应持久化。");
   assert(persisted.scenes.mainScene.lastPackageDigest === mainPackage.package.manifest.packageDigest, "主场景远端 packageDigest 应持久化。");
   assert(persisted.scenes.mainScene.lastReleaseId === "main-release-1", "主场景远端 releaseId 应持久化。");
+  assert(persisted.scenes.mainScene.review.status === "approved", "主场景审核通过状态应持久化。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
+  assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
+  assert(persisted.scenes.realisticScene.lock.packageDigest, "写实场景推送成功后应持久化发布锁。");
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、发布包预检、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
 }
 
 function createPublishedRecord(releaseId, note) {

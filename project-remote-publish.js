@@ -41,7 +41,38 @@
       lastRemoteVersion: source.lastRemoteVersion ? String(source.lastRemoteVersion).slice(0, 120) : "",
       lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).slice(0, 180) : "",
       lastPackageDigest: normalizeSha256(source.lastPackageDigest),
-      lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+      lastError: source.lastError ? String(source.lastError).slice(0, 180) : "",
+      review: normalizeReviewState(source.review),
+      lock: normalizeLockState(source.lock)
+    };
+  }
+
+  function normalizeReviewState(review = {}) {
+    const source = review && typeof review === "object" ? review : {};
+    const allowedStatus = new Set(["draft", "reviewing", "approved", "rejected"]);
+    const status = allowedStatus.has(source.status) ? source.status : "draft";
+    return {
+      status,
+      releaseId: source.releaseId ? String(source.releaseId).slice(0, 120) : "",
+      packageDigest: normalizeSha256(source.packageDigest),
+      requestedAt: normalizeDate(source.requestedAt),
+      approvedAt: normalizeDate(source.approvedAt),
+      rejectedAt: normalizeDate(source.rejectedAt),
+      requestedBy: source.requestedBy ? String(source.requestedBy).slice(0, 80) : "",
+      approvedBy: source.approvedBy ? String(source.approvedBy).slice(0, 80) : "",
+      note: source.note ? String(source.note).slice(0, 160) : "",
+      rejectionReason: source.rejectionReason ? String(source.rejectionReason).slice(0, 160) : ""
+    };
+  }
+
+  function normalizeLockState(lock = {}) {
+    const source = lock && typeof lock === "object" ? lock : {};
+    const lockedAt = normalizeDate(source.lockedAt);
+    return {
+      lockedAt,
+      releaseId: lockedAt && source.releaseId ? String(source.releaseId).slice(0, 120) : "",
+      packageDigest: lockedAt ? normalizeSha256(source.packageDigest) : "",
+      reason: lockedAt && source.reason ? String(source.reason).slice(0, 160) : ""
     };
   }
 
@@ -114,6 +145,7 @@
   function getStatus(sceneId, options = {}) {
     const normalizedId = normalizeSceneId(sceneId);
     const scene = readState().scenes[normalizedId];
+    const workflow = getWorkflow(normalizedId, options);
     const remoteConfigured = Boolean(scene.endpoint);
     let tone = "idle";
     let message = remoteConfigured
@@ -155,7 +187,10 @@
       lastRemoteVersion: scene.lastRemoteVersion,
       lastRemoteStatus: scene.lastRemoteStatus,
       lastPackageDigest: scene.lastPackageDigest,
-      lastError: scene.lastError
+      lastError: scene.lastError,
+      review: scene.review,
+      lock: scene.lock,
+      workflow
     };
   }
 
@@ -169,6 +204,198 @@
       token: scene.token,
       hasToken: Boolean(scene.token),
       boundary: BOUNDARY
+    };
+  }
+
+  function getWorkflow(sceneId, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const scene = readState().scenes[normalizedId];
+    const packaged = createPackage(normalizedId, options);
+    const current = packaged.ok ? createCurrentPackageSummary(packaged.package) : {
+      releaseId: "",
+      packageDigest: "",
+      validation: packaged.validation || null
+    };
+    const review = normalizeReviewState(scene.review);
+    const lock = normalizeLockState(scene.lock);
+    const reviewMatches = Boolean(
+      current.releaseId &&
+      current.packageDigest &&
+      review.releaseId === current.releaseId &&
+      review.packageDigest === current.packageDigest
+    );
+    const lockMatches = Boolean(
+      lock.lockedAt &&
+      current.packageDigest &&
+      (lock.packageDigest === current.packageDigest || lock.releaseId === current.releaseId)
+    );
+    const staleLock = Boolean(lock.lockedAt && !lockMatches);
+    const approvedForCurrent = review.status === "approved" && reviewMatches;
+
+    let tone = "idle";
+    let message = packaged.ok ? "当前发布包尚未提交本机审核。" : packaged.message;
+    if (packaged.ok && review.status === "reviewing" && reviewMatches) {
+      tone = "review";
+      message = `当前发布包待审核：${shortDigest(current.packageDigest)}。`;
+    } else if (packaged.ok && review.status === "approved" && reviewMatches) {
+      tone = "ready";
+      message = `当前发布包已审核通过，可推送：${shortDigest(current.packageDigest)}。`;
+    } else if (packaged.ok && review.status === "rejected" && reviewMatches) {
+      tone = "warning";
+      message = `当前发布包已退回：${review.rejectionReason || "未填写原因"}。`;
+    } else if (packaged.ok && review.status !== "draft" && !reviewMatches) {
+      tone = "warning";
+      message = "当前发布包与最近审核记录不一致，请重新提交审核。";
+    }
+    if (lockMatches) {
+      tone = "warning";
+      message = `当前发布包已被发布锁保护：${lock.reason || "防止重复推送"}。`;
+    } else if (staleLock && approvedForCurrent) {
+      message += " 上一个发布包仍有锁定记录，可按需解除。";
+    }
+
+    return {
+      ok: true,
+      sceneId: normalizedId,
+      canRequestReview: Boolean(packaged.ok && current.packageDigest),
+      canApprove: Boolean(packaged.ok && review.status === "reviewing" && reviewMatches && !lockMatches),
+      canReject: Boolean(review.status === "reviewing"),
+      canUnlock: Boolean(lock.lockedAt),
+      canPush: Boolean(packaged.ok && approvedForCurrent && !lockMatches),
+      blockedReason: packaged.ok ? getWorkflowBlockedReason({ review, reviewMatches, lockMatches, approvedForCurrent }) : packaged.message,
+      tone,
+      message,
+      current,
+      review,
+      lock,
+      reviewMatches,
+      lockMatches,
+      staleLock
+    };
+  }
+
+  function getWorkflowBlockedReason({ review, reviewMatches, lockMatches, approvedForCurrent }) {
+    if (lockMatches) return "当前发布包被发布锁保护，请确认后解除发布锁。";
+    if (approvedForCurrent) return "";
+    if (review.status === "reviewing" && reviewMatches) return "当前发布包正在本机审核中。";
+    if (review.status === "approved" && !reviewMatches) return "当前发布包与已审核版本不一致，请重新提交审核。";
+    if (review.status === "rejected" && reviewMatches) return "当前发布包已被退回，请修改或重新提交审核。";
+    return "当前发布包尚未通过本机审核。";
+  }
+
+  function requestReview(sceneId, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const packaged = createPackage(normalizedId, options);
+    if (!packaged.ok) {
+      return saveRemoteError(normalizedId, packaged.message || "远端发布包无法提交审核。");
+    }
+    const summary = createCurrentPackageSummary(packaged.package);
+    const state = readState();
+    const now = new Date().toISOString();
+    state.scenes[normalizedId] = normalizeSceneState({
+      ...state.scenes[normalizedId],
+      review: {
+        status: "reviewing",
+        releaseId: summary.releaseId,
+        packageDigest: summary.packageDigest,
+        requestedAt: now,
+        requestedBy: normalizeActor(options.requestedBy || options.actor || "本机管理员"),
+        note: normalizeNote(options.note || packaged.package.release.note || "")
+      },
+      lastRemoteStatus: `当前发布包已提交本机审核：${shortDigest(summary.packageDigest)}。`,
+      lastError: ""
+    });
+    writeState(state);
+    return {
+      ok: true,
+      status: getStatus(normalizedId, options),
+      workflow: getWorkflow(normalizedId, options),
+      message: `已提交远端发布本机审核：${shortDigest(summary.packageDigest)}。`
+    };
+  }
+
+  function approveReview(sceneId, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const workflow = getWorkflow(normalizedId, options);
+    if (!workflow.canApprove) {
+      return saveRemoteError(normalizedId, workflow.blockedReason || "当前发布包不能通过审核。");
+    }
+    const state = readState();
+    const now = new Date().toISOString();
+    state.scenes[normalizedId] = normalizeSceneState({
+      ...state.scenes[normalizedId],
+      review: {
+        ...state.scenes[normalizedId].review,
+        status: "approved",
+        approvedAt: now,
+        approvedBy: normalizeActor(options.approvedBy || options.actor || "本机管理员"),
+        note: normalizeNote(options.note || state.scenes[normalizedId].review.note || "")
+      },
+      lastRemoteStatus: `当前发布包已通过本机审核：${shortDigest(workflow.current.packageDigest)}。`,
+      lastError: ""
+    });
+    writeState(state);
+    return {
+      ok: true,
+      status: getStatus(normalizedId, options),
+      workflow: getWorkflow(normalizedId, options),
+      message: "远端发布包已通过本机审核，可以推送。"
+    };
+  }
+
+  function rejectReview(sceneId, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const state = readState();
+    const review = normalizeReviewState(state.scenes[normalizedId].review);
+    if (review.status !== "reviewing") {
+      return saveRemoteError(normalizedId, "当前没有待审核的远端发布包。");
+    }
+    const now = new Date().toISOString();
+    const reason = normalizeNote(options.reason || options.note || "本机审核退回，需重新确认发布内容。");
+    state.scenes[normalizedId] = normalizeSceneState({
+      ...state.scenes[normalizedId],
+      review: {
+        ...review,
+        status: "rejected",
+        rejectedAt: now,
+        rejectionReason: reason
+      },
+      lastRemoteStatus: `远端发布审核已退回：${reason}`,
+      lastError: ""
+    });
+    writeState(state);
+    return {
+      ok: true,
+      status: getStatus(normalizedId, options),
+      workflow: getWorkflow(normalizedId, options),
+      message: `已退回远端发布审核：${reason}`
+    };
+  }
+
+  function unlock(sceneId, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const state = readState();
+    const lock = normalizeLockState(state.scenes[normalizedId].lock);
+    if (!lock.lockedAt) {
+      return {
+        ok: true,
+        status: getStatus(normalizedId, options),
+        workflow: getWorkflow(normalizedId, options),
+        message: "当前没有远端发布锁。"
+      };
+    }
+    state.scenes[normalizedId] = normalizeSceneState({
+      ...state.scenes[normalizedId],
+      lock: {},
+      lastRemoteStatus: `已解除远端发布锁：${shortDigest(lock.packageDigest)}。`,
+      lastError: ""
+    });
+    writeState(state);
+    return {
+      ok: true,
+      status: getStatus(normalizedId, options),
+      workflow: getWorkflow(normalizedId, options),
+      message: "已解除远端发布锁，可以按审核状态继续推送。"
     };
   }
 
@@ -331,6 +558,14 @@
     }
   }
 
+  function createCurrentPackageSummary(payload = {}) {
+    return {
+      releaseId: payload.release?.id ? String(payload.release.id) : "",
+      packageDigest: normalizeSha256(payload.manifest?.packageDigest),
+      validation: validatePackage(payload)
+    };
+  }
+
   function getCurrentRelease(record = {}) {
     const releases = Array.isArray(record.releases) ? record.releases : [];
     return releases.find((release) => release?.id === record.currentReleaseId)
@@ -389,6 +624,14 @@
     if (!validation.ok) {
       return saveRemoteError(normalizedId, validation.message);
     }
+    const workflow = getWorkflow(normalizedId, options);
+    if (!workflow.canPush) {
+      return saveRemoteError(normalizedId, workflow.blockedReason || "远端发布包尚未通过本机审核。");
+    }
+    const lock = acquirePublishLock(normalizedId, packaged.package, "远端发布包正在推送，阻止重复提交。");
+    if (!lock.ok) {
+      return saveRemoteError(normalizedId, lock.message);
+    }
 
     try {
       const response = await fetch(scene.endpoint, createRequest(scene, {
@@ -412,6 +655,12 @@
         lastRemoteVersion: parsed.remoteVersion,
         lastRemoteStatus: parsed.message,
         lastPackageDigest: packaged.package.manifest?.packageDigest,
+        lock: {
+          lockedAt: lock.lockedAt,
+          releaseId,
+          packageDigest: packaged.package.manifest?.packageDigest,
+          reason: "远端已接收该发布包，发布锁用于防止重复推送。"
+        },
         lastError: ""
       });
       writeState(nextState);
@@ -426,7 +675,59 @@
         message: `${parsed.message} ${BOUNDARY}`
       };
     } catch (error) {
+      releasePublishLock(normalizedId, packaged.package);
       return saveRemoteError(normalizedId, `远端发布 API 推送失败：${error?.message || "网络请求异常"}。`);
+    }
+  }
+
+  function acquirePublishLock(sceneId, payload, reason) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const state = readState();
+    const scene = state.scenes[normalizedId];
+    const summary = createCurrentPackageSummary(payload);
+    const currentLock = normalizeLockState(scene.lock);
+    if (
+      currentLock.lockedAt &&
+      summary.packageDigest &&
+      (currentLock.packageDigest === summary.packageDigest || currentLock.releaseId === summary.releaseId)
+    ) {
+      return {
+        ok: false,
+        message: `当前发布包已有发布锁：${currentLock.reason || "防止重复推送"}。`
+      };
+    }
+    const lockedAt = new Date().toISOString();
+    state.scenes[normalizedId] = normalizeSceneState({
+      ...scene,
+      lock: {
+        lockedAt,
+        releaseId: summary.releaseId,
+        packageDigest: summary.packageDigest,
+        reason
+      },
+      lastRemoteStatus: reason,
+      lastError: ""
+    });
+    writeState(state);
+    return { ok: true, lockedAt };
+  }
+
+  function releasePublishLock(sceneId, payload) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const state = readState();
+    const scene = state.scenes[normalizedId];
+    const summary = createCurrentPackageSummary(payload);
+    const currentLock = normalizeLockState(scene.lock);
+    if (
+      currentLock.lockedAt &&
+      summary.packageDigest &&
+      (currentLock.packageDigest === summary.packageDigest || currentLock.releaseId === summary.releaseId)
+    ) {
+      state.scenes[normalizedId] = normalizeSceneState({
+        ...scene,
+        lock: {}
+      });
+      writeState(state);
     }
   }
 
@@ -609,6 +910,19 @@
     return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
   }
 
+  function normalizeActor(value) {
+    return String(value || "本机管理员").trim().slice(0, 80) || "本机管理员";
+  }
+
+  function normalizeNote(value) {
+    return String(value || "").trim().slice(0, 160);
+  }
+
+  function shortDigest(value) {
+    const digest = normalizeSha256(value);
+    return digest ? `${digest.slice(0, 10)}...` : "摘要未知";
+  }
+
   function formatDateTime(value) {
     const date = new Date(value);
     if (!Number.isFinite(date.getTime())) return "时间未知";
@@ -627,9 +941,14 @@
     configure,
     getStatus,
     getConfig,
+    getWorkflow,
     createPackage,
     createPackageManifest,
     validatePackage,
+    requestReview,
+    approveReview,
+    rejectReview,
+    unlock,
     check,
     push
   };

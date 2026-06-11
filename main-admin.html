@@ -222,6 +222,15 @@
               <button data-feature-state="real-local" id="mainRemotePublishCheck" type="button">检查远端</button>
               <button data-feature-state="real-local" id="mainRemotePublishPush" type="button">推送发布包</button>
             </div>
+            <div class="remote-publish-review" aria-label="远端发布审核与锁">
+              <p id="mainRemotePublishReviewStatus" class="remote-publish-review-status">尚未提交远端发布审核。</p>
+              <div class="remote-publish-review-actions">
+                <button data-feature-state="real-local" id="mainRemotePublishRequestReview" type="button">提交审核</button>
+                <button data-feature-state="real-local" id="mainRemotePublishApproveReview" type="button">通过审核</button>
+                <button data-feature-state="real-local" id="mainRemotePublishRejectReview" type="button">退回审核</button>
+                <button data-feature-state="real-local" id="mainRemotePublishUnlock" type="button">解除发布锁</button>
+              </div>
+            </div>
           </details>
           <div class="main-publish-diff" aria-label="主场景发布差异">
             <strong id="mainPublishDiffSummary">尚未计算发布差异。</strong>
@@ -285,7 +294,7 @@
   </script>
   <script src="project-schema-utils.js?v=archive-asset-hash-20260611"></script>
   <script src="project-archive.js?v=archive-audit-20260611"></script>
-  <script src="project-remote-publish.js?v=remote-publish-manifest-20260611"></script>
-  <script type="module" src="main-admin-scene.js?v=admin-risk-20260611"></script>
+  <script src="project-remote-publish.js?v=remote-publish-workflow-20260611"></script>
+  <script type="module" src="main-admin-scene.js?v=remote-workflow-20260611"></script>
 </body>
 </html>

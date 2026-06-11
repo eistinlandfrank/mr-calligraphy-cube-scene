@@ -4480,7 +4480,7 @@
 
 已知限制：
 
-- 远端发布 adapter 只负责把本机发布包真实发送给用户配置的 API，不包含账号登录、审核流、发布锁、CDN 部署或远端资产签名。
+- 远端发布 adapter 第一版只负责把本机发布包真实发送给用户配置的 API；审核流和发布锁已在后续功能补齐，但仍不包含账号登录、CDN 部署或远端资产签名。
 - 主后台和写实后台对象 schema 仍未完全统一；后续需要继续做字段迁移、远端 diff 和资产完整性校验。
 
 ### 2026-06-11：新增远端发布包摘要
@@ -4578,11 +4578,68 @@
 已知限制：
 
 - 本机预检不能替代远端服务端校验；生产 API 仍应重新计算并拒绝摘要不匹配的发布包。
-- 该功能不包含账号权限、审核流、发布锁或远端资产签名。
+- 该功能本身不包含账号权限、审核流、发布锁或远端资产签名。
 
 提交：
 
 - 中文 commit message：`新增远端发布包预检`
+
+### 2026-06-11：新增远端发布审核锁
+
+功能名：远端发布本机审核流与发布锁。
+
+涉及文件：
+
+- `main-admin.html`
+- `realistic-admin.html`
+- `main-admin-scene.js`
+- `realistic-scene.js`
+- `project-remote-publish.js`
+- `style.css`
+- `scripts/remote-publish-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRProjectRemotePublish` 新增 `review` 和 `lock` 状态，随场景写入 `mr-calligraphy-remote-publish-v1`。
+- 新增 `getWorkflow()`、`requestReview()`、`approveReview()`、`rejectReview()`、`unlock()`。
+- `push()` 新增工作流门禁：当前发布包必须通过本机审核、审核 release/digest 必须匹配、当前包不能处于发布锁状态。
+- 推送成功后保留发布锁，阻止同一 release/digest 重复推送；失败时释放本次进行中锁。
+- 主后台和写实后台远端发布面板新增审核状态和四个真实按钮：提交审核、通过审核、退回审核、解除发布锁。
+- “推送发布包”按钮现在会跟随审核和锁状态启停，不再只看 endpoint 与本机发布版本。
+- 远端发布专项脚本新增未审核阻断、审核中阻断、审核通过放行、推送后锁定、重复推送阻断、解除锁和两套后台持久化断言。
+
+真实化说明：
+
+- 数据来源：主后台 / 写实后台当前本机发布版本、当前 release、远端发布 manifest 摘要和 `mr-calligraphy-remote-publish-v1` 工作流状态。
+- 写入状态：提交审核、审核通过、退回审核、推送成功锁定和解除发布锁都会写入本机远端发布状态。
+- 成功反馈：远端发布面板显示当前包待审核、已通过、已退回或发布锁保护；推送成功后会显示远端状态并锁住当前发布包。
+- 失败反馈：未审核、审核记录不匹配、审核退回、发布锁保护、缺少本机发布版本或远端配置错误时，都会返回明确失败且不执行 POST。
+- 刷新后复现方式：刷新后台后重新读取 `mr-calligraphy-remote-publish-v1`，审核状态、退回原因、发布锁、最近 packageId / releaseId / digest 仍保留。
+
+验收方式：
+
+- 手工验收：在 `main-admin.html` 或 `realistic-admin.html` 完成本机发布，配置远端 API 后先点击“提交审核”，再点击“通过审核”，此时才可推送；推送成功后再次推送应被发布锁阻止，点击“解除发布锁”后锁状态清空。
+- 脚本验收：`node scripts/remote-publish-check.js` 会验证审核流、发布锁、远端 POST、重复推送阻断和状态持久化。
+
+当前验证结果：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-check.js`
+- `node scripts/remote-publish-check.js`
+
+已知限制：
+
+- 当前审核、退回和锁是本机浏览器工作流，不是服务端账号角色审批。
+- 当前锁用于阻断本机重复推送；远端服务端仍应独立校验 release/digest、审核状态和并发锁。
+- 远端资产签名、CDN 发布、多人审核和不可篡改审计仍未接入。
+
+提交：
+
+- 中文 commit message：`新增远端发布审核锁`
 
 ### 2026-06-11：新增学习报告原生 PDF 导出
 
