@@ -141,6 +141,14 @@ assert(reportComparisonExport.html.includes("结构") && reportComparisonExport.
 assert(reportComparisonExport.html.includes("不是云端长期报告"), "报告对比导出页应明确本机导出边界。");
 assert(!window.MRAppState.getReportComparison("report-1").ok, "第一份报告不应伪造上一份对比。");
 
+const reportPdfExport = window.MRAppState.getReportPdfExport("report-2");
+assert(reportPdfExport.ok, "学习报告应能生成原生 PDF 导出。");
+assert(reportPdfExport.filename.endsWith(".pdf"), "PDF 报告应返回 .pdf 文件名。");
+assert(reportPdfExport.mimeType === "application/pdf", "PDF 报告应返回 application/pdf MIME。");
+assert(reportPdfExport.pdf.startsWith("%PDF-1.4"), "PDF 报告内容应包含 PDF 文件头。");
+assert(reportPdfExport.pdf.includes("mr-calligraphy-learning-state-v1"), "PDF 报告应包含本机数据来源。");
+assert(reportPdfExport.byteLength > 1000, "PDF 报告不应是空壳文件。");
+
 const reportSeries = window.MRAppState.getReportSeries("report-3");
 assert(reportSeries.ok, "三份报告应生成多报告趋势。");
 assert(reportSeries.points.length === 3, "多报告趋势应返回报告序列点。");
@@ -443,7 +451,7 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.lastRemoteDirection === "pull", "计划 repository 应记录最近远端同步方向。");
   assert(persistedPlanState.planRepository.lastRemotePlanCount === 1, "计划 repository 应记录最近远端计划数量。");
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告原生 PDF、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 function createJsonResponse(payload, ok = true, status = 200) {

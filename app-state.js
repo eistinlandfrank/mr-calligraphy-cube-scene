@@ -3097,6 +3097,18 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 1200);
   }
 
+  function downloadPdf(pdf, filename) {
+    const blob = new Blob([pdf], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
   function getReportScoreBreakdown() {
     const sessions = state.sessions.filter((session) => session.metrics && (session.status === "saved" || session.endedAt));
     const source = sessions.length
@@ -3340,6 +3352,166 @@
   </main>
 </body>
 </html>`;
+  }
+
+  function getReportPdfExport(reportId = null) {
+    const report = reportId
+      ? state.reports.find((item) => item.id === String(reportId))
+      : state.reports[state.reports.length - 1];
+    if (!report) {
+      return { ok: false, message: "还没有可导出的 PDF 学习报告。" };
+    }
+
+    const normalizedReport = normalizeReport(report);
+    const pdf = createReportPdf(normalizedReport);
+    return {
+      ok: true,
+      report: clone(normalizedReport),
+      filename: `mr-calligraphy-report-${normalizedReport.id}.pdf`,
+      mimeType: "application/pdf",
+      pdf,
+      byteLength: pdf.length,
+      message: "已生成原生 PDF 学习报告，不依赖浏览器打印流程。"
+    };
+  }
+
+  function createReportPdf(report) {
+    const normalizedReport = normalizeReport(report);
+    const latestSession = findReportSession(normalizedReport);
+    const latestArtwork = findReportArtwork(normalizedReport);
+    const metricLabels = [
+      ["structure", "结构"],
+      ["stroke", "笔画"],
+      ["technique", "笔法"],
+      ["fluency", "流畅"],
+      ["force", "力度"]
+    ];
+    const lines = [
+      { text: "MR 书法学习报告", size: 22 },
+      { text: `报告 ID：${normalizedReport.id}`, size: 11 },
+      { text: `生成时间：${formatDateTime(normalizedReport.createdAt)}`, size: 11 },
+      { text: `来源：${STORAGE_KEY}。这是本机原生 PDF 导出，不是云端长期报告。`, size: 10 },
+      { text: "", size: 6 },
+      { text: `摘要：${normalizedReport.summary || "本报告基于当前浏览器中的练习、作品和评分记录生成。"}`, size: 12 },
+      { text: `练习次数：${normalizedReport.sessionCount}    保存作品：${normalizedReport.artworkCount}    平均评分：${normalizedReport.averageScore}    学习分钟：${normalizedReport.learningMinutes}`, size: 12 },
+      { text: "", size: 6 },
+      { text: "能力维度", size: 16 },
+      ...metricLabels.map(([key, label]) => ({ text: `${label}：${normalizeScore(normalizedReport.scoreBreakdown?.[key], 0)} 分`, size: 12 })),
+      { text: "", size: 6 },
+      { text: "最近练习与作品", size: 16 },
+      {
+        text: latestSession
+          ? `最近练习：${latestSession.glyph || "-"}字，${latestSession.strokeCount || 0} 笔，${latestSession.pointCount || 0} 个采样点，评分 ${latestSession.score || 0}。`
+          : "最近练习：暂无可统计的练习会话。",
+        size: 12
+      },
+      {
+        text: latestArtwork
+          ? `最近作品：${latestArtwork.title || "作品"}，${latestArtwork.strokeCount || 0} 笔，${latestArtwork.pointCount || 0} 个采样点，评分 ${latestArtwork.score || 0}。`
+          : "最近作品：暂无保存作品。",
+        size: 12
+      },
+      { text: "", size: 6 },
+      { text: "练习建议", size: 16 },
+      ...(normalizedReport.recommendations.length ? normalizedReport.recommendations : ["完成一次书写并保存作品后，会生成更具体的复盘建议。"])
+        .slice(0, 6)
+        .map((item, index) => ({ text: `${index + 1}. ${item}`, size: 12 }))
+    ];
+
+    return createSimplePdf(lines, {
+      title: "MR Calligraphy Report",
+      subject: normalizedReport.id,
+      source: STORAGE_KEY
+    });
+  }
+
+  function createSimplePdf(lines, metadata = {}) {
+    const pageWidth = 595;
+    const pageHeight = 842;
+    const marginX = 54;
+    const startY = 790;
+    const minY = 60;
+    const maxChars = 38;
+    const content = [];
+    let y = startY;
+    const drawLine = (text, size = 12) => {
+      const lineHeight = Math.max(14, Math.round(size * 1.45));
+      if (y < minY) return;
+      content.push(`BT /F1 ${size} Tf ${marginX} ${y} Td <${toUtf16BEHex(text)}> Tj ET`);
+      y -= lineHeight;
+    };
+
+    lines.forEach((line) => {
+      const size = Number(line.size) || 12;
+      const text = String(line.text ?? "");
+      if (!text) {
+        y -= Math.max(8, Math.round(size * 1.2));
+        return;
+      }
+      wrapPdfText(text, maxChars).forEach((part, index) => {
+        drawLine(part, index === 0 ? size : Math.max(10, size - 1));
+      });
+    });
+
+    const stream = `${content.join("\n")}\n`;
+    const title = sanitizePdfInfo(metadata.title || "MR Calligraphy Report");
+    const subject = sanitizePdfInfo(metadata.subject || "");
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /ProcSet [/PDF /Text] /Font << /F1 4 0 R >> >> /Contents 6 0 R >>`,
+      "<< /Type /Font /Subtype /Type0 /BaseFont /STSong-Light /Encoding /UniGB-UCS2-H /DescendantFonts [5 0 R] >>",
+      "<< /Type /Font /Subtype /CIDFontType0 /BaseFont /STSong-Light /CIDSystemInfo << /Registry (Adobe) /Ordering (GB1) /Supplement 2 >> /FontDescriptor 7 0 R >>",
+      `<< /Length ${stream.length} >>\nstream\n${stream}endstream`,
+      "<< /Type /FontDescriptor /FontName /STSong-Light /Flags 6 /FontBBox [0 -200 1000 900] /ItalicAngle 0 /Ascent 880 /Descent -120 /CapHeight 700 /StemV 80 >>",
+      `<< /Title (${title}) /Subject (${subject}) /Creator (MR Calligraphy) >>`
+    ];
+    const source = sanitizePdfInfo(metadata.source || "");
+    let pdf = `%PDF-1.4\n%\xE2\xE3\xCF\xD3\n% Source: ${source}\n`;
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xrefOffset = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    offsets.slice(1).forEach((offset) => {
+      pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+    });
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 8 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+    return pdf;
+  }
+
+  function wrapPdfText(text, maxChars = 38) {
+    const source = String(text || "");
+    const result = [];
+    let line = "";
+    Array.from(source).forEach((char) => {
+      line += char;
+      if (line.length >= maxChars || /[。！？；]/.test(char)) {
+        result.push(line.trim());
+        line = "";
+      }
+    });
+    if (line.trim()) result.push(line.trim());
+    return result.length ? result : [source];
+  }
+
+  function toUtf16BEHex(text) {
+    const bytes = [];
+    for (let index = 0; index < text.length; index += 1) {
+      const code = text.charCodeAt(index);
+      bytes.push((code >> 8) & 0xff, code & 0xff);
+    }
+    return bytes.map((byte) => byte.toString(16).padStart(2, "0")).join("").toUpperCase();
+  }
+
+  function sanitizePdfInfo(value) {
+    return String(value || "")
+      .replace(/\\/g, "\\\\")
+      .replace(/\(/g, "\\(")
+      .replace(/\)/g, "\\)")
+      .slice(0, 120);
   }
 
   function createReportRadarSvg(metricLabels, metrics) {
@@ -4054,6 +4226,20 @@
     }
     downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
     return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印和打印样式。` };
+  }
+
+  function downloadReportPdf(reportId = null) {
+    const result = getReportPdfExport(reportId);
+    if (!result.ok) {
+      return { ok: false, message: result.message };
+    }
+    downloadPdf(result.pdf, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      message: `已下载原生 PDF 学习报告：${result.filename}。`
+    };
   }
 
   function downloadPlan(planId = null) {
@@ -5549,6 +5735,7 @@
     getPlanExport,
     getReportPreview,
     getReportDetail,
+    getReportPdfExport,
     getReportComparison,
     getReportComparisonExport,
     getReportSeries,
@@ -5603,6 +5790,7 @@
     downloadPlan,
     downloadPlanRepository,
     downloadReport,
+    downloadReportPdf,
     downloadReportComparison,
     downloadArtworkSharePage,
     downloadArchive

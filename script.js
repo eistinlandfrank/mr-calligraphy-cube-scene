@@ -843,6 +843,7 @@ const els = {
   reportRecommendations: document.getElementById("reportRecommendations"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
   reportDetailDownload: document.getElementById("reportDetailDownload"),
+  reportDetailDownloadPdf: document.getElementById("reportDetailDownloadPdf"),
   reportDetailPrint: document.getElementById("reportDetailPrint"),
   reportDetailOpenHistory: document.getElementById("reportDetailOpenHistory"),
   historyPanel: document.getElementById("historyPanel"),
@@ -3607,6 +3608,7 @@ function bindReviewControls() {
 function bindReportControls() {
   els.reportDetailCopyLink?.addEventListener("click", copyReportDetailLink);
   els.reportDetailDownload?.addEventListener("click", downloadReportDetail);
+  els.reportDetailDownloadPdf?.addEventListener("click", downloadReportPdfDetail);
   els.reportDetailPrint?.addEventListener("click", printReportDetail);
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
   els.reportMetrics?.addEventListener("click", (event) => {
@@ -5157,6 +5159,7 @@ function setReportDetailActions(detail) {
   const hasDetail = Boolean(detail);
   if (els.reportDetailCopyLink) els.reportDetailCopyLink.disabled = !hasDetail;
   if (els.reportDetailDownload) els.reportDetailDownload.disabled = !hasDetail;
+  if (els.reportDetailDownloadPdf) els.reportDetailDownloadPdf.disabled = !hasDetail;
   if (els.reportDetailPrint) els.reportDetailPrint.disabled = !hasDetail;
   if (els.reportDetailOpenHistory) els.reportDetailOpenHistory.disabled = !hasDetail;
 }
@@ -7041,6 +7044,19 @@ function downloadReportDetail() {
   }
 
   const result = window.MRAppState?.downloadReport?.(detail.id);
+  if (result?.message) {
+    showNotice(result.message);
+  }
+}
+
+function downloadReportPdfDetail() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可下载的 PDF 报告。");
+    return;
+  }
+
+  const result = window.MRAppState?.downloadReportPdf?.(detail.id);
   if (result?.message) {
     showNotice(result.message);
   }

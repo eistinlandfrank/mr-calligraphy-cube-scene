@@ -4482,3 +4482,47 @@
 
 - 远端发布 adapter 只负责把本机发布包真实发送给用户配置的 API，不包含账号登录、审核流、发布锁、CDN 部署或远端资产签名。
 - 主后台和写实后台对象 schema 仍未完全统一；后续需要继续做字段迁移、远端 diff 和资产完整性校验。
+
+### 2026-06-11：新增学习报告原生 PDF 导出
+
+功能名：站内学习报告原生 PDF 文件导出。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRAppState` 新增 `getReportPdfExport()`，从当前本机 `ReportRecord` 生成真正的 PDF 内容。
+- 新增 `downloadReportPdf()`，下载 `mr-calligraphy-report-*.pdf`，MIME 为 `application/pdf`。
+- 站内报告操作区新增“下载 PDF”按钮，标记为 `real-export`，与 HTML 下载和浏览器打印分开。
+- PDF 包含报告 ID、生成时间、数据来源、摘要、统计、五项能力分、最近练习/作品和练习建议。
+- 学习状态检查新增 PDF 文件头、文件名、MIME、数据来源和非空内容断言。
+- smoke test 新增 `reportDetailDownloadPdf` 页面标记。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，完成练习并生成学习报告。
+- 打开站内报告，点击“下载 PDF”，应下载 `mr-calligraphy-report-*.pdf`。
+- 没有报告时按钮应禁用或显示空状态，不应生成空壳 PDF。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+
+已知限制：
+
+- 第一版原生 PDF 是文本摘要型 PDF，尚未把雷达图、趋势图和作品截图嵌入 PDF 页面。
+- 云端长期报告、教师批注、签名验真和服务端 PDF 渲染仍未接入。
