@@ -3570,6 +3570,31 @@ function bindReportControls() {
     if (!button) return;
     openReportDetailRoute(button.dataset.reportJump);
   });
+  els.reportSeries?.addEventListener("pointerover", (event) => {
+    const target = event.target.closest("[data-report-series-tooltip]");
+    if (!target) return;
+    showReportSeriesTooltip(target, event);
+  });
+  els.reportSeries?.addEventListener("pointermove", (event) => {
+    const target = event.target.closest("[data-report-series-tooltip]");
+    if (!target) return;
+    moveReportSeriesTooltip(event);
+  });
+  els.reportSeries?.addEventListener("pointerout", (event) => {
+    const target = event.target.closest("[data-report-series-tooltip]");
+    if (!target) return;
+    if (event.relatedTarget && target.contains(event.relatedTarget)) return;
+    hideReportSeriesTooltip();
+  });
+  els.reportSeries?.addEventListener("focusin", (event) => {
+    const target = event.target.closest("[data-report-series-tooltip]");
+    if (!target) return;
+    showReportSeriesTooltip(target);
+  });
+  els.reportSeries?.addEventListener("focusout", (event) => {
+    if (!event.target.closest("[data-report-series-tooltip]")) return;
+    hideReportSeriesTooltip();
+  });
 }
 
 function bindHistoryControls() {
@@ -4247,6 +4272,9 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
     button.type = "button";
     button.dataset.featureState = "real-local";
     button.dataset.reportJump = point.id;
+    button.dataset.reportSeriesTooltip = "";
+    button.dataset.tooltipTitle = point.title || `第${point.sequence}份报告`;
+    button.dataset.tooltipBody = `平均 ${point.averageScore || 0} 分 / 练习 ${point.sessionCount || 0} 次 / 作品 ${point.artworkCount || 0} 幅 / ${formatHistoryTime(point.createdAt)}`;
     button.setAttribute("aria-pressed", String(point.current));
     button.title = `${point.title} / 平均 ${point.averageScore || 0} 分 / ${formatHistoryTime(point.createdAt)}`;
     const label = document.createElement("span");
@@ -4259,7 +4287,7 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
     points.appendChild(button);
   });
 
-  els.reportSeries.append(summary, controls, chart, points);
+  els.reportSeries.append(summary, controls, chart, points, createReportSeriesTooltip());
 }
 
 function createReportSeriesMetricControls(selectedKeys, metricSeries = []) {
@@ -4271,6 +4299,11 @@ function createReportSeriesMetricControls(selectedKeys, metricSeries = []) {
     button.type = "button";
     button.dataset.featureState = "real-local";
     button.dataset.reportSeriesMetric = key;
+    button.dataset.reportSeriesTooltip = "";
+    button.dataset.tooltipTitle = `${label}趋势`;
+    button.dataset.tooltipBody = metric
+      ? `首份 ${metric.first || 0} 分，最新 ${metric.latest || 0} 分，变化 ${formatSignedDelta(metric.delta)}。`
+      : "当前报告序列没有这个字段的评分点。";
     button.setAttribute("aria-pressed", String(selectedKeys.includes(key)));
     button.title = `${label}趋势 ${metric ? formatSignedDelta(metric.delta) : "暂无变化"}`;
     const name = document.createElement("span");
@@ -4297,7 +4330,7 @@ function createReportSeriesChart(series, selectedMetrics = []) {
   svg.appendChild(axis);
 
   const averageCoords = points.map((point, index) => makeReportSeriesCoord(point.averageScore, index, points.length));
-  svg.appendChild(createReportSeriesPolyline(averageCoords, "report-series-line is-average", "平均分趋势"));
+  svg.appendChild(createReportSeriesPolyline(averageCoords, "report-series-line is-average", "平均分趋势", `从 ${points[0]?.averageScore || 0} 分到 ${points[points.length - 1]?.averageScore || 0} 分，共 ${points.length} 份报告。`));
   selectedMetrics.forEach((metric, metricIndex) => {
     const metricPointMap = new Map((metric.points || []).map((point) => [point.id, point.value]));
     const metricCoords = points
@@ -4309,7 +4342,7 @@ function createReportSeriesChart(series, selectedMetrics = []) {
       })
       .filter(Boolean);
     if (metricCoords.length > 1) {
-      svg.appendChild(createReportSeriesPolyline(metricCoords, `report-series-line is-metric is-metric-${metricIndex}`, `${metric.label}趋势 ${formatSignedDelta(metric.delta)}`));
+      svg.appendChild(createReportSeriesPolyline(metricCoords, `report-series-line is-metric is-metric-${metricIndex}`, `${metric.label}趋势`, `首份 ${metric.first || 0} 分，最新 ${metric.latest || 0} 分，变化 ${formatSignedDelta(metric.delta)}。`));
     }
   });
 
@@ -4321,6 +4354,10 @@ function createReportSeriesChart(series, selectedMetrics = []) {
     circle.setAttribute("cy", average.y);
     circle.setAttribute("r", point.current ? "4.6" : "3.4");
     circle.setAttribute("aria-label", `${point.title} 平均 ${point.averageScore || 0} 分`);
+    circle.setAttribute("tabindex", "0");
+    circle.dataset.reportSeriesTooltip = "";
+    circle.dataset.tooltipTitle = point.title || `第${point.sequence}份报告`;
+    circle.dataset.tooltipBody = `平均 ${point.averageScore || 0} 分 / 练习 ${point.sessionCount || 0} 次 / 作品 ${point.artworkCount || 0} 幅 / ${formatHistoryTime(point.createdAt)}`;
     const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = `${point.title} / 平均 ${point.averageScore || 0} 分 / ${formatHistoryTime(point.createdAt)}`;
     circle.appendChild(title);
@@ -4348,10 +4385,14 @@ function createReportSeriesChart(series, selectedMetrics = []) {
   return svg;
 }
 
-function createReportSeriesPolyline(coords, className, label = "") {
+function createReportSeriesPolyline(coords, className, label = "", detail = "") {
   const polyline = document.createElementNS("http://www.w3.org/2000/svg", "polyline");
   polyline.setAttribute("class", className);
   polyline.setAttribute("points", coords.map((point) => `${point.x},${point.y}`).join(" "));
+  polyline.setAttribute("tabindex", "0");
+  polyline.dataset.reportSeriesTooltip = "";
+  polyline.dataset.tooltipTitle = label;
+  polyline.dataset.tooltipBody = detail || "这条线基于本机报告序列生成。";
   if (label) {
     const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = label;
@@ -4371,6 +4412,65 @@ function makeReportSeriesCoord(score, index, total) {
     x: Number(x.toFixed(2)),
     y: Number(y.toFixed(2))
   };
+}
+
+function createReportSeriesTooltip() {
+  const tooltip = document.createElement("div");
+  tooltip.id = "reportSeriesTooltip";
+  tooltip.className = "report-series-tooltip";
+  tooltip.dataset.reportSeriesTooltipBox = "";
+  tooltip.setAttribute("role", "status");
+  tooltip.hidden = true;
+  return tooltip;
+}
+
+function showReportSeriesTooltip(target, event = null) {
+  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+  if (!tooltip || !target?.dataset || !Object.prototype.hasOwnProperty.call(target.dataset, "reportSeriesTooltip")) {
+    return;
+  }
+
+  tooltip.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = target.dataset.tooltipTitle || "趋势详情";
+  const body = document.createElement("span");
+  body.textContent = target.dataset.tooltipBody || "这项数据来自本机报告记录。";
+  tooltip.append(title, body);
+  tooltip.hidden = false;
+
+  if (event && Number.isFinite(event.clientX) && Number.isFinite(event.clientY)) {
+    positionReportSeriesTooltip(event.clientX, event.clientY);
+    return;
+  }
+
+  const rect = target.getBoundingClientRect?.();
+  if (rect) {
+    positionReportSeriesTooltip(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+}
+
+function moveReportSeriesTooltip(event) {
+  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+  if (!tooltip || tooltip.hidden) return;
+  positionReportSeriesTooltip(event.clientX, event.clientY);
+}
+
+function positionReportSeriesTooltip(clientX, clientY) {
+  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+  if (!tooltip || !els.reportSeries) return;
+  const rect = els.reportSeries.getBoundingClientRect();
+  const tooltipWidth = Math.min(220, Math.max(160, rect.width - 16));
+  const left = clamp(clientX - rect.left + 12, 8, Math.max(8, rect.width - tooltipWidth - 8));
+  const top = clamp(clientY - rect.top + 12, 8, Math.max(8, rect.height - 88));
+  tooltip.style.width = `${tooltipWidth}px`;
+  tooltip.style.left = `${left}px`;
+  tooltip.style.top = `${top}px`;
+}
+
+function hideReportSeriesTooltip() {
+  const tooltip = els.reportSeries?.querySelector("[data-report-series-tooltip-box]");
+  if (!tooltip) return;
+  tooltip.hidden = true;
 }
 
 function renderReportLatest(detail) {
