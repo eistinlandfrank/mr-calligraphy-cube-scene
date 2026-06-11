@@ -4017,4 +4017,46 @@
 已知限制：
 
 - 这次真实化的是热点按钮交互本身；部分热点文案仍来自 `SCENES` 静态内容。
-- 热点选择当前不写入 URL 或长期状态，刷新后回到当前步骤默认热点。
+- 热点选择的 URL 复现已在后续补齐；该交互仍不保存为长期学习记录。
+
+### 2026-06-11：新增热点选择路由
+
+功能名：前台学习热点支持 `point` URL 参数、刷新复现和浏览器返回恢复。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 新增 `POINT_ROUTE_QUERY_KEY = "point"`，热点编号使用 1-based 参数，与 `step` 保持一致。
+- 访问 `?step=4&point=2` 会进入第 4 步并恢复第 2 个热点。
+- 点击热点会更新 URL 中的 `point` 参数；点击第一个热点会清理 `point`，保持默认 URL 简洁。
+- 浏览器后退/前进时会恢复对应步骤和热点。
+- 切换步骤时会默认回到第一个热点，避免旧热点编号套用到新步骤。
+- `index.html` 新增 `learningPointRoute` 标记，smoke test 会检查热点路由入口。
+
+验收方式：
+
+- 打开 `http://localhost:41496/?step=4&point=2`，页面应恢复第 4 步第 2 个热点。
+- 点击第 3 个热点，URL 应出现或更新为 `point=3`。
+- 点击第 1 个热点，URL 应清理 `point` 参数。
+- 使用浏览器后退/前进，应恢复前一个/下一个热点。
+
+当前验证结果：
+
+- `node --input-type=module --check < script.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 热点路由只记录当前观察点，不保存为长期学习记录。
+- 浏览器级点击和后退自动化仍等待 Playwright 依赖可安装后补齐。

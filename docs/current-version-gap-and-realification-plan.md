@@ -283,6 +283,33 @@ node scripts/control-inventory.js
 
 - 中文 commit message：`真实化动态热点控件`
 
+### 2026-06-11：热点选择路由复现
+
+完成内容：
+
+- 前台新增 `point` 查询参数，和已有 `step` 参数组合使用，例如 `?step=4&point=2`。
+- 页面初始化时会读取 `point`，直接恢复对应步骤里的热点内容。
+- 点击热点会写入 URL，浏览器后退/前进会恢复对应热点。
+- 切换步骤时默认回到第一个热点，并清理旧 `point` 参数。
+- smoke test 前台页面新增 `learningPointRoute` 静态标记，避免热点路由入口被误删。
+
+真实化说明：
+
+- 数据来源：URL 查询参数、`SCENES[index].points` 和当前前台状态。
+- 写入状态：浏览器地址栏和 history state，会记录当前 `stepIndex` 与 `pointIndex`。
+- 成功反馈：热点按钮 active 状态、标题、正文、标签和指标会按 URL 或点击结果切换。
+- 失败反馈：非法或越界 `point` 会被限制到当前步骤可用热点范围，不会打开不存在内容。
+- 刷新后复现方式：访问 `/?step=4&point=2`，刷新后仍打开第 4 步第 2 个热点。
+
+验收：
+
+- 手工验收：打开 `/?step=4&point=2`，应恢复第 4 步第 2 个热点；点击其他热点后 URL 的 `point` 应变化；浏览器后退应恢复上一个热点。
+- 脚本验收：`node scripts/smoke-test.js --base-url=http://localhost:41496/` 会检查 `learningPointRoute` 标记。
+
+提交：
+
+- 中文 commit message：`新增热点选择路由`
+
 ### 2026-06-11：前台写实样张入口真实化
 
 完成内容：

@@ -953,6 +953,7 @@ let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
 const STEP_ROUTE_QUERY_KEY = "step";
+const POINT_ROUTE_QUERY_KEY = "point";
 const MODEL_VIEW_QUERY_KEY = "modelView";
 const HISTORY_DETAIL_QUERY_KEY = "history";
 const REPORT_DETAIL_QUERY_KEY = "report";
@@ -1520,6 +1521,7 @@ function init() {
   const routedArtworkId = getArtworkDetailRouteId();
   const routedHistoryId = getHistoryDetailRouteId();
   const routedStepIndex = getLearningStepRouteIndex();
+  const routedPointIndex = getLearningPointRouteIndex(routedStepIndex ?? 0);
   if (routedReportId) {
     openReportDetailRoute(routedReportId, { updateUrl: false, showMissing: true, routeMode: "replace" });
   } else if (routedArtworkId) {
@@ -1529,7 +1531,8 @@ function init() {
   } else {
     loadScene(routedStepIndex ?? 0, {
       routeMode: "replace",
-      updateStepRoute: routedStepIndex !== null
+      updateStepRoute: routedStepIndex !== null || routedPointIndex !== null,
+      pointIndex: routedPointIndex ?? 0
     });
   }
   if (new URLSearchParams(window.location.search).has(MODEL_VIEW_QUERY_KEY)) {
@@ -6169,6 +6172,24 @@ function getLearningStepRouteIndex() {
   }
 }
 
+function clampScenePointIndex(sceneIndex, pointIndex) {
+  const points = SCENES[sceneIndex]?.points || [];
+  if (!points.length) return 0;
+  return clamp(Number.isFinite(pointIndex) ? pointIndex : 0, 0, points.length - 1);
+}
+
+function getLearningPointRouteIndex(sceneIndex = getLearningStepRouteIndex() ?? currentIndex) {
+  try {
+    const raw = new URLSearchParams(window.location.search).get(POINT_ROUTE_QUERY_KEY);
+    if (!raw) return null;
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isFinite(value)) return null;
+    return clampScenePointIndex(sceneIndex, value - 1);
+  } catch (error) {
+    return null;
+  }
+}
+
 function setLearningStepRoute(index, options = {}) {
   if (!window.history?.pushState || index < 0 || index >= SCENES.length) {
     return;
@@ -6176,8 +6197,16 @@ function setLearningStepRoute(index, options = {}) {
 
   const url = new URL(window.location.href);
   url.searchParams.set(STEP_ROUTE_QUERY_KEY, String(index + 1));
+  const pointIndex = Number.isInteger(options.pointIndex)
+    ? clampScenePointIndex(index, options.pointIndex)
+    : 0;
+  if (pointIndex > 0) {
+    url.searchParams.set(POINT_ROUTE_QUERY_KEY, String(pointIndex + 1));
+  } else {
+    url.searchParams.delete(POINT_ROUTE_QUERY_KEY);
+  }
   const nextUrl = url.toString();
-  const state = { ...(window.history.state || {}), stepIndex: index };
+  const state = { ...(window.history.state || {}), stepIndex: index, pointIndex };
   if (nextUrl === window.location.href || options.routeMode === "replace") {
     window.history.replaceState(state, "", nextUrl);
     return;
@@ -6216,7 +6245,11 @@ function handleRoutePopState() {
   } else if (routedHistoryId) {
     openHistoryDetailRoute(routedHistoryId, { updateUrl: false, updateStepRoute: false, showMissing: true });
   } else {
-    loadScene(getLearningStepRouteIndex() ?? 0, { updateStepRoute: false });
+    const stepIndex = getLearningStepRouteIndex() ?? 0;
+    loadScene(stepIndex, {
+      updateStepRoute: false,
+      pointIndex: getLearningPointRouteIndex(stepIndex) ?? 0
+    });
   }
 
   if (new URLSearchParams(window.location.search).has(MODEL_VIEW_QUERY_KEY)) {
@@ -7102,7 +7135,8 @@ function loadScene(index, options = {}) {
   }
 
   currentIndex = index;
-  activePointIndex = 0;
+  const pointIndex = clampScenePointIndex(index, Number.isInteger(options.pointIndex) ? options.pointIndex : 0);
+  activePointIndex = pointIndex;
   if (index !== 6 && getHistoryDetailRouteId()) {
     activeHistoryDetailId = null;
     clearHistoryDetailRoute();
@@ -7116,12 +7150,12 @@ function loadScene(index, options = {}) {
     clearReportDetailRoute();
   }
   if (options.updateStepRoute !== false) {
-    setLearningStepRoute(index, { routeMode: options.routeMode });
+    setLearningStepRoute(index, { routeMode: options.routeMode, pointIndex });
   }
 
   updateSceneText(index);
   updateStepNavigation(index);
-  updateInteractionPanel(index, 0);
+  updateInteractionPanel(index, pointIndex);
   renderLecturePanel(index);
   renderReviewPanel(index);
   renderReportPanel(index);
@@ -7131,9 +7165,13 @@ function loadScene(index, options = {}) {
   hideNotice();
 }
 
-function selectPoint(pointIndex) {
-  activePointIndex = pointIndex;
-  updateInteractionPanel(currentIndex, pointIndex);
+function selectPoint(pointIndex, options = {}) {
+  const nextPointIndex = clampScenePointIndex(currentIndex, pointIndex);
+  activePointIndex = nextPointIndex;
+  updateInteractionPanel(currentIndex, nextPointIndex);
+  if (options.updateRoute !== false) {
+    setLearningStepRoute(currentIndex, { routeMode: options.routeMode, pointIndex: nextPointIndex });
+  }
 }
 
 function goPrevious() {

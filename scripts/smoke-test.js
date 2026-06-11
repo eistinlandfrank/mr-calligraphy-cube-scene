@@ -55,7 +55,7 @@ const PAGE_CHECKS = [
   {
     path: "/",
     label: "前台学习页",
-    markers: ["MR 书法 360° 全景交互演示", "taskPanel", "learningStepRoute", "modelViewRoute", "realistic-demo.html", "lectureVoiceStatus", "planReminderSummary", "historyArtworkCompare", "historyArtworkGallery", "reviewDownloadShare", "reportComparison", "reportComparisonExport", "reportSeries", "reportSeriesMetricControls", "reportSeriesTemplates", "reportSeriesTooltip", "reportSeriesTooltipPin", "reportSeriesTooltipCopy", "reportSeriesZoomIn", "reportSeriesZoomOut", "reportSeriesZoomReset", "reportSeriesPointDetail", "script.js", "app-state.js"]
+    markers: ["MR 书法 360° 全景交互演示", "taskPanel", "learningStepRoute", "learningPointRoute", "modelViewRoute", "realistic-demo.html", "lectureVoiceStatus", "planReminderSummary", "historyArtworkCompare", "historyArtworkGallery", "reviewDownloadShare", "reportComparison", "reportComparisonExport", "reportSeries", "reportSeriesMetricControls", "reportSeriesTemplates", "reportSeriesTooltip", "reportSeriesTooltipPin", "reportSeriesTooltipCopy", "reportSeriesZoomIn", "reportSeriesZoomOut", "reportSeriesZoomReset", "reportSeriesPointDetail", "script.js", "app-state.js"]
   },
   {
     path: "/main-admin.html",
