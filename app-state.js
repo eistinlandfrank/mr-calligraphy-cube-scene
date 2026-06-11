@@ -542,7 +542,27 @@
       lastSyncConflictPlanIds: Array.isArray(source.lastSyncConflictPlanIds)
         ? source.lastSyncConflictPlanIds.map(String).filter(Boolean).slice(0, 12)
         : [],
+      lastSyncConflicts: Array.isArray(source.lastSyncConflicts)
+        ? source.lastSyncConflicts.map(normalizePlanRepositoryConflict).filter(Boolean).slice(0, 12)
+        : [],
+      lastSyncConflictPlans: Array.isArray(source.lastSyncConflictPlans)
+        ? source.lastSyncConflictPlans.map(normalizePlan).filter(Boolean).slice(0, 12)
+        : [],
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+    };
+  }
+
+  function normalizePlanRepositoryConflict(record) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    if (!id) return null;
+    return {
+      id,
+      title: String(record.title || record.remoteTitle || record.localTitle || id).slice(0, 120),
+      localTitle: String(record.localTitle || record.title || id).slice(0, 120),
+      remoteTitle: String(record.remoteTitle || record.title || id).slice(0, 120),
+      localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
+      remoteUpdatedAt: normalizePlanDate(record.remoteUpdatedAt)
     };
   }
 
@@ -1707,6 +1727,7 @@
       lastSyncConflictAt: repository.lastSyncConflictAt,
       lastSyncConflictCount: repository.lastSyncConflictCount,
       lastSyncConflictPlanIds: [...repository.lastSyncConflictPlanIds],
+      lastSyncConflicts: clone(repository.lastSyncConflicts),
       lastError: repository.lastError
     };
   }
@@ -4684,12 +4705,38 @@
           ? {
               id: incoming.id,
               title: incoming.title || local.title || incoming.id,
+              localTitle: local.title || incoming.id,
+              remoteTitle: incoming.title || incoming.id,
               localUpdatedAt: local.updatedAt,
-              remoteUpdatedAt: incoming.updatedAt
+              remoteUpdatedAt: incoming.updatedAt,
+              remotePlan: incoming
             }
           : null;
       })
       .filter(Boolean);
+  }
+
+  function getPlanRepositoryConflictRecords(conflicts = []) {
+    return conflicts
+      .map((conflict) => normalizePlanRepositoryConflict(conflict))
+      .filter(Boolean);
+  }
+
+  function getPlanRepositoryConflictPlans(conflicts = []) {
+    return conflicts
+      .map((conflict) => normalizePlan(conflict.remotePlan))
+      .filter(Boolean);
+  }
+
+  function clearPlanRepositoryConflictFields(repository = state.planRepository) {
+    return normalizePlanRepository({
+      ...repository,
+      lastSyncConflictAt: null,
+      lastSyncConflictCount: 0,
+      lastSyncConflictPlanIds: [],
+      lastSyncConflicts: [],
+      lastSyncConflictPlans: []
+    });
   }
 
   function stablePlanStringify(value) {
@@ -4733,6 +4780,11 @@
         pendingAutoSync: false,
         pendingSince: null,
         pendingReason: "",
+        lastSyncConflictAt: null,
+        lastSyncConflictCount: 0,
+        lastSyncConflictPlanIds: [],
+        lastSyncConflicts: [],
+        lastSyncConflictPlans: [],
         lastCheckedAt: new Date().toISOString(),
         lastRemoteStatus: "",
         lastError: ""
@@ -4984,6 +5036,8 @@
         lastSyncConflictAt: null,
         lastSyncConflictCount: 0,
         lastSyncConflictPlanIds: [],
+        lastSyncConflicts: [],
+        lastSyncConflictPlans: [],
         lastRemoteStatus: `已推送 ${planCount} 份计划到远端 API。`,
         lastError: ""
       });
@@ -5035,6 +5089,8 @@
       const incomingPlans = parsed.package.plans.map(normalizePlan).filter(Boolean);
       const conflicts = options.force === true ? [] : detectPlanRepositoryConflicts(incomingPlans, repository);
       if (conflicts.length) {
+        const conflictRecords = getPlanRepositoryConflictRecords(conflicts);
+        const conflictPlans = getPlanRepositoryConflictPlans(conflicts);
         state.planRepository = normalizePlanRepository({
           ...repository,
           mode: "remote-api",
@@ -5043,6 +5099,8 @@
           lastSyncConflictAt: now,
           lastSyncConflictCount: conflicts.length,
           lastSyncConflictPlanIds: conflicts.map((item) => item.id),
+          lastSyncConflicts: conflictRecords,
+          lastSyncConflictPlans: conflictPlans,
           lastError: `远端计划与本机待同步变更存在 ${conflicts.length} 个冲突，请先推送本机计划或使用强制拉取。`
         });
         saveState();
@@ -5084,6 +5142,8 @@
         lastSyncConflictAt: null,
         lastSyncConflictCount: 0,
         lastSyncConflictPlanIds: [],
+        lastSyncConflicts: [],
+        lastSyncConflictPlans: [],
         lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
         lastError: ""
       });
@@ -5102,6 +5162,97 @@
       recordPlanRepositoryError(message);
       return { ok: false, status: getPlanRepositoryStatus(), message };
     }
+  }
+
+  function resolvePlanRepositoryConflict(strategy = "keep-local") {
+    const repository = normalizePlanRepository(state.planRepository);
+    if (!repository.lastSyncConflictCount) {
+      return {
+        ok: false,
+        status: getPlanRepositoryStatus(),
+        message: "当前没有待处理的计划同步冲突。"
+      };
+    }
+
+    if (strategy === "keep-local") {
+      return flushPlanRepositoryAutoSync({ conflictResolution: "keep-local" });
+    }
+    if (strategy === "use-remote") {
+      return pullPlanRepositoryFromRemote({ force: true, conflictResolution: "use-remote" });
+    }
+    if (strategy === "copy-remote") {
+      return copyRemotePlanRepositoryConflicts(repository);
+    }
+
+    return {
+      ok: false,
+      status: getPlanRepositoryStatus(),
+      message: "未知的计划冲突处理方式。"
+    };
+  }
+
+  function copyRemotePlanRepositoryConflicts(repository) {
+    const remotePlans = repository.lastSyncConflictPlans
+      .map(normalizePlan)
+      .filter(Boolean);
+    if (!remotePlans.length) {
+      return {
+        ok: false,
+        status: getPlanRepositoryStatus(),
+        message: "没有可另存为副本的远端冲突计划，请重新拉取远端计划。"
+      };
+    }
+
+    const now = new Date().toISOString();
+    const copiedPlans = remotePlans.map((plan) => {
+      const copy = normalizePlan({
+        ...plan,
+        id: makeId("plan"),
+        createdAt: now,
+        updatedAt: now,
+        title: createUniquePlanTitle(`${plan.title || "远端计划"}（远端副本）`),
+        cycleRule: {
+          ...plan.cycleRule,
+          previousPlanId: plan.id,
+          generatedAt: now,
+          generatedNextPlanId: null
+        }
+      });
+      state.plans.push(copy);
+      return copy;
+    });
+
+    state.planRepository = normalizePlanRepository({
+      ...clearPlanRepositoryConflictFields(repository),
+      pendingAutoSync: true,
+      pendingSince: repository.pendingSince || now,
+      pendingReason: `远端冲突计划另存为本机副本：${copiedPlans.length} 份`,
+      pendingPlanCount: state.plans.length,
+      lastCheckedAt: now,
+      lastRemoteStatus: `已将 ${copiedPlans.length} 份远端冲突计划另存为本机副本。`,
+      lastError: ""
+    });
+    addEvent("plan-repository-conflict-copy", `远端冲突计划另存副本：${copiedPlans.length} 份`);
+    saveState();
+    return {
+      ok: true,
+      copiedCount: copiedPlans.length,
+      plans: copiedPlans.map(decoratePlan),
+      status: getPlanRepositoryStatus(),
+      message: `已将 ${copiedPlans.length} 份远端冲突计划另存为本机副本，并加入待同步队列。`
+    };
+  }
+
+  function createUniquePlanTitle(baseTitle) {
+    const base = String(baseTitle || "远端计划（远端副本）");
+    const existing = new Set(state.plans.map((plan) => plan.title));
+    let title = base.slice(0, 100);
+    let index = 2;
+    while (existing.has(title)) {
+      title = `${base.slice(0, 92)} ${index}`;
+      index += 1;
+    }
+    return title;
   }
 
   function downloadReportComparison(reportId = null) {
@@ -6095,6 +6246,7 @@
     checkRemotePlanRepository,
     pushPlanRepositoryToRemote,
     pullPlanRepositoryFromRemote,
+    resolvePlanRepositoryConflict,
     setMode,
     selectDailyGlyph,
     rotateCopybook,

@@ -909,6 +909,12 @@ const els = {
   planRepositoryRemoteButton: document.getElementById("planRepositoryRemoteButton"),
   planRepositoryPushButton: document.getElementById("planRepositoryPushButton"),
   planRepositoryPullButton: document.getElementById("planRepositoryPullButton"),
+  planRepositoryConflictPanel: document.getElementById("planRepositoryConflictPanel"),
+  planRepositoryConflictStatus: document.getElementById("planRepositoryConflictStatus"),
+  planRepositoryConflictList: document.getElementById("planRepositoryConflictList"),
+  planRepositoryKeepLocalButton: document.getElementById("planRepositoryKeepLocalButton"),
+  planRepositoryUseRemoteButton: document.getElementById("planRepositoryUseRemoteButton"),
+  planRepositoryCopyRemoteButton: document.getElementById("planRepositoryCopyRemoteButton"),
   planRepositoryImportInput: document.getElementById("planRepositoryImportInput"),
   planExportButton: document.getElementById("planExportButton"),
   planNextCycleButton: document.getElementById("planNextCycleButton"),
@@ -3813,6 +3819,9 @@ function bindPlanControls() {
   els.planRepositoryRemoteButton?.addEventListener("click", checkPlanRepositoryRemote);
   els.planRepositoryPushButton?.addEventListener("click", pushPlanRepositoryRemote);
   els.planRepositoryPullButton?.addEventListener("click", pullPlanRepositoryRemote);
+  els.planRepositoryKeepLocalButton?.addEventListener("click", () => resolvePlanRepositoryConflict("keep-local"));
+  els.planRepositoryUseRemoteButton?.addEventListener("click", () => resolvePlanRepositoryConflict("use-remote"));
+  els.planRepositoryCopyRemoteButton?.addEventListener("click", () => resolvePlanRepositoryConflict("copy-remote"));
   els.planRepositoryImportInput?.addEventListener("change", importPlanRepositoryFile);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
@@ -5716,6 +5725,37 @@ function renderPlanRepositoryStatus(planHistory = []) {
   if (els.planRepositoryPullButton) {
     els.planRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
+  renderPlanRepositoryConflictPanel(status);
+}
+
+function renderPlanRepositoryConflictPanel(status) {
+  const panel = els.planRepositoryConflictPanel;
+  if (!panel) return;
+  const conflicts = Array.isArray(status?.lastSyncConflicts) ? status.lastSyncConflicts : [];
+  const hasConflict = Boolean(status?.lastSyncConflictCount) && conflicts.length > 0;
+  panel.hidden = !hasConflict;
+  if (!hasConflict) {
+    if (els.planRepositoryConflictList) {
+      els.planRepositoryConflictList.innerHTML = "";
+    }
+    return;
+  }
+
+  if (els.planRepositoryConflictStatus) {
+    els.planRepositoryConflictStatus.textContent = `${status.lastSyncConflictCount} 份计划同时有本机和远端修改，请选择处理方式。`;
+  }
+  if (els.planRepositoryConflictList) {
+    els.planRepositoryConflictList.innerHTML = "";
+    conflicts.forEach((conflict) => {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = conflict.title || conflict.id;
+      const detail = document.createElement("span");
+      detail.textContent = `本机：${conflict.localTitle || conflict.id} / ${formatHistoryTime(conflict.localUpdatedAt)}；远端：${conflict.remoteTitle || conflict.id} / ${formatHistoryTime(conflict.remoteUpdatedAt)}`;
+      item.append(title, detail);
+      els.planRepositoryConflictList.appendChild(item);
+    });
+  }
 }
 
 function renderPlanDependencyGraph(plan) {
@@ -6108,12 +6148,39 @@ async function pullPlanRepositoryRemote() {
   }
 }
 
+async function resolvePlanRepositoryConflict(strategy) {
+  const labels = {
+    "keep-local": "保留本机计划",
+    "use-remote": "采用远端计划",
+    "copy-remote": "另存远端副本"
+  };
+  setPlanRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.resolvePlanRepositoryConflict?.(strategy));
+    if (result?.ok) {
+      activePlanId = result.plans?.[0]?.id || window.MRAppState?.getLatestPlan?.()?.id || activePlanId;
+      updateSceneText(currentIndex);
+      updatePathPanel(currentIndex);
+      renderLearningStateSummary();
+    }
+    showNotice(result?.message || `${labels[strategy] || "计划冲突处理"}失败。`);
+  } catch (error) {
+    showNotice(`${labels[strategy] || "计划冲突处理"}失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setPlanRepositoryRemoteBusy(false);
+    renderPlanPanel(currentIndex);
+  }
+}
+
 function setPlanRepositoryRemoteBusy(isBusy) {
   [
     els.planRepositorySaveRemoteButton,
     els.planRepositoryRemoteButton,
     els.planRepositoryPushButton,
-    els.planRepositoryPullButton
+    els.planRepositoryPullButton,
+    els.planRepositoryKeepLocalButton,
+    els.planRepositoryUseRemoteButton,
+    els.planRepositoryCopyRemoteButton
   ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);
