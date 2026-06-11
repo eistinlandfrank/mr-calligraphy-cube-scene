@@ -47,7 +47,7 @@
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出 | 还没有服务端分页和跨设备归档 |
 | 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细和字段分组模板 | 还没有程序直接生成的原生 PDF 文件，也没有云端长期报告 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
-| AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度和刷新后可读取的当前段落 | 还没有真实音频、视频流、语音合成和云端生成内容 |
+| AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
 ### 2.3 明显缺失
 
@@ -1117,7 +1117,8 @@
 
 已知限制：
 
-- 当前是本机文本讲解和计时推进，还没有真实音频、视频、TTS 或云端 AI 生成内容。
+- 当前已支持浏览器本机语音合成逐段朗读；不支持 Web Speech 的浏览器会明确降级到文本计时推进。
+- 这不是云端 AI 音频、视频流或按用户笔迹实时生成内容。
 - 讲解段落是模板化内容，不是按用户笔迹实时生成。
 - 暂无暂停、上一段、倍速和完整字幕导出。
 
@@ -3683,3 +3684,64 @@
 - 这次交付的是本机离线 HTML 和浏览器打印保存 PDF，不是前端直接生成二进制 PDF，也不是服务端 PDF 渲染。
 - 对比仍基于同一浏览器 `mr-calligraphy-learning-state-v1` 中相邻两份报告，不是跨设备、跨账号或教师端长期报告。
 - 字段变化来自本机启发式评分和报告拆解，不代表专业书法识别模型。
+
+### 2026-06-11：新增 AI 讲解本机语音朗读
+
+功能名：前台 AI 讲解接入浏览器 Web Speech 本机语音合成。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- “进入 AI 讲解”和“播放讲解”从 `demo-content` 调整为 `real-local` 本机真实能力。
+- “播放讲解”优先调用浏览器 `speechSynthesis` 和 `SpeechSynthesisUtterance`，按当前讲解段落标题和正文逐段朗读。
+- 每段本机语音朗读结束后自动调用 `MRAppState.advanceLecture()`，继续写入讲解段落、播放状态和完成状态。
+- 浏览器不支持 Web Speech 或语音播放失败时，会在讲解面板显示降级说明，并继续使用文本计时推进，不返回假语音成功。
+- 讲解面板新增 `lectureVoiceStatus` 状态行，显示本机语音待播放、朗读中、降级和已完成状态。
+- smoke test 前台页面标记新增 `lectureVoiceStatus`，避免语音状态入口被误删。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，点击“进入 AI 讲解”，应进入讲解页并显示讲解进度面板。
+- 点击“播放讲解”，支持 Web Speech 的浏览器应开始朗读当前段落，状态行显示“本机语音朗读中”。
+- 当前段落朗读结束后，应自动推进到下一段，并持续写回本机讲解进度。
+- 播放完成后，讲解状态应显示已完成，刷新页面后仍能恢复完成状态。
+- 在不支持 Web Speech 的浏览器中，状态行应明确显示“当前浏览器不支持本机语音合成”，并继续按段推进文本讲解。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `curl -I --max-time 5 http://localhost:41496/`
+- `curl -I --max-time 5 http://localhost:41496/main-admin.html`
+- `git diff --check`
+
+已知限制：
+
+- Web Speech 声音由浏览器和系统提供，不是云端 AI 生成音频，也不是项目自带真人录音。
+- 讲解文本仍来自本机模板和当前任务，不会按实时笔迹动态生成。
+- 暂无暂停、上一段、倍速、语音选择和字幕导出。

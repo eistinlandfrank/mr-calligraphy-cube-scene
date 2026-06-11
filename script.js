@@ -416,9 +416,9 @@ const LEARNING_ACTION_FEATURES = {
   进入临摹训练: ["real-local", "创建或继续本机 PracticeSession。"],
   打开历史记录: ["real-local", "打开本机学习档案面板。"],
   选择日课字: ["real-local", "在本机任务库中切换当前学习任务。"],
-  "进入 AI 讲解": ["demo-content", "进入本机文本讲解流程；内容仍是预置讲解，不是云端 AI 音视频。"],
+  "进入 AI 讲解": ["real-local", "进入本机讲解流程，讲解进度会写入浏览器本机状态。"],
   查看成就: ["real-local", "按本机练习、作品和报告记录计算成就概览。"],
-  播放讲解: ["demo-content", "推进本机文本讲解进度；当前没有真实音频、TTS 或视频流。"],
+  播放讲解: ["real-local", "调用浏览器本机语音合成逐段朗读，并写入讲解进度。"],
   切换碑帖: ["real-local", "切换当前任务对应碑帖并重置讲解上下文。"],
   开始临摹: ["real-local", "创建或继续本机 PracticeSession。"],
   示范模式: ["real-local", "切换当前练习会话的训练模式。"],
@@ -809,6 +809,7 @@ const els = {
   lectureStatusLabel: document.getElementById("lectureStatusLabel"),
   lectureProgressFill: document.getElementById("lectureProgressFill"),
   lectureBody: document.getElementById("lectureBody"),
+  lectureVoiceStatus: document.getElementById("lectureVoiceStatus"),
   lectureStepList: document.getElementById("lectureStepList"),
   glyphValue: document.getElementById("practiceGlyphGuide"),
   practiceCanvas: document.getElementById("practiceCanvas"),
@@ -991,7 +992,10 @@ const REPORT_METRIC_GUIDES = {
 };
 let activePlanId = null;
 let isReplayVideoExporting = false;
+let isLecturePlaybackActive = false;
 let lecturePlaybackTimer = null;
+let lectureSpeechUtterance = null;
+let lecturePlaybackToken = 0;
 const LECTURE_PLAYBACK_STEP_MS = 1200;
 const mainSceneUndoStack = [];
 
@@ -3912,6 +3916,7 @@ function renderLecturePanel(sceneIndex = currentIndex) {
   els.lectureStatusLabel.textContent = statusLabel;
   els.lectureProgressFill.style.width = `${progress.progressPercent}%`;
   els.lectureBody.textContent = progress.currentStep?.body || "选择讲解后显示当前段落。";
+  updateLectureVoiceStatus(progress);
   els.lectureStepList.innerHTML = "";
 
   progress.steps.forEach((step, index) => {
@@ -3933,52 +3938,169 @@ function startLecturePlayback() {
   if (!appState?.startLecture || !appState?.advanceLecture) {
     return { ok: false, message: "AI 讲解状态层尚未初始化。" };
   }
-  if (lecturePlaybackTimer) {
+  if (isLecturePlaybackActive || lecturePlaybackTimer || lectureSpeechUtterance) {
     return { ok: false, message: "AI 讲解正在播放中，请稍候。" };
   }
 
   const result = appState.startLecture();
+  const token = ++lecturePlaybackToken;
+  isLecturePlaybackActive = true;
   renderLearningStateSummary();
   renderLecturePanel(currentIndex);
   updateSceneText(currentIndex);
   updatePathPanel(currentIndex);
-  scheduleLectureAdvance();
+  const playback = playOrScheduleLectureStep(result.lecture, token);
   return {
     ...result,
-    message: `${result.message} 正在按段播放。`
+    message: `${result.message} ${playback.message}`
   };
 }
 
-function scheduleLectureAdvance() {
-  const progress = window.MRAppState?.getLectureProgress?.();
+function playOrScheduleLectureStep(progress, token) {
   if (!progress || progress.status === "complete") {
+    stopLecturePlayback();
+    return { ok: true, message: "讲解已完成。" };
+  }
+
+  const speech = speakLectureStep(progress, token);
+  if (speech.ok) {
+    return speech;
+  }
+
+  setLectureVoiceStatus(speech.message, "fallback");
+  scheduleLectureAdvance(token, LECTURE_PLAYBACK_STEP_MS);
+  return {
+    ok: true,
+    mode: "timer",
+    message: `${speech.message} 正在按段推进。`
+  };
+}
+
+function scheduleLectureAdvance(token, delay = LECTURE_PLAYBACK_STEP_MS) {
+  const progress = window.MRAppState?.getLectureProgress?.();
+  if (!progress || progress.status === "complete" || token !== lecturePlaybackToken) {
     stopLecturePlayback();
     return;
   }
 
   lecturePlaybackTimer = window.setTimeout(() => {
     lecturePlaybackTimer = null;
-    const result = window.MRAppState?.advanceLecture?.();
-    renderLearningStateSummary();
-    renderLecturePanel(currentIndex);
-    updateSceneText(currentIndex);
-    updatePathPanel(currentIndex);
-    if (result?.message) {
-      els.actionFeedback.textContent = result.message;
-    }
-    if (result?.lecture?.status === "complete") {
-      showNotice("AI 讲解已完成，进度已保存。");
-      return;
-    }
-    scheduleLectureAdvance();
-  }, LECTURE_PLAYBACK_STEP_MS);
+    advanceLecturePlayback(token);
+  }, delay);
+}
+
+function advanceLecturePlayback(token) {
+  if (token !== lecturePlaybackToken || !isLecturePlaybackActive) {
+    return;
+  }
+
+  const result = window.MRAppState?.advanceLecture?.();
+  renderLearningStateSummary();
+  renderLecturePanel(currentIndex);
+  updateSceneText(currentIndex);
+  updatePathPanel(currentIndex);
+  if (result?.message) {
+    els.actionFeedback.textContent = result.message;
+  }
+  if (result?.lecture?.status === "complete") {
+    isLecturePlaybackActive = false;
+    setLectureVoiceStatus("本机语音讲解已完成，进度已保存。", "complete");
+    showNotice("AI 讲解已完成，进度已保存。");
+    return;
+  }
+  playOrScheduleLectureStep(result?.lecture, token);
+}
+
+function speakLectureStep(progress, token) {
+  if (!supportsLectureSpeech()) {
+    return { ok: false, message: "当前浏览器不支持本机语音合成。" };
+  }
+
+  try {
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(getLectureSpeechText(progress));
+    utterance.lang = "zh-CN";
+    utterance.rate = 0.92;
+    utterance.pitch = 1;
+    utterance.voice = getLectureSpeechVoice();
+    utterance.onstart = () => {
+      if (token !== lecturePlaybackToken) return;
+      setLectureVoiceStatus(`本机语音朗读中：${progress.currentStep?.title || "当前段落"}`, "playing");
+    };
+    utterance.onend = () => {
+      if (token !== lecturePlaybackToken) return;
+      lectureSpeechUtterance = null;
+      scheduleLectureAdvance(token, 180);
+    };
+    utterance.onerror = () => {
+      if (token !== lecturePlaybackToken) return;
+      lectureSpeechUtterance = null;
+      setLectureVoiceStatus("本机语音播放失败，已改用文本计时推进。", "fallback");
+      scheduleLectureAdvance(token, LECTURE_PLAYBACK_STEP_MS);
+    };
+    lectureSpeechUtterance = utterance;
+    window.speechSynthesis.speak(utterance);
+    return { ok: true, mode: "speech", message: "正在用浏览器本机语音逐段朗读。" };
+  } catch (error) {
+    console.warn("本机语音讲解启动失败", error);
+    lectureSpeechUtterance = null;
+    return { ok: false, message: "本机语音启动失败。" };
+  }
+}
+
+function supportsLectureSpeech() {
+  return "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+}
+
+function getLectureSpeechVoice() {
+  if (!supportsLectureSpeech()) return null;
+  const voices = window.speechSynthesis.getVoices?.() || [];
+  return voices.find((voice) => /^zh/i.test(voice.lang))
+    || voices.find((voice) => /Chinese|Mandarin|中文|普通话/i.test(voice.name))
+    || null;
+}
+
+function getLectureSpeechText(progress) {
+  const title = progress?.currentStep?.title || "当前讲解";
+  const body = progress?.currentStep?.body || "";
+  return `${title}。${body}`;
+}
+
+function updateLectureVoiceStatus(progress) {
+  if (!els.lectureVoiceStatus) return;
+  if (isLecturePlaybackActive && lectureSpeechUtterance) {
+    setLectureVoiceStatus(`本机语音朗读中：${progress.currentStep?.title || "当前段落"}`, "playing");
+    return;
+  }
+  if (progress?.status === "complete") {
+    setLectureVoiceStatus("本机讲解已完成，进度已保存。", "complete");
+    return;
+  }
+  if (!supportsLectureSpeech()) {
+    setLectureVoiceStatus("当前浏览器不支持本机语音合成，将使用文本计时推进。", "fallback");
+    return;
+  }
+  setLectureVoiceStatus("本机语音待播放。", "idle");
+}
+
+function setLectureVoiceStatus(text, tone = "idle") {
+  if (!els.lectureVoiceStatus) return;
+  els.lectureVoiceStatus.textContent = text;
+  els.lectureVoiceStatus.dataset.tone = tone;
 }
 
 function stopLecturePlayback() {
+  lecturePlaybackToken += 1;
+  isLecturePlaybackActive = false;
   if (lecturePlaybackTimer) {
     window.clearTimeout(lecturePlaybackTimer);
     lecturePlaybackTimer = null;
   }
+  if (lectureSpeechUtterance && supportsLectureSpeech()) {
+    window.speechSynthesis.cancel();
+  }
+  lectureSpeechUtterance = null;
+  updateLectureVoiceStatus(window.MRAppState?.getLectureProgress?.());
 }
 
 function renderReviewPanel(sceneIndex = currentIndex) {
