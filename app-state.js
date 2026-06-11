@@ -2074,6 +2074,92 @@
     };
   }
 
+  function getReportComparison(reportId = null) {
+    const reports = state.reports
+      .map(normalizeReport)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    const total = reports.length;
+    if (total < 2) {
+      return {
+        ok: false,
+        total,
+        message: "至少需要两份本机学习报告，才能生成跨版本对比。"
+      };
+    }
+
+    const recordId = String(reportId || "").trim();
+    const currentIndex = recordId
+      ? reports.findIndex((item) => item.id === recordId)
+      : total - 1;
+    if (currentIndex < 0) {
+      return {
+        ok: false,
+        total,
+        message: "未找到要对比的本机学习报告。"
+      };
+    }
+    if (currentIndex === 0) {
+      return {
+        ok: false,
+        total,
+        current: makeReportComparisonSnapshot(reports[currentIndex]),
+        message: "这已经是第一份报告，还没有更早报告可对比。"
+      };
+    }
+
+    const previous = makeReportComparisonSnapshot(reports[currentIndex - 1]);
+    const current = makeReportComparisonSnapshot(reports[currentIndex]);
+    const metricDeltas = SCORE_METRICS.map((metric) => {
+      const previousValue = normalizeScore(previous.scoreBreakdown[metric.key], 0);
+      const currentValue = normalizeScore(current.scoreBreakdown[metric.key], 0);
+      return {
+        key: metric.key,
+        label: metric.label,
+        previous: previousValue,
+        current: currentValue,
+        delta: currentValue - previousValue
+      };
+    });
+    const averageDelta = current.averageScore - previous.averageScore;
+    const strongestMetric = [...metricDeltas].sort((a, b) => b.delta - a.delta)[0] || null;
+    const weakestMetric = [...metricDeltas].sort((a, b) => a.delta - b.delta)[0] || null;
+    const summary = averageDelta > 0
+      ? `较上一份报告平均分提升 ${averageDelta} 分。`
+      : averageDelta < 0
+        ? `较上一份报告平均分回落 ${Math.abs(averageDelta)} 分。`
+        : "平均分与上一份报告持平。";
+
+    return {
+      ok: true,
+      total,
+      previous,
+      current,
+      averageDelta,
+      sessionDelta: current.sessionCount - previous.sessionCount,
+      artworkDelta: current.artworkCount - previous.artworkCount,
+      learningMinutesDelta: current.learningMinutes - previous.learningMinutes,
+      metricDeltas,
+      strongestMetric,
+      weakestMetric,
+      summary,
+      message: "已生成两份本机学习报告的跨版本对比。"
+    };
+  }
+
+  function makeReportComparisonSnapshot(report) {
+    return {
+      id: report.id,
+      title: report.title || "学习报告",
+      createdAt: report.createdAt,
+      sessionCount: report.sessionCount || 0,
+      artworkCount: report.artworkCount || 0,
+      averageScore: report.averageScore || 0,
+      learningMinutes: report.learningMinutes || 0,
+      scoreBreakdown: clone(report.scoreBreakdown || normalizeMetrics(null))
+    };
+  }
+
   function downloadReport(reportId = null) {
     const report = reportId
       ? state.reports.find((item) => item.id === reportId)
@@ -3028,6 +3114,7 @@
     getLatestPlan,
     getReportPreview,
     getReportDetail,
+    getReportComparison,
     getArtworkSharePackage,
     getLatestReview,
     getHistory,

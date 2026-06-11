@@ -3877,6 +3877,7 @@ body.is-model-view .notice-panel {
 
 .report-metrics,
 .report-trend,
+.report-comparison,
 .report-latest {
   display: grid;
   gap: 7px;
@@ -3888,6 +3889,7 @@ body.is-model-view .notice-panel {
 
 .report-metrics > strong,
 .report-trend > strong,
+.report-comparison > strong,
 .report-latest > strong {
   color: #fffaf1;
   font-size: 12px;
@@ -4014,6 +4016,102 @@ body.is-model-view .notice-panel {
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.report-comparison-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.report-comparison-meta span,
+.report-comparison-stats span {
+  min-width: 0;
+  padding: 6px 7px;
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.7);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-comparison-summary {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.68);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.report-comparison-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.report-comparison-stats small {
+  display: block;
+  color: rgba(255, 250, 241, 0.56);
+  font-size: 10px;
+}
+
+.report-comparison-stats em {
+  display: block;
+  margin-top: 2px;
+  color: #ffffff;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.report-comparison-stats em[data-tone="up"],
+.report-comparison-metrics span[data-tone="up"] {
+  color: #74ffdb;
+}
+
+.report-comparison-stats em[data-tone="down"],
+.report-comparison-metrics span[data-tone="down"] {
+  color: #f7c28b;
+}
+
+.report-comparison-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.report-comparison-metrics span {
+  min-height: 24px;
+  padding: 4px 7px;
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.72);
+  background: rgba(20, 38, 34, 0.42);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.report-comparison-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.report-comparison-actions button {
+  min-height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-comparison-actions button:hover,
+.report-comparison-actions button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  background: rgba(47, 111, 104, 0.58);
 }
 
 .report-latest-grid {
@@ -4143,10 +4241,12 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-head strong,
   body.is-report-printing .report-metrics > strong,
   body.is-report-printing .report-trend > strong,
+  body.is-report-printing .report-comparison > strong,
   body.is-report-printing .report-latest > strong,
   body.is-report-printing .report-stats strong,
   body.is-report-printing .report-metric-row em,
   body.is-report-printing .report-metric-detail span,
+  body.is-report-printing .report-comparison-stats em,
   body.is-report-printing .report-latest-text span {
     color: #17221f;
   }
@@ -4155,7 +4255,10 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-stats span,
   body.is-report-printing .report-metrics,
   body.is-report-printing .report-trend,
+  body.is-report-printing .report-comparison,
   body.is-report-printing .report-latest,
+  body.is-report-printing .report-comparison-meta span,
+  body.is-report-printing .report-comparison-stats span,
   body.is-report-printing .report-metric-detail {
     border: 1px solid #dbe8e2;
     color: #17221f;
@@ -4168,12 +4271,16 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-metric-row,
   body.is-report-printing .report-metric-detail p,
   body.is-report-printing .report-trend-bar small,
+  body.is-report-printing .report-comparison-summary,
+  body.is-report-printing .report-comparison-meta span,
+  body.is-report-printing .report-comparison-stats small,
   body.is-report-printing .report-latest-text small,
   body.is-report-printing .report-recommendations li {
     color: #61706a;
   }
 
-  body.is-report-printing .report-actions {
+  body.is-report-printing .report-actions,
+  body.is-report-printing .report-comparison-actions {
     display: none;
   }
 }

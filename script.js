@@ -836,6 +836,7 @@ const els = {
   reportStats: document.getElementById("reportStats"),
   reportMetrics: document.getElementById("reportMetrics"),
   reportTrend: document.getElementById("reportTrend"),
+  reportComparison: document.getElementById("reportComparison"),
   reportLatest: document.getElementById("reportLatest"),
   reportRecommendations: document.getElementById("reportRecommendations"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
@@ -3549,6 +3550,11 @@ function bindReportControls() {
     activeReportMetricKey = normalizeReportMetricKey(button.dataset.reportMetric);
     renderReportPanel(currentIndex);
   });
+  els.reportComparison?.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-report-jump]");
+    if (!button) return;
+    openReportDetailRoute(button.dataset.reportJump);
+  });
 }
 
 function bindHistoryControls() {
@@ -3985,6 +3991,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   activeReportMetricKey = normalizeReportMetricKey(activeReportMetricKey);
   renderReportMetrics(detail, activeReportMetricKey);
   renderReportTrend(detail, activeReportMetricKey);
+  renderReportComparison(window.MRAppState.getReportComparison?.(detail.id));
   renderReportLatest(detail);
   renderReportRecommendations(detail.recommendations || []);
   setReportDetailActions(detail);
@@ -3998,6 +4005,7 @@ function renderReportEmptyState() {
     els.reportStats,
     els.reportMetrics,
     els.reportTrend,
+    els.reportComparison,
     els.reportLatest,
     els.reportRecommendations
   ].forEach((node) => {
@@ -4114,6 +4122,77 @@ function renderReportTrend(detail, metricKey = activeReportMetricKey) {
     bars.appendChild(bar);
   });
   els.reportTrend.appendChild(bars);
+}
+
+function renderReportComparison(comparison) {
+  if (!els.reportComparison) return;
+  els.reportComparison.innerHTML = "";
+  const title = document.createElement("strong");
+  title.textContent = "报告对比";
+  els.reportComparison.appendChild(title);
+
+  if (!comparison?.ok) {
+    const empty = document.createElement("p");
+    empty.className = "report-empty";
+    empty.textContent = comparison?.message || "至少生成两份报告后，这里会显示本机报告跨版本变化。";
+    els.reportComparison.appendChild(empty);
+    return;
+  }
+
+  const meta = document.createElement("div");
+  meta.className = "report-comparison-meta";
+  const previous = document.createElement("span");
+  previous.textContent = `上份 ${formatHistoryTime(comparison.previous.createdAt)}`;
+  const current = document.createElement("span");
+  current.textContent = `本份 ${formatHistoryTime(comparison.current.createdAt)}`;
+  meta.append(previous, current);
+
+  const summary = document.createElement("p");
+  summary.className = "report-comparison-summary";
+  summary.textContent = comparison.summary || "已读取两份本机报告进行对比。";
+
+  const stats = document.createElement("div");
+  stats.className = "report-comparison-stats";
+  [
+    ["平均分", comparison.averageDelta, "分"],
+    ["练习", comparison.sessionDelta, "次"],
+    ["作品", comparison.artworkDelta, "幅"],
+    ["分钟", comparison.learningMinutesDelta, ""]
+  ].forEach(([label, value, unit]) => {
+    const item = document.createElement("span");
+    const name = document.createElement("small");
+    name.textContent = label;
+    const data = document.createElement("em");
+    data.textContent = formatSignedDelta(value, unit);
+    data.dataset.tone = value > 0 ? "up" : value < 0 ? "down" : "same";
+    item.append(name, data);
+    stats.appendChild(item);
+  });
+
+  const metrics = document.createElement("div");
+  metrics.className = "report-comparison-metrics";
+  (comparison.metricDeltas || []).forEach((metric) => {
+    const item = document.createElement("span");
+    item.dataset.tone = metric.delta > 0 ? "up" : metric.delta < 0 ? "down" : "same";
+    item.textContent = `${metric.label} ${metric.previous || "-"} → ${metric.current || "-"} (${formatSignedDelta(metric.delta)})`;
+    metrics.appendChild(item);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "report-comparison-actions";
+  [
+    ["查看上份", comparison.previous.id],
+    ["查看本份", comparison.current.id]
+  ].forEach(([label, id]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.reportJump = id;
+    button.textContent = label;
+    actions.appendChild(button);
+  });
+
+  els.reportComparison.append(meta, summary, stats, metrics, actions);
 }
 
 function renderReportLatest(detail) {

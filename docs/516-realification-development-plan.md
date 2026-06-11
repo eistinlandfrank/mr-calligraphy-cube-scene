@@ -3115,3 +3115,67 @@
 - 这是本机 HTML 分享页，不是公网链接、微信分享接口、班级作品墙或跨设备同步。
 - PDF 仍依赖浏览器打印保存，不是程序直接生成的 PDF 二进制文件。
 - 分享页使用最近作品和关联练习数据；如果作品没有截图或关联练习，页面会显示空图或空维度，不补假内容。
+
+### 2026-06-11：新增站内报告跨版本对比
+
+功能名：前台站内报告相邻版本对比。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `MRAppState.getReportComparison()` 新增本机报告对比数据源，支持按报告 ID 对比当前报告和上一份报告。
+- 对比结果包含上一份/当前报告摘要、平均分差值、练习次数差值、作品数差值、学习分钟差值，以及结构、笔画、笔法、流畅、力度五项字段级能力差值。
+- 只有一份报告、第一份报告或找不到指定报告时返回明确空状态，不补假趋势。
+- 前台站内报告面板新增“报告对比”模块，展示相邻报告时间、总结、统计差值和字段差值。
+- 对比模块提供“查看上份 / 查看本份”按钮，复用 `?report=报告ID` 站内报告路由，属于 `real-local` 本机真实跳转。
+- 报告打印样式补齐对比模块，打印/保存 PDF 时不会丢失新模块主体内容。
+- `scripts/learning-state-check.js` 已模拟两份本机报告，验证平均分、练习数和字段级能力差值。
+- smoke test 前台页面标记新增 `reportComparison`，避免报告对比入口被误删。
+
+验收方式：
+
+- 在前台完成至少两次真实练习并分别导出两份报告。
+- 打开最新站内报告，报告面板应显示“报告对比”，包含上一份和本份生成时间、平均分差值、练习/作品/分钟差值，以及五项能力差值。
+- 点击“查看上份”应打开上一份报告详情；点击“查看本份”应回到当前报告详情。
+- 只有一份报告时，报告对比区应显示“至少需要两份本机学习报告”，不能显示伪造差值。
+- 运行 `node scripts/learning-state-check.js`，应输出学习状态检查通过，并覆盖报告对比断言。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应输出 `Smoke test 通过：16 个脚本，4 个页面。`
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 第一版只比较本机浏览器 `reports[]` 中相邻的两份报告，不是跨设备、跨账号或云端班级长期报告。
+- 对比维度来自当前本机启发式评分和报告字段拆解，不代表专业书法识别模型。
+- 尚未提供多报告折线图、字段多选、导出对比 PDF 或教师批注。

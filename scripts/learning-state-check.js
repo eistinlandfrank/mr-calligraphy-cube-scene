@@ -37,7 +37,22 @@ const storage = new Map([
         createArtwork("artwork-2", "session-2", "永", 88, "2026-06-11T08:10:00.000Z"),
         createArtwork("artwork-3", "session-3", "和", 80, "2026-06-11T09:10:00.000Z")
       ],
-      reports: [],
+      reports: [
+        createReport("report-1", 76, "2026-06-10T08:20:00.000Z", {
+          structure: 72,
+          stroke: 73,
+          technique: 74,
+          fluency: 70,
+          force: 71
+        }),
+        createReport("report-2", 86, "2026-06-11T08:20:00.000Z", {
+          structure: 84,
+          stroke: 86,
+          technique: 87,
+          fluency: 83,
+          force: 85
+        })
+      ],
       plans: [],
       historyTrash: [],
       events: []
@@ -99,7 +114,19 @@ assert(sharePackage.html.includes("data:image/png"), "作品分享页 HTML 应�
 assert(sharePackage.html.includes("不是云端公开链接"), "作品分享页应明确本机导出边界。");
 assert(sharePackage.html.includes("结构"), "作品分享页应包含能力维度。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索和分享页已生成。");
+const reportComparison = window.MRAppState.getReportComparison("report-2");
+assert(reportComparison.ok, "两份报告应生成跨版本对比。");
+assert(reportComparison.previous.id === "report-1", "报告对比应选择上一份报告。");
+assert(reportComparison.current.id === "report-2", "报告对比应保留当前报告。");
+assert(reportComparison.averageDelta === 10, "报告对比应计算平均分变化。");
+assert(reportComparison.sessionDelta === 1, "报告对比应计算练习次数变化。");
+assert(
+  reportComparison.metricDeltas.some((metric) => metric.key === "structure" && metric.delta === 12),
+  "报告对比应计算字段级能力变化。"
+);
+assert(!window.MRAppState.getReportComparison("report-1").ok, "第一份报告不应伪造上一份对比。");
+
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页和报告对比已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {
@@ -135,6 +162,29 @@ function createArtwork(id, sessionId, glyph, score, time) {
     feedback: [`${glyph}字作品反馈`],
     imageData: "data:image/png;base64,iVBORw0KGgo=",
     createdAt: time
+  };
+}
+
+function createReport(id, averageScore, time, scoreBreakdown) {
+  const reportNumber = id.slice(-1);
+  return {
+    id,
+    title: `学习报告 ${reportNumber}`,
+    createdAt: time,
+    range: "all",
+    format: "html",
+    summary: `第 ${reportNumber} 份本机学习报告。`,
+    sessionCount: Number(reportNumber),
+    artworkCount: Number(reportNumber),
+    averageScore,
+    learningMinutes: Number(reportNumber) * 12,
+    latestSessionId: `session-${reportNumber}`,
+    latestArtworkId: `artwork-${reportNumber}`,
+    latestStrokeCount: id === "report-2" ? 12 : 8,
+    latestPointCount: id === "report-2" ? 120 : 80,
+    scoreBreakdown,
+    trend: [],
+    recommendations: [`第 ${reportNumber} 份报告建议`]
   };
 }
 
