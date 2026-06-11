@@ -129,11 +129,16 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.getByRole("button", { name: /切换到步骤 6/ }).click();
   await page.getByRole("button", { name: "保存作品" }).click();
   await expect(page.locator("#actionFeedback")).toContainText("作品已真实保存到本机记录");
+  await expect(page.locator("#scoreServiceSummary")).toContainText("本机基础评分");
+  await expect(page.locator("#scoreServiceSummary")).toContainText("不是专业书法评级");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.artworks).toHaveLength(1);
   expect(learningState.artworks[0].strokeCount).toBeGreaterThan(0);
   expect(learningState.sessions.some((session) => session.status === "saved" && session.strokeCount > 0)).toBe(true);
+  expect(learningState.scoreService.status).toBe("scored");
+  expect(learningState.scoreService.lastScore).toBeGreaterThan(0);
+  expect(learningState.scoreService.lastEvidenceSummary).toContain("采样");
 
   await page.locator("#reviewCreateShareLink").click();
   await expect(page.locator("#shareServiceSummary")).toContainText("1 条有效链接");

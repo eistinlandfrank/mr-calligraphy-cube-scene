@@ -8,6 +8,7 @@
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
+  const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
@@ -321,6 +322,9 @@
       copybook: selectedCopybook,
       fallbackStatus: source?.lectureStatus
     });
+    const sessions = Array.isArray(source?.sessions) ? source.sessions.map(normalizeSession).filter(Boolean) : [];
+    const artworks = Array.isArray(source?.artworks) ? source.artworks.map(normalizeArtwork).filter(Boolean) : [];
+    const reports = Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [];
     return {
       version: VERSION,
       activeMode,
@@ -332,11 +336,12 @@
       lectureStatus: lecture.status,
       lecture,
       lectureService: normalizeLectureService(source?.lectureService),
+      scoreService: normalizeScoreService(source?.scoreService, sessions),
       artworkStyle: String(source?.artworkStyle || "楷书"),
       currentSessionId: typeof source?.currentSessionId === "string" ? source.currentSessionId : null,
-      sessions: Array.isArray(source?.sessions) ? source.sessions.map(normalizeSession).filter(Boolean) : [],
-      artworks: Array.isArray(source?.artworks) ? source.artworks.map(normalizeArtwork).filter(Boolean) : [],
-      reports: Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [],
+      sessions,
+      artworks,
+      reports,
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
@@ -1068,6 +1073,62 @@
     return normalized;
   }
 
+  function normalizeScoreService(record = {}, records = []) {
+    const source = record && typeof record === "object" ? record : {};
+    const scoredRecords = getScoredPracticeRecords(records);
+    const latestRecord = scoredRecords.at(-1) || null;
+    const latestEvidence = latestRecord ? normalizeScoreEvidence(latestRecord.scoreEvidence, latestRecord) : null;
+    const mode = ["local-heuristic", "remote-professional", "remote-ai"].includes(source.mode)
+      ? source.mode
+      : "local-heuristic";
+    const fallbackStatus = latestRecord ? "scored" : "idle";
+    const sourceHasServiceHistory = normalizeScore(source.lastScore, 0) > 0
+      || normalizeInteger(source.scoredSessionCount, 0, 0, 99999) > 0
+      || normalizeInteger(source.totalPointCount, 0, 0, 9999999) > 0
+      || Boolean(source.lastEvidenceSummary);
+    const status = ["idle", "ready", "scored", "no-data", "error"].includes(source.status) && (sourceHasServiceHistory || !latestRecord)
+      ? source.status
+      : fallbackStatus;
+    const scoredFallback = scoredRecords.length;
+    const strokeFallback = scoredRecords.reduce((sum, item) => sum + normalizeInteger(item.strokeCount, 0, 0, 999), 0);
+    const pointFallback = scoredRecords.reduce((sum, item) => sum + normalizeInteger(item.pointCount, 0, 0, 99999), 0);
+    const lastScore = normalizeScore(source.lastScore, latestRecord?.score || 0);
+    const latestSummary = latestEvidence ? summarizeScoreEvidence(latestEvidence) : "";
+    return {
+      mode,
+      status,
+      algorithmVersion: String(source.algorithmVersion || latestEvidence?.kind || "local-heuristic-v1").slice(0, 80),
+      lastScore,
+      lastGlyph: String(source.lastGlyph || latestRecord?.glyph || "").slice(0, 16),
+      lastEvidenceSummary: String(source.lastEvidenceSummary || latestSummary).slice(0, 220),
+      lastMessage: String(source.lastMessage || "").slice(0, 220),
+      scoredSessionCount: normalizeInteger(source.scoredSessionCount, scoredFallback, 0, 99999),
+      totalStrokeCount: normalizeInteger(source.totalStrokeCount, strokeFallback, 0, 999999),
+      totalPointCount: normalizeInteger(source.totalPointCount, pointFallback, 0, 9999999),
+      errorCount: normalizeInteger(source.errorCount, 0, 0, 9999),
+      lastScoredAt: normalizePlanDate(source.lastScoredAt || latestRecord?.snapshotAt || latestRecord?.endedAt),
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt)
+    };
+  }
+
+  function getScoredPracticeRecords(records = []) {
+    return (Array.isArray(records) ? records : [])
+      .filter((record) => record && typeof record === "object")
+      .filter((record) => normalizeScore(record.score, 0) > 0 && normalizeInteger(record.pointCount, 0, 0, 99999) > 0)
+      .sort((a, b) => Date.parse(a.snapshotAt || a.endedAt || a.startedAt || 0) - Date.parse(b.snapshotAt || b.endedAt || b.startedAt || 0));
+  }
+
+  function summarizeScoreEvidence(evidence = {}) {
+    const source = evidence && typeof evidence === "object" ? evidence : {};
+    const detail = source.evidence && typeof source.evidence === "object" ? source.evidence : {};
+    const reasons = Array.isArray(source.reasons) ? source.reasons : [];
+    const weakest = reasons
+      .filter((reason) => reason && Number.isFinite(Number(reason.score)))
+      .sort((a, b) => Number(a.score) - Number(b.score))[0];
+    const weakText = weakest ? `，最低项：${weakest.label || weakest.key}${normalizeScore(weakest.score, 0)}分` : "";
+    return `采样${normalizeInteger(detail.pointCount, 0, 0, 99999)}点，${normalizeInteger(detail.strokeCount, 0, 0, 999)}笔，覆盖${normalizeInteger(detail.coveragePercent, 0, 0, 100)}%，重心偏移${normalizeInteger(detail.centerOffsetPercent, 0, 0, 100)}%${weakText}`;
+  }
+
   function normalizeScoreWeights(weights = {}) {
     return {
       structure: normalizeNumber(weights.structure, 0.26, 0, 1),
@@ -1706,6 +1767,61 @@
       elapsedSeconds: completedSteps * LECTURE_STEP_SECONDS,
       totalSeconds: steps.length * LECTURE_STEP_SECONDS
     };
+  }
+
+  function getScoreServiceStatus() {
+    const service = normalizeScoreService(state.scoreService, state.sessions);
+    const modeLabel = getScoreServiceModeLabel(service.mode);
+    const statusLabel = getScoreServiceStatusLabel(service.status);
+    const scoreText = service.lastScore ? `，最近 ${service.lastGlyph || state.selectedGlyph} 字 ${service.lastScore} 分` : "";
+    return {
+      ...clone(service),
+      modeLabel,
+      statusLabel,
+      boundary: SCORE_SERVICE_BOUNDARY,
+      message: `${modeLabel} / ${statusLabel}${scoreText}。累计评分 ${service.scoredSessionCount} 次，采样 ${service.totalPointCount} 点。${service.lastEvidenceSummary || "等待真实笔迹采样。"}`.trim()
+    };
+  }
+
+  function recordScoreServiceResult(practice = {}) {
+    const source = practice && typeof practice === "object" ? practice : {};
+    const evidence = normalizeScoreEvidence(source.scoreEvidence, source);
+    const now = new Date().toISOString();
+    const hasData = normalizeInteger(source.pointCount, 0, 0, 99999) > 0 && normalizeScore(source.score, 0) > 0;
+    const next = normalizeScoreService({
+      ...state.scoreService,
+      mode: "local-heuristic",
+      status: hasData ? "scored" : "no-data",
+      algorithmVersion: evidence.kind,
+      lastScore: hasData ? source.score : 0,
+      lastGlyph: source.glyph || evidence.glyph || state.selectedGlyph,
+      lastEvidenceSummary: summarizeScoreEvidence(evidence),
+      lastMessage: hasData
+        ? "已用本机基础评分算法记录真实笔迹证据。"
+        : "没有足够笔迹采样，未生成有效评分。",
+      scoredSessionCount: state.scoreService.scoredSessionCount + (hasData ? 1 : 0),
+      totalStrokeCount: state.scoreService.totalStrokeCount + (hasData ? normalizeInteger(source.strokeCount, 0, 0, 999) : 0),
+      totalPointCount: state.scoreService.totalPointCount + (hasData ? normalizeInteger(source.pointCount, 0, 0, 99999) : 0),
+      lastScoredAt: hasData ? now : state.scoreService.lastScoredAt,
+      lastCheckedAt: now
+    });
+    state.scoreService = next;
+    addEvent("score-service", `${getScoreServiceModeLabel(next.mode)}：${getScoreServiceStatusLabel(next.status)}`);
+    return next;
+  }
+
+  function getScoreServiceModeLabel(mode) {
+    if (mode === "remote-professional") return "远端专业评分";
+    if (mode === "remote-ai") return "远端 AI 评分";
+    return "本机基础评分";
+  }
+
+  function getScoreServiceStatusLabel(status) {
+    if (status === "ready") return "可用";
+    if (status === "scored") return "已评分";
+    if (status === "no-data") return "采样不足";
+    if (status === "error") return "失败";
+    return "待评分";
   }
 
   function getLectureServiceStatus() {
@@ -2817,6 +2933,7 @@
     session.scoreEvidence = practice.scoreEvidence;
     session.feedback = practice.feedback;
     session.snapshotAt = new Date().toISOString();
+    recordScoreServiceResult({ ...practice, glyph: session.glyph });
     addEvent("practice-score", `记录笔迹评分：${practice.score}`);
     saveState();
     return {
@@ -8096,6 +8213,7 @@
     getTaskProgress,
     getStageProgress,
     getLectureProgress,
+    getScoreServiceStatus,
     getLectureServiceStatus,
     getPlan,
     getPlanHistory,

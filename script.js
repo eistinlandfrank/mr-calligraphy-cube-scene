@@ -968,6 +968,7 @@ const els = {
   contentBody: document.getElementById("contentBody"),
   contentTags: document.getElementById("contentTags"),
   metricGrid: document.getElementById("metricGrid"),
+  scoreServiceSummary: document.getElementById("scoreServiceSummary"),
   pointList: document.getElementById("pointList"),
   actionList: document.getElementById("actionList"),
   actionFeedback: document.getElementById("actionFeedback"),
@@ -8825,6 +8826,26 @@ function updateSceneText(index) {
   els.sceneDescription.textContent = scene.description;
   els.coachScore.textContent = metrics[0][1];
   els.insightScore.textContent = getMetricInsightValue(metrics[0][1]);
+  renderScoreServiceSummary();
+}
+
+function renderScoreServiceSummary() {
+  if (!els.scoreServiceSummary) return;
+  const status = window.MRAppState?.getScoreServiceStatus?.();
+  if (!status) {
+    els.scoreServiceSummary.textContent = "基础评分服务尚未初始化。";
+    els.scoreServiceSummary.dataset.serviceTone = "idle";
+    return;
+  }
+
+  els.scoreServiceSummary.textContent = `${status.message} ${status.boundary}`;
+  els.scoreServiceSummary.dataset.serviceTone = status.status === "scored" || status.status === "ready"
+    ? "ready"
+    : status.status === "no-data"
+      ? "warning"
+      : status.status === "error"
+        ? "danger"
+        : "idle";
 }
 
 function updateInteractionPanel(sceneIndex, pointIndex) {

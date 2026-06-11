@@ -80,6 +80,14 @@ const { startHistoryRepositoryMockServer } = require("./history-repository-mock-
 
 require("../app-state.js");
 
+const migratedScoreService = window.MRAppState.getScoreServiceStatus();
+assert(migratedScoreService.status === "scored", "旧练习记录应迁移出评分服务状态。");
+assert(migratedScoreService.boundary.includes("不是专业书法评级"), "评分服务应说明本机启发式边界。");
+assert(migratedScoreService.scoredSessionCount === 3, "评分服务应统计已有评分练习次数。");
+assert(migratedScoreService.totalPointCount === 280, "评分服务应统计已有练习采样点。");
+assert(migratedScoreService.lastScore === 80, "评分服务应读取最近一次已有练习分数。");
+assert(migratedScoreService.message.includes("本机基础评分"), "评分服务摘要应标明本机基础评分。");
+
 const initialLectureService = window.MRAppState.getLectureServiceStatus();
 assert(initialLectureService.status === "idle", "初始讲解服务应为待检查状态。");
 assert(initialLectureService.boundary.includes("不是云端 AI 音频"), "讲解服务应说明本机服务边界。");
@@ -302,6 +310,16 @@ assert(
 );
 const stateAfterPractice = window.MRAppState.getState();
 assert(stateAfterPractice.sessions.at(-1).scoreEvidence.reasons.length === 5, "练习会话应持久化五项评分理由。");
+const scoreServiceAfterPractice = window.MRAppState.getScoreServiceStatus();
+assert(scoreServiceAfterPractice.status === "scored", "评分服务应记录已评分状态。");
+assert(scoreServiceAfterPractice.lastScore === 78, "评分服务应记录最近一次真实练习分数。");
+assert(scoreServiceAfterPractice.scoredSessionCount === 4, "评分服务应累计新增评分次数。");
+assert(scoreServiceAfterPractice.totalPointCount === 287, "评分服务应累计新增采样点。");
+assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("覆盖58%"), "评分服务应摘要最近一次证据。");
+assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
+const persistedScoreService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).scoreService;
+assert(persistedScoreService.lastScore === 78, "评分服务状态应持久化最近分数。");
+assert(persistedScoreService.lastEvidenceSummary.includes("覆盖58%"), "评分服务证据摘要应持久化。");
 
 const lockedLibraryBeforeStages = window.MRAppState.getTaskLibrary("single");
 const lockedRenBeforeStages = lockedLibraryBeforeStages.tasks.find((item) => item.id === "single-ren-structure");
@@ -727,7 +745,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {

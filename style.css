@@ -3986,6 +3986,37 @@ body.is-model-view .notice-panel {
   font-size: 15px;
 }
 
+.score-board .score-service-summary {
+  min-height: 0;
+  margin: 0;
+  padding: 7px 9px;
+  border: 1px solid rgba(160, 197, 255, 0.2);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.72);
+  background: rgba(49, 74, 122, 0.18);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.score-service-summary[data-service-tone="ready"] {
+  border-color: rgba(116, 255, 219, 0.32);
+  color: #e8fff9;
+  background: rgba(47, 111, 104, 0.24);
+}
+
+.score-service-summary[data-service-tone="warning"] {
+  color: #fff0bd;
+  border-color: rgba(247, 215, 139, 0.42);
+  background: rgba(122, 91, 35, 0.22);
+}
+
+.score-service-summary[data-service-tone="danger"] {
+  color: #ffe1da;
+  border-color: rgba(255, 120, 94, 0.44);
+  background: rgba(122, 46, 35, 0.24);
+}
+
 .mr-main-panel .content-card {
   margin-top: 10px;
   padding-top: 10px;

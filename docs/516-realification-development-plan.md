@@ -5366,6 +5366,10 @@
 - `node --check scripts/smoke-test.js`
 - `node --check tests/e2e/real-flows.spec.js`
 - `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `npm run test:e2e`
+- `git diff --check`
 - `npm run test:e2e -- --grep "history repository handles network"`
 
 已知限制：
@@ -5553,3 +5557,62 @@
 提交：
 
 - 中文 commit message：`新增本机讲解服务适配器`
+
+### 2026-06-12：新增基础评分服务 adapter
+
+功能名：基础评分服务 adapter。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 状态层新增 `scoreService`，记录评分来源、服务状态、算法版本、最近分数、最近字、最近证据摘要、累计评分次数、累计笔画数、累计采样点和失败次数。
+- 新增 `MRAppState.getScoreServiceStatus()`，返回本机基础评分模式、状态标签、边界说明和可读摘要。
+- 旧学习状态中已有评分练习但没有 `scoreService` 时，会从最近练习迁移出评分服务摘要和累计统计。
+- `recordPracticeResult()` 在保存真实笔迹评分时同步更新评分服务状态，写入 `mr-calligraphy-learning-state-v1.scoreService`。
+- 前台评分卡新增“基础评分服务”摘要，显示本机基础评分、最近分数、采样点、覆盖、重心偏移和“不是专业书法评级”的边界。
+- smoke test 新增评分服务摘要控件标记，E2E 覆盖保存真实笔迹后前台摘要和 localStorage 持久化。
+
+真实化说明：
+
+- 数据来源：练习画布真实笔迹采样、`scoreEvidence`、练习会话和本机学习状态。
+- 写入状态：评分服务状态写入 `mr-calligraphy-learning-state-v1.scoreService`。
+- 成功反馈：前台评分卡显示本机基础评分摘要；学习状态中保留最近分数、证据摘要和累计采样统计。
+- 失败反馈：无有效笔迹采样时记录“采样不足”，不伪装成专业模型评分。
+- 刷新后复现方式：刷新同一浏览器页面后，评分服务最近分数、算法版本、证据摘要和累计采样点仍从本机学习状态读取。
+
+验收方式：
+
+- 手工验收：在前台写字并保存作品后，综合评分卡下方应显示“本机基础评分”摘要和“不是专业书法评级”的边界。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖旧评分记录迁移、评分服务累计和持久化；`npm run test:e2e -- --grep "front practice saves real strokes"` 覆盖前台摘要可见和 localStorage 状态。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+
+已知限制：
+
+- 当前是浏览器本机启发式评分服务，不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。
+- 后续需要在同一 adapter 上扩展范字路径库、笔顺模型、硬件采样信息、服务端专业模型和教师标定来源。
+
+提交：
+
+- 中文 commit message：`新增基础评分服务适配器`
