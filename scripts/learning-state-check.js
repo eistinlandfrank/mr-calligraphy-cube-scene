@@ -637,7 +637,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {
@@ -693,6 +693,16 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     const conflictPull = await window.MRAppState.pullHistoryRepositoryFromRemote();
     assert(conflictPull.ok && conflictPull.skippedConflictCount >= 1, "同 ID 差异学习档案应被跳过而不是静默覆盖。");
     assert(window.MRAppState.getState().sessions[0].title === localTitle, "同 ID 差异拉取不应覆盖本机练习标题。");
+    const conflicts = window.MRAppState.getHistoryRepositoryConflicts();
+    assert(conflicts.ok && conflicts.count >= 1, "同 ID 差异应写入学习档案冲突审计。");
+    assert(conflicts.conflicts[0].fieldDiffs.length >= 1, "学习档案冲突审计应包含字段差异。");
+    const sessionCountBeforeCopy = window.MRAppState.getState().sessions.length;
+    const copiedConflict = window.MRAppState.resolveHistoryRepositoryConflict("copy-remote", {
+      conflictId: conflicts.conflicts[0].conflictId
+    });
+    assert(copiedConflict.ok && copiedConflict.copiedCount === 1, "学习档案远端冲突记录应可另存为本机副本。");
+    assert(window.MRAppState.getState().sessions.length === sessionCountBeforeCopy + 1, "另存远端冲突副本应新增一条本机练习。");
+    assert(window.MRAppState.getHistoryRepositoryConflicts().count === Math.max(0, conflicts.count - 1), "处理后的学习档案冲突审计应减少。");
 
     const badTokenConfig = window.MRAppState.configureHistoryRepositoryRemote({
       remoteEndpoint: mock.endpoint,

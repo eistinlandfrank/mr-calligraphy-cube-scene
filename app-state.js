@@ -13,6 +13,32 @@
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包并按 nextPageUrl 追取分页，但仍不包含账号权限、教师批注审计或公开作品墙。";
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
+  const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
+  const HISTORY_REPOSITORY_CONFLICT_FIELDS = {
+    session: ["title", "glyph", "copybook", "score", "feedback", "metrics", "endedAt", "status"],
+    artwork: ["title", "glyph", "style", "score", "feedback", "tags", "createdAt"],
+    report: ["title", "averageScore", "summary", "teacherReview", "createdAt"]
+  };
+  const HISTORY_REPOSITORY_CONFLICT_LABELS = {
+    session: "练习",
+    artwork: "作品",
+    report: "报告",
+    title: "标题",
+    glyph: "字",
+    copybook: "碑帖",
+    score: "评分",
+    feedback: "反馈",
+    metrics: "能力指标",
+    endedAt: "完成时间",
+    status: "状态",
+    style: "风格",
+    tags: "标签",
+    createdAt: "创建时间",
+    averageScore: "平均分",
+    summary: "摘要",
+    teacherReview: "教师批注",
+    generatedAt: "生成时间"
+  };
   const PLAN_REPOSITORY_MERGE_PLAN_FIELDS = ["title", "summary"];
   const PLAN_REPOSITORY_MERGE_ITEM_FIELDS = ["title", "detail", "dueAt", "remindAt", "reviewAction"];
   const PLAN_REPOSITORY_MERGE_LABELS = {
@@ -645,6 +671,9 @@
     const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
       ? source.lastRemoteDirection
       : "";
+    const lastConflictRecords = Array.isArray(source.lastConflictRecords)
+      ? source.lastConflictRecords.map(normalizeHistoryRepositoryConflict).filter(Boolean).slice(0, HISTORY_REPOSITORY_MAX_CONFLICTS)
+      : [];
     return {
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
@@ -659,8 +688,53 @@
       lastImportedRecordCount: normalizeInteger(source.lastImportedRecordCount, 0, 0, 99999),
       lastRemoteRecordCount: normalizeInteger(source.lastRemoteRecordCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
+      lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+    };
+  }
+
+  function normalizeHistoryRepositoryConflict(record) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    const type = ["session", "artwork", "report"].includes(record.type) ? record.type : "";
+    if (!id || !type) return null;
+    const remoteRecord = normalizeHistoryConflictRemoteRecord(type, record.remoteRecord);
+    if (!remoteRecord) return null;
+    return {
+      id,
+      type,
+      conflictId: String(record.conflictId || `${type}:${id}`),
+      typeLabel: HISTORY_REPOSITORY_CONFLICT_LABELS[type] || type,
+      title: String(record.title || record.remoteTitle || record.localTitle || id).slice(0, 120),
+      localTitle: String(record.localTitle || record.title || id).slice(0, 120),
+      remoteTitle: String(record.remoteTitle || record.title || id).slice(0, 120),
+      localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
+      remoteUpdatedAt: normalizePlanDate(record.remoteUpdatedAt),
+      detectedAt: normalizePlanDate(record.detectedAt) || new Date().toISOString(),
+      fieldDiffs: Array.isArray(record.fieldDiffs)
+        ? record.fieldDiffs.map(normalizeHistoryRepositoryFieldDiff).filter(Boolean).slice(0, 12)
+        : [],
+      remoteRecord
+    };
+  }
+
+  function normalizeHistoryConflictRemoteRecord(type, record) {
+    if (type === "session") return normalizeSession(record);
+    if (type === "artwork") return normalizeArtwork(record);
+    if (type === "report") return normalizeReport(record);
+    return null;
+  }
+
+  function normalizeHistoryRepositoryFieldDiff(record) {
+    if (!record || typeof record !== "object") return null;
+    const field = String(record.field || "").trim();
+    if (!field) return null;
+    return {
+      field,
+      label: String(record.label || HISTORY_REPOSITORY_CONFLICT_LABELS[field] || field).slice(0, 32),
+      localValue: formatPlanRepositoryMergeValue(record.localValue),
+      remoteValue: formatPlanRepositoryMergeValue(record.remoteValue)
     };
   }
 
@@ -4931,7 +5005,7 @@
       return { plan: [], items: [] };
     }
     const plan = PLAN_REPOSITORY_MERGE_PLAN_FIELDS
-      .filter((field) => stablePlanStringify(local[field] || "") !== stablePlanStringify(remote[field] || ""))
+      .filter((field) => stablePlanStringify(local[field] ?? "") !== stablePlanStringify(remote[field] ?? ""))
       .map((field) => createPlanRepositoryFieldDiff(field, local[field], remote[field]));
     const localItems = new Map(local.items.map((item) => [item.id, item]));
     const items = remote.items
@@ -6495,6 +6569,7 @@
       lastImportedRecordCount: repository.lastImportedRecordCount,
       lastRemoteRecordCount: repository.lastRemoteRecordCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
+      lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
       lastError: repository.lastError
     };
@@ -6631,11 +6706,63 @@
     saveState();
   }
 
-  function mergeHistoryRecords(collection, incomingRecords, normalizeRecord) {
+  function createHistoryRepositoryConflict(type, localRecord, remoteRecord) {
+    const local = normalizeHistoryConflictRemoteRecord(type, localRecord);
+    const remote = normalizeHistoryConflictRemoteRecord(type, remoteRecord);
+    if (!local || !remote) return null;
+    const fields = HISTORY_REPOSITORY_CONFLICT_FIELDS[type] || [];
+    const fieldDiffs = fields
+      .filter((field) => stablePlanStringify(local[field] || "") !== stablePlanStringify(remote[field] || ""))
+      .map((field) => ({
+        field,
+        label: HISTORY_REPOSITORY_CONFLICT_LABELS[field] || field,
+        localValue: local[field],
+        remoteValue: remote[field]
+      }));
+    return normalizeHistoryRepositoryConflict({
+      id: remote.id,
+      type,
+      conflictId: `${type}:${remote.id}`,
+      title: remote.title || local.title || `${HISTORY_REPOSITORY_CONFLICT_LABELS[type] || type} ${remote.id}`,
+      localTitle: local.title || local.glyph || local.id,
+      remoteTitle: remote.title || remote.glyph || remote.id,
+      localUpdatedAt: getHistoryRepositoryRecordUpdatedAt(type, local),
+      remoteUpdatedAt: getHistoryRepositoryRecordUpdatedAt(type, remote),
+      detectedAt: new Date().toISOString(),
+      fieldDiffs,
+      remoteRecord: remote
+    });
+  }
+
+  function getHistoryRepositoryRecordUpdatedAt(type, record = {}) {
+    if (type === "session") return record.endedAt || record.snapshotAt || record.startedAt || null;
+    if (type === "artwork") return record.createdAt || null;
+    if (type === "report") return record.generatedAt || record.createdAt || null;
+    return null;
+  }
+
+  function getHistoryRepositoryConflictRecords(conflicts = []) {
+    return conflicts
+      .map(normalizeHistoryRepositoryConflict)
+      .filter(Boolean)
+      .slice(0, HISTORY_REPOSITORY_MAX_CONFLICTS);
+  }
+
+  function clearHistoryRepositoryConflictFields(repository = state.historyRepository) {
+    return normalizeHistoryRepository({
+      ...repository,
+      lastSkippedConflictCount: 0,
+      lastConflictRecords: [],
+      lastError: ""
+    });
+  }
+
+  function mergeHistoryRecords(collection, incomingRecords, normalizeRecord, type = "") {
     const existingIndex = new Map(collection.map((record, index) => [record.id, index]));
     let importedCount = 0;
     let updatedCount = 0;
     let skippedConflictCount = 0;
+    const conflicts = [];
 
     incomingRecords
       .map(normalizeRecord)
@@ -6653,9 +6780,13 @@
           return;
         }
         skippedConflictCount += 1;
+        const conflict = createHistoryRepositoryConflict(type, existing, record);
+        if (conflict) {
+          conflicts.push(conflict);
+        }
       });
 
-    return { importedCount, updatedCount, skippedConflictCount };
+    return { importedCount, updatedCount, skippedConflictCount, conflicts };
   }
 
   function importHistoryRepositoryPackage(input) {
@@ -6676,12 +6807,17 @@
       return { ok: false, message };
     }
 
-    const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession);
-    const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork);
-    const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport);
+    const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession, "session");
+    const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork, "artwork");
+    const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport, "report");
     const importedCount = sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount;
     const updatedCount = sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount;
     const skippedConflictCount = sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount;
+    const conflictRecords = getHistoryRepositoryConflictRecords([
+      ...sessionMerge.conflicts,
+      ...artworkMerge.conflicts,
+      ...reportMerge.conflicts
+    ]);
     const now = new Date().toISOString();
 
     state.historyRepository = normalizeHistoryRepository({
@@ -6691,9 +6827,10 @@
       lastCheckedAt: now,
       lastImportedRecordCount: importedCount + updatedCount,
       lastSkippedConflictCount: skippedConflictCount,
+      lastConflictRecords: conflictRecords,
       lastPackageId: parsed.package.packageId || null,
       lastError: skippedConflictCount
-        ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机记录。`
+        ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
         : ""
     });
     addEvent("history-repository-import", `导入学习档案同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}`);
@@ -6706,7 +6843,7 @@
       totalRecordCount: getHistoryRepositoryRecordCount(),
       status: getHistoryRepositoryStatus(),
       message: skippedConflictCount
-        ? `已导入学习档案同步包：新增 ${importedCount} 条，跳过 ${skippedConflictCount} 条同 ID 差异记录。${HISTORY_REPOSITORY_BOUNDARY}`
+        ? `已导入学习档案同步包：新增 ${importedCount} 条，跳过 ${skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${HISTORY_REPOSITORY_BOUNDARY}`
         : `已导入学习档案同步包：新增 ${importedCount} 条。${HISTORY_REPOSITORY_BOUNDARY}`
     };
   }
@@ -6997,6 +7134,7 @@
         lastExportedRecordCount: recordCount,
         lastPackageId: acceptedPackageId,
         lastSkippedConflictCount: 0,
+        lastConflictRecords: [],
         lastRemoteStatus: `已推送 ${recordCount} 条学习档案到远端 API。`,
         lastError: ""
       });
@@ -7032,6 +7170,7 @@
     let skippedConflictCount = 0;
     let processedRecordCount = 0;
     let latestPackageId = null;
+    const conflicts = [];
 
     repositoryPackages.forEach((repositoryPackage) => {
       const records = repositoryPackage?.records || {};
@@ -7043,12 +7182,13 @@
         latestPackageId = repositoryPackage.packageId;
       }
 
-      const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession);
-      const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork);
-      const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport);
+      const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession, "session");
+      const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork, "artwork");
+      const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport, "report");
       importedCount += sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount;
       updatedCount += sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount;
       skippedConflictCount += sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount;
+      conflicts.push(...sessionMerge.conflicts, ...artworkMerge.conflicts, ...reportMerge.conflicts);
     });
 
     return {
@@ -7056,6 +7196,7 @@
       updatedCount,
       skippedConflictCount,
       processedRecordCount,
+      conflicts: getHistoryRepositoryConflictRecords(conflicts),
       latestPackageId,
       totalRecordCount: getHistoryRepositoryRecordCount()
     };
@@ -7156,9 +7297,10 @@
         lastImportedRecordCount: imported.importedCount + imported.updatedCount,
         lastPackageId: imported.latestPackageId || repository.lastPackageId || null,
         lastSkippedConflictCount: imported.skippedConflictCount,
+        lastConflictRecords: imported.conflicts,
         lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。${warningText}`,
         lastError: imported.skippedConflictCount
-          ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机记录。`
+          ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
           : ""
       });
       addEvent("history-repository-remote-pull", `从远端 API 拉取学习档案：${recordCount} 条记录，${remotePages.pages.length} 页`);
@@ -7169,8 +7311,9 @@
         importedCount: imported.importedCount,
         skippedConflictCount: imported.skippedConflictCount,
         pulledRecordCount: recordCount,
+        conflicts: imported.conflicts,
         message: imported.skippedConflictCount
-          ? `已从远端 API 拉取学习档案${pageCountText}：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
+          ? `已从远端 API 拉取学习档案${pageCountText}：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
           : `已从远端 API 拉取学习档案${pageCountText}：新增 ${imported.importedCount} 条记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -7178,6 +7321,114 @@
       recordHistoryRepositoryError(message);
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
+  }
+
+  function getHistoryRepositoryConflicts() {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    return {
+      ok: true,
+      count: repository.lastConflictRecords.length,
+      conflicts: clone(repository.lastConflictRecords),
+      message: repository.lastConflictRecords.length
+        ? `当前有 ${repository.lastConflictRecords.length} 条学习档案冲突审计。`
+        : "当前没有待处理的学习档案冲突审计。"
+    };
+  }
+
+  function resolveHistoryRepositoryConflict(action, options = {}) {
+    const strategy = String(action || "").trim();
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const conflicts = repository.lastConflictRecords;
+    const conflictId = String(options.conflictId || options.id || "").trim();
+    const targets = conflictId
+      ? conflicts.filter((conflict) => conflict.conflictId === conflictId)
+      : conflicts;
+    if (!targets.length) {
+      return {
+        ok: false,
+        status: getHistoryRepositoryStatus(),
+        message: "当前没有匹配的学习档案冲突审计。"
+      };
+    }
+
+    if (strategy === "copy-remote") {
+      const copied = targets.map(copyHistoryRepositoryConflictRemoteRecord).filter(Boolean);
+      updateHistoryRepositoryConflictRecordsAfterResolve(repository, targets, `已将 ${copied.length} 条远端冲突档案另存为本机副本。`);
+      addEvent("history-repository-conflict-copy", `远端冲突档案另存副本：${copied.length} 条`);
+      saveState();
+      return {
+        ok: true,
+        copiedCount: copied.length,
+        copied,
+        status: getHistoryRepositoryStatus(),
+        message: `已将 ${copied.length} 条远端冲突档案另存为本机副本；原本机记录仍保留。`
+      };
+    }
+
+    if (strategy === "dismiss") {
+      updateHistoryRepositoryConflictRecordsAfterResolve(repository, targets, `已忽略 ${targets.length} 条学习档案冲突审计。`);
+      addEvent("history-repository-conflict-dismiss", `忽略学习档案冲突审计：${targets.length} 条`);
+      saveState();
+      return {
+        ok: true,
+        dismissedCount: targets.length,
+        status: getHistoryRepositoryStatus(),
+        message: `已忽略 ${targets.length} 条学习档案冲突审计；本机记录保持不变。`
+      };
+    }
+
+    return {
+      ok: false,
+      status: getHistoryRepositoryStatus(),
+      message: "未知的学习档案冲突处理方式。"
+    };
+  }
+
+  function updateHistoryRepositoryConflictRecordsAfterResolve(repository, targets, statusMessage) {
+    const targetIds = new Set(targets.map((conflict) => conflict.conflictId));
+    const remaining = repository.lastConflictRecords.filter((conflict) => !targetIds.has(conflict.conflictId));
+    state.historyRepository = normalizeHistoryRepository({
+      ...repository,
+      lastCheckedAt: new Date().toISOString(),
+      lastSkippedConflictCount: remaining.length,
+      lastConflictRecords: remaining,
+      lastRemoteStatus: statusMessage,
+      lastError: remaining.length
+        ? `仍有 ${remaining.length} 条学习档案冲突审计待处理。`
+        : ""
+    });
+  }
+
+  function copyHistoryRepositoryConflictRemoteRecord(conflict) {
+    const normalized = normalizeHistoryConflictRemoteRecord(conflict.type, conflict.remoteRecord);
+    if (!normalized) return null;
+    const copy = clone(normalized);
+    const prefix = {
+      session: "session-remote-copy",
+      artwork: "artwork-remote-copy",
+      report: "report-remote-copy"
+    }[conflict.type] || "history-remote-copy";
+    copy.id = makeId(prefix);
+    copy.title = appendHistoryRepositoryCopyTitle(copy.title || conflict.remoteTitle || conflict.title || "远端冲突档案");
+    if (conflict.type === "session") {
+      copy.snapshotAt = copy.snapshotAt || new Date().toISOString();
+      copy.status = copy.status || "saved";
+      state.sessions.push(normalizeSession(copy));
+    } else if (conflict.type === "artwork") {
+      copy.sessionId = null;
+      state.artworks.push(normalizeArtwork(copy));
+    } else if (conflict.type === "report") {
+      copy.latestSessionId = null;
+      copy.latestArtworkId = null;
+      state.reports.push(normalizeReport(copy));
+    }
+    return copy;
+  }
+
+  function appendHistoryRepositoryCopyTitle(title) {
+    const text = String(title || "远端冲突档案").trim();
+    const suffix = "（远端副本）";
+    return text.endsWith(suffix) ? text : `${text}${suffix}`;
   }
 
   function deleteHistoryRecords(ids) {
@@ -7373,6 +7624,7 @@
     getPlanRepositoryPackage,
     getHistoryRepositoryStatus,
     getHistoryRepositoryRemoteConfig,
+    getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,
     getPlanExport,
     getReportPreview,
@@ -7411,6 +7663,7 @@
     pullPlanRepositoryFromRemote,
     pullHistoryRepositoryFromRemote,
     resolvePlanRepositoryConflict,
+    resolveHistoryRepositoryConflict,
     setMode,
     selectDailyGlyph,
     rotateCopybook,

@@ -57,7 +57,7 @@
 - 评分算法仍需升级：当前结构、笔画、笔法、力度、流畅度由启发式算法计算，并已保存基础评分证据和维度理由，但还不是专业模型。
 - 任务系统已有第一版本机任务库、任务依赖和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、前置任务、完成条件、锁定状态、笔画拆解/创作实践/复习巩固阶段记录、练习次数、作品数、报告数和完成百分比可写入或刷新读取；仍缺云端课程库、更细逐步骤评分规则和教师端任务下发。
 - 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、同步仓库、远端 API adapter、计划仓库 API 合同、本机 mock 服务、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测、保留本机、采用远端、另存远端副本和字段级合并第一版；仍缺账号化托管仓库、远端提醒、教师端通知、计划项增删合并和服务端合并审计。
-- 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出、远端学习档案 API adapter、`nextPageUrl` 分页追取、API 合同和本机 mock 服务，但还没有账号化托管仓库、生产级分页查询、教师批注审计和长期归档。
+- 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出、远端学习档案 API adapter、`nextPageUrl` 分页追取、同 ID 冲突审计、远端冲突另存副本、API 合同和本机 mock 服务，但还没有账号化托管仓库、生产级分页查询、服务端教师批注审计和长期归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
 - 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览、单模型选择恢复、模型元数据片段对照、模型完整 JSON 安全预览、命名冲突策略选择、自定义命名、远端发布包资产清单、本机发布锁、服务端合同文档和 mock server 已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树和生产服务端资产签名。
 - 没有真正的账号权限保护；主后台和写实后台已补第一版“本机静态后台 / 无登录角色审计”的风险提示和本机确认状态，主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有后端账号权限和远端发布流程。
@@ -4622,7 +4622,7 @@
 已知限制：
 
 - mock 服务只用于本机开发验收，不提供数据库、账号权限、服务端分页、教师批注、公开作品墙或长期归档。
-- 当前同 ID 差异只跳过并提示，尚未做到字段级合并和冲突审计 UI。
+- 该阶段同 ID 差异仅提示处理；后续已补齐本机冲突审计 UI，字段级合并仍待继续扩展。
 - 远端学习档案同步仍依赖用户配置的 HTTP endpoint，不是内置云端账号服务。
 
 提交：
@@ -5315,3 +5315,64 @@
 提交：
 
 - 中文 commit message：`新增学习档案分页自动追取`
+
+### 2026-06-12：新增学习档案冲突审计
+
+功能名：远端学习档案同 ID 差异冲突审计。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/history-repository-api-contract.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 学习档案导入和远端拉取遇到同 ID 差异时，会保存冲突审计记录。
+- 冲突审计包含类型、ID、本机/远端标题、更新时间、字段差异摘要和远端记录快照。
+- 新增 `MRAppState.getHistoryRepositoryConflicts()` 和 `resolveHistoryRepositoryConflict()`。
+- 前台远端学习档案 API 面板新增“学习档案冲突审计”区域。
+- “另存远端副本”会把远端冲突记录保存为新的本机档案，原本机记录保持不变。
+- “忽略审计”会清理审计项，不修改本机记录。
+
+真实化说明：
+
+- 数据来源：本机学习档案记录、远端同步包和同 ID 字段差异。
+- 写入状态：冲突写入 `mr-calligraphy-learning-state-v1.historyRepository.lastConflictRecords`；另存副本写入对应的 `sessions/artworks/reports`。
+- 成功反馈：前台冲突审计区显示差异字段；处理后显示另存或忽略结果，并刷新档案列表。
+- 失败反馈：无匹配冲突或未知处理方式时返回明确失败，不覆盖本机档案。
+- 刷新后复现方式：冲突审计和另存副本都保存在本机学习状态。
+
+验收方式：
+
+- 手工验收：拉取包含同 ID 差异的远端学习档案后，冲突审计区应出现；点击“另存远端副本”后应新增带“远端副本”的记录。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖冲突审计和远端冲突另存副本；`npm run test:e2e -- --grep "history repository handles network"` 覆盖前台面板和按钮路径。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "history repository handles network"`
+
+已知限制：
+
+- 当前是本机冲突审计，不是服务端不可篡改审计。
+- 还没有逐字段合并 UI、账号空间隔离或长期归档。
+
+提交：
+
+- 中文 commit message：`新增学习档案冲突审计`

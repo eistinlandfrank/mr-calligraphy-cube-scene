@@ -864,6 +864,9 @@ const els = {
   historyRepositoryRemoteButton: document.getElementById("historyRepositoryRemoteButton"),
   historyRepositoryPushButton: document.getElementById("historyRepositoryPushButton"),
   historyRepositoryPullButton: document.getElementById("historyRepositoryPullButton"),
+  historyRepositoryConflictPanel: document.getElementById("historyRepositoryConflictPanel"),
+  historyRepositoryConflictStatus: document.getElementById("historyRepositoryConflictStatus"),
+  historyRepositoryConflictList: document.getElementById("historyRepositoryConflictList"),
   historyRepositoryImportInput: document.getElementById("historyRepositoryImportInput"),
   historyFilterButtons: Array.from(document.querySelectorAll("[data-history-filter]")),
   historySelectVisible: document.getElementById("historySelectVisible"),
@@ -3826,6 +3829,7 @@ function bindHistoryControls() {
   els.historyRepositoryRemoteButton?.addEventListener("click", checkHistoryRepositoryRemote);
   els.historyRepositoryPushButton?.addEventListener("click", pushHistoryRepositoryRemote);
   els.historyRepositoryPullButton?.addEventListener("click", pullHistoryRepositoryRemote);
+  els.historyRepositoryConflictList?.addEventListener("click", handleHistoryRepositoryConflictAction);
   els.historyRepositoryImportInput?.addEventListener("change", importHistoryRepositoryFile);
 }
 
@@ -5590,6 +5594,74 @@ function renderHistoryRepositoryStatus(history) {
   if (els.historyRepositoryPullButton) {
     els.historyRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
+  renderHistoryRepositoryConflictPanel(status);
+}
+
+function renderHistoryRepositoryConflictPanel(status) {
+  const panel = els.historyRepositoryConflictPanel;
+  if (!panel) return;
+  const conflicts = Array.isArray(status?.lastConflictRecords) ? status.lastConflictRecords : [];
+  const hasConflict = Boolean(conflicts.length);
+  panel.hidden = !hasConflict;
+  if (!hasConflict) {
+    if (els.historyRepositoryConflictList) {
+      els.historyRepositoryConflictList.innerHTML = "";
+    }
+    return;
+  }
+
+  if (els.historyRepositoryConflictStatus) {
+    els.historyRepositoryConflictStatus.textContent = `${conflicts.length} 条远端同 ID 差异记录已跳过，可另存副本或忽略审计。`;
+  }
+  if (!els.historyRepositoryConflictList) return;
+  els.historyRepositoryConflictList.innerHTML = "";
+  conflicts.forEach((conflict) => {
+    const item = document.createElement("li");
+    const head = document.createElement("div");
+    head.className = "history-repository-conflict-item-head";
+    const title = document.createElement("strong");
+    title.textContent = `${conflict.typeLabel || "档案"}：${conflict.remoteTitle || conflict.title || conflict.id}`;
+    const detail = document.createElement("span");
+    detail.textContent = `本机：${conflict.localTitle || conflict.id} / ${formatHistoryTime(conflict.localUpdatedAt)}；远端：${conflict.remoteTitle || conflict.id} / ${formatHistoryTime(conflict.remoteUpdatedAt)}`;
+    head.append(title, detail);
+    item.appendChild(head);
+
+    const fields = Array.isArray(conflict.fieldDiffs) ? conflict.fieldDiffs : [];
+    if (fields.length) {
+      const fieldList = document.createElement("div");
+      fieldList.className = "history-repository-conflict-fields";
+      fields.slice(0, 6).forEach((field) => {
+        const row = document.createElement("div");
+        row.className = "history-repository-conflict-field";
+        const label = document.createElement("strong");
+        label.textContent = field.label || field.field || "字段";
+        const local = document.createElement("span");
+        local.textContent = `本机：${field.localValue || "空"}`;
+        const remote = document.createElement("span");
+        remote.textContent = `远端：${field.remoteValue || "空"}`;
+        row.append(label, local, remote);
+        fieldList.appendChild(row);
+      });
+      item.appendChild(fieldList);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "history-repository-conflict-actions";
+    [
+      ["copy-remote", "另存远端副本"],
+      ["dismiss", "忽略审计"]
+    ].forEach(([action, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real-local";
+      button.dataset.historyConflictAction = action;
+      button.dataset.historyConflictId = conflict.conflictId || "";
+      button.textContent = label;
+      actions.appendChild(button);
+    });
+    item.appendChild(actions);
+    els.historyRepositoryConflictList.appendChild(item);
+  });
 }
 
 function renderHistoryTrashList(trash = { entries: [] }) {
@@ -5733,6 +5805,16 @@ async function pullHistoryRepositoryRemote() {
     setHistoryRepositoryRemoteBusy(false);
     renderHistoryPanel(currentIndex);
   }
+}
+
+function handleHistoryRepositoryConflictAction(event) {
+  const button = event.target?.closest?.("[data-history-conflict-action]");
+  if (!button) return;
+  const action = button.dataset.historyConflictAction || "";
+  const conflictId = button.dataset.historyConflictId || "";
+  const result = window.MRAppState?.resolveHistoryRepositoryConflict?.(action, { conflictId });
+  refreshHistoryRepositoryViews();
+  showNotice(result?.message || "学习档案冲突处理失败。");
 }
 
 function setHistoryRepositoryRemoteBusy(isBusy) {

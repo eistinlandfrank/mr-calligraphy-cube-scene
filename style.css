@@ -6785,7 +6785,8 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.plan-repository-conflict {
+.plan-repository-conflict,
+.history-repository-conflict {
   display: grid;
   gap: 8px;
   margin-top: 8px;
@@ -6796,28 +6797,33 @@ body.is-model-view .notice-panel {
   background: rgba(122, 91, 35, 0.18);
 }
 
-.plan-repository-conflict[hidden] {
+.plan-repository-conflict[hidden],
+.history-repository-conflict[hidden] {
   display: none;
 }
 
-.plan-repository-conflict-head {
+.plan-repository-conflict-head,
+.history-repository-conflict-head {
   display: grid;
   gap: 3px;
 }
 
-.plan-repository-conflict-head strong {
+.plan-repository-conflict-head strong,
+.history-repository-conflict-head strong {
   color: #fffaf1;
   font-size: 12px;
 }
 
-.plan-repository-conflict-head span {
+.plan-repository-conflict-head span,
+.history-repository-conflict-head span {
   color: rgba(255, 244, 203, 0.82);
   font-size: 11px;
   font-weight: 760;
   line-height: 1.35;
 }
 
-.plan-repository-conflict-list {
+.plan-repository-conflict-list,
+.history-repository-conflict-list {
   display: grid;
   gap: 5px;
   margin: 0;
@@ -6825,7 +6831,8 @@ body.is-model-view .notice-panel {
   list-style: none;
 }
 
-.plan-repository-conflict-list li {
+.plan-repository-conflict-list li,
+.history-repository-conflict-list li {
   display: grid;
   gap: 2px;
   padding: 6px;
@@ -6834,16 +6841,44 @@ body.is-model-view .notice-panel {
   background: rgba(0, 0, 0, 0.12);
 }
 
-.plan-repository-conflict-list strong {
+.plan-repository-conflict-list strong,
+.history-repository-conflict-list strong {
   color: #fffaf1;
   font-size: 12px;
 }
 
-.plan-repository-conflict-list span {
+.plan-repository-conflict-list span,
+.history-repository-conflict-list span {
   color: rgba(255, 250, 241, 0.68);
   font-size: 10px;
   font-weight: 720;
   line-height: 1.35;
+}
+
+.history-repository-conflict-item-head {
+  display: grid;
+  gap: 2px;
+}
+
+.history-repository-conflict-fields {
+  display: grid;
+  gap: 5px;
+  margin-top: 4px;
+}
+
+.history-repository-conflict-field {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid rgba(247, 215, 139, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 250, 241, 0.04);
+}
+
+.history-repository-conflict-field strong,
+.history-repository-conflict-field span {
+  overflow-wrap: anywhere;
 }
 
 .plan-repository-merge-fields {
@@ -6908,13 +6943,15 @@ body.is-model-view .notice-panel {
   overflow-wrap: anywhere;
 }
 
-.plan-repository-conflict-actions {
+.plan-repository-conflict-actions,
+.history-repository-conflict-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 
-.plan-repository-conflict-actions button {
+.plan-repository-conflict-actions button,
+.history-repository-conflict-actions button {
   min-height: 32px;
   border: 1px solid rgba(247, 215, 139, 0.32);
   border-radius: 7px;
@@ -6926,13 +6963,16 @@ body.is-model-view .notice-panel {
 }
 
 .plan-repository-conflict-actions button:hover,
-.plan-repository-conflict-actions button:focus-visible {
+.plan-repository-conflict-actions button:focus-visible,
+.history-repository-conflict-actions button:hover,
+.history-repository-conflict-actions button:focus-visible {
   border-color: rgba(247, 215, 139, 0.62);
   outline: none;
   background: rgba(122, 91, 35, 0.52);
 }
 
-.plan-repository-conflict-actions button:disabled {
+.plan-repository-conflict-actions button:disabled,
+.history-repository-conflict-actions button:disabled {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.38);
   border-color: rgba(255, 255, 255, 0.12);

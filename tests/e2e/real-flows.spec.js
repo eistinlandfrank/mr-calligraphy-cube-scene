@@ -418,10 +418,14 @@ test("front history repository handles network, paged pull, and id conflicts", a
   await expect(page.locator("#noticeState")).toContainText("2 页");
   await expect(page.locator("#noticeState")).toContainText("跳过 1 条同 ID 差异记录");
   await expect(page.locator("#historyRepositorySummary")).toContainText("同 ID 差异记录已跳过");
+  await expect(page.locator("#historyRepositoryConflictPanel")).toBeVisible();
+  await expect(page.locator("#historyRepositoryConflictList")).toContainText("远端同 ID 差异记录不应覆盖本机");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastSkippedConflictCount).toBe(1);
   expect(learningState.historyRepository.lastError).toContain("同 ID 差异");
+  expect(learningState.historyRepository.lastConflictRecords).toHaveLength(1);
+  expect(learningState.historyRepository.lastConflictRecords[0].fieldDiffs.length).toBeGreaterThan(0);
   expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
   expect(learningState.sessions).toHaveLength(3);
   expect(learningState.sessions.some((session) => session.id === "remote-paged-session")).toBe(true);
@@ -431,6 +435,17 @@ test("front history repository handles network, paged pull, and id conflicts", a
   expect(originalSession.feedback).not.toContain("远端同 ID 差异记录不应覆盖本机");
   expect(requests.some((item) => item.path === pagedPath && item.method === "GET" && item.authorization === "Bearer history-paged-token")).toBe(true);
   expect(requests.some((item) => item.path === pagedPath && item.page === "2" && item.authorization === "Bearer history-paged-token")).toBe(true);
+
+  await page.locator("[data-history-conflict-action='copy-remote']").click();
+  await expect(page.locator("#noticeState")).toContainText("另存为本机副本");
+  await expect(page.locator("#historyRepositoryConflictPanel")).toBeHidden();
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastConflictRecords).toHaveLength(0);
+  expect(learningState.historyRepository.lastSkippedConflictCount).toBe(0);
+  expect(learningState.sessions).toHaveLength(4);
+  const remoteCopy = learningState.sessions.find((session) => session.title.includes("远端副本"));
+  expect(remoteCopy.feedback).toContain("远端同 ID 差异记录不应覆盖本机");
+  expect(originalSession.feedback).toContain("E2E 学习档案分页冲突本机记录");
 });
 
 test("front plan repository detects remote conflicts and saves a remote copy", async ({ page }) => {

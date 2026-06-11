@@ -253,6 +253,13 @@
               <button data-feature-state="real-local" id="historyRepositoryPushButton" type="button">推送档案</button>
               <button data-feature-state="real-local" id="historyRepositoryPullButton" type="button">拉取档案</button>
             </div>
+            <div id="historyRepositoryConflictPanel" class="history-repository-conflict" aria-label="学习档案冲突审计" hidden>
+              <div class="history-repository-conflict-head">
+                <strong>学习档案冲突审计</strong>
+                <span id="historyRepositoryConflictStatus">远端同 ID 差异记录已跳过。</span>
+              </div>
+              <ul id="historyRepositoryConflictList" class="history-repository-conflict-list"></ul>
+            </div>
           </details>
           <div class="history-filters" aria-label="历史筛选">
             <button data-feature-state="real-local" class="is-active" type="button" data-history-filter="all">全部</button>

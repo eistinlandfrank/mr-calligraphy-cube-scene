@@ -127,9 +127,11 @@ Authorization: Bearer <token>
 
 - 远端记录 ID 本机不存在：新增。
 - 远端记录 ID 本机存在且内容相同：跳过。
-- 远端记录 ID 本机存在但内容不同：跳过并记录 `lastSkippedConflictCount`。
+- 远端记录 ID 本机存在但内容不同：跳过并记录 `lastSkippedConflictCount` 和 `lastConflictRecords`。
 
-后续账号化服务端应提供字段级 merge、版本号、冲突审计和用户确认入口。
+`lastConflictRecords` 会保存冲突类型、ID、本机/远端标题、更新时间、字段差异摘要和远端记录快照。前端学习档案面板会显示“学习档案冲突审计”，用户可以把远端冲突记录另存为本机副本，或忽略该条审计。本机原记录始终不会被直接覆盖。
+
+后续账号化服务端应提供字段级 merge、版本号、服务端冲突审计和用户确认入口。
 
 ## 6. 失败响应
 
@@ -191,4 +193,4 @@ node scripts/learning-state-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl` 并合并后续页。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过、冲突审计、远端冲突另存副本和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl`、合并后续页，并在同 ID 差异后展示冲突审计入口。
