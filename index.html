@@ -264,6 +264,42 @@
           </div>
         </section>
 
+        <dialog id="historyRenameDialog" class="history-edit-dialog" aria-labelledby="historyRenameDialogTitle">
+          <form id="historyRenameForm" class="history-edit-form">
+            <div class="history-edit-head">
+              <div>
+                <div class="panel-eyebrow">学习档案</div>
+                <strong id="historyRenameDialogTitle">重命名记录</strong>
+              </div>
+              <button data-feature-state="real-local" id="historyRenameCancel" type="button" aria-label="关闭重命名表单">取消</button>
+            </div>
+            <label>
+              <span>标题</span>
+              <input id="historyRenameTitleInput" name="title" type="text" maxlength="72" required>
+            </label>
+            <div id="historyRenameFeedback" class="history-edit-feedback" aria-live="polite"></div>
+            <button data-feature-state="real-local" id="historyRenameSave" type="submit">保存标题</button>
+          </form>
+        </dialog>
+
+        <dialog id="artworkTagsDialog" class="history-edit-dialog" aria-labelledby="artworkTagsDialogTitle">
+          <form id="artworkTagsForm" class="history-edit-form">
+            <div class="history-edit-head">
+              <div>
+                <div class="panel-eyebrow">作品标签</div>
+                <strong id="artworkTagsDialogTitle">编辑作品标签</strong>
+              </div>
+              <button data-feature-state="real-local" id="artworkTagsCancel" type="button" aria-label="关闭作品标签表单">取消</button>
+            </div>
+            <label>
+              <span>标签</span>
+              <textarea id="artworkTagsInput" name="tags" maxlength="120" rows="3" placeholder="用空格、逗号或顿号分隔"></textarea>
+            </label>
+            <div id="artworkTagsFeedback" class="history-edit-feedback" aria-live="polite"></div>
+            <button data-feature-state="real-local" id="artworkTagsSave" type="submit">保存标签</button>
+          </form>
+        </dialog>
+
         <section id="planPanel" class="plan-panel" aria-label="学习计划" hidden>
           <div class="plan-head">
             <div>

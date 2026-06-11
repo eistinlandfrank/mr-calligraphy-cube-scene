@@ -4292,5 +4292,49 @@
 
 已知限制：
 
-- 作品标签编辑和历史记录重命名仍使用浏览器 `prompt()`，后续还要继续升级为表单。
+- 作品标签编辑和历史记录重命名已在后续升级为表单；前台主脚本不再使用 `window.prompt()`。
 - 该表单仍是本机计划编辑，不是跨设备计划或教师端排课。
+
+### 2026-06-11：新增学习档案编辑表单
+
+功能名：前台学习档案重命名和作品标签表单。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 前台新增 `historyRenameDialog` 学习档案重命名表单，替换历史记录重命名的浏览器 `prompt()`。
+- 前台新增 `artworkTagsDialog` 作品标签编辑表单，替换作品集标签编辑的浏览器 `prompt()`。
+- 重命名表单会校验标题长度，标签表单会写回作品标签；失败时在弹层内显示错误。
+- 保存成功后刷新学习档案列表、详情、作品集和复盘区。
+- `script.js` 已清零 `window.prompt()`，后续新增编辑控件不能回退到临时浏览器弹窗。
+- smoke test 前台页面新增 `historyRenameDialog`、`historyRenameTitleInput`、`artworkTagsDialog` 和 `artworkTagsInput` 标记。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，在学习档案中选择任一记录，点击“重命名”。
+- 表单应带入当前标题，保存后详情标题和列表标题同步更新。
+- 打开作品集卡片，点击“标签”，表单应带入当前标签；保存后标签云、作品卡片和作品详情同步更新。
+- 在重命名表单输入少于 2 个字符的标题，应留在弹层内显示错误。
+- `rg -n "window\\.prompt" script.js` 不应返回结果。
+
+当前验证结果：
+
+- `node --input-type=module --check < script.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 删除、批量删除、清空回收站等高风险操作仍保留浏览器确认框。
+- 学习档案仍是本机浏览器状态，不是跨设备归档或服务端分页。

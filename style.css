@@ -6409,6 +6409,134 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.07);
 }
 
+.history-edit-dialog {
+  width: min(400px, calc(100vw - 28px));
+  max-height: calc(100vh - 36px);
+  padding: 0;
+  border: 1px solid rgba(160, 197, 255, 0.24);
+  border-radius: 8px;
+  color: #fffaf1;
+  background: rgba(18, 23, 24, 0.98);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.46);
+}
+
+.history-edit-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.history-edit-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.history-edit-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.history-edit-head strong {
+  display: block;
+  color: #fff4df;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.history-edit-head button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.8);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.history-edit-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: rgba(255, 250, 241, 0.64);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.history-edit-form input,
+.history-edit-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.history-edit-form input {
+  height: 34px;
+  padding: 0 9px;
+}
+
+.history-edit-form textarea {
+  resize: vertical;
+  min-height: 76px;
+  padding: 8px 9px;
+  line-height: 1.45;
+}
+
+.history-edit-form input:focus-visible,
+.history-edit-form textarea:focus-visible,
+.history-edit-head button:focus-visible,
+.history-edit-form > button:focus-visible {
+  border-color: rgba(160, 197, 255, 0.58);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(160, 197, 255, 0.14);
+}
+
+.history-edit-feedback {
+  min-height: 20px;
+  padding: 6px 8px;
+  border: 1px solid rgba(247, 215, 139, 0.34);
+  border-radius: 7px;
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.18);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.history-edit-feedback[hidden] {
+  display: none;
+}
+
+.history-edit-feedback[data-feedback-tone="danger"] {
+  border-color: rgba(255, 123, 123, 0.42);
+  color: #ffe0dc;
+  background: rgba(135, 47, 47, 0.2);
+}
+
+.history-edit-form > button {
+  min-height: 34px;
+  border: 1px solid rgba(160, 197, 255, 0.32);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(49, 74, 122, 0.36);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.history-edit-form > button:hover,
+.history-edit-head button:hover {
+  border-color: rgba(160, 197, 255, 0.54);
+  background: rgba(49, 74, 122, 0.52);
+}
+
 .plan-item-dialog {
   width: min(420px, calc(100vw - 28px));
   max-height: calc(100vh - 36px);

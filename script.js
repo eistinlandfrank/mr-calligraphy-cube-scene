@@ -878,6 +878,16 @@ const els = {
   historyDetailOpenReport: document.getElementById("historyDetailOpenReport"),
   historyDetailCopyLink: document.getElementById("historyDetailCopyLink"),
   historyDetailDelete: document.getElementById("historyDetailDelete"),
+  historyRenameDialog: document.getElementById("historyRenameDialog"),
+  historyRenameForm: document.getElementById("historyRenameForm"),
+  historyRenameCancel: document.getElementById("historyRenameCancel"),
+  historyRenameTitleInput: document.getElementById("historyRenameTitleInput"),
+  historyRenameFeedback: document.getElementById("historyRenameFeedback"),
+  artworkTagsDialog: document.getElementById("artworkTagsDialog"),
+  artworkTagsForm: document.getElementById("artworkTagsForm"),
+  artworkTagsCancel: document.getElementById("artworkTagsCancel"),
+  artworkTagsInput: document.getElementById("artworkTagsInput"),
+  artworkTagsFeedback: document.getElementById("artworkTagsFeedback"),
   planPanel: document.getElementById("planPanel"),
   planTitle: document.getElementById("planTitle"),
   planProgressLabel: document.getElementById("planProgressLabel"),
@@ -957,6 +967,8 @@ let activeMainObjectId = null;
 let mainImportDbPromise = null;
 let activeHistoryFilter = "all";
 let activeHistoryDetailId = null;
+let activeHistoryRenameId = null;
+let activeArtworkTagEditorId = null;
 let activeReportDetailId = null;
 let activeArtworkSearch = "";
 let activeArtworkTag = "";
@@ -3745,6 +3757,26 @@ function bindHistoryControls() {
   els.historyDetailOpenReport?.addEventListener("click", openHistoryReportDetail);
   els.historyDetailCopyLink?.addEventListener("click", copyHistoryDetailLink);
   els.historyDetailDelete?.addEventListener("click", deleteHistoryDetail);
+  els.historyRenameForm?.addEventListener("submit", submitHistoryRenameForm);
+  els.historyRenameCancel?.addEventListener("click", closeHistoryRenameDialog);
+  els.historyRenameDialog?.addEventListener("cancel", () => {
+    activeHistoryRenameId = null;
+  });
+  els.historyRenameDialog?.addEventListener("click", (event) => {
+    if (event.target === els.historyRenameDialog) {
+      closeHistoryRenameDialog();
+    }
+  });
+  els.artworkTagsForm?.addEventListener("submit", submitArtworkTagsForm);
+  els.artworkTagsCancel?.addEventListener("click", closeArtworkTagsDialog);
+  els.artworkTagsDialog?.addEventListener("cancel", () => {
+    activeArtworkTagEditorId = null;
+  });
+  els.artworkTagsDialog?.addEventListener("click", (event) => {
+    if (event.target === els.artworkTagsDialog) {
+      closeArtworkTagsDialog();
+    }
+  });
   els.historyDownloadArchive?.addEventListener("click", () => {
     const result = window.MRAppState?.downloadArchive?.();
     if (result?.message) {
@@ -7074,21 +7106,52 @@ function editArtworkTags(artworkId) {
     return;
   }
 
-  const currentTags = (detail.tags || []).join("、");
-  const value = window.prompt("作品标签（用空格、逗号或顿号分隔）", currentTags);
-  if (value === null) {
+  activeArtworkTagEditorId = detail.id;
+  if (els.artworkTagsInput) {
+    els.artworkTagsInput.value = (detail.tags || []).join("、");
+  }
+  setHistoryEditFeedback(els.artworkTagsFeedback, "");
+  if (els.artworkTagsDialog?.showModal) {
+    els.artworkTagsDialog.showModal();
+  } else if (els.artworkTagsDialog) {
+    els.artworkTagsDialog.hidden = false;
+    els.artworkTagsDialog.setAttribute("open", "");
+  }
+  els.artworkTagsInput?.focus();
+}
+
+function closeArtworkTagsDialog() {
+  activeArtworkTagEditorId = null;
+  setHistoryEditFeedback(els.artworkTagsFeedback, "");
+  if (els.artworkTagsDialog?.close) {
+    els.artworkTagsDialog.close();
+  } else if (els.artworkTagsDialog) {
+    els.artworkTagsDialog.removeAttribute("open");
+    els.artworkTagsDialog.hidden = true;
+  }
+}
+
+function submitArtworkTagsForm(event) {
+  event.preventDefault();
+  const detail = activeArtworkTagEditorId
+    ? window.MRAppState?.getHistoryDetail?.(activeArtworkTagEditorId)
+    : null;
+  if (detail?.type !== "artwork") {
+    setHistoryEditFeedback(els.artworkTagsFeedback, "未找到这幅作品。", "danger");
     return;
   }
 
+  const value = String(els.artworkTagsInput?.value || "").trim();
   const result = window.MRAppState?.updateArtworkTags?.(detail.id, value);
   if (result?.ok) {
     activeHistoryDetailId = detail.id;
+    closeArtworkTagsDialog();
     renderHistoryPanel(currentIndex);
     renderReviewPanel(currentIndex);
     showNotice(result.message);
     return;
   }
-  showNotice(result?.message || "作品标签更新失败。");
+  setHistoryEditFeedback(els.artworkTagsFeedback, result?.message || "作品标签更新失败。", "danger");
 }
 
 function clearHistoryTrash() {
@@ -7254,20 +7317,66 @@ function renameHistoryDetail() {
     return;
   }
 
-  const title = window.prompt("输入新的记录标题", detail.title);
-  if (title === null) {
+  activeHistoryRenameId = detail.id;
+  if (els.historyRenameTitleInput) {
+    els.historyRenameTitleInput.value = detail.title || "";
+  }
+  setHistoryEditFeedback(els.historyRenameFeedback, "");
+  if (els.historyRenameDialog?.showModal) {
+    els.historyRenameDialog.showModal();
+  } else if (els.historyRenameDialog) {
+    els.historyRenameDialog.hidden = false;
+    els.historyRenameDialog.setAttribute("open", "");
+  }
+  els.historyRenameTitleInput?.focus();
+  els.historyRenameTitleInput?.select();
+}
+
+function closeHistoryRenameDialog() {
+  activeHistoryRenameId = null;
+  setHistoryEditFeedback(els.historyRenameFeedback, "");
+  if (els.historyRenameDialog?.close) {
+    els.historyRenameDialog.close();
+  } else if (els.historyRenameDialog) {
+    els.historyRenameDialog.removeAttribute("open");
+    els.historyRenameDialog.hidden = true;
+  }
+}
+
+function submitHistoryRenameForm(event) {
+  event.preventDefault();
+  const detail = activeHistoryRenameId
+    ? window.MRAppState?.getHistoryDetail?.(activeHistoryRenameId)
+    : null;
+  if (!detail) {
+    setHistoryEditFeedback(els.historyRenameFeedback, "未找到这条学习档案。", "danger");
+    return;
+  }
+
+  const title = String(els.historyRenameTitleInput?.value || "").trim();
+  if (title.length < 2) {
+    setHistoryEditFeedback(els.historyRenameFeedback, "标题至少需要 2 个字符。", "danger");
+    els.historyRenameTitleInput?.focus();
     return;
   }
 
   const result = window.MRAppState?.renameHistoryRecord?.(detail.id, title);
   if (result?.ok) {
     activeHistoryDetailId = result.detail?.id || detail.id;
+    closeHistoryRenameDialog();
     renderHistoryPanel(currentIndex);
     renderReviewPanel(currentIndex);
     showNotice(result.message);
     return;
   }
-  showNotice(result?.message || "重命名失败。");
+  setHistoryEditFeedback(els.historyRenameFeedback, result?.message || "重命名失败。", "danger");
+}
+
+function setHistoryEditFeedback(target, message, tone = "idle") {
+  if (!target) return;
+  target.textContent = message;
+  target.dataset.feedbackTone = tone;
+  target.hidden = !message;
 }
 
 function deleteHistoryDetail() {
