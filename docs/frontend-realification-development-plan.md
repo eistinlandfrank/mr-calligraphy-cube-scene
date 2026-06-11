@@ -4,6 +4,8 @@
 适用版本：5.16 恢复线后的当前 `main` 分支  
 当前本地入口：`http://localhost:41496/`、`http://localhost:41496/main-admin.html`、`http://localhost:41496/realistic-admin.html`
 
+补充文档：针对当前用户反馈“很多前端操作界面只是假的、用不了”的专项审计和真实化路线，见 `docs/current-version-gap-and-realification-plan.md`。
+
 ## 1. 结论
 
 当前版本已经不再是完全静态 Demo：前台已有本机学习状态、书写画布、作品保存、HTML 报告、WebM 回放、学习档案、回收站和任务进度；主后台和写实后台已有对象编辑、模型导入、项目档案、草稿预览、本机发布版本列表和回滚。
