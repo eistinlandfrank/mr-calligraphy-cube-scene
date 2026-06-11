@@ -370,3 +370,41 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案远端同步浏览器验收`
+
+## 17. 2026-06-12 计划仓库冲突浏览器验收
+
+本次把学习计划远端仓库的冲突处理入口从“看得到按钮”扩展到“浏览器里真实触发、真实解决、真实持久化”的验收。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 新增计划仓库冲突用例。
+- E2E 使用同源 `page.route()` 模拟远端计划 repository，覆盖 GET 检查、PUT 推送和再次 GET 拉取。
+- E2E 会在前台生成真实学习计划，配置 endpoint/token，并点击“保存远端”“检查远端”“推送计划”。
+- E2E 会断言 PUT body 是 `mr-calligraphy-plan-repository-v1`，包含真实计划 ID，并确认 Bearer token 被发送。
+- 推送成功后，E2E 同时修改本机计划项和远端计划包，再点击“拉取计划”，确认页面显示“计划同步冲突”面板。
+- E2E 会点击“另存副本”，确认远端冲突计划被复制成本机新计划，冲突字段清空，并进入待同步队列。
+
+真实化说明：
+
+- 数据来源：前台 `MRAppState.createPlan()` 生成的真实 `PlanRecord`，不是空 mock 数据。
+- 写入状态：远端配置、推送结果、冲突记录、冲突远端计划和另存副本结果写入 `mr-calligraphy-learning-state-v1.planRepository` 与 `plans`。
+- 成功反馈：计划仓库状态区显示已推送、冲突面板显示本机/远端差异，另存后状态区显示远端冲突计划已另存。
+- 失败反馈：未配置 endpoint、无 fetch、远端返回非法 JSON、无计划包和冲突未解决时仍由状态层返回明确错误；本用例覆盖冲突通过路径。
+- 刷新后复现方式：冲突状态和另存副本都保存在本机学习状态中，刷新后仍可读取计划历史和仓库状态。
+
+仍待补：
+
+- “保留本机”策略的浏览器级验收。
+- “采用远端”策略的浏览器级验收。
+- 远端失败、非法 JSON、无计划包和 token 过期等失败路径验收。
+- 字段级冲突合并 UI，目前仍是计划级处理。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`，在已安装 Playwright 依赖和浏览器的环境运行
+
+提交：
+
+- 中文 commit message：`新增计划仓库冲突浏览器验收`

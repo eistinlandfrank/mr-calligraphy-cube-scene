@@ -157,6 +157,155 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token")).toBe(true);
 });
 
+test("front plan repository detects remote conflicts and saves a remote copy", async ({ page }) => {
+  const planEndpointPath = "/e2e-plan-repository";
+  const planRequests = [];
+  let remotePlanPackage = null;
+
+  await page.route(`**${planEndpointPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    planRequests.push({
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+
+    if (method === "PUT") {
+      remotePlanPackage = cloneJson({
+        ...body,
+        packageId: "e2e-plan-package",
+        acceptedAt: new Date().toISOString()
+      });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `远端计划 E2E 已接收 ${body.summary.planCount} 份计划。`,
+          remoteVersion: "e2e-plan-v1",
+          packageId: remotePlanPackage.packageId,
+          package: remotePlanPackage
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: remotePlanPackage
+          ? `远端计划 E2E 可读，当前包含 ${remotePlanPackage.summary.planCount} 份计划。`
+          : "远端计划 E2E 可访问，当前尚未接收计划包。",
+        remoteVersion: "e2e-plan-v1",
+        package: remotePlanPackage
+      })
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const planEndpoint = await getSameOriginEndpoint(page, planEndpointPath);
+  const seedPlan = await page.evaluate(() => {
+    const created = window.MRAppState.createPlan();
+    return {
+      id: created.plan.id,
+      itemId: created.plan.items[0].id,
+      title: created.plan.title
+    };
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#planPanel")).toBeVisible();
+  await expect(page.locator("#planTitle")).toContainText(seedPlan.title);
+
+  await page.locator(".plan-repository-remote summary").click();
+  await page.locator("#planRepositoryEndpointInput").fill(planEndpoint);
+  await page.locator("#planRepositoryTokenInput").fill("plan-token");
+  await page.locator("#planRepositorySaveRemoteButton").click();
+  await expect(page.locator("#planRepositorySummary")).toContainText("远端计划 API 已配置");
+
+  await page.evaluate((endpoint) => {
+    window.MRAppState.configurePlanRepositoryRemote({
+      remoteEndpoint: endpoint,
+      remoteToken: "plan-token",
+      autoSyncEnabled: false
+    });
+  }, planEndpoint);
+
+  await page.locator("#planRepositoryRemoteButton").click();
+  await expect(page.locator("#planRepositorySummary")).toContainText("E2E 可访问");
+
+  await page.locator("#planRepositoryPushButton").click();
+  await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
+
+  const putRequest = planRequests.find((item) => item.method === "PUT");
+  expect(putRequest.authorization).toBe("Bearer plan-token");
+  expect(putRequest.body.kind).toBe("mr-calligraphy-plan-repository-v1");
+  expect(putRequest.body.summary.planCount).toBe(1);
+  expect(putRequest.body.plans[0].id).toBe(seedPlan.id);
+
+  const remoteUpdatedAt = new Date(Date.now() + 60000).toISOString();
+  remotePlanPackage = cloneJson({
+    ...remotePlanPackage,
+    packageId: "e2e-plan-package-conflict",
+    exportedAt: remoteUpdatedAt,
+    plans: remotePlanPackage.plans.map((plan) => {
+      if (plan.id !== seedPlan.id) return plan;
+      return {
+        ...plan,
+        title: "远端冲突计划",
+        updatedAt: remoteUpdatedAt,
+        items: plan.items.map((item, index) => index === 0
+          ? {
+              ...item,
+              title: "远端冲突任务",
+              detail: "远端也修改了第一项任务，等待本机选择处理策略。"
+            }
+          : item)
+      };
+    })
+  });
+
+  await page.waitForTimeout(25);
+  const localEdit = await page.evaluate(({ planId, itemId }) => {
+    const result = window.MRAppState.updatePlanItem(planId, itemId, {
+      title: "本机冲突任务",
+      detail: "本机也修改了第一项任务，应该触发远端冲突提示。"
+    });
+    return {
+      ok: result.ok,
+      status: window.MRAppState.getPlanRepositoryStatus()
+    };
+  }, { planId: seedPlan.id, itemId: seedPlan.itemId });
+  expect(localEdit.ok).toBe(true);
+  expect(localEdit.status.pendingAutoSync).toBe(true);
+
+  await page.locator("#planRepositoryPullButton").click();
+  await expect(page.locator("#planRepositoryConflictPanel")).toBeVisible();
+  await expect(page.locator("#planRepositoryConflictStatus")).toContainText("1 份计划");
+  await expect(page.locator("#planRepositoryConflictList")).toContainText("本机冲突");
+  await expect(page.locator("#planRepositoryConflictList")).toContainText("远端冲突");
+
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastSyncConflictCount).toBe(1);
+  expect(learningState.planRepository.lastSyncConflictPlans[0].title).toBe("远端冲突计划");
+
+  await page.locator("#planRepositoryCopyRemoteButton").click();
+  await expect(page.locator("#planRepositoryConflictPanel")).toBeHidden();
+  await expect(page.locator("#planRepositorySummary")).toContainText("远端冲突计划另存为本机副本");
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.plans).toHaveLength(2);
+  expect(learningState.plans.some((plan) => plan.title.includes("远端冲突计划") && plan.title.includes("远端副本"))).toBe(true);
+  expect(learningState.planRepository.lastSyncConflictCount).toBe(0);
+  expect(learningState.planRepository.pendingAutoSync).toBe(true);
+  expect(planRequests.some((item) => item.method === "GET" && item.authorization === "Bearer plan-token")).toBe(true);
+});
+
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
   const remoteEndpointPath = "/e2e-remote-publish";
@@ -339,6 +488,10 @@ async function readJsonLocalStorage(page, key) {
 
 async function getSameOriginEndpoint(page, path) {
   return page.evaluate((endpointPath) => new URL(endpointPath, window.location.href).toString(), path);
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 async function expectCanvasHasVisiblePixels(page, selector) {
