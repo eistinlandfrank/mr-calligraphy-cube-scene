@@ -125,7 +125,7 @@ node scripts/control-inventory.js --check
 
 - `main-admin.html` 和 `realistic-admin.html` 保留本机权限风险提示。
 - “发布到前台/演示”继续标为本机发布。
-- 远端发布 API 面板补服务端合同文档、mock endpoint 和回执字段。
+- 远端发布 API 面板已有服务端合同文档、mock endpoint 和回执字段第一版；后续补账号权限和服务端签名。
 - 审核与发布锁从本机状态升级为远端校验状态。
 
 ### P1：把学习状态从本机原型升级为可同步业务

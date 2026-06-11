@@ -229,7 +229,7 @@ node scripts/control-inventory.js
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版已完成，但仍缺图表/作品嵌入、云端长期报告和教师批注 | PDF 图表/截图增强、服务端接口草案 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
-| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁和资产清单哈希已完成第一版，但仍缺服务端账号权限和服务端资产签名 | 服务端审批合同、服务端资产签名、发布锁服务端校验 |
+| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限和服务端资产签名 | 服务端审批合同强化、服务端资产签名、发布锁服务端校验 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
 ## 8. 每个功能完成时的记录格式
@@ -547,6 +547,40 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增远端发布资产清单`
+
+### 2026-06-12：远端发布服务端合同与 mock 服务
+
+完成内容：
+
+- 新增 `docs/remote-publish-api-contract.md`，明确远端发布 `GET` 检查、`POST` 发布、Authorization、发布包字段、manifest 摘要、成功回执和失败状态码。
+- 新增 `scripts/remote-publish-mock-server.js`，使用 Node 标准库启动本地 HTTP mock 服务，不依赖 npm 包。
+- mock 服务会返回 `mr-calligraphy-remote-publish-contract-v1` 合同、`mr-calligraphy-remote-publish-receipt-v1` 回执，并重新校验 package、manifest、assetManifest、packageDigest、layoutDigest 和 assetDigest。
+- mock 服务支持可选 Bearer token，并会拒绝 token 不匹配、摘要不匹配、资产清单不匹配和重复 packageDigest。
+- `scripts/remote-publish-check.js` 新增真实 HTTP mock server 验收，覆盖 GET 检查、POST 推送、回执、重复摘要拒绝和远端状态持久化。
+- `scripts/smoke-test.js` 把远端发布 mock server 纳入语法检查。
+
+真实化说明：
+
+- 数据来源：后台当前本机发布包、manifest 摘要、资产清单和本地 mock server 内存 receipt。
+- 写入状态：前端 adapter 仍写入 `mr-calligraphy-remote-publish-v1`；mock server 记录 receipt、packageDigest 和重复发布状态。
+- 成功反馈：mock server 返回远端版本、packageId、releaseId、packageDigest 和 receiptDigest；adapter 会把远端版本和 packageId 写回本机远端发布状态。
+- 失败反馈：HTTP 401、409、422 和 500 会返回结构化 JSON，不显示部署成功。
+- 刷新后复现方式：本机 adapter 的最近远端状态可刷新读取；mock server receipt 是临时测试服务内存状态，用于本地验收。
+
+验收：
+
+- 手工验收：运行 `node scripts/remote-publish-mock-server.js`，在主后台或写实后台配置输出的 endpoint，完成本机发布、审核通过后推送，应看到 mock server 返回回执。
+- 脚本验收：`node scripts/remote-publish-check.js` 会启动临时 mock server，验证真实 HTTP GET/POST、Bearer token、receipt 和重复 digest 拒绝；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 会检查新脚本语法。
+
+已知限制：
+
+- mock server 是开发验收工具，不提供持久化数据库、账号权限、CDN 上传或生产审计。
+- 服务端资产签名和远端发布锁校验仍需要生产服务实现。
+- 当前前端 adapter 读取 `message`、`packageId` 和 `remoteVersion`，完整 receipt 主要用于 mock server 和服务端合同验收。
+
+提交：
+
+- 中文 commit message：`新增远端发布mock服务`
 
 ### 2026-06-11：学习计划自动同步队列
 

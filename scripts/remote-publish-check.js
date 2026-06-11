@@ -3,12 +3,14 @@
 global.window = global;
 
 const storage = new Map();
+const nativeFetch = global.fetch;
 global.localStorage = {
   getItem: (key) => storage.get(key) || null,
   setItem: (key, value) => storage.set(key, String(value)),
   removeItem: (key) => storage.delete(key)
 };
 
+const { startRemotePublishMockServer } = require("./remote-publish-mock-server.js");
 require("../project-remote-publish.js");
 
 run().catch((error) => {
@@ -241,7 +243,62 @@ async function run() {
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
   assert(persisted.scenes.realisticScene.lock.packageDigest, "写实场景推送成功后应持久化发布锁。");
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
+  await runMockServerChecks(adapter, nativeFetch);
+
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执和状态持久化已验证。");
+}
+
+async function runMockServerChecks(adapter, fetchApi) {
+  assert(typeof fetchApi === "function", "当前 Node 环境应支持 fetch 以验证远端发布 mock 服务。");
+  const mock = await startRemotePublishMockServer({ token: "mock-token" });
+  global.fetch = fetchApi;
+  try {
+    const endpoint = mock.endpoint;
+    const configured = adapter.configure("mainScene", {
+      endpoint,
+      token: "mock-token"
+    });
+    assert(configured.ok, "远端发布 mock endpoint 应可写入配置。");
+
+    const check = await adapter.check("mainScene");
+    assert(check.ok && check.status.lastRemoteVersion === "mr-calligraphy-remote-publish-mock-v1", "远端发布 mock 服务应可被真实 GET 检查。");
+
+    const record = createPublishedRecord("main-release-mock", "mock 服务验收版");
+    const options = {
+      sceneLabel: "主场景",
+      storageKey: "mr-calligraphy-main-scene-published-v1",
+      record,
+      release: record.releases[0]
+    };
+    const mockPackage = adapter.createPackage("mainScene", options);
+    assert(mockPackage.ok, "mock 服务验收发布包应能生成。");
+    const review = adapter.requestReview("mainScene", { ...options, note: "mock 服务审核" });
+    assert(review.ok, "mock 服务验收发布包应能提交本机审核。");
+    const approval = adapter.approveReview("mainScene", { ...options, note: "mock 服务同意" });
+    assert(approval.ok, "mock 服务验收发布包应能通过本机审核。");
+
+    const pushed = await adapter.push("mainScene", options);
+    assert(pushed.ok, "远端发布 mock 服务应接收真实 POST 发布包。");
+    assert(pushed.packageId.startsWith("mock-mainScene-"), "mock 服务应返回稳定 packageId 前缀。");
+    assert(pushed.remoteVersion === "mr-calligraphy-remote-publish-mock-v1", "mock 服务应返回远端版本。");
+    assert(mock.state.received.length === 1, "mock 服务应记录一条发布回执。");
+    assert(mock.state.received[0].packageDigest === mockPackage.package.manifest.packageDigest, "mock 回执应保留 packageDigest。");
+    assert(mock.state.received[0].receiptDigest, "mock 回执应生成 receiptDigest。");
+
+    const duplicate = await fetchApi(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer mock-token"
+      },
+      body: JSON.stringify(mockPackage.package)
+    });
+    const duplicatePayload = await duplicate.json();
+    assert(duplicate.status === 409 && duplicatePayload.ok === false, "mock 服务应拒绝重复 packageDigest。");
+    assert(duplicatePayload.packageDigest === mockPackage.package.manifest.packageDigest, "重复拒绝结果应指出 packageDigest。");
+  } finally {
+    await mock.close();
+  }
 }
 
 function createPublishedRecord(releaseId, note, options = {}) {

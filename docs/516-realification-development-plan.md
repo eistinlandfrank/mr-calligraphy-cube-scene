@@ -59,7 +59,7 @@
 - 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、同步仓库、远端 API adapter、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测，以及保留本机、采用远端、另存远端副本三种处理方式；仍缺账号化托管仓库、远端提醒、教师端通知和字段级合并。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出，但还没有服务端分页和跨设备归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
-- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览、单模型选择恢复、模型元数据片段对照、模型完整 JSON 安全预览、命名冲突策略选择、自定义命名、远端发布包资产清单和本机发布锁已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树和服务端发布合同。
+- 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览、单模型选择恢复、模型元数据片段对照、模型完整 JSON 安全预览、命名冲突策略选择、自定义命名、远端发布包资产清单、本机发布锁、服务端合同文档和 mock server 已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树和生产服务端资产签名。
 - 没有真正的账号权限保护；主后台和写实后台已补第一版“本机静态后台 / 无登录角色审计”的风险提示和本机确认状态，主后台已有第一版“草稿预览 / 发布到前台 / 保存历史 / 发布版本历史 / 回滚”，写实后台也已有第一版“草稿预览 / 发布到演示 / 保存历史 / 发布版本历史 / 回滚”，但还没有后端账号权限和远端发布流程。
 - 系统化测试已有第一版：smoke test、控件清单、学习状态、项目档案迁移、资产哈希和项目 Schema 检查已能跑通；浏览器级 Playwright 依赖仍受本地 npm 代理限制，深层交互覆盖还要继续补。
 
@@ -4787,6 +4787,49 @@
 提交：
 
 - 中文 commit message：`新增远端发布资产清单`
+
+### 2026-06-12：新增远端发布 mock 服务
+
+功能名：远端发布服务端合同文档与本机 mock server。
+
+涉及文件：
+
+- `scripts/remote-publish-mock-server.js`
+- `scripts/remote-publish-check.js`
+- `scripts/smoke-test.js`
+- `docs/remote-publish-api-contract.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 新增 `docs/remote-publish-api-contract.md`，描述远端发布 endpoint、GET/POST、Authorization、发布包字段、manifest digest、receipt 和错误码。
+- 新增 `scripts/remote-publish-mock-server.js`，可直接运行本地 HTTP mock 服务，也可被测试脚本启动临时服务。
+- mock 服务 `GET` 返回合同、远端版本和最近 receipt；`POST` 会重新校验发布包结构、manifest、assetManifest、packageDigest、layoutDigest 和 assetDigest。
+- mock 服务支持可选 Bearer token，拒绝 token 不匹配、摘要不匹配、资产清单与布局不匹配和重复 `packageDigest`。
+- mock 服务成功接收后返回 `mr-calligraphy-remote-publish-receipt-v1` 回执，包含 packageId、releaseId、packageDigest、layoutDigest、assetDigest、acceptedAt 和 receiptDigest。
+- `scripts/remote-publish-check.js` 启动真实本机 mock server，使用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、回执和重复摘要拒绝。
+- `scripts/smoke-test.js` 将新 mock server 纳入语法检查。
+
+验收方式：
+
+- 运行 `node scripts/remote-publish-mock-server.js`，复制输出的 endpoint。
+- 在主后台或写实后台配置该 endpoint，完成本机发布、提交审核、通过审核并推送。
+- mock 服务应返回 receipt；重复提交同一 packageDigest 应被拒绝。
+
+当前验证结果：
+
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+已知限制：
+
+- mock 服务只用于本机开发验收，不提供数据库、账号权限、CDN 上传、服务端资产签名或生产审计。
+- 前端 adapter 当前只持久化 `message`、`packageId`、`remoteVersion` 和本地 packageDigest；完整 receipt 由服务端合同和 mock 服务返回，后续可继续接入远端审计页。
 
 ### 2026-06-11：新增学习报告原生 PDF 导出
 
