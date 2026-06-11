@@ -4204,4 +4204,51 @@
 已知限制：
 
 - 周期循环仍是本机计划历史，不是跨设备计划或教师端排课。
-- 当前没有浏览器通知权限申请，也没有远端提醒服务。
+- 浏览器通知权限边界已在后续补齐；仍没有远端提醒服务或跨设备提醒。
+
+### 2026-06-11：新增学习计划提醒边界
+
+功能名：前台学习计划本机提醒服务边界。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRAppState` 新增 `planReminderService`，用于保存本机提醒服务启用状态、Notification 权限、最近检查时间、最近触发计划项和提醒指纹。
+- 新增 `MRAppState.getPlanReminderServiceStatus(planId)`，可返回浏览器通知支持、权限状态、页面内提醒 fallback、当前到点计划项和边界说明。
+- 新增 `MRAppState.setPlanReminderServicePreference()`、`requestPlanReminderPermission()` 和 `dispatchPlanReminderNotification()`，会真实请求浏览器通知权限、写入本机状态，并在页面打开时对到点或逾期计划项触发一次 Notification。
+- 同一条提醒会记录 fingerprint，避免刷新或重复渲染时反复弹出。
+- 前台学习计划面板新增本机提醒服务状态条和“启用本机提醒 / 触发本机提醒”按钮。
+- smoke test 前台页面新增 `planReminderServiceSummary` 和 `planReminderPermissionButton` 标记；学习状态检查新增不支持 Notification、授权启用、触发通知和重复触发保护断言。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，点击“制定计划”生成计划。
+- 点击“启用本机提醒”，浏览器应请求通知权限；不支持或拒绝权限时，页面应显示只能保留页面内提醒。
+- 授权后，如果计划项已到点或逾期，页面打开或点击“触发本机提醒”应触发一次本机浏览器通知。
+- 刷新后同一条已经触发过的计划提醒不应重复弹出。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 本机提醒只在当前浏览器和页面打开时可用，不是云端推送、跨设备提醒或教师端通知。
+- 远端计划 repository、账号同步和教师端提醒尚未接入。

@@ -7,6 +7,7 @@
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
+  const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -291,6 +292,7 @@
       artworks: Array.isArray(source?.artworks) ? source.artworks.map(normalizeArtwork).filter(Boolean) : [],
       reports: Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [],
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
+      planReminderService: normalizePlanReminderService(source?.planReminderService),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
@@ -480,6 +482,26 @@
       generatedAt: normalizePlanDate(source.generatedAt),
       generatedNextPlanId: source.generatedNextPlanId ? String(source.generatedNextPlanId) : null,
       itemCount: Array.isArray(items) ? items.length : 0
+    };
+  }
+
+  function normalizePlanReminderService(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const permission = ["default", "granted", "denied", "unsupported"].includes(source.permission)
+      ? source.permission
+      : "default";
+    return {
+      enabled: source.enabled === true,
+      permission,
+      supported: source.supported === true,
+      channel: ["browser-notification", "in-page"].includes(source.channel) ? source.channel : "in-page",
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      requestedAt: normalizePlanDate(source.requestedAt),
+      acknowledgedAt: normalizePlanDate(source.acknowledgedAt),
+      lastDispatchedAt: normalizePlanDate(source.lastDispatchedAt),
+      lastPlanId: source.lastPlanId ? String(source.lastPlanId) : null,
+      lastItemId: source.lastItemId ? String(source.lastItemId) : null,
+      lastReminderFingerprint: source.lastReminderFingerprint ? String(source.lastReminderFingerprint) : null
     };
   }
 
@@ -1566,6 +1588,211 @@
       planId: plan.id,
       title: plan.title,
       ...clone(plan.cycleStatus || buildPlanCycleStatus(plan, plan.progress))
+    };
+  }
+
+  function getPlanReminderServiceStatus(planId = null) {
+    const plan = getPlan(planId);
+    const browser = getBrowserNotificationState();
+    const stored = normalizePlanReminderService(state.planReminderService);
+    const permission = browser.supported ? browser.permission : "unsupported";
+    const enabled = stored.enabled === true && permission === "granted";
+    const channel = enabled ? "browser-notification" : "in-page";
+    const summary = plan?.reminderSummary || null;
+    const pendingItem = plan?.items?.find((item) => item.reminder?.status === "overdue" || item.reminder?.status === "due")
+      || null;
+    const nextItem = pendingItem
+      || plan?.items?.find((item) => item.reminder?.dueAt && item.reminder.dueAt === summary?.nextDueAt)
+      || null;
+    let tone = "idle";
+    let message = "页面内提醒已可用；未启用浏览器通知。";
+
+    if (!browser.supported) {
+      tone = "warning";
+      message = "当前浏览器不支持 Notification，本机只显示页面内提醒。";
+    } else if (permission === "denied") {
+      tone = "danger";
+      message = "浏览器已拒绝通知权限，只能保留页面内提醒。";
+    } else if (enabled) {
+      tone = "ready";
+      message = "浏览器通知已启用；页面打开时可触发本机提醒。";
+    } else if (permission === "granted") {
+      tone = "ready";
+      message = "浏览器已授权通知，可启用本机提醒。";
+    }
+
+    if (summary?.label && plan) {
+      message = `${message} 当前计划：${summary.label}。`;
+    }
+
+    return {
+      ok: true,
+      supported: browser.supported,
+      permission,
+      enabled,
+      channel,
+      tone,
+      message,
+      boundary: PLAN_REMINDER_BOUNDARY,
+      canRequestPermission: browser.supported && permission === "default",
+      canEnable: browser.supported && permission === "granted",
+      planId: plan?.id || null,
+      nextDueAt: summary?.nextDueAt || null,
+      nextDueLabel: summary?.nextDueAt ? formatPlanDate(summary.nextDueAt) : "",
+      nextItemId: nextItem?.id || null,
+      nextItemTitle: nextItem?.title || "",
+      pendingItemId: pendingItem?.id || null,
+      pendingItemTitle: pendingItem?.title || "",
+      hasPendingLocalReminder: Boolean(enabled && pendingItem),
+      lastCheckedAt: stored.lastCheckedAt,
+      requestedAt: stored.requestedAt,
+      acknowledgedAt: stored.acknowledgedAt,
+      lastDispatchedAt: stored.lastDispatchedAt,
+      lastItemId: stored.lastItemId,
+      lastReminderFingerprint: stored.lastReminderFingerprint
+    };
+  }
+
+  function getBrowserNotificationState() {
+    const api = typeof window !== "undefined" ? window.Notification : null;
+    const supported = Boolean(api && (typeof api === "function" || typeof api === "object"));
+    const permission = supported && ["default", "granted", "denied"].includes(api.permission)
+      ? api.permission
+      : supported
+        ? "default"
+        : "unsupported";
+    return {
+      api,
+      supported,
+      permission
+    };
+  }
+
+  function setPlanReminderServicePreference(enabled = true, planId = null, permissionOverride = null) {
+    const browser = getBrowserNotificationState();
+    const permission = permissionOverride || (browser.supported ? browser.permission : "unsupported");
+    const canEnable = enabled === true && permission === "granted";
+    const now = new Date().toISOString();
+    state.planReminderService = normalizePlanReminderService({
+      ...state.planReminderService,
+      enabled: canEnable,
+      supported: browser.supported,
+      permission,
+      channel: canEnable ? "browser-notification" : "in-page",
+      lastCheckedAt: now,
+      acknowledgedAt: now,
+      lastPlanId: planId || state.planReminderService?.lastPlanId || null
+    });
+    saveState();
+    const status = getPlanReminderServiceStatus(planId);
+    return {
+      ok: canEnable,
+      status,
+      message: canEnable
+        ? "已启用本机浏览器提醒。页面关闭或跨设备时不会推送。"
+        : `${status.message} ${PLAN_REMINDER_BOUNDARY}`
+    };
+  }
+
+  async function requestPlanReminderPermission(planId = null) {
+    const browser = getBrowserNotificationState();
+    const now = new Date().toISOString();
+    state.planReminderService = normalizePlanReminderService({
+      ...state.planReminderService,
+      requestedAt: now,
+      lastCheckedAt: now,
+      lastPlanId: planId || state.planReminderService?.lastPlanId || null
+    });
+
+    if (!browser.supported || !browser.api || typeof browser.api.requestPermission !== "function") {
+      saveState();
+      return setPlanReminderServicePreference(false, planId, "unsupported");
+    }
+
+    let permission = browser.permission;
+    if (permission === "default") {
+      try {
+        const requestResult = browser.api.requestPermission();
+        permission = typeof requestResult?.then === "function"
+          ? await requestResult
+          : requestResult || browser.api.permission || permission;
+      } catch (error) {
+        console.warn("本机提醒权限请求失败", error);
+        permission = browser.api.permission || "default";
+      }
+    }
+
+    if (!["default", "granted", "denied"].includes(permission)) {
+      permission = browser.api.permission || "default";
+    }
+
+    return setPlanReminderServicePreference(permission === "granted", planId, permission);
+  }
+
+  function dispatchPlanReminderNotification(planId = null, options = {}) {
+    const plan = getPlan(planId);
+    const status = getPlanReminderServiceStatus(plan?.id || planId);
+    if (!plan) {
+      return { ok: false, status, message: "还没有可触发本机提醒的学习计划。" };
+    }
+    if (!status.enabled || !status.supported || status.permission !== "granted") {
+      return {
+        ok: false,
+        status,
+        message: `${status.message} ${PLAN_REMINDER_BOUNDARY}`
+      };
+    }
+    const item = plan.items.find((entry) => entry.id === status.pendingItemId) || null;
+    if (!item) {
+      return { ok: false, status, message: "当前没有到点或逾期的计划项；本机提醒已保持启用。" };
+    }
+
+    const reminder = item.reminder || getPlanItemReminder(item);
+    const fingerprint = `${plan.id}:${item.id}:${reminder.status}:${reminder.dueAt || ""}:${reminder.snoozedUntil || ""}`;
+    const stored = normalizePlanReminderService(state.planReminderService);
+    if (options.force !== true && stored.lastReminderFingerprint === fingerprint) {
+      return { ok: false, status, message: "这条本机提醒已经触发过；刷新后不会重复打扰。" };
+    }
+
+    const browser = getBrowserNotificationState();
+    try {
+      const title = reminder.status === "overdue" ? "学习计划已逾期" : "学习计划提醒";
+      const body = `${item.title} / ${reminder.dueLabel || "查看计划面板"}`;
+      if (typeof browser.api === "function") {
+        new browser.api(title, {
+          body,
+          tag: `mr-calligraphy-plan-${plan.id}-${item.id}`,
+          renotify: false
+        });
+      }
+    } catch (error) {
+      console.warn("本机提醒通知触发失败", error);
+      return {
+        ok: false,
+        status,
+        message: "浏览器通知触发失败，页面内提醒仍然可用。"
+      };
+    }
+
+    const now = new Date().toISOString();
+    state.planReminderService = normalizePlanReminderService({
+      ...state.planReminderService,
+      enabled: true,
+      supported: true,
+      permission: "granted",
+      channel: "browser-notification",
+      lastCheckedAt: now,
+      acknowledgedAt: now,
+      lastDispatchedAt: now,
+      lastPlanId: plan.id,
+      lastItemId: item.id,
+      lastReminderFingerprint: fingerprint
+    });
+    saveState();
+    return {
+      ok: true,
+      status: getPlanReminderServiceStatus(plan.id),
+      message: `已触发本机浏览器提醒：${item.title}。${PLAN_REMINDER_BOUNDARY}`
     };
   }
 
@@ -4717,6 +4944,7 @@
     getLatestPlan,
     getPlanDependencyGraph,
     getPlanCycleStatus,
+    getPlanReminderServiceStatus,
     getPlanExport,
     getReportPreview,
     getReportDetail,
@@ -4758,6 +4986,9 @@
     updatePlanItem,
     addPlanItem,
     createNextPlanCycle,
+    setPlanReminderServicePreference,
+    requestPlanReminderPermission,
+    dispatchPlanReminderNotification,
     snoozePlanItem,
     completePlanItemReview,
     movePlanItem,

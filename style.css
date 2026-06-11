@@ -6036,6 +6036,36 @@ body.is-model-view .notice-panel {
   background: rgba(49, 74, 122, 0.24);
 }
 
+.plan-reminder-service-summary {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(103, 212, 148, 0.2);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.78);
+  background: rgba(63, 152, 101, 0.16);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.plan-reminder-service-summary[data-service-tone="ready"] {
+  border-color: rgba(116, 255, 219, 0.32);
+  color: #e8fff9;
+  background: rgba(47, 111, 104, 0.24);
+}
+
+.plan-reminder-service-summary[data-service-tone="warning"] {
+  border-color: rgba(247, 215, 139, 0.42);
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.22);
+}
+
+.plan-reminder-service-summary[data-service-tone="danger"] {
+  border-color: rgba(255, 123, 123, 0.42);
+  color: #ffe0dc;
+  background: rgba(135, 47, 47, 0.2);
+}
+
 .plan-cycle-summary {
   margin-top: 8px;
   padding: 7px 8px;
@@ -6088,7 +6118,7 @@ body.is-model-view .notice-panel {
 
 .plan-tools {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
   margin-top: 8px;
 }

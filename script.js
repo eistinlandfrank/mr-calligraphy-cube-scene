@@ -884,9 +884,11 @@ const els = {
   planProgressFill: document.getElementById("planProgressFill"),
   planSummary: document.getElementById("planSummary"),
   planReminderSummary: document.getElementById("planReminderSummary"),
+  planReminderServiceSummary: document.getElementById("planReminderServiceSummary"),
   planCycleSummary: document.getElementById("planCycleSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
+  planReminderPermissionButton: document.getElementById("planReminderPermissionButton"),
   planExportButton: document.getElementById("planExportButton"),
   planNextCycleButton: document.getElementById("planNextCycleButton"),
   planDependencyGraph: document.getElementById("planDependencyGraph"),
@@ -3749,6 +3751,7 @@ function bindPlanControls() {
   });
 
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
+  els.planReminderPermissionButton?.addEventListener("click", requestActivePlanReminderPermission);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
   els.planDependencyGraph?.addEventListener("click", handlePlanDependencyClick);
@@ -5477,6 +5480,7 @@ function renderPlanPanel(sceneIndex = currentIndex) {
       : "暂无周期规则";
     els.planCycleSummary.dataset.cycleTone = cycleStatus?.tone || "idle";
   }
+  renderPlanReminderService(plan);
   if (els.planAddItem) {
     els.planAddItem.disabled = !plan;
   }
@@ -5563,6 +5567,44 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     row.append(label, actions);
     els.planItemList.appendChild(row);
   });
+}
+
+function renderPlanReminderService(plan) {
+  const status = window.MRAppState?.getPlanReminderServiceStatus?.(plan?.id);
+  if (els.planReminderServiceSummary) {
+    if (!plan) {
+      els.planReminderServiceSummary.textContent = "生成学习计划后，可检查本机浏览器提醒边界。";
+      els.planReminderServiceSummary.dataset.serviceTone = "idle";
+    } else if (status) {
+      els.planReminderServiceSummary.textContent = `${status.message} ${status.boundary}`;
+      els.planReminderServiceSummary.dataset.serviceTone = status.tone || "idle";
+    }
+  }
+
+  if (els.planReminderPermissionButton) {
+    els.planReminderPermissionButton.disabled = !plan
+      || status?.supported === false
+      || status?.permission === "denied"
+      || (status?.enabled && !status?.hasPendingLocalReminder);
+    els.planReminderPermissionButton.textContent = !plan
+      ? "启用本机提醒"
+      : status?.hasPendingLocalReminder
+        ? "触发本机提醒"
+        : status?.enabled
+          ? "提醒已启用"
+          : status?.permission === "denied"
+            ? "提醒被拒绝"
+            : status?.supported === false
+              ? "仅页面内提醒"
+              : "启用本机提醒";
+  }
+
+  if (plan && status?.hasPendingLocalReminder) {
+    const dispatched = window.MRAppState?.dispatchPlanReminderNotification?.(plan.id);
+    if (dispatched?.ok) {
+      showNotice(dispatched.message);
+    }
+  }
 }
 
 function renderPlanDependencyGraph(plan) {
@@ -5797,6 +5839,36 @@ function downloadActivePlan() {
   const planId = activePlanId || els.planHistorySelect?.value || "";
   const result = window.MRAppState?.downloadPlan?.(planId);
   showNotice(result?.message || "暂无可导出的学习计划。");
+}
+
+async function requestActivePlanReminderPermission() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  if (!planId) {
+    showNotice("先生成一份学习计划，再启用本机提醒。");
+    return;
+  }
+
+  try {
+    const result = await window.MRAppState?.requestPlanReminderPermission?.(planId);
+    let message = result?.message || "已检查本机提醒状态。";
+    if (result?.ok) {
+      const status = window.MRAppState?.getPlanReminderServiceStatus?.(planId);
+      if (status?.hasPendingLocalReminder) {
+        const dispatched = window.MRAppState?.dispatchPlanReminderNotification?.(planId, { force: true });
+        if (dispatched?.message) {
+          message = dispatched.message;
+        }
+      }
+    }
+    showNotice(message);
+  } catch (error) {
+    console.warn("本机提醒权限请求失败", error);
+    showNotice("本机提醒权限请求失败，页面内提醒仍可使用。");
+  } finally {
+    renderPlanPanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+  }
 }
 
 function createNextPlanCycle() {

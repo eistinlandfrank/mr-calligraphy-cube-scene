@@ -226,6 +226,38 @@ assert(
   "学习计划项应包含到期、提醒、复盘动作和派生提醒状态。"
 );
 
+const unsupportedReminderService = window.MRAppState.getPlanReminderServiceStatus(latestPlan.id);
+assert(!unsupportedReminderService.supported, "没有 Notification API 时不应伪造浏览器提醒支持。");
+assert(unsupportedReminderService.permission === "unsupported", "不支持浏览器通知时应返回 unsupported 权限。");
+
+function MockNotification(title, options = {}) {
+  MockNotification.instances.push({ title, options });
+}
+MockNotification.permission = "granted";
+MockNotification.instances = [];
+MockNotification.requestPermission = () => Promise.resolve(MockNotification.permission);
+global.Notification = MockNotification;
+
+const reminderServiceInitial = window.MRAppState.getPlanReminderServiceStatus(latestPlan.id);
+assert(reminderServiceInitial.supported && reminderServiceInitial.permission === "granted", "模拟浏览器通知授权后应返回 granted。");
+assert(!reminderServiceInitial.enabled, "未启用前不应伪造本机浏览器提醒已启用。");
+
+const enabledReminderService = window.MRAppState.setPlanReminderServicePreference(true, latestPlan.id);
+assert(enabledReminderService.ok, "授权后应可启用本机浏览器提醒。");
+const reminderDuePlan = window.MRAppState.updatePlanItem(latestPlan.id, latestPlan.items[0].id, {
+  dueAt: "2000-01-01",
+  remindAt: "2000-01-01"
+});
+assert(reminderDuePlan.ok, "计划项应可改写为逾期以触发本机提醒。");
+const reminderDueStatus = window.MRAppState.getPlanReminderServiceStatus(latestPlan.id);
+assert(reminderDueStatus.enabled && reminderDueStatus.hasPendingLocalReminder, "启用后逾期计划项应成为可触发本机提醒。");
+const dispatchedReminder = window.MRAppState.dispatchPlanReminderNotification(latestPlan.id);
+assert(dispatchedReminder.ok, "逾期计划项应能触发一次本机浏览器提醒。");
+assert(MockNotification.instances.length === 1, "本机提醒应真实调用 Notification 构造器。");
+const duplicateReminder = window.MRAppState.dispatchPlanReminderNotification(latestPlan.id);
+assert(!duplicateReminder.ok && MockNotification.instances.length === 1, "同一条本机提醒不应重复触发。");
+assert(dispatchedReminder.message.includes("不是云端推送"), "本机提醒结果应明确边界。");
+
 const firstPlanItem = latestPlan.items[0];
 const toggledPlanItem = window.MRAppState.togglePlanItem(latestPlan.id, firstPlanItem.id, true);
 assert(toggledPlanItem.ok, "计划项应可勾选完成。");
@@ -309,8 +341,11 @@ assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].cycleRule.generatedNextPlanId === nextCycleResult.plan.id, "源计划应持久化下一周期 ID。");
 assert(persistedPlanState.plans[1].cycleRule.previousPlanId === latestPlan.id, "下一周期应持久化上一周期 ID。");
+assert(persistedPlanState.planReminderService.enabled, "本机提醒启用状态应持久化到 localStorage。");
+assert(persistedPlanState.planReminderService.lastPlanId === latestPlan.id, "本机提醒应记录最近计划 ID。");
+assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划依赖图、计划周期循环和计划离线导出已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划依赖图、计划周期循环和计划离线导出已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {
