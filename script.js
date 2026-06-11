@@ -5711,6 +5711,7 @@ function renderPlanRepositoryStatus(planHistory = []) {
   }
   if (els.planRepositoryPushButton) {
     els.planRepositoryPushButton.disabled = !status?.remoteConfigured || !planHistory.length;
+    els.planRepositoryPushButton.textContent = status?.pendingAutoSync ? "同步队列" : "推送计划";
   }
   if (els.planRepositoryPullButton) {
     els.planRepositoryPullButton.disabled = !status?.remoteConfigured;
@@ -6070,7 +6071,11 @@ async function checkPlanRepositoryRemote() {
 async function pushPlanRepositoryRemote() {
   setPlanRepositoryRemoteBusy(true);
   try {
-    const result = await Promise.resolve(window.MRAppState?.pushPlanRepositoryToRemote?.());
+    const status = window.MRAppState?.getPlanRepositoryStatus?.();
+    const action = status?.pendingAutoSync
+      ? window.MRAppState?.flushPlanRepositoryAutoSync
+      : window.MRAppState?.pushPlanRepositoryToRemote;
+    const result = await Promise.resolve(action?.());
     if (result?.message) {
       showNotice(result.message);
     }

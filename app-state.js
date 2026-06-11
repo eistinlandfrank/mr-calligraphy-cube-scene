@@ -243,6 +243,7 @@
   const LECTURE_STEP_SECONDS = 24;
 
   let state = normalizeState(loadRawState());
+  let planRepositoryAutoSyncTimer = null;
 
   function loadRawState() {
     try {
@@ -406,6 +407,7 @@
     return {
       id: String(record.id || makeId("plan")),
       createdAt: String(record.createdAt || new Date().toISOString()),
+      updatedAt: normalizePlanDate(record.updatedAt) || normalizePlanDate(record.createdAt) || new Date().toISOString(),
       title: String(record.title || "下一阶段练习计划"),
       taskId: getTaskById(record.taskId) ? String(record.taskId) : fallbackTask?.id || null,
       mode: MODE_CONFIG[record.mode] ? record.mode : "single",
@@ -527,6 +529,19 @@
       lastExportedPlanCount: normalizeInteger(source.lastExportedPlanCount, 0, 0, 9999),
       lastImportedPlanCount: normalizeInteger(source.lastImportedPlanCount, 0, 0, 9999),
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      autoSyncEnabled: source.autoSyncEnabled === true,
+      pendingAutoSync: source.pendingAutoSync === true,
+      pendingSince: normalizePlanDate(source.pendingSince),
+      pendingReason: source.pendingReason ? String(source.pendingReason).slice(0, 160) : "",
+      pendingPlanCount: normalizeInteger(source.pendingPlanCount, 0, 0, 9999),
+      autoSyncAttemptCount: normalizeInteger(source.autoSyncAttemptCount, 0, 0, 9999),
+      lastAutoSyncAt: normalizePlanDate(source.lastAutoSyncAt),
+      lastAutoSyncStatus: source.lastAutoSyncStatus ? String(source.lastAutoSyncStatus).slice(0, 180) : "",
+      lastSyncConflictAt: normalizePlanDate(source.lastSyncConflictAt),
+      lastSyncConflictCount: normalizeInteger(source.lastSyncConflictCount, 0, 0, 9999),
+      lastSyncConflictPlanIds: Array.isArray(source.lastSyncConflictPlanIds)
+        ? source.lastSyncConflictPlanIds.map(String).filter(Boolean).slice(0, 12)
+        : [],
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
@@ -1644,6 +1659,16 @@
       tone = "ready";
       message = `最近导出 ${repository.lastExportedPlanCount} 份计划：${formatPlanDate(repository.lastExportedAt)}。`;
     }
+    if (repository.pendingAutoSync) {
+      tone = "warning";
+      message = repository.remoteEndpoint
+        ? `有 ${repository.pendingPlanCount || planCount} 份计划待自动同步：${repository.pendingReason || "本机计划已变更"}。`
+        : `有 ${repository.pendingPlanCount || planCount} 份计划待同步，请先配置远端计划 API 或导出 JSON 同步包。`;
+    }
+    if (repository.lastSyncConflictCount > 0) {
+      tone = "warning";
+      message = `远端计划与本机待同步变更存在 ${repository.lastSyncConflictCount} 个冲突，请先手动推送或确认拉取策略。`;
+    }
     if (repository.lastError) {
       tone = "warning";
       message = repository.lastError;
@@ -1671,6 +1696,17 @@
       lastExportedPlanCount: repository.lastExportedPlanCount,
       lastImportedPlanCount: repository.lastImportedPlanCount,
       lastPackageId: repository.lastPackageId,
+      autoSyncEnabled: repository.autoSyncEnabled,
+      pendingAutoSync: repository.pendingAutoSync,
+      pendingSince: repository.pendingSince,
+      pendingReason: repository.pendingReason,
+      pendingPlanCount: repository.pendingPlanCount,
+      autoSyncAttemptCount: repository.autoSyncAttemptCount,
+      lastAutoSyncAt: repository.lastAutoSyncAt,
+      lastAutoSyncStatus: repository.lastAutoSyncStatus,
+      lastSyncConflictAt: repository.lastSyncConflictAt,
+      lastSyncConflictCount: repository.lastSyncConflictCount,
+      lastSyncConflictPlanIds: [...repository.lastSyncConflictPlanIds],
       lastError: repository.lastError
     };
   }
@@ -2526,6 +2562,7 @@
     const plan = {
       id: makeId("plan"),
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       title: `${currentTask.taskTitle}下一阶段练习计划`,
       mode: state.activeMode,
       taskId: currentTask.id,
@@ -2546,6 +2583,7 @@
     };
     state.plans.push(plan);
     addEvent("plan", plan.title);
+    queuePlanRepositorySync("生成新的学习计划", { save: false });
     saveState();
     return {
       ok: true,
@@ -2607,8 +2645,10 @@
     if (!item.done) {
       item.reviewDoneAt = null;
     }
+    touchPlan(plan);
     updatePlanCompletion(plan);
     addEvent("plan-item", `${item.done ? "完成" : "取消"}计划项：${item.title}`);
+    queuePlanRepositorySync(`${item.done ? "完成" : "取消"}计划项：${item.title}`, { save: false });
     saveState();
     return {
       ok: true,
@@ -2662,7 +2702,9 @@
     if (Object.prototype.hasOwnProperty.call(updates, "reviewAction")) {
       item.reviewAction = normalizePlanReviewAction(updates.reviewAction);
     }
+    touchPlan(plan);
     addEvent("plan-item-edit", `编辑计划项：${item.title}`);
+    queuePlanRepositorySync(`编辑计划项：${item.title}`, { save: false });
     saveState();
     return { ok: true, plan: decoratePlan(plan), message: `已更新计划项：${item.title}。` };
   }
@@ -2705,7 +2747,9 @@
     });
     plan.items.push(planItem);
     plan.completedAt = null;
+    touchPlan(plan);
     addEvent("plan-item-add", `新增计划项：${planItem.title}`);
+    queuePlanRepositorySync(`新增计划项：${planItem.title}`, { save: false });
     saveState();
     return { ok: true, plan: decoratePlan(plan), item: clone(planItem), message: `已新增计划项：${planItem.title}。` };
   }
@@ -2727,7 +2771,9 @@
 
     const [item] = plan.items.splice(index, 1);
     plan.items.splice(nextIndex, 0, item);
+    touchPlan(plan);
     addEvent("plan-item-move", `调整计划项顺序：${item.title}`);
+    queuePlanRepositorySync(`调整计划项顺序：${item.title}`, { save: false });
     saveState();
     return { ok: true, plan: decoratePlan(plan), message: `已调整计划项顺序：${item.title}。` };
   }
@@ -2755,7 +2801,9 @@
         .slice(0, 4);
     });
     updatePlanCompletion(plan);
+    touchPlan(plan);
     addEvent("plan-item-delete", `删除计划项：${item.title}`);
+    queuePlanRepositorySync(`删除计划项：${item.title}`, { save: false });
     saveState();
     return { ok: true, plan: decoratePlan(plan), message: `已删除计划项：${item.title}。` };
   }
@@ -2802,6 +2850,7 @@
     const nextPlan = {
       id: makeId("plan"),
       createdAt,
+      updatedAt: createdAt,
       title: `${titleBase}（第${nextCycleIndex}轮）`,
       mode: decoratedSource.mode,
       taskId: decoratedSource.taskId,
@@ -2824,8 +2873,10 @@
       ...normalizePlanCycleRule(sourcePlan.cycleRule, sourcePlan.items, sourcePlan.createdAt),
       generatedNextPlanId: nextPlan.id
     };
+    touchPlan(sourcePlan);
     state.plans.push(nextPlan);
     addEvent("plan-cycle", `生成学习计划第 ${nextCycleIndex} 轮`);
+    queuePlanRepositorySync(`生成学习计划第 ${nextCycleIndex} 轮`, { save: false });
     saveState();
     return {
       ok: true,
@@ -2856,7 +2907,9 @@
     item.dueAt = makePlanDueAt(duration, 18, base);
     item.remindAt = makePlanReminderAt(item.dueAt);
     item.snoozedUntil = makePlanSnoozedUntil(duration);
+    touchPlan(plan);
     addEvent("plan-item-snooze", `顺延计划项：${item.title}`);
+    queuePlanRepositorySync(`顺延计划项：${item.title}`, { save: false });
     saveState();
     return {
       ok: true,
@@ -2881,8 +2934,10 @@
     item.reviewDoneAt = now;
     item.snoozedUntil = null;
     updatePlanCompletion(plan);
+    touchPlan(plan);
     const nextAction = getPlanReviewNextAction(item);
     addEvent("plan-item-review", `完成计划项复盘：${item.title}`);
+    queuePlanRepositorySync(`完成计划项复盘：${item.title}`, { save: false });
     saveState();
     return {
       ok: true,
@@ -4475,6 +4530,9 @@
       lastPackageId: parsed.package.packageId || null,
       lastError: ""
     });
+    if (options.skipAutoSync !== true) {
+      queuePlanRepositorySync(`导入计划同步包：${incomingPlans.length} 份计划`, { save: false });
+    }
     addEvent("plan-repository-import", `导入计划同步包：新增 ${importedCount}，更新 ${updatedCount}`);
     saveState();
     return {
@@ -4518,6 +4576,132 @@
     saveState();
   }
 
+  function touchPlan(plan) {
+    if (plan) {
+      plan.updatedAt = new Date().toISOString();
+    }
+    return plan;
+  }
+
+  function queuePlanRepositorySync(reason = "本机计划已变更", options = {}) {
+    if (!state.plans.length) {
+      return {
+        ok: false,
+        status: getPlanRepositoryStatus(),
+        message: "还没有可自动同步的学习计划。"
+      };
+    }
+    const repository = normalizePlanRepository(state.planRepository);
+    const now = new Date().toISOString();
+    state.planRepository = normalizePlanRepository({
+      ...repository,
+      pendingAutoSync: true,
+      pendingSince: repository.pendingSince || now,
+      pendingReason: reason,
+      pendingPlanCount: state.plans.length,
+      lastCheckedAt: now,
+      lastError: ""
+    });
+    if (options.schedule !== false) {
+      schedulePlanRepositoryAutoSync();
+    }
+    if (options.save !== false) {
+      saveState();
+    }
+    return {
+      ok: true,
+      status: getPlanRepositoryStatus(),
+      message: `已加入计划自动同步队列：${reason}。`
+    };
+  }
+
+  function schedulePlanRepositoryAutoSync() {
+    const repository = normalizePlanRepository(state.planRepository);
+    if (!repository.autoSyncEnabled || !repository.remoteEndpoint || !repository.pendingAutoSync) {
+      return false;
+    }
+    if (typeof window === "undefined" || typeof window.setTimeout !== "function" || typeof document === "undefined") {
+      return false;
+    }
+    if (planRepositoryAutoSyncTimer && typeof window.clearTimeout === "function") {
+      window.clearTimeout(planRepositoryAutoSyncTimer);
+    }
+    planRepositoryAutoSyncTimer = window.setTimeout(() => {
+      planRepositoryAutoSyncTimer = null;
+      flushPlanRepositoryAutoSync({ scheduled: true }).catch((error) => {
+        recordPlanRepositoryError(`计划自动同步失败：${error?.message || "网络请求异常"}。`);
+      });
+    }, 1200);
+    return true;
+  }
+
+  function flushPlanRepositoryAutoSync(options = {}) {
+    const repository = normalizePlanRepository(state.planRepository);
+    if (!repository.pendingAutoSync) {
+      return Promise.resolve({
+        ok: true,
+        status: getPlanRepositoryStatus(),
+        message: "当前没有待自动同步的学习计划。"
+      });
+    }
+    if (!repository.remoteEndpoint) {
+      const message = "计划自动同步等待远端 API 配置。";
+      state.planRepository = normalizePlanRepository({
+        ...repository,
+        lastCheckedAt: new Date().toISOString(),
+        lastError: message
+      });
+      saveState();
+      return Promise.resolve({ ok: false, status: getPlanRepositoryStatus(), message });
+    }
+    state.planRepository = normalizePlanRepository({
+      ...repository,
+      autoSyncAttemptCount: repository.autoSyncAttemptCount + 1,
+      lastCheckedAt: new Date().toISOString(),
+      lastError: ""
+    });
+    saveState();
+    return Promise.resolve(pushPlanRepositoryToRemote({ ...options, autoSync: true }));
+  }
+
+  function detectPlanRepositoryConflicts(incomingPlans, repository) {
+    if (!repository.pendingAutoSync) {
+      return [];
+    }
+    const lastSyncTime = Date.parse(repository.lastRemoteSyncAt || repository.lastImportedAt || repository.lastExportedAt || 0) || 0;
+    const localById = new Map(state.plans.map((plan) => [plan.id, normalizePlan(plan)]));
+    return incomingPlans
+      .map(normalizePlan)
+      .filter(Boolean)
+      .map((incoming) => {
+        const local = localById.get(incoming.id);
+        if (!local) return null;
+        const localUpdated = Date.parse(local.updatedAt || local.createdAt || "") || 0;
+        const remoteUpdated = Date.parse(incoming.updatedAt || incoming.createdAt || "") || 0;
+        const bothChangedAfterSync = localUpdated > lastSyncTime && remoteUpdated > lastSyncTime;
+        const contentDiffers = stablePlanStringify(local) !== stablePlanStringify(incoming);
+        return bothChangedAfterSync && contentDiffers
+          ? {
+              id: incoming.id,
+              title: incoming.title || local.title || incoming.id,
+              localUpdatedAt: local.updatedAt,
+              remoteUpdatedAt: incoming.updatedAt
+            }
+          : null;
+      })
+      .filter(Boolean);
+  }
+
+  function stablePlanStringify(value) {
+    if (Array.isArray(value)) {
+      return `[${value.map(stablePlanStringify).join(",")}]`;
+    }
+    if (value && typeof value === "object") {
+      return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stablePlanStringify(value[key])}`).join(",")}}`;
+    }
+    return JSON.stringify(value);
+  }
+
   function getPlanRepositoryRemoteConfig() {
     const repository = normalizePlanRepository(state.planRepository);
     return {
@@ -4545,6 +4729,10 @@
         mode: "local-json",
         remoteEndpoint: "",
         remoteToken: "",
+        autoSyncEnabled: false,
+        pendingAutoSync: false,
+        pendingSince: null,
+        pendingReason: "",
         lastCheckedAt: new Date().toISOString(),
         lastRemoteStatus: "",
         lastError: ""
@@ -4573,6 +4761,7 @@
       mode: "remote-api",
       remoteEndpoint: validation.endpoint,
       remoteToken,
+      autoSyncEnabled: config.autoSyncEnabled === false ? false : true,
       lastCheckedAt: new Date().toISOString(),
       lastRemoteStatus: "远端计划 API 配置已保存，尚未检查服务可用性。",
       lastError: ""
@@ -4749,10 +4938,10 @@
     if (!packageResult.ok) {
       return packageResult;
     }
-    return pushPlanRepositoryToRemoteAsync(repository, fetchApi, packageResult.package);
+    return pushPlanRepositoryToRemoteAsync(repository, fetchApi, packageResult.package, options);
   }
 
-  async function pushPlanRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage) {
+  async function pushPlanRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage, options = {}) {
     try {
       const response = await fetchApi(
         repository.remoteEndpoint,
@@ -4785,6 +4974,16 @@
         lastExportedAt: now,
         lastExportedPlanCount: planCount,
         lastPackageId: acceptedPackageId,
+        pendingAutoSync: false,
+        pendingSince: null,
+        pendingReason: "",
+        pendingPlanCount: 0,
+        autoSyncAttemptCount: 0,
+        lastAutoSyncAt: options.autoSync ? now : repository.lastAutoSyncAt,
+        lastAutoSyncStatus: options.autoSync ? `自动同步已推送 ${planCount} 份计划。` : repository.lastAutoSyncStatus,
+        lastSyncConflictAt: null,
+        lastSyncConflictCount: 0,
+        lastSyncConflictPlanIds: [],
         lastRemoteStatus: `已推送 ${planCount} 份计划到远端 API。`,
         lastError: ""
       });
@@ -4832,8 +5031,31 @@
         return { ok: false, status: getPlanRepositoryStatus(), message };
       }
 
-      const imported = importPlanRepositoryPackage(parsed.package, { mode: options.mode });
       const now = new Date().toISOString();
+      const incomingPlans = parsed.package.plans.map(normalizePlan).filter(Boolean);
+      const conflicts = options.force === true ? [] : detectPlanRepositoryConflicts(incomingPlans, repository);
+      if (conflicts.length) {
+        state.planRepository = normalizePlanRepository({
+          ...repository,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastRemotePlanCount: incomingPlans.length,
+          lastSyncConflictAt: now,
+          lastSyncConflictCount: conflicts.length,
+          lastSyncConflictPlanIds: conflicts.map((item) => item.id),
+          lastError: `远端计划与本机待同步变更存在 ${conflicts.length} 个冲突，请先推送本机计划或使用强制拉取。`
+        });
+        saveState();
+        return {
+          ok: false,
+          conflict: true,
+          conflicts,
+          status: getPlanRepositoryStatus(),
+          message: state.planRepository.lastError
+        };
+      }
+
+      const imported = importPlanRepositoryPackage(parsed.package, { mode: options.mode, skipAutoSync: true });
       if (!imported.ok) {
         state.planRepository = normalizePlanRepository({
           ...repository,
@@ -4855,6 +5077,13 @@
         lastRemoteDirection: "pull",
         lastRemotePlanCount: planCount,
         lastPackageId: parsed.package.packageId || imported.status?.lastPackageId || null,
+        pendingAutoSync: options.force === true ? false : state.planRepository.pendingAutoSync,
+        pendingSince: options.force === true ? null : state.planRepository.pendingSince,
+        pendingReason: options.force === true ? "" : state.planRepository.pendingReason,
+        pendingPlanCount: options.force === true ? 0 : state.planRepository.pendingPlanCount,
+        lastSyncConflictAt: null,
+        lastSyncConflictCount: 0,
+        lastSyncConflictPlanIds: [],
         lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
         lastError: ""
       });
@@ -5860,6 +6089,8 @@
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
     configurePlanRepositoryRemote,
+    queuePlanRepositorySync,
+    flushPlanRepositoryAutoSync,
     importPlanRepositoryPackage,
     checkRemotePlanRepository,
     pushPlanRepositoryToRemote,

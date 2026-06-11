@@ -352,6 +352,8 @@ assert(!window.MRAppState.getPlanExport("missing-plan").ok, "不存在的计划�
 const planRepositoryStatus = window.MRAppState.getPlanRepositoryStatus();
 assert(planRepositoryStatus.ok && planRepositoryStatus.planCount >= 2, "计划 repository 应统计本机计划数量。");
 assert(!planRepositoryStatus.remoteConfigured, "未配置远端时不应伪造云端计划仓库。");
+assert(planRepositoryStatus.pendingAutoSync, "生成和修改本机计划后应进入待自动同步队列。");
+assert(planRepositoryStatus.pendingReason, "待自动同步队列应记录变更原因。");
 const planRepositoryPackage = window.MRAppState.getPlanRepositoryPackage();
 assert(planRepositoryPackage.ok, "计划 repository 应能生成 JSON 同步包。");
 assert(planRepositoryPackage.package.kind === "mr-calligraphy-plan-repository-v1", "计划同步包应包含稳定 kind。");
@@ -390,6 +392,7 @@ async function runRemoteRepositoryChecks() {
   });
   assert(configuredRemote.ok, "远端计划 API 配置应可写入本机状态。");
   assert(configuredRemote.status.remoteConfigured, "保存远端配置后应显示已配置。");
+  assert(configuredRemote.status.autoSyncEnabled, "保存远端配置后应默认开启自动同步队列。");
 
   const remotePlan = {
     ...planRepositoryPackage.package.plans[0],
@@ -397,7 +400,7 @@ async function runRemoteRepositoryChecks() {
     title: "远端拉取的跨设备计划",
     createdAt: "2026-06-13T08:00:00.000Z"
   };
-  const remotePackage = {
+  let remotePackage = {
     ...planRepositoryPackage.package,
     packageId: "remote-package-test",
     exportedAt: "2026-06-13T08:10:00.000Z",
@@ -436,10 +439,39 @@ async function runRemoteRepositoryChecks() {
   assert(capturedPushPackage.kind === "mr-calligraphy-plan-repository-v1", "远端推送应发送稳定计划仓库包。");
   assert(capturedPushPackage.plans.length >= 3, "远端推送应包含当前本机计划列表。");
   assert(pushedRemote.packageId === "remote-accepted-package", "推送结果应记录远端接收的 packageId。");
+  assert(!pushedRemote.status.pendingAutoSync, "推送成功后应清空待自动同步队列。");
 
   const pulledRemote = await window.MRAppState.pullPlanRepositoryFromRemote();
   assert(pulledRemote.ok && pulledRemote.importedCount === 1, "拉取远端计划包应导入新增计划。");
   assert(window.MRAppState.getPlan("plan-remote-pulled").title === "远端拉取的跨设备计划", "远端拉取计划应可从计划历史读取。");
+
+  const conflictLocalPlan = window.MRAppState.getPlan("plan-remote-pulled");
+  const conflictUpdate = window.MRAppState.updatePlanItem("plan-remote-pulled", conflictLocalPlan.items[0].id, {
+    title: "本机修改后的跨设备计划项"
+  });
+  assert(conflictUpdate.ok, "本机修改远端拉取计划应成功。");
+  assert(window.MRAppState.getPlanRepositoryStatus().pendingAutoSync, "本机修改远端计划后应重新进入待同步队列。");
+  remotePackage = {
+    ...remotePackage,
+    packageId: "remote-conflict-package",
+    exportedAt: "2030-01-01T00:00:00.000Z",
+    plans: [{
+      ...conflictLocalPlan,
+      title: "远端也修改过的跨设备计划",
+      updatedAt: "2030-01-01T00:00:00.000Z"
+    }]
+  };
+  const conflictPull = await window.MRAppState.pullPlanRepositoryFromRemote();
+  assert(!conflictPull.ok && conflictPull.conflict, "本机待同步变更和远端同计划更新冲突时不应静默覆盖。");
+  assert(conflictPull.conflicts[0].id === "plan-remote-pulled", "冲突结果应指出具体计划 ID。");
+  assert(window.MRAppState.getPlan("plan-remote-pulled").title === "远端拉取的跨设备计划", "冲突拉取不应覆盖本机计划标题。");
+  assert(window.MRAppState.getPlan("plan-remote-pulled").items[0].title === "本机修改后的跨设备计划项", "冲突拉取不应覆盖本机待同步计划项。");
+  assert(window.MRAppState.getPlanRepositoryStatus().lastSyncConflictCount === 1, "计划 repository 应持久化冲突数量。");
+
+  const flushedAutoSync = await window.MRAppState.flushPlanRepositoryAutoSync();
+  assert(flushedAutoSync.ok, "待同步队列应可通过 flush 推送到远端。");
+  assert(!flushedAutoSync.status.pendingAutoSync, "自动同步 flush 成功后应清空队列。");
+  assert(flushedAutoSync.status.lastAutoSyncAt, "自动同步 flush 成功后应记录时间。");
 
   const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
   assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
@@ -454,11 +486,14 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.mode === "remote-api", "计划 repository 应持久化远端 API 模式。");
   assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
   assert(persistedPlanState.planRepository.lastImportedPlanCount === 1, "计划 repository 导入状态应持久化到 localStorage。");
-  assert(persistedPlanState.planRepository.lastPackageId === "remote-package-test", "计划 repository 应持久化最近远端 packageId。");
-  assert(persistedPlanState.planRepository.lastRemoteDirection === "pull", "计划 repository 应记录最近远端同步方向。");
-  assert(persistedPlanState.planRepository.lastRemotePlanCount === 1, "计划 repository 应记录最近远端计划数量。");
+  assert(persistedPlanState.planRepository.lastPackageId === "remote-accepted-package", "计划 repository 应持久化最近远端 packageId。");
+  assert(persistedPlanState.planRepository.lastRemoteDirection === "push", "计划 repository 应记录最近远端同步方向。");
+  assert(persistedPlanState.planRepository.lastRemotePlanCount === persistedPlanState.plans.length, "计划 repository 应记录最近远端计划数量。");
+  assert(!persistedPlanState.planRepository.pendingAutoSync, "计划 repository 自动同步成功后不应继续显示待同步。");
+  assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
+  assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "自动同步成功后应清理冲突计数。");
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告原生 PDF、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告原生 PDF、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划自动同步队列、计划同步冲突检测、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 function createJsonResponse(payload, ok = true, status = 200) {
