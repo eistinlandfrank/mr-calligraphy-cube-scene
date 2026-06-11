@@ -334,6 +334,30 @@ assert(!window.MRAppState.getPlanDependencyGraph("missing-plan").ok, "不存在�
 assert(!window.MRAppState.getPlanCycleStatus("missing-plan").ok, "不存在的计划不应伪造周期状态。");
 assert(!window.MRAppState.getPlanExport("missing-plan").ok, "不存在的计划不应伪造导出成功。");
 
+const planRepositoryStatus = window.MRAppState.getPlanRepositoryStatus();
+assert(planRepositoryStatus.ok && planRepositoryStatus.planCount >= 2, "计划 repository 应统计本机计划数量。");
+assert(!planRepositoryStatus.remoteConfigured, "未配置远端时不应伪造云端计划仓库。");
+const planRepositoryPackage = window.MRAppState.getPlanRepositoryPackage();
+assert(planRepositoryPackage.ok, "计划 repository 应能生成 JSON 同步包。");
+assert(planRepositoryPackage.package.kind === "mr-calligraphy-plan-repository-v1", "计划同步包应包含稳定 kind。");
+assert(planRepositoryPackage.package.plans.length >= 2, "计划同步包应包含本机计划列表。");
+assert(planRepositoryPackage.message.includes("本机 JSON 同步包"), "计划同步包应明确本机边界。");
+const importedPlan = {
+  ...planRepositoryPackage.package.plans[0],
+  id: "plan-imported-cross-device",
+  title: "导入的跨设备计划草案",
+  createdAt: "2026-06-12T08:00:00.000Z"
+};
+const repositoryImport = window.MRAppState.importPlanRepositoryPackage(JSON.stringify({
+  ...planRepositoryPackage.package,
+  packageId: "plan-package-test",
+  plans: [importedPlan]
+}));
+assert(repositoryImport.ok && repositoryImport.importedCount === 1, "计划同步包应能导入新增计划。");
+assert(window.MRAppState.getPlan("plan-imported-cross-device").title === "导入的跨设备计划草案", "导入计划应可从计划历史读取。");
+const remoteCheck = window.MRAppState.checkRemotePlanRepository();
+assert(!remoteCheck.ok && remoteCheck.message.includes("尚未配置远端计划 repository"), "未配置远端时应明确失败而不是伪造同步成功。");
+
 const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
 assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
@@ -344,8 +368,10 @@ assert(persistedPlanState.plans[1].cycleRule.previousPlanId === latestPlan.id, "
 assert(persistedPlanState.planReminderService.enabled, "本机提醒启用状态应持久化到 localStorage。");
 assert(persistedPlanState.planReminderService.lastPlanId === latestPlan.id, "本机提醒应记录最近计划 ID。");
 assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
+assert(persistedPlanState.planRepository.lastImportedPlanCount === 1, "计划 repository 导入状态应持久化到 localStorage。");
+assert(persistedPlanState.planRepository.lastPackageId === "plan-package-test", "计划 repository 应持久化最近同步包 ID。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划依赖图、计划周期循环和计划离线导出已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、计划依赖图、计划周期循环和计划离线导出已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

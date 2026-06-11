@@ -8,6 +8,8 @@
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
+  const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
+  const PLAN_REPOSITORY_BOUNDARY = "当前同步仓库是本机 JSON 同步包，可用于手动迁移；还不是云端账号同步、教师端排课或后台推送。";
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -293,6 +295,7 @@
       reports: Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [],
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       planReminderService: normalizePlanReminderService(source?.planReminderService),
+      planRepository: normalizePlanRepository(source?.planRepository),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
@@ -502,6 +505,21 @@
       lastPlanId: source.lastPlanId ? String(source.lastPlanId) : null,
       lastItemId: source.lastItemId ? String(source.lastItemId) : null,
       lastReminderFingerprint: source.lastReminderFingerprint ? String(source.lastReminderFingerprint) : null
+    };
+  }
+
+  function normalizePlanRepository(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    return {
+      mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
+      remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
+      lastExportedAt: normalizePlanDate(source.lastExportedAt),
+      lastImportedAt: normalizePlanDate(source.lastImportedAt),
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      lastExportedPlanCount: normalizeInteger(source.lastExportedPlanCount, 0, 0, 9999),
+      lastImportedPlanCount: normalizeInteger(source.lastImportedPlanCount, 0, 0, 9999),
+      lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
 
@@ -1588,6 +1606,47 @@
       planId: plan.id,
       title: plan.title,
       ...clone(plan.cycleStatus || buildPlanCycleStatus(plan, plan.progress))
+    };
+  }
+
+  function getPlanRepositoryStatus() {
+    const repository = normalizePlanRepository(state.planRepository);
+    const planCount = state.plans.length;
+    const remoteConfigured = Boolean(repository.remoteEndpoint);
+    let tone = "idle";
+    let message = planCount
+      ? `本机同步仓库有 ${planCount} 份计划，可导出 JSON 同步包。`
+      : "还没有可同步的学习计划。";
+
+    if (repository.lastImportedAt) {
+      tone = "ready";
+      message = `最近导入 ${repository.lastImportedPlanCount} 份计划：${formatPlanDate(repository.lastImportedAt)}。`;
+    } else if (repository.lastExportedAt) {
+      tone = "ready";
+      message = `最近导出 ${repository.lastExportedPlanCount} 份计划：${formatPlanDate(repository.lastExportedAt)}。`;
+    }
+    if (repository.lastError) {
+      tone = "warning";
+      message = repository.lastError;
+    }
+
+    return {
+      ok: true,
+      kind: PLAN_REPOSITORY_KIND,
+      mode: repository.mode,
+      remoteConfigured,
+      remoteEndpoint: remoteConfigured ? repository.remoteEndpoint : "",
+      planCount,
+      tone,
+      message,
+      boundary: PLAN_REPOSITORY_BOUNDARY,
+      lastExportedAt: repository.lastExportedAt,
+      lastImportedAt: repository.lastImportedAt,
+      lastCheckedAt: repository.lastCheckedAt,
+      lastExportedPlanCount: repository.lastExportedPlanCount,
+      lastImportedPlanCount: repository.lastImportedPlanCount,
+      lastPackageId: repository.lastPackageId,
+      lastError: repository.lastError
     };
   }
 
@@ -3986,6 +4045,184 @@
     };
   }
 
+  function getPlanRepositoryPackage(options = {}) {
+    const selectedIds = Array.isArray(options.planIds)
+      ? new Set(options.planIds.map(String).filter(Boolean))
+      : null;
+    const plans = state.plans
+      .filter((plan) => !selectedIds || selectedIds.has(plan.id))
+      .map((plan) => normalizePlan(plan))
+      .filter(Boolean);
+    if (!plans.length) {
+      return {
+        ok: false,
+        message: "还没有可导出的学习计划同步包。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const packageId = `plan-repository-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const repository = getPlanRepositoryStatus();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-plan-repository-${Date.now()}.json`,
+      package: {
+        kind: PLAN_REPOSITORY_KIND,
+        version: VERSION,
+        packageId,
+        exportedAt,
+        storageKey: STORAGE_KEY,
+        source: {
+          mode: repository.mode,
+          boundary: PLAN_REPOSITORY_BOUNDARY
+        },
+        summary: {
+          planCount: plans.length,
+          latestPlanId: plans[plans.length - 1]?.id || null,
+          latestPlanTitle: plans[plans.length - 1]?.title || ""
+        },
+        plans: clone(plans)
+      },
+      message: `已生成 ${plans.length} 份计划的本机 JSON 同步包。${PLAN_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function downloadPlanRepository(options = {}) {
+    const result = getPlanRepositoryPackage(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadJson(result.package, result.filename);
+    const now = new Date().toISOString();
+    state.planRepository = normalizePlanRepository({
+      ...state.planRepository,
+      mode: "local-json",
+      lastExportedAt: now,
+      lastCheckedAt: now,
+      lastExportedPlanCount: result.package.plans.length,
+      lastPackageId: result.package.packageId,
+      lastError: ""
+    });
+    addEvent("plan-repository-export", `导出计划同步包：${result.package.plans.length} 份计划`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      status: getPlanRepositoryStatus(),
+      message: `已下载计划 JSON 同步包：${result.filename}。${PLAN_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function importPlanRepositoryPackage(input, options = {}) {
+    const parsed = parsePlanRepositoryPackage(input);
+    if (!parsed.ok) {
+      recordPlanRepositoryError(parsed.message);
+      return parsed;
+    }
+    const incomingPlans = parsed.package.plans
+      .map(normalizePlan)
+      .filter(Boolean);
+    if (!incomingPlans.length) {
+      const message = "同步包里没有可导入的学习计划。";
+      recordPlanRepositoryError(message);
+      return { ok: false, message };
+    }
+
+    const mode = options.mode === "replace" ? "replace" : "merge";
+    const existingIndex = new Map(state.plans.map((plan, index) => [plan.id, index]));
+    let importedCount = 0;
+    let updatedCount = 0;
+    if (mode === "replace") {
+      state.plans = incomingPlans;
+      importedCount = incomingPlans.length;
+      updatedCount = 0;
+    } else {
+      incomingPlans.forEach((plan) => {
+        if (existingIndex.has(plan.id)) {
+          state.plans[existingIndex.get(plan.id)] = plan;
+          updatedCount += 1;
+        } else {
+          state.plans.push(plan);
+          existingIndex.set(plan.id, state.plans.length - 1);
+          importedCount += 1;
+        }
+      });
+    }
+
+    const now = new Date().toISOString();
+    state.planRepository = normalizePlanRepository({
+      ...state.planRepository,
+      mode: "local-json",
+      lastImportedAt: now,
+      lastCheckedAt: now,
+      lastImportedPlanCount: incomingPlans.length,
+      lastPackageId: parsed.package.packageId || null,
+      lastError: ""
+    });
+    addEvent("plan-repository-import", `导入计划同步包：新增 ${importedCount}，更新 ${updatedCount}`);
+    saveState();
+    return {
+      ok: true,
+      mode,
+      importedCount,
+      updatedCount,
+      totalPlanCount: state.plans.length,
+      status: getPlanRepositoryStatus(),
+      message: `已导入计划同步包：新增 ${importedCount} 份，更新 ${updatedCount} 份。${PLAN_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function parsePlanRepositoryPackage(input) {
+    let source = input;
+    if (typeof input === "string") {
+      try {
+        source = JSON.parse(input);
+      } catch (error) {
+        return { ok: false, message: "计划同步包 JSON 解析失败。" };
+      }
+    }
+    if (!source || typeof source !== "object") {
+      return { ok: false, message: "计划同步包格式无效。" };
+    }
+    if (source.kind !== PLAN_REPOSITORY_KIND) {
+      return { ok: false, message: "这不是 MR 书法学习计划同步包。" };
+    }
+    if (!Array.isArray(source.plans)) {
+      return { ok: false, message: "计划同步包缺少 plans 数组。" };
+    }
+    return { ok: true, package: source };
+  }
+
+  function recordPlanRepositoryError(message) {
+    state.planRepository = normalizePlanRepository({
+      ...state.planRepository,
+      lastCheckedAt: new Date().toISOString(),
+      lastError: message
+    });
+    saveState();
+  }
+
+  function checkRemotePlanRepository() {
+    const repository = normalizePlanRepository(state.planRepository);
+    const now = new Date().toISOString();
+    const remoteConfigured = Boolean(repository.remoteEndpoint);
+    state.planRepository = normalizePlanRepository({
+      ...repository,
+      mode: remoteConfigured ? "remote-api" : "local-json",
+      lastCheckedAt: now,
+      lastError: remoteConfigured ? "" : "尚未配置远端计划 repository；当前只能使用本机 JSON 同步包。"
+    });
+    saveState();
+    const status = getPlanRepositoryStatus();
+    return {
+      ok: remoteConfigured,
+      status,
+      message: remoteConfigured
+        ? `远端计划 repository 已配置：${repository.remoteEndpoint}。`
+        : `${status.message} ${PLAN_REPOSITORY_BOUNDARY}`
+    };
+  }
+
   function downloadReportComparison(reportId = null) {
     const result = getReportComparisonExport(reportId);
     if (!result.ok) {
@@ -4945,6 +5182,8 @@
     getPlanDependencyGraph,
     getPlanCycleStatus,
     getPlanReminderServiceStatus,
+    getPlanRepositoryStatus,
+    getPlanRepositoryPackage,
     getPlanExport,
     getReportPreview,
     getReportDetail,
@@ -4966,6 +5205,8 @@
     clearHistoryTrash,
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
+    importPlanRepositoryPackage,
+    checkRemotePlanRepository,
     setMode,
     selectDailyGlyph,
     rotateCopybook,
@@ -4995,6 +5236,7 @@
     deletePlanItem,
     createReport,
     downloadPlan,
+    downloadPlanRepository,
     downloadReport,
     downloadReportComparison,
     downloadArtworkSharePage,

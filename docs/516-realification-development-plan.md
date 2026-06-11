@@ -4338,3 +4338,51 @@
 
 - 删除、批量删除、清空回收站等高风险操作仍保留浏览器确认框。
 - 学习档案仍是本机浏览器状态，不是跨设备归档或服务端分页。
+
+### 2026-06-11：新增学习计划同步仓库
+
+功能名：前台学习计划 JSON 同步仓库和远端边界。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRAppState` 新增 `planRepository`，记录同步模式、最近导入/导出时间、同步包 ID、计划数量和远端未配置错误。
+- 新增 `MRAppState.getPlanRepositoryStatus()`，可读取本机计划仓库状态和同步边界。
+- 新增 `MRAppState.getPlanRepositoryPackage()` 和 `downloadPlanRepository()`，可导出 `mr-calligraphy-plan-repository-*.json` 同步包。
+- 新增 `MRAppState.importPlanRepositoryPackage()`，可导入同步包并按计划 ID 合并新增或更新计划。
+- 新增 `MRAppState.checkRemotePlanRepository()`，没有远端端点时返回明确失败，不伪造云端同步成功。
+- 前台学习计划面板新增同步仓库状态条、“导出同步包”“导入同步包”和“检查远端”入口。
+- 学习状态检查新增同步包 kind、导入新增计划、远端未配置失败和同步状态持久化断言。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，生成至少一份学习计划。
+- 点击“导出同步包”，浏览器应下载 `mr-calligraphy-plan-repository-*.json`。
+- 点击“导入同步包”，选择合法同步包后应合并计划并刷新计划历史。
+- 点击“检查远端”，当前静态版应提示尚未配置远端计划 repository。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- JSON 同步包是手动跨浏览器/跨设备迁移，不是自动云端账号同步。
+- 远端 API adapter、账号登录、教师端通知和后台推送仍未接入。

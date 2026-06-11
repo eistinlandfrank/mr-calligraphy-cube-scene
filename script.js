@@ -895,10 +895,15 @@ const els = {
   planSummary: document.getElementById("planSummary"),
   planReminderSummary: document.getElementById("planReminderSummary"),
   planReminderServiceSummary: document.getElementById("planReminderServiceSummary"),
+  planRepositorySummary: document.getElementById("planRepositorySummary"),
   planCycleSummary: document.getElementById("planCycleSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
   planReminderPermissionButton: document.getElementById("planReminderPermissionButton"),
+  planRepositoryExportButton: document.getElementById("planRepositoryExportButton"),
+  planRepositoryImportButton: document.getElementById("planRepositoryImportButton"),
+  planRepositoryRemoteButton: document.getElementById("planRepositoryRemoteButton"),
+  planRepositoryImportInput: document.getElementById("planRepositoryImportInput"),
   planExportButton: document.getElementById("planExportButton"),
   planNextCycleButton: document.getElementById("planNextCycleButton"),
   planDependencyGraph: document.getElementById("planDependencyGraph"),
@@ -3795,6 +3800,10 @@ function bindPlanControls() {
 
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
   els.planReminderPermissionButton?.addEventListener("click", requestActivePlanReminderPermission);
+  els.planRepositoryExportButton?.addEventListener("click", downloadPlanRepositoryPackage);
+  els.planRepositoryImportButton?.addEventListener("click", choosePlanRepositoryImport);
+  els.planRepositoryRemoteButton?.addEventListener("click", checkPlanRepositoryRemote);
+  els.planRepositoryImportInput?.addEventListener("change", importPlanRepositoryFile);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
   els.planDependencyGraph?.addEventListener("click", handlePlanDependencyClick);
@@ -5534,6 +5543,7 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     els.planCycleSummary.dataset.cycleTone = cycleStatus?.tone || "idle";
   }
   renderPlanReminderService(plan);
+  renderPlanRepositoryStatus(planHistory);
   if (els.planAddItem) {
     els.planAddItem.disabled = !plan;
   }
@@ -5657,6 +5667,26 @@ function renderPlanReminderService(plan) {
     if (dispatched?.ok) {
       showNotice(dispatched.message);
     }
+  }
+}
+
+function renderPlanRepositoryStatus(planHistory = []) {
+  const status = window.MRAppState?.getPlanRepositoryStatus?.();
+  if (els.planRepositorySummary) {
+    els.planRepositorySummary.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "计划同步仓库尚未初始化。";
+    els.planRepositorySummary.dataset.repositoryTone = status?.tone || "idle";
+  }
+  if (els.planRepositoryExportButton) {
+    els.planRepositoryExportButton.disabled = !planHistory.length;
+  }
+  if (els.planRepositoryImportButton) {
+    els.planRepositoryImportButton.disabled = !window.FileReader;
+  }
+  if (els.planRepositoryRemoteButton) {
+    els.planRepositoryRemoteButton.disabled = false;
+    els.planRepositoryRemoteButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
   }
 }
 
@@ -5940,6 +5970,54 @@ function downloadActivePlan() {
   const planId = activePlanId || els.planHistorySelect?.value || "";
   const result = window.MRAppState?.downloadPlan?.(planId);
   showNotice(result?.message || "暂无可导出的学习计划。");
+}
+
+function downloadPlanRepositoryPackage() {
+  const result = window.MRAppState?.downloadPlanRepository?.();
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderPlanPanel(currentIndex);
+}
+
+function choosePlanRepositoryImport() {
+  if (!els.planRepositoryImportInput) {
+    showNotice("当前浏览器不支持选择同步包文件。");
+    return;
+  }
+  els.planRepositoryImportInput.value = "";
+  els.planRepositoryImportInput.click();
+}
+
+function importPlanRepositoryFile(event) {
+  const file = event.target.files?.[0] || null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const result = window.MRAppState?.importPlanRepositoryPackage?.(String(reader.result || ""));
+    if (result?.ok) {
+      activePlanId = window.MRAppState?.getLatestPlan?.()?.id || activePlanId;
+      renderPlanPanel(currentIndex);
+      updateSceneText(currentIndex);
+      updatePathPanel(currentIndex);
+      renderLearningStateSummary();
+    } else {
+      renderPlanPanel(currentIndex);
+    }
+    showNotice(result?.message || "计划同步包导入失败。");
+  });
+  reader.addEventListener("error", () => {
+    showNotice("计划同步包读取失败。");
+  });
+  reader.readAsText(file);
+}
+
+function checkPlanRepositoryRemote() {
+  const result = window.MRAppState?.checkRemotePlanRepository?.();
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderPlanPanel(currentIndex);
 }
 
 async function requestActivePlanReminderPermission() {
