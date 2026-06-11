@@ -6409,6 +6409,143 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.07);
 }
 
+.plan-item-dialog {
+  width: min(420px, calc(100vw - 28px));
+  max-height: calc(100vh - 36px);
+  padding: 0;
+  border: 1px solid rgba(116, 255, 219, 0.22);
+  border-radius: 8px;
+  color: #fffaf1;
+  background: rgba(18, 23, 22, 0.98);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.46);
+}
+
+.plan-item-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.58);
+}
+
+.plan-item-form {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.plan-item-dialog-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plan-item-dialog-head strong {
+  display: block;
+  color: #fff4df;
+  font-size: 16px;
+  line-height: 1.25;
+}
+
+.plan-item-dialog-head button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.8);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.plan-item-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: rgba(255, 250, 241, 0.64);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.plan-item-form input,
+.plan-item-form textarea,
+.plan-item-form select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.plan-item-form input,
+.plan-item-form select {
+  height: 34px;
+  padding: 0 9px;
+}
+
+.plan-item-form textarea {
+  resize: vertical;
+  min-height: 76px;
+  padding: 8px 9px;
+  line-height: 1.45;
+}
+
+.plan-item-form input:focus-visible,
+.plan-item-form textarea:focus-visible,
+.plan-item-form select:focus-visible,
+.plan-item-dialog-head button:focus-visible,
+.plan-item-form > button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.58);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(116, 255, 219, 0.14);
+}
+
+.plan-item-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.plan-item-dialog-feedback {
+  min-height: 20px;
+  padding: 6px 8px;
+  border: 1px solid rgba(247, 215, 139, 0.34);
+  border-radius: 7px;
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.18);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.plan-item-dialog-feedback[hidden] {
+  display: none;
+}
+
+.plan-item-dialog-feedback[data-feedback-tone="danger"] {
+  border-color: rgba(255, 123, 123, 0.42);
+  color: #ffe0dc;
+  background: rgba(135, 47, 47, 0.2);
+}
+
+.plan-item-form > button {
+  min-height: 34px;
+  border: 1px solid rgba(116, 255, 219, 0.32);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.38);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.plan-item-form > button:hover,
+.plan-item-dialog-head button:hover {
+  border-color: rgba(116, 255, 219, 0.52);
+  background: rgba(47, 111, 104, 0.5);
+}
+
 .insight-stack {
   position: absolute;
   z-index: 6;
@@ -6515,6 +6652,10 @@ body.is-model-view .notice-panel {
 
   .history-batch {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .plan-item-form-grid {
+    grid-template-columns: 1fr;
   }
 
   .history-artwork-compare-grid {

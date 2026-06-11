@@ -4252,3 +4252,45 @@
 
 - 本机提醒只在当前浏览器和页面打开时可用，不是云端推送、跨设备提醒或教师端通知。
 - 远端计划 repository、账号同步和教师端提醒尚未接入。
+
+### 2026-06-11：新增计划项表单编辑
+
+功能名：前台学习计划项新增和编辑表单。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 前台新增 `planItemDialog` 计划项表单弹层，包含标题、说明、到期日期、提醒日期和复盘动作字段。
+- “新增计划项”和计划项“编辑”共用同一个表单，不再使用连续浏览器 `prompt()`。
+- 表单提交会校验标题长度和提醒/到期日期顺序；保存失败会在弹层内显示错误。
+- 保存成功后调用 `MRAppState.addPlanItem()` 或 `MRAppState.updatePlanItem()` 写入本机计划状态，并刷新计划列表、依赖图、场景文案和学习摘要。
+- smoke test 前台页面新增 `planItemDialog` 和 `planItemTitleInput` 标记，控件清单确认表单按钮带有 `real-local` 状态。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，点击“制定计划”生成计划。
+- 点击“新增计划项”，应打开表单弹层；保存后计划列表新增任务。
+- 点击某个计划项的“编辑”，应打开带当前数据的表单；保存后计划项标题、说明、到期、提醒和复盘动作更新。
+- 输入少于 2 个字符的标题，或让提醒日期晚于到期日期，应留在弹层内显示错误。
+
+当前验证结果：
+
+- `node --input-type=module --check < script.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 作品标签编辑和历史记录重命名仍使用浏览器 `prompt()`，后续还要继续升级为表单。
+- 该表单仍是本机计划编辑，不是跨设备计划或教师端排课。

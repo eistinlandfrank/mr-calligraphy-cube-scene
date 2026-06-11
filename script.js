@@ -893,6 +893,16 @@ const els = {
   planNextCycleButton: document.getElementById("planNextCycleButton"),
   planDependencyGraph: document.getElementById("planDependencyGraph"),
   planItemList: document.getElementById("planItemList"),
+  planItemDialog: document.getElementById("planItemDialog"),
+  planItemForm: document.getElementById("planItemForm"),
+  planItemDialogTitle: document.getElementById("planItemDialogTitle"),
+  planItemCancel: document.getElementById("planItemCancel"),
+  planItemTitleInput: document.getElementById("planItemTitleInput"),
+  planItemDetailInput: document.getElementById("planItemDetailInput"),
+  planItemDueInput: document.getElementById("planItemDueInput"),
+  planItemRemindInput: document.getElementById("planItemRemindInput"),
+  planItemReviewActionInput: document.getElementById("planItemReviewActionInput"),
+  planItemDialogFeedback: document.getElementById("planItemDialogFeedback"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -1001,6 +1011,7 @@ const REPORT_METRIC_GUIDES = {
   }
 };
 let activePlanId = null;
+let activePlanItemEditor = null;
 let isReplayVideoExporting = false;
 let isLecturePlaybackActive = false;
 let lecturePlaybackTimer = null;
@@ -3755,6 +3766,16 @@ function bindPlanControls() {
   els.planExportButton?.addEventListener("click", downloadActivePlan);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
   els.planDependencyGraph?.addEventListener("click", handlePlanDependencyClick);
+  els.planItemForm?.addEventListener("submit", submitPlanItemForm);
+  els.planItemCancel?.addEventListener("click", closePlanItemDialog);
+  els.planItemDialog?.addEventListener("cancel", () => {
+    activePlanItemEditor = null;
+  });
+  els.planItemDialog?.addEventListener("click", (event) => {
+    if (event.target === els.planItemDialog) {
+      closePlanItemDialog();
+    }
+  });
 
   els.planItemList?.addEventListener("change", (event) => {
     const input = event.target.closest("[data-plan-item-id]");
@@ -5726,7 +5747,8 @@ function handlePlanItemAction(event) {
   let result = null;
 
   if (action === "edit") {
-    result = editPlanItem(planId, itemId);
+    openPlanItemDialog("edit", planId, itemId);
+    return;
   } else if (action === "delete") {
     result = deletePlanItem(planId, itemId);
   } else if (action === "up" || action === "down") {
@@ -5752,34 +5774,51 @@ function handlePlanItemAction(event) {
   }
 }
 
-function editPlanItem(planId, itemId) {
+function openPlanItemDialog(mode, planId, itemId = null) {
   const plan = window.MRAppState?.getPlan?.(planId);
-  const item = plan?.items?.find((entry) => entry.id === itemId);
-  if (!item) {
-    return { ok: false, message: "未找到计划任务。" };
+  if (!plan) {
+    showNotice("请先生成一份学习计划。");
+    return;
+  }
+  const item = mode === "edit"
+    ? plan.items?.find((entry) => entry.id === itemId)
+    : null;
+  if (mode === "edit" && !item) {
+    showNotice("未找到计划任务。");
+    return;
   }
 
-  const title = window.prompt("计划项标题", item.title);
-  if (title === null) {
-    return null;
+  activePlanItemEditor = {
+    mode: mode === "edit" ? "edit" : "add",
+    planId,
+    itemId: item?.id || null
+  };
+  if (els.planItemDialogTitle) {
+    els.planItemDialogTitle.textContent = mode === "edit" ? "编辑计划项" : "新增计划项";
   }
-  const detail = window.prompt("计划项说明", item.detail || "");
-  if (detail === null) {
-    return null;
+  if (els.planItemTitleInput) {
+    els.planItemTitleInput.value = item?.title || "补充一次专项练习";
   }
-  const dueAt = window.prompt("到期日期（YYYY-MM-DD，可留空）", formatPlanInputDate(item.dueAt));
-  if (dueAt === null) {
-    return null;
+  if (els.planItemDetailInput) {
+    els.planItemDetailInput.value = item?.detail || (mode === "edit" ? "" : "写下这项练习的完成标准。");
   }
-  const remindAt = window.prompt("提醒日期（YYYY-MM-DD，可留空）", formatPlanInputDate(item.remindAt));
-  if (remindAt === null) {
-    return null;
+  if (els.planItemDueInput) {
+    els.planItemDueInput.value = item ? formatPlanInputDate(item.dueAt) : "";
   }
-  const reviewAction = window.prompt("复盘动作：practice / task / weakness / artwork / report / custom", item.reviewAction || "custom");
-  if (reviewAction === null) {
-    return null;
+  if (els.planItemRemindInput) {
+    els.planItemRemindInput.value = item ? formatPlanInputDate(item.remindAt) : "";
   }
-  return window.MRAppState?.updatePlanItem?.(planId, itemId, { title, detail, dueAt, remindAt, reviewAction });
+  if (els.planItemReviewActionInput) {
+    els.planItemReviewActionInput.value = item?.reviewAction || "custom";
+  }
+  setPlanItemDialogFeedback("");
+  if (els.planItemDialog?.showModal) {
+    els.planItemDialog.showModal();
+  } else if (els.planItemDialog) {
+    els.planItemDialog.hidden = false;
+    els.planItemDialog.setAttribute("open", "");
+  }
+  els.planItemTitleInput?.focus();
 }
 
 function deletePlanItem(planId, itemId) {
@@ -5800,39 +5839,69 @@ function addCustomPlanItem() {
     showNotice("请先点击“制定计划”，再新增自定义计划项。");
     return;
   }
+  openPlanItemDialog("add", planId);
+}
 
-  const title = window.prompt("新增计划项标题", "补充一次专项练习");
-  if (title === null) {
-    return;
+function closePlanItemDialog() {
+  activePlanItemEditor = null;
+  setPlanItemDialogFeedback("");
+  if (els.planItemDialog?.close) {
+    els.planItemDialog.close();
+  } else if (els.planItemDialog) {
+    els.planItemDialog.removeAttribute("open");
+    els.planItemDialog.hidden = true;
   }
-  const detail = window.prompt("计划项说明", "写下这项练习的完成标准。");
-  if (detail === null) {
-    return;
-  }
-  const dueAt = window.prompt("到期日期（YYYY-MM-DD，可留空自动安排）", "");
-  if (dueAt === null) {
-    return;
-  }
-  const remindAt = window.prompt("提醒日期（YYYY-MM-DD，可留空自动安排）", "");
-  if (remindAt === null) {
-    return;
-  }
-  const reviewAction = window.prompt("复盘动作：practice / task / weakness / artwork / report / custom", "custom");
-  if (reviewAction === null) {
+}
+
+function submitPlanItemForm(event) {
+  event.preventDefault();
+  if (!activePlanItemEditor) {
+    setPlanItemDialogFeedback("当前没有正在编辑的计划项。", "danger");
     return;
   }
 
-  const result = window.MRAppState?.addPlanItem?.(planId, { title, detail, dueAt, remindAt, reviewAction });
-  if (result?.message) {
-    showNotice(result.message);
+  const payload = {
+    title: String(els.planItemTitleInput?.value || "").trim(),
+    detail: String(els.planItemDetailInput?.value || "").trim(),
+    dueAt: els.planItemDueInput?.value || "",
+    remindAt: els.planItemRemindInput?.value || "",
+    reviewAction: els.planItemReviewActionInput?.value || "custom"
+  };
+  if (payload.title.length < 2) {
+    setPlanItemDialogFeedback("计划项标题至少需要 2 个字符。", "danger");
+    els.planItemTitleInput?.focus();
+    return;
   }
+  if (payload.dueAt && payload.remindAt && Date.parse(payload.remindAt) > Date.parse(payload.dueAt)) {
+    setPlanItemDialogFeedback("提醒日期不能晚于到期日期。", "danger");
+    els.planItemRemindInput?.focus();
+    return;
+  }
+
+  const result = activePlanItemEditor.mode === "edit"
+    ? window.MRAppState?.updatePlanItem?.(activePlanItemEditor.planId, activePlanItemEditor.itemId, payload)
+    : window.MRAppState?.addPlanItem?.(activePlanItemEditor.planId, payload);
   if (result?.ok) {
-    activePlanId = result.plan?.id || planId;
+    activePlanId = result.plan?.id || activePlanItemEditor.planId;
+    closePlanItemDialog();
+    if (result.message) {
+      showNotice(result.message);
+    }
     renderPlanPanel(currentIndex);
     updateSceneText(currentIndex);
     updatePathPanel(currentIndex);
     renderLearningStateSummary();
+    return;
   }
+
+  setPlanItemDialogFeedback(result?.message || "计划项保存失败。", "danger");
+}
+
+function setPlanItemDialogFeedback(message, tone = "idle") {
+  if (!els.planItemDialogFeedback) return;
+  els.planItemDialogFeedback.textContent = message;
+  els.planItemDialogFeedback.dataset.feedbackTone = tone;
+  els.planItemDialogFeedback.hidden = !message;
 }
 
 function downloadActivePlan() {

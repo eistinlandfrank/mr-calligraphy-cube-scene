@@ -292,6 +292,49 @@
           <div id="planDependencyGraph" class="plan-dependency-graph" data-plan-dependency-graph="planDependencyGraph" aria-label="计划依赖图"></div>
           <div id="planItemList" class="plan-item-list"></div>
         </section>
+
+        <dialog id="planItemDialog" class="plan-item-dialog" aria-labelledby="planItemDialogTitle">
+          <form id="planItemForm" class="plan-item-form">
+            <div class="plan-item-dialog-head">
+              <div>
+                <div class="panel-eyebrow">计划项</div>
+                <strong id="planItemDialogTitle">编辑计划项</strong>
+              </div>
+              <button data-feature-state="real-local" id="planItemCancel" type="button" aria-label="关闭计划项表单">取消</button>
+            </div>
+            <label>
+              <span>标题</span>
+              <input id="planItemTitleInput" name="title" type="text" maxlength="64" required>
+            </label>
+            <label>
+              <span>说明</span>
+              <textarea id="planItemDetailInput" name="detail" maxlength="140" rows="3"></textarea>
+            </label>
+            <div class="plan-item-form-grid">
+              <label>
+                <span>到期</span>
+                <input id="planItemDueInput" name="dueAt" type="date">
+              </label>
+              <label>
+                <span>提醒</span>
+                <input id="planItemRemindInput" name="remindAt" type="date">
+              </label>
+            </div>
+            <label>
+              <span>复盘动作</span>
+              <select id="planItemReviewActionInput" name="reviewAction">
+                <option value="practice">进入练习</option>
+                <option value="task">复盘任务步骤</option>
+                <option value="weakness">专项补强</option>
+                <option value="artwork">复盘作品</option>
+                <option value="report">查看报告</option>
+                <option value="custom">自定义复盘</option>
+              </select>
+            </label>
+            <div id="planItemDialogFeedback" class="plan-item-dialog-feedback" aria-live="polite"></div>
+            <button data-feature-state="real-local" id="planItemSave" type="submit">保存计划项</button>
+          </form>
+        </dialog>
       </section>
 
       <aside class="insight-stack" aria-label="实时反馈">
