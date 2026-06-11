@@ -7419,7 +7419,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "point-button";
-    button.dataset.featureState = "demo-content";
+    button.dataset.featureState = "real-local";
     button.textContent = item.label;
     button.classList.toggle("is-active", index === pointIndex);
     button.addEventListener("click", () => selectPoint(index));

@@ -3,7 +3,7 @@
 本项目是静态网页项目。基础 smoke test 使用无依赖 Node 脚本完成语法、控件、项目档案、项目 Schema 和页面可访问检查；浏览器级真实交互使用 Playwright 覆盖高风险闭环。
 
 - 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、项目 Schema 检查、学习状态检查、Playwright 测试源码、前台状态层、书写画布、项目 schema、项目档案、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
-- 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效。
+- 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效；同时扫描前台脚本动态生成控件的 `dataset.featureState` 字面量，避免运行时按钮回退到 `demo-content`。
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态，并验证 localStorage JSON 导入预览会显示字段级差异、字段恢复影响提示、字段 JSON 片段且支持深层字段选择性恢复；同时验证 IndexedDB 模型仓库会显示单模型新增/修改差异、当前/档案元数据片段、完整模型 JSON 安全预览、命名冲突提示，并支持只恢复勾选模型、冲突自动改名、替换本机同名模型和自定义档案模型名称。
 - 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
 - 项目 Schema 检查：模拟主后台和写实后台发布版本列表及导入模型，确认 `projectSchema` 会统计发布版本、发布说明、回滚动作和资产哈希。
@@ -38,7 +38,7 @@ SMOKE_BASE_URL=http://localhost:41496/ node scripts/smoke-test.js
 node scripts/control-inventory.js --check
 ```
 
-该命令会列出四个入口页面中 `real-local`、`real-export`、`real-published-local`、`demo-content`、`disabled`、缺失和非法状态的数量；旧 `real` 和 `demo` 仍兼容，但新增控件应优先使用细分状态。
+该命令会列出四个入口页面中 `real-local`、`real-export`、`real-published-local`、`demo-content`、`disabled`、缺失和非法状态的数量，并额外列出 `script.js dynamic` 中运行时控件的状态字面量；旧 `real` 和 `demo` 仍兼容，但新增控件应优先使用细分状态。
 
 ## 单独检查项目档案迁移
 

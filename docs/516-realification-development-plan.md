@@ -3981,3 +3981,40 @@
 
 - 这次真实化的是本机导航入口，不代表写实样张页已经具备云端发布或公开资产库能力。
 - 前台动态场景热点仍由 `SCENES` 静态内容渲染，后续仍要继续治理。
+
+### 2026-06-11：真实化动态热点控件
+
+功能名：前台运行时生成的场景热点按钮从演示内容改为本机真实交互，并纳入控件清单。
+
+涉及文件：
+
+- `script.js`
+- `scripts/control-inventory.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 前台 `updateInteractionPanel()` 生成的 `point-button` 从 `demo-content` 改为 `real-local`。
+- 场景热点点击会真实调用 `selectPoint()`，切换当前热点 active 状态、标题、正文、标签和指标。
+- `scripts/control-inventory.js` 新增对 `script.js` 动态控件状态字面量的扫描。
+- 若动态控件写死 `demo-content` 或非法状态，控件清单会失败。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，点击任一热点按钮，互动面板内容应切换。
+- 运行 `node scripts/control-inventory.js --check`，应看到 `script.js dynamic` 输出，且 `demo-content 0`。
+- 运行 `node scripts/smoke-test.js --base-url=http://localhost:41496/`，应通过控件清单和页面可访问检查。
+
+当前验证结果：
+
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+已知限制：
+
+- 这次真实化的是热点按钮交互本身；部分热点文案仍来自 `SCENES` 静态内容。
+- 热点选择当前不写入 URL 或长期状态，刷新后回到当前步骤默认热点。

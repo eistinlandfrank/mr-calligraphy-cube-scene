@@ -20,6 +20,9 @@ const PAGES = [
   "realistic-demo.html",
   "realistic-admin.html"
 ];
+const DYNAMIC_FILES = [
+  "script.js"
+];
 
 const options = {
   check: process.argv.includes("--check")
@@ -27,6 +30,7 @@ const options = {
 
 const failures = [];
 const summary = [];
+const dynamicSummary = [];
 
 PAGES.forEach((page) => {
   const html = fs.readFileSync(path.join(ROOT, page), "utf8");
@@ -64,11 +68,43 @@ PAGES.forEach((page) => {
   summary.push({ page, counts });
 });
 
+DYNAMIC_FILES.forEach((file) => {
+  const source = fs.readFileSync(path.join(ROOT, file), "utf8");
+  const assignments = [...source.matchAll(/\.dataset\.featureState\s*=\s*["']([^"']+)["']/g)].map((match) => ({
+    state: match[1],
+    source: match[0],
+    line: getLineNumber(source, match.index || 0)
+  }));
+  const counts = Object.fromEntries(VALID_STATES.map((state) => [state, 0]));
+  counts.invalid = 0;
+
+  assignments.forEach((assignment) => {
+    if (!VALID_STATE_SET.has(assignment.state)) {
+      counts.invalid += 1;
+      failures.push(`${file}:${assignment.line} 动态控件状态值无效 “${assignment.state}”：${assignment.source}`);
+      return;
+    }
+    counts[assignment.state] += 1;
+    if (assignment.state === "demo-content") {
+      failures.push(`${file}:${assignment.line} 动态控件不应写死 demo-content，请改为真实功能状态或显式禁用。`);
+    }
+  });
+
+  dynamicSummary.push({ file, counts });
+});
+
 summary.forEach(({ page, counts }) => {
   const stateSummary = VALID_STATES
     .map((state) => `${state} ${counts[state]}`)
     .join(", ");
   console.log(`${page}: ${stateSummary}, missing ${counts.missing}, invalid ${counts.invalid}`);
+});
+
+dynamicSummary.forEach(({ file, counts }) => {
+  const stateSummary = VALID_STATES
+    .map((state) => `${state} ${counts[state]}`)
+    .join(", ");
+  console.log(`${file} dynamic: ${stateSummary}, invalid ${counts.invalid}`);
 });
 
 if (failures.length) {
