@@ -25,9 +25,56 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("front practice saves real strokes and exports a report", async ({ page }) => {
+  const historyEndpointPath = "/e2e-history-repository";
+  const historyRequests = [];
+  let remoteHistoryPackage = null;
+
+  await page.route(`**${historyEndpointPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    historyRequests.push({
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+    if (method === "PUT") {
+      remoteHistoryPackage = {
+        ...body,
+        packageId: "e2e-history-package",
+        acceptedAt: new Date().toISOString()
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `远端学习档案 E2E 已接收 ${body.summary.total} 条记录。`,
+          remoteVersion: "e2e-history-v1",
+          packageId: remoteHistoryPackage.packageId,
+          package: remoteHistoryPackage
+        })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: remoteHistoryPackage
+          ? `远端学习档案 E2E 可读，当前包含 ${remoteHistoryPackage.summary.total} 条记录。`
+          : "远端学习档案 E2E 可访问，当前尚未接收档案包。",
+        remoteVersion: "e2e-history-v1",
+        package: remoteHistoryPackage
+      })
+    });
+  });
+
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
+  const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);
 
   await drawPracticeStroke(page);
   await expect(page.locator("#practiceCanvasStatus")).toContainText(/1 笔|2 笔|当前评分/);
@@ -77,14 +124,45 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportTeacherReviewStatus")).toContainText("暂无本机教师批注");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports[0].teacherReview).toBeNull();
+
+  await expect(page.locator("#historyPanel")).toBeVisible();
+  await page.locator(".history-repository-remote summary").click();
+  await page.locator("#historyRepositoryEndpointInput").fill(historyEndpoint);
+  await page.locator("#historyRepositoryTokenInput").fill("history-token");
+  await page.locator("#historyRepositorySaveRemoteButton").click();
+  await expect(page.locator("#historyRepositorySummary")).toContainText("已配置");
+
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#historyRepositorySummary")).toContainText("E2E 可访问");
+
+  await page.locator("#historyRepositoryPushButton").click();
+  await expect(page.locator("#historyRepositorySummary")).toContainText("已推送 3 条学习档案");
+
+  const putRequest = historyRequests.find((item) => item.method === "PUT");
+  expect(putRequest.authorization).toBe("Bearer history-token");
+  expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
+  expect(putRequest.body.summary.total).toBe(3);
+  expect(putRequest.body.records.reports).toHaveLength(1);
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastRemoteDirection).toBe("push");
+  expect(learningState.historyRepository.lastPackageId).toBe("e2e-history-package");
+
+  await page.locator("#historyRepositoryPullButton").click();
+  await expect(page.locator("#historyRepositorySummary")).toContainText("已从远端 API 拉取 3 条学习档案");
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
+  expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
+  expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token")).toBe(true);
 });
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
-  const remoteEndpoint = "https://e2e.example/remote-publish";
+  const remoteEndpointPath = "/e2e-remote-publish";
   const remoteRequests = [];
 
-  await page.route(remoteEndpoint, async (route) => {
+  await page.route(`**${remoteEndpointPath}`, async (route) => {
     const request = route.request();
     const method = request.method();
     const body = method === "POST" ? request.postDataJSON() : null;
@@ -129,6 +207,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
+  const remoteEndpoint = await getSameOriginEndpoint(page, remoteEndpointPath);
 
   await page.locator("#mainNewObjectName").fill(objectLabel);
   await page.locator("#mainNewObjectType").selectOption("box");
@@ -256,6 +335,10 @@ async function readJsonLocalStorage(page, key) {
     const raw = window.localStorage.getItem(storageKey);
     return raw ? JSON.parse(raw) : null;
   }, key);
+}
+
+async function getSameOriginEndpoint(page, path) {
+  return page.evaluate((endpointPath) => new URL(endpointPath, window.location.href).toString(), path);
 }
 
 async function expectCanvasHasVisiblePixels(page, selector) {

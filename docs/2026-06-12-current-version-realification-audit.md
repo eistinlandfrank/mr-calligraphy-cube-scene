@@ -165,7 +165,7 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 交付：
 
 - Playwright 覆盖报告教师批注保存、刷新复现、清除批注。第一版已补入 `tests/e2e/real-flows.spec.js`。
-- 覆盖学习档案远端同步成功和失败。
+- 覆盖学习档案远端同步成功和失败。成功路径第一版已补入前台 E2E，包含检查、推送、拉取和状态持久化；失败路径仍待补。
 - 覆盖计划冲突解决三种策略。
 - 覆盖主后台远端发布回执导出。第一版已补入主后台 E2E，包含模拟远端 API、审核、推送、回执持久化和导出。
 - 覆盖 WebGL canvas 非空像素。第一版已补入前台主房间、主后台和写实后台 E2E。
@@ -251,6 +251,7 @@ npm run test:e2e
 - 追加报告教师批注浏览器验收记录：E2E 已覆盖保存批注、写入 `ReportRecord.teacherReview`、刷新复现和清除批注。
 - 追加 WebGL 画布非空验收记录：E2E 会采样前台、主后台和写实后台 canvas 像素，避免只检查 DOM 存在。
 - 追加主后台远端发布回执验收记录：E2E 已覆盖 endpoint/token、检查远端、审核、推送、回执持久化和回执审计 HTML 下载。
+- 追加学习档案远端同步验收记录：E2E 已覆盖 endpoint/token、检查远端、PUT 推送同步包、GET 拉取同步包和 `historyRepository` 状态持久化。
 
 已知限制：
 

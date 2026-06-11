@@ -339,3 +339,34 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增主后台远端回执浏览器验收`
+
+## 16. 2026-06-12 学习档案远端同步浏览器验收
+
+本次把前台学习档案远端同步从数据层脚本扩展到浏览器真实流程。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 在真实书写、保存作品、导出报告和报告批注流程之后，继续打开学习档案远端 API 面板。
+- E2E 使用同源 `page.route()` 模拟学习档案仓库，覆盖 GET 检查、PUT 推送和再次 GET 拉取。
+- E2E 会配置 endpoint/token，点击“保存远端”“检查远端”“推送档案”“拉取档案”。
+- E2E 会断言 PUT body 是 `mr-calligraphy-history-repository-v1`，包含 3 条真实档案记录和报告记录。
+- E2E 会断言 Bearer token 被发送，并确认 `historyRepository.lastRemoteDirection`、`lastPackageId`、`lastRemoteRecordCount` 写回 `mr-calligraphy-learning-state-v1`。
+- 主后台远端发布 E2E 的 mock endpoint 同步改为同源路径，避免真实运行 Playwright 时触发浏览器 CORS 限制。
+
+真实化说明：
+
+- 数据来源：前台真实练习会话、保存作品和生成报告，而不是手工构造的空档案。
+- 写入状态：远端配置、推送结果和拉取结果写入 `mr-calligraphy-learning-state-v1.historyRepository`。
+- 成功反馈：学习档案仓库状态区显示远端可访问、已推送记录数和已拉取记录数。
+- 失败反馈：未配置 endpoint、无 fetch、远端返回非法 JSON 或无档案包时仍由状态层返回明确错误；本用例覆盖通过路径。
+- 刷新后复现方式：远端同步状态保存在本机学习状态中，刷新后仍可读取最近方向、packageId 和记录数。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`，在已安装 Playwright 依赖和浏览器的环境运行
+
+提交：
+
+- 中文 commit message：`新增学习档案远端同步浏览器验收`
