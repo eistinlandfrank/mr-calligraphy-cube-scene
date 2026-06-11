@@ -1,15 +1,23 @@
-# 远端报告仓库 API 合同
+# 报告仓库同步合同
 
 日期：2026-06-12  
-适用范围：前台学习页 `index.html` 的“站内报告 / 远端报告 API”面板。
+适用范围：前台学习页 `index.html` 的“站内报告 / 报告仓库”面板。
 
 ## 1. 边界
 
-远端报告仓库 API 接收浏览器本机生成的 `ReportRecord` 和本机 SHA-256 验真摘要，用来验证“报告可被远端保存和拉取”的真实 HTTP 闭环。它不是账号化教师端、服务端签名、不可篡改审计、服务端 PDF 渲染或云端长期报告产品本身。
+报告仓库同步包接收浏览器本机生成的 `ReportRecord` 和本机 SHA-256 验真摘要。本机 JSON 导出/导入用于同浏览器或跨设备手动备份恢复；远端报告仓库 API 用来验证“报告可被远端保存和拉取”的真实 HTTP 闭环。它们都不是账号化教师端、服务端签名、不可篡改审计、服务端 PDF 渲染或云端长期报告产品本身。
 
 生产服务端必须重新校验报告包结构，并在账号、教师身份、权限、服务端时间、签名证书和长期审计上做服务端隔离；前端本机校验只能作为提交前保护。
 
-## 2. Endpoint
+## 2. 本机 JSON 同步包
+
+前台站内报告面板提供“导出同步包”和“导入同步包”：
+
+- `MRAppState.downloadReportRepository()` 会下载 `mr-calligraphy-report-repository-*.json`，并把最近导出时间、报告数和 packageId 写入 `mr-calligraphy-learning-state-v1.reportRepository`。
+- `MRAppState.importReportRepositoryPackage()` 会读取同一格式的 JSON 包，新增本机不存在的报告；遇到同 ID 差异报告时不覆盖本机记录，而是写入冲突审计。
+- 导入成功后刷新站内报告面板和学习状态摘要；导入错文件、空包或格式错误会返回明确失败提示。
+
+## 3. Endpoint
 
 前台允许用户配置一个 HTTP/HTTPS endpoint。当前 adapter 会使用同一个 endpoint：
 
@@ -25,9 +33,9 @@
 Authorization: Bearer <token>
 ```
 
-## 3. 报告仓库包
+## 4. 报告仓库包
 
-`PUT` body 顶层字段：
+本机 JSON 文件和远端 `PUT` body 共用同一顶层字段：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -48,7 +56,7 @@ Authorization: Bearer <token>
 - `verifications` 必须是数组，摘要应为 64 位十六进制 SHA-256。
 - `summary.total` 应与报告数量一致，`summary.verifiedReportCount` 应与摘要数量一致。
 
-## 4. 成功响应
+## 5. 成功响应
 
 成功响应建议返回：
 
@@ -85,7 +93,7 @@ Authorization: Bearer <token>
 
 前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt`，并把远端报告数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.reportRepository`。
 
-## 5. 同 ID 差异策略
+## 6. 同 ID 差异策略
 
 当前前端第一版不会在拉取时静默覆盖同 ID 但内容不同的本机报告。处理规则：
 
@@ -97,7 +105,7 @@ Authorization: Bearer <token>
 
 后续账号化服务端应提供报告版本号、服务端字段级 merge、教师批注审计、服务端签名和用户确认入口。
 
-## 6. 失败响应
+## 7. 失败响应
 
 失败响应建议返回：
 
@@ -120,7 +128,7 @@ Authorization: Bearer <token>
 | `422` | 报告包结构校验失败 |
 | `500` | 服务端内部错误 |
 
-## 7. 本机 mock 服务
+## 8. 本机 mock 服务
 
 启动 mock server：
 
@@ -148,7 +156,7 @@ mock 服务会：
 - 校验 Bearer token。
 - 支持 `GET` 拉取最近报告包。
 
-## 8. 本地验收
+## 9. 本地验收
 
 ```bash
 node scripts/learning-state-check.js
@@ -159,6 +167,8 @@ npm run test:e2e -- --grep "front practice saves real strokes"
 验收重点：
 
 - `MRAppState.getReportRepositoryPackage()` 生成报告包和验真摘要。
+- `MRAppState.downloadReportRepository()` 会触发浏览器下载，页面显示最近导出报告数。
+- 站内报告面板“导入同步包”会通过文件选择器导入 JSON 包，并写入本机 `reports` 与 `reportRepository` 状态。
 - `configureReportRepositoryRemote()` 持久化 endpoint/token。
 - 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header。
 - 拉取同 ID 差异报告时不静默覆盖本机报告，而是生成本机冲突审计并支持字段级合并或远端副本另存。

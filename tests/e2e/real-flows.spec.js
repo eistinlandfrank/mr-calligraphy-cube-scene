@@ -249,6 +249,15 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reports[0].teacherReview.note).toContain("竖钩");
 
   await expect(page.locator("#reportVerification")).toContainText("本机验真摘要");
+  const reportRepositoryDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportRepositoryExportButton").click();
+  const reportRepositoryDownload = await reportRepositoryDownloadPromise;
+  expect(reportRepositoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-repository-.*\.json$/);
+  await expect(page.locator("#reportRepositorySummary")).toContainText("最近导出 1 份报告");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastExportedReportCount).toBe(1);
+  expect(learningState.reportRepository.lastPackageId).toMatch(/^report-repository-/);
+
   await page.locator(".report-repository-remote summary").click();
   await page.locator("#reportRepositoryEndpointInput").fill(reportEndpoint);
   await page.locator("#reportRepositoryTokenInput").fill("report-token");
@@ -340,6 +349,89 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
   expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token")).toBe(true);
+});
+
+test("front report repository imports a local JSON package", async ({ page }) => {
+  const now = new Date().toISOString();
+  const importPackage = {
+    kind: "mr-calligraphy-report-repository-v1",
+    version: 1,
+    packageId: "e2e-local-report-package",
+    exportedAt: now,
+    storageKey: LEARNING_KEY,
+    source: {
+      mode: "local-json",
+      boundary: "E2E 本机报告仓库同步包"
+    },
+    summary: {
+      total: 1,
+      teacherReviewedReportCount: 1,
+      verifiedReportCount: 0,
+      averageScore: 88,
+      latestReportId: "e2e-import-report",
+      latestReportAt: now
+    },
+    reports: [
+      {
+        id: "e2e-import-report",
+        title: "导入包报告",
+        createdAt: now,
+        range: "all",
+        format: "json",
+        summary: "这份报告来自本机 JSON 同步包导入。",
+        sessionCount: 1,
+        artworkCount: 1,
+        averageScore: 88,
+        latestStrokeCount: 5,
+        latestPointCount: 48,
+        learningMinutes: 12,
+        scoreBreakdown: {
+          structure: 88,
+          stroke: 86,
+          technique: 89,
+          fluency: 87,
+          force: 90
+        },
+        trend: [
+          {
+            label: "导入",
+            score: 88,
+            createdAt: now
+          }
+        ],
+        recommendations: ["继续保持竖钩收笔节奏。"],
+        teacherReview: {
+          reviewer: "E2E 老师",
+          note: "导入包保留教师批注。",
+          reviewedAt: now,
+          source: "e2e-local-import"
+        }
+      }
+    ],
+    verifications: []
+  };
+
+  await page.goto("/?step=9", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#reportPanel")).toBeVisible();
+  await expect(page.locator("#reportRepositoryImportButton")).toBeEnabled();
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#reportRepositoryImportButton").click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "report-repository-import.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(importPackage))
+  });
+
+  await expect(page.locator("#reportRepositorySummary")).toContainText("最近导入 1 份报告");
+  await expect(page.locator("#reportTitle")).toContainText("导入包报告");
+  const learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const importedReport = learningState.reports.find((item) => item.id === "e2e-import-report");
+  expect(importedReport.summary).toContain("本机 JSON 同步包");
+  expect(importedReport.teacherReview.note).toContain("导入包保留教师批注");
+  expect(learningState.reportRepository.lastImportedReportCount).toBe(1);
+  expect(learningState.reportRepository.lastPackageId).toBe("e2e-local-report-package");
 });
 
 test("front history repository shows real remote failure feedback", async ({ page }) => {

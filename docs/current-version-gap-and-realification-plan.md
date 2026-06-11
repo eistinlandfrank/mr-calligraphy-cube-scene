@@ -30,11 +30,11 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 56 | 13 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 32 | 3 | 1 | 0 | 0 | 0 |
+| `index.html` | 67 | 14 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 22 | 0 | 1 | 0 | 0 | 0 |
-| `script.js dynamic` | 26 | 1 | 0 | 0 | 1 | 0 |
+| `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
+| `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：四个入口 HTML 的静态按钮和导航链接已经没有 `demo-content` 或缺失标记；前台动态场景热点按钮也已纳入清单脚本并改为本机真实交互。下一步要审计的是“标为真实的控件是否足够真实”。
 
@@ -57,7 +57,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
-| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势、本机教师批注、本机验真摘要、报告仓库远端 API adapter、报告冲突审计、字段级合并和远端副本另存 | 原生 PDF 第一版以文本摘要为主；报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT，还没有账号化教师端、服务端签名验真、不可篡改审计和云端长期报告产品 | 继续增加 PDF 图表/截图嵌入、账号化 ReportRepository、教师身份审计、服务端签名回执和导出验收 |
+| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告冲突审计、字段级合并和远端副本另存 | 原生 PDF 第一版以文本摘要为主；本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT，还没有账号化教师端、服务端签名验真、不可篡改审计和云端长期报告产品 | 继续增加 PDF 图表/截图嵌入、账号化 ReportRepository、教师身份审计、服务端签名回执和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
 
@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
-| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、报告仓库远端 API adapter、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、服务端签名验真、不可篡改审计和生产长期报告仓库 | PDF 图表/截图增强、账号化 ReportRepository、教师端身份与服务端审计 |
+| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、服务端签名验真、不可篡改审计和生产长期报告仓库 | PDF 图表/截图增强、账号化 ReportRepository、教师端身份与服务端审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、服务端资产签名和不可篡改审计 | 服务端审批合同强化、服务端资产签名、账号权限和审计签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
@@ -1619,3 +1619,37 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增报告仓库冲突审计`
+
+### 2026-06-12：新增报告仓库同步包导入导出
+
+完成内容：
+
+- `MRAppState.downloadReportRepository()` 复用 `getReportRepositoryPackage()` 生成 `mr-calligraphy-report-repository-*.json`，并记录最近导出时间、导出报告数和 packageId。
+- 站内报告面板新增“导出同步包”和“导入同步包”，导出触发真实浏览器下载，导入走文件选择器读取 JSON。
+- 导入后会把新增报告写入本机 `reports`，同 ID 差异继续生成 `reportRepository.lastConflictReports`，不静默覆盖本机报告。
+- smoke test 检查新增 DOM 标记，学习状态检查确认下载 API 暴露，Playwright 覆盖报告仓库 JSON 下载和本机文件导入。
+
+真实化说明：
+
+- 数据来源：当前浏览器的 `ReportRecord`、教师批注、本机验真摘要，以及用户选择的报告仓库 JSON 文件。
+- 写入状态：导出写回 `mr-calligraphy-learning-state-v1.reportRepository.lastExportedAt`、`lastExportedReportCount` 和 `lastPackageId`；导入写入 `reports` 与导入状态。
+- 成功反馈：报告仓库摘要显示最近导出/导入报告数，notice 显示文件名或导入结果。
+- 失败反馈：无报告、读文件失败、JSON 解析失败、kind 不匹配或空包都有明确提示。
+- 刷新后复现方式：导入报告和同步状态写入本机学习状态，刷新后仍可打开报告。
+
+仍待补：
+
+- 本机同步包不是生产云端仓库；仍需账号化 ReportRepository、教师身份审计、服务端签名、不可篡改日志和长期归档。
+
+验收：
+
+- `node --check app-state.js && node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes|front report repository imports"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库同步包导入导出`

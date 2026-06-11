@@ -4376,6 +4376,9 @@
       tone = "ready";
       message = repository.lastRemoteStatus
         || `最近${directionLabel}远端报告仓库：${formatPlanDate(repository.lastRemoteSyncAt)}，${repository.lastRemoteReportCount} 份报告。`;
+    } else if (remoteConfigured && repository.lastRemoteStatus) {
+      tone = "ready";
+      message = repository.lastRemoteStatus;
     } else if (repository.lastImportedAt) {
       tone = "ready";
       message = `最近导入 ${repository.lastImportedReportCount} 份报告：${formatPlanDate(repository.lastImportedAt)}。`;
@@ -4474,6 +4477,34 @@
         verifications: clone(verifications)
       },
       message: `已生成 ${reports.length} 份报告的本机报告仓库同步包。${REPORT_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function downloadReportRepository(options = {}) {
+    const result = getReportRepositoryPackage(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadJson(result.package, result.filename);
+    const now = new Date().toISOString();
+    state.reportRepository = normalizeReportRepository({
+      ...state.reportRepository,
+      mode: "local-json",
+      lastExportedAt: now,
+      lastCheckedAt: now,
+      lastExportedReportCount: result.package.reports.length,
+      lastPackageId: result.package.packageId,
+      lastRemoteStatus: "",
+      lastError: ""
+    });
+    addEvent("report-repository-export", `导出报告仓库同步包：${result.package.reports.length} 份报告`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      exportedReportCount: result.package.reports.length,
+      status: getReportRepositoryStatus(),
+      message: `已下载报告仓库 JSON 同步包：${result.filename}。${REPORT_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -4621,6 +4652,7 @@
       lastSkippedConflictCount: merged.skippedConflictCount,
       lastConflictReports: merged.conflicts,
       lastPackageId: parsed.package.packageId || null,
+      lastRemoteStatus: "",
       lastError: merged.skippedConflictCount
         ? `有 ${merged.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
         : ""
@@ -4681,7 +4713,7 @@
       remoteEndpoint: validation.endpoint,
       remoteToken,
       lastCheckedAt: new Date().toISOString(),
-      lastRemoteStatus: "远端报告 API 配置已保存，尚未检查服务可用性。",
+      lastRemoteStatus: "远端报告 API 已配置，尚未检查服务可用性。",
       lastError: ""
     });
     addEvent("report-repository-remote", `配置远端报告 API：${validation.endpoint}`);
@@ -9643,6 +9675,7 @@
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
     downloadHistoryRepository,
+    downloadReportRepository,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

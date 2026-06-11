@@ -50,7 +50,7 @@
 
 ### 2.5 报告和教师批注已有远端 adapter，但生产报告仓库还没完成
 
-HTML 报告、原生 PDF、报告对比、多报告趋势、本机教师批注、本机验真摘要、报告仓库远端 API adapter 和报告冲突审计已经可用，刷新后也能复现。`MRAppState.getReportVerification()` 会用稳定 JSON 为报告核心字段、教师批注、关联练习和最近作品截图摘要计算 SHA-256，并写入 HTML/PDF 导出；`MRAppState.getReportRepositoryPackage()` 会把报告和摘要打包成 `mr-calligraphy-report-repository-v1`，前台可配置 endpoint/token 后真实 GET 检查、PUT 推送和 GET 拉取；同 ID 差异报告会写入 `reportRepository.lastConflictReports`，前台可字段级合并、另存远端副本或忽略审计。
+HTML 报告、原生 PDF、报告对比、多报告趋势、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter 和报告冲突审计已经可用，刷新后也能复现。`MRAppState.getReportVerification()` 会用稳定 JSON 为报告核心字段、教师批注、关联练习和最近作品截图摘要计算 SHA-256，并写入 HTML/PDF 导出；`MRAppState.getReportRepositoryPackage()` 会把报告和摘要打包成 `mr-calligraphy-report-repository-v1`，前台可下载同步包或导入同格式 JSON 包，也可配置 endpoint/token 后真实 GET 检查、PUT 推送和 GET 拉取；同 ID 差异报告会写入 `reportRepository.lastConflictReports`，前台可字段级合并、另存远端副本或忽略审计。
 
 但它仍不是生产报告产品。教师批注默认仍来自当前浏览器里的报告字段，本机验真摘要不是账号化教师签名、服务端证书或不可篡改审计；报告仓库远端 API 也只是可替换后端的第一版 adapter，不是账号空间、教师权限、长期归档或服务端 PDF 渲染。
 
@@ -119,7 +119,7 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 66 | 13 | 0 | 0 | 0 | 0 |
+| `index.html` | 67 | 14 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |

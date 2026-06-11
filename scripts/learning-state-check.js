@@ -319,6 +319,7 @@ assert(!reportRepositoryStatus.remoteConfigured, "未配置远端时不应伪造
 assert(reportRepositoryStatus.boundary.includes("不包含账号化教师端"), "报告 repository 应说明远端 adapter 边界。");
 const reportRepositoryPackage = window.MRAppState.getReportRepositoryPackage();
 assert(reportRepositoryPackage.ok, "报告 repository 应能生成 JSON 同步包。");
+assert(typeof window.MRAppState.downloadReportRepository === "function", "报告 repository 应提供本机 JSON 同步包下载 API。");
 assert(reportRepositoryPackage.package.kind === "mr-calligraphy-report-repository-v1", "报告同步包应包含稳定 kind。");
 assert(reportRepositoryPackage.package.reports.length >= 3, "报告同步包应包含本机报告列表。");
 assert(reportRepositoryPackage.package.verifications.length === reportRepositoryPackage.package.reports.length, "报告同步包应为每份报告生成验真摘要。");
@@ -797,7 +798,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告本机验真摘要、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {

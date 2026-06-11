@@ -855,6 +855,9 @@ const els = {
   reportTeacherReviewSave: document.getElementById("reportTeacherReviewSave"),
   reportTeacherReviewClear: document.getElementById("reportTeacherReviewClear"),
   reportRepositorySummary: document.getElementById("reportRepositorySummary"),
+  reportRepositoryExportButton: document.getElementById("reportRepositoryExportButton"),
+  reportRepositoryImportButton: document.getElementById("reportRepositoryImportButton"),
+  reportRepositoryImportInput: document.getElementById("reportRepositoryImportInput"),
   reportRepositoryEndpointInput: document.getElementById("reportRepositoryEndpointInput"),
   reportRepositoryTokenInput: document.getElementById("reportRepositoryTokenInput"),
   reportRepositorySaveRemoteButton: document.getElementById("reportRepositorySaveRemoteButton"),
@@ -3668,6 +3671,9 @@ function bindReportControls() {
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
   els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
   els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
+  els.reportRepositoryExportButton?.addEventListener("click", downloadReportRepositoryPackage);
+  els.reportRepositoryImportButton?.addEventListener("click", chooseReportRepositoryImport);
+  els.reportRepositoryImportInput?.addEventListener("change", importReportRepositoryFile);
   els.reportRepositorySaveRemoteButton?.addEventListener("click", saveReportRepositoryRemoteConfig);
   els.reportRepositoryRemoteButton?.addEventListener("click", checkReportRepositoryRemote);
   els.reportRepositoryPushButton?.addEventListener("click", pushReportRepositoryRemote);
@@ -5519,6 +5525,12 @@ function renderReportRepositoryStatus(detail) {
   if (els.reportRepositoryTokenInput && document.activeElement !== els.reportRepositoryTokenInput) {
     els.reportRepositoryTokenInput.value = config?.remoteToken || "";
   }
+  if (els.reportRepositoryExportButton) {
+    els.reportRepositoryExportButton.disabled = !status?.reportCount;
+  }
+  if (els.reportRepositoryImportButton) {
+    els.reportRepositoryImportButton.disabled = false;
+  }
   if (els.reportRepositoryRemoteButton) {
     els.reportRepositoryRemoteButton.disabled = false;
     els.reportRepositoryRemoteButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
@@ -5671,6 +5683,39 @@ function clearReportTeacherReview() {
     renderReportPanel(currentIndex);
   }
   showNotice(result?.message || "教师批注清除失败。");
+}
+
+function downloadReportRepositoryPackage() {
+  const result = window.MRAppState?.downloadReportRepository?.();
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderReportPanel(currentIndex);
+}
+
+function chooseReportRepositoryImport() {
+  if (!els.reportRepositoryImportInput) {
+    showNotice("当前浏览器不支持选择报告仓库同步包文件。");
+    return;
+  }
+  els.reportRepositoryImportInput.value = "";
+  els.reportRepositoryImportInput.click();
+}
+
+function importReportRepositoryFile(event) {
+  const file = event.target.files?.[0] || null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const result = window.MRAppState?.importReportRepositoryPackage?.(String(reader.result || ""));
+    renderReportPanel(currentIndex);
+    renderLearningStateSummary();
+    showNotice(result?.message || "报告仓库同步包导入失败。");
+  });
+  reader.addEventListener("error", () => {
+    showNotice("报告仓库同步包读取失败。");
+  });
+  reader.readAsText(file);
 }
 
 function saveReportRepositoryRemoteConfig() {

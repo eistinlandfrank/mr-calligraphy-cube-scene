@@ -19,7 +19,7 @@
 
 ## 2. 我对当前版本的判断
 
-这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库远端 API adapter、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
+这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
 
 但它还不是一个真实可交付产品。最大问题不是“按钮没有绑定”，而是“按钮看起来像生产功能，实际只是本机原型能力”。用户看到 AI、评分、分享、同步、发布、后台这些词时，会自然期待账号、后端、权限、云端数据和端到端稳定性；当前很多地方还只做到本机状态或文件导出。
 
@@ -37,7 +37,7 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 66 | 13 | 0 | 0 | 0 | 0 |
+| `index.html` | 67 | 14 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和 PDF 资源嵌入验收 |
+| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和 PDF 资源嵌入验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -966,3 +966,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告仓库冲突审计`
+
+## 32. 2026-06-12 报告仓库同步包导入导出
+
+本次把站内报告的 `ReportRepository` 从“只有包生成 API、远端 API adapter”补成前台可直接使用的本机 JSON 同步包。
+
+完成内容：
+
+- 新增 `MRAppState.downloadReportRepository()`，下载 `mr-calligraphy-report-repository-*.json`，并写回最近导出时间、导出报告数和 packageId。
+- 站内报告面板新增“导出同步包”和“导入同步包”，分别标记为 `real-export` 与 `real-local`。
+- 导入使用浏览器文件选择器读取 JSON 包，调用 `importReportRepositoryPackage()` 写入本机 `reports` 与 `reportRepository` 状态。
+- smoke test 新增报告仓库导入/导出 DOM 标记；E2E 覆盖浏览器下载和文件导入。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机报告、教师批注、本机验真摘要，以及用户选择的 JSON 同步包文件。
+- 写入状态：导出只写 `reportRepository.lastExportedAt`、`lastExportedReportCount` 和 `lastPackageId`；导入会新增本机不存在的 `ReportRecord`，同 ID 差异继续进入冲突审计。
+- 成功反馈：报告仓库摘要显示最近导出/导入报告数，notice 显示文件名或导入结果。
+- 失败反馈：没有报告、文件读取失败、JSON 格式错误、空包或 kind 不匹配时返回明确提示。
+- 刷新后复现方式：导入的报告和仓库同步状态保存在 `mr-calligraphy-learning-state-v1`，刷新后仍可打开。
+
+仍待补：
+
+- 本机 JSON 包不是账号化云端仓库；后续仍要补服务端权限、教师身份审计、签名回执和长期归档。
+
+验收：
+
+- `node --check app-state.js && node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes|front report repository imports"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库同步包导入导出`
