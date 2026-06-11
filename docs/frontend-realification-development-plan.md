@@ -194,6 +194,7 @@ node scripts/control-inventory.js --check
 - 站内报告新增教师批注表单，保存后刷新可复现，清除后回到空状态。
 - HTML 报告和原生 PDF 都会包含教师批注状态；PDF 增加 `TeacherReview` 可测标记。
 - `learning-state-check.js` 覆盖空批注拒绝、批注持久化、HTML 导出和 PDF 导出。
+- 学习档案同步包会统计 `teacherReviewedReportCount`，并随 `records.reports[*].teacherReview` 同步本机教师批注。
 
 仍然不是生产能力的部分：
 

@@ -5224,7 +5224,9 @@
 - `MRAppState.getReportHtmlExport()` 新增无副作用 HTML 报告导出接口，便于测试和后续服务端复用。
 - 前台站内报告面板新增教师批注状态、批注人输入、批注内容输入、保存批注和清除批注按钮。
 - HTML 报告和原生 PDF 报告都会带上教师批注状态；PDF 增加 `TeacherReview: yes/no` 标记。
-- 学习状态检查新增批注保存、持久化、HTML 导出和 PDF 导出断言。
+- 学习档案同步包新增 `summary.teacherReviewedReportCount`，并会在 `records.reports[*].teacherReview` 中保留批注内容。
+- 学习档案 mock 服务会校验带批注报告数，远端 GET / 拉取都会保留批注摘要和内容。
+- 学习状态检查新增批注保存、持久化、HTML 导出、PDF 导出、学习档案同步包和远端 mock 同步断言。
 - smoke test 新增报告教师批注入口标记。
 
 真实化说明：
@@ -5238,13 +5240,14 @@
 验收方式：
 
 - 手工验收：打开前台，生成或打开一份站内报告，在“教师批注”中填写批注人和内容，保存后刷新页面，批注应仍显示；下载 HTML/PDF 后应包含批注状态。
-- 脚本验收：`node scripts/learning-state-check.js` 验证空批注拒绝、批注持久化、HTML 导出和 PDF 标记；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证入口存在。
+- 脚本验收：`node scripts/learning-state-check.js` 验证空批注拒绝、批注持久化、HTML 导出、PDF 标记和学习档案远端 mock 同步；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证入口存在。
 
 当前验证结果：
 
 - `node --check app-state.js`
 - `node --input-type=module --check < script.js`
 - `node --check scripts/learning-state-check.js`
+- `node --check scripts/history-repository-mock-server.js`
 - `node --check scripts/smoke-test.js`
 - `node scripts/learning-state-check.js`
 - `node scripts/control-inventory.js --check`

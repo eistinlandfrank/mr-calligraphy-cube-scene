@@ -37,10 +37,10 @@ Authorization: Bearer <token>
 | `exportedAt` | 本机生成时间 |
 | `storageKey` | 本机学习状态来源 key |
 | `source` | 当前同步模式和边界说明 |
-| `summary` | 记录数量、练习数、作品数、报告数和平均分 |
+| `summary` | 记录数量、练习数、作品数、报告数、带教师批注报告数和平均分 |
 | `records.sessions` | 练习记录数组 |
 | `records.artworks` | 作品记录数组 |
-| `records.reports` | 报告记录数组 |
+| `records.reports` | 报告记录数组；报告可包含 `teacherReview` 本机教师批注 |
 | `history` | 用于展示的档案详情快照 |
 
 服务端应至少校验：
@@ -70,7 +70,8 @@ Authorization: Bearer <token>
       "total": 9,
       "practiceCount": 3,
       "artworkCount": 3,
-      "reportCount": 3
+      "reportCount": 3,
+      "teacherReviewedReportCount": 1
     },
     "records": {
       "sessions": [],
@@ -90,7 +91,7 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary` 和 `package.records`，并把远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。
+前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary` 和 `package.records`，并把远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
 
 ## 5. 同 ID 差异策略
 

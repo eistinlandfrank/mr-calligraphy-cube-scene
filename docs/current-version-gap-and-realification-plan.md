@@ -1256,6 +1256,7 @@ node scripts/control-inventory.js
 - `MRAppState` 新增 `updateReportTeacherReview()`、`clearReportTeacherReview()` 和 `getReportHtmlExport()`。
 - 站内报告面板新增“教师批注”表单，支持保存和清除当前报告批注。
 - HTML 报告导出新增教师批注区；原生 PDF 新增教师批注章节和 `TeacherReview` 可测标记。
+- 学习档案同步包新增 `summary.teacherReviewedReportCount`，远端学习档案 mock 服务会校验该摘要并保存 `records.reports[*].teacherReview`。
 - 学习状态检查覆盖空批注拒绝、批注持久化、HTML 导出和 PDF 导出。
 - smoke test 新增报告批注入口标记。
 
@@ -1272,6 +1273,7 @@ node scripts/control-inventory.js
 - `node --check app-state.js`
 - `node --input-type=module --check < script.js`
 - `node --check scripts/learning-state-check.js`
+- `node --check scripts/history-repository-mock-server.js`
 - `node --check scripts/smoke-test.js`
 - `node scripts/learning-state-check.js`
 - `node scripts/control-inventory.js --check`

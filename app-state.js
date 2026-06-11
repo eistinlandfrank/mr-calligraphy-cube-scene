@@ -5879,16 +5879,18 @@
   }
 
   function reportToHistoryEntry(report) {
+    const normalizedReport = normalizeReport(report);
     return {
-      id: report.id,
+      id: normalizedReport.id,
       type: "report",
-      title: report.title || "学习报告",
+      title: normalizedReport.title || "学习报告",
       shortLabel: "报告",
-      createdAt: report.createdAt,
-      score: report.averageScore,
-      meta: `${report.sessionCount} 次练习 / ${report.artworkCount} 幅作品`,
-      status: "可下载",
-      reportId: report.id
+      createdAt: normalizedReport.createdAt,
+      score: normalizedReport.averageScore,
+      meta: `${normalizedReport.sessionCount} 次练习 / ${normalizedReport.artworkCount} 幅作品`,
+      status: normalizedReport.teacherReview ? "有批注" : "可下载",
+      reportId: normalizedReport.id,
+      hasTeacherReview: Boolean(normalizedReport.teacherReview)
     };
   }
 
@@ -5943,23 +5945,25 @@
 
     const report = state.reports.find((item) => item.id === recordId);
     if (report) {
+      const normalizedReport = normalizeReport(report);
       return {
         type: "report",
-        id: report.id,
-        title: report.title || "学习报告",
-        createdAt: report.createdAt,
-        score: report.averageScore,
-        status: report.format === "html" ? "HTML" : "可下载",
-        summary: report.summary,
-        sessionCount: report.sessionCount,
-        artworkCount: report.artworkCount,
-        averageScore: report.averageScore,
-        learningMinutes: report.learningMinutes || 0,
-        latestStrokeCount: report.latestStrokeCount || 0,
-        latestPointCount: report.latestPointCount || 0,
-        recommendations: clone(report.recommendations || []),
-        scoreBreakdown: clone(report.scoreBreakdown || normalizeMetrics(null)),
-        trend: clone(report.trend || [])
+        id: normalizedReport.id,
+        title: normalizedReport.title || "学习报告",
+        createdAt: normalizedReport.createdAt,
+        score: normalizedReport.averageScore,
+        status: normalizedReport.teacherReview ? "有教师批注" : normalizedReport.format === "html" ? "HTML" : "可下载",
+        summary: normalizedReport.summary,
+        sessionCount: normalizedReport.sessionCount,
+        artworkCount: normalizedReport.artworkCount,
+        averageScore: normalizedReport.averageScore,
+        learningMinutes: normalizedReport.learningMinutes || 0,
+        latestStrokeCount: normalizedReport.latestStrokeCount || 0,
+        latestPointCount: normalizedReport.latestPointCount || 0,
+        recommendations: clone(normalizedReport.recommendations || []),
+        teacherReview: normalizedReport.teacherReview ? clone(normalizedReport.teacherReview) : null,
+        scoreBreakdown: clone(normalizedReport.scoreBreakdown || normalizeMetrics(null)),
+        trend: clone(normalizedReport.trend || [])
       };
     }
 
@@ -5970,6 +5974,7 @@
     const practiceCount = entries.filter((entry) => entry.type === "practice").length;
     const artworkCount = entries.filter((entry) => entry.type === "artwork").length;
     const reportCount = entries.filter((entry) => entry.type === "report").length;
+    const teacherReviewedReportCount = entries.filter((entry) => entry.type === "report" && entry.hasTeacherReview).length;
     const scored = entries.filter((entry) => entry.score > 0);
     const average = scored.length
       ? Math.round(scored.reduce((sum, entry) => sum + entry.score, 0) / scored.length)
@@ -5979,6 +5984,7 @@
       practiceCount,
       artworkCount,
       reportCount,
+      teacherReviewedReportCount,
       averageScore: average
     };
   }

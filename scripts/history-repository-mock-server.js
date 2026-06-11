@@ -257,6 +257,10 @@ function validateHistoryRepositoryPackage(payload) {
   if (payload.summary && Number(payload.summary.total || 0) !== recordCount) {
     warnings.push(`summary.total 为 ${Number(payload.summary.total || 0)}，实际 records 为 ${recordCount}。`);
   }
+  const reviewedReportCount = getTeacherReviewedReportCount(payload);
+  if (payload.summary && Number(payload.summary.teacherReviewedReportCount || 0) !== reviewedReportCount) {
+    warnings.push(`summary.teacherReviewedReportCount 为 ${Number(payload.summary.teacherReviewedReportCount || 0)}，实际带批注报告为 ${reviewedReportCount}。`);
+  }
 
   return {
     ok: errors.length === 0,
@@ -315,6 +319,11 @@ function getRecordCount(payload) {
   return ["sessions", "artworks", "reports"].reduce((sum, key) => {
     return sum + (Array.isArray(records[key]) ? records[key].length : 0);
   }, 0);
+}
+
+function getTeacherReviewedReportCount(payload) {
+  const reports = Array.isArray(payload?.records?.reports) ? payload.records.reports : [];
+  return reports.filter((report) => report?.teacherReview?.note).length;
 }
 
 function sha256StableJson(value) {

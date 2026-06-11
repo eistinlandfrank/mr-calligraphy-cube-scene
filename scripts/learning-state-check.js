@@ -550,6 +550,11 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
   assert(packageResult.package.records.sessions.length >= 3, "学习档案同步包应包含练习记录。");
   assert(packageResult.package.records.artworks.length >= 3, "学习档案同步包应包含作品记录。");
   assert(packageResult.package.records.reports.length >= 3, "学习档案同步包应包含报告记录。");
+  assert(packageResult.package.summary.teacherReviewedReportCount === 1, "学习档案同步包应统计带教师批注报告数量。");
+  const reviewedReportPackage = packageResult.package.records.reports.find((item) => item.id === "report-2");
+  assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "学习档案同步包应保留报告教师批注内容。");
+  const reviewedHistoryDetail = packageResult.package.history.find((item) => item.id === "report-2");
+  assert(reviewedHistoryDetail.teacherReview.note.includes("结构更稳"), "学习档案详情快照应保留教师批注。");
 
   const previousFetch = global.fetch;
   const mock = await startHistoryRepositoryMockServer({ token: "history-token" });
@@ -569,14 +574,18 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.ok, "学习档案仓库 mock 应接收真实 PUT 推送。");
     assert(pushedMock.packageId.startsWith("mock-history-repository-"), "学习档案仓库 mock 应返回服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "学习档案仓库 mock 应在内存中保存最近档案包。");
+    assert(mock.state.package.summary.teacherReviewedReportCount === 1, "学习档案仓库 mock 应保存带教师批注报告计数。");
+    assert(mock.state.package.records.reports.find((item) => item.id === "report-2").teacherReview.note.includes("竖钩"), "学习档案仓库 mock 应保存教师批注内容。");
     assert(mock.state.receipts[0].repositoryDigest, "学习档案仓库 mock 应返回 repositoryDigest 回执。");
 
     const checkedAfterPush = await window.MRAppState.checkRemoteHistoryRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.summary.total === mock.state.package.summary.total, "学习档案仓库 mock GET 应返回最近 PUT 保存的档案包。");
+    assert(checkedAfterPush.package.summary.teacherReviewedReportCount === 1, "学习档案仓库 mock GET 应返回教师批注摘要。");
 
     const pulledMock = await window.MRAppState.pullHistoryRepositoryFromRemote();
     assert(pulledMock.ok, "学习档案仓库 mock 应支持真实 GET 拉取。");
     assert(pulledMock.pulledRecordCount === mock.state.package.summary.total, "学习档案仓库 mock 拉取结果应保留远端记录数量。");
+    assert(window.MRAppState.getReportDetail("report-2").teacherReview.note.includes("竖钩"), "学习档案仓库拉取后本机报告教师批注不应丢失。");
 
     const localTitle = window.MRAppState.getState().sessions[0].title;
     mock.state.package.records.sessions[0] = {
