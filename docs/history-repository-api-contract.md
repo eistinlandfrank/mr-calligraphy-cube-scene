@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。它不是账号系统、公开作品墙、教师批注、服务端分页或长期归档服务本身。
+远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。它不是账号系统、公开作品墙、教师批注、自动服务端分页追取或长期归档服务本身。
 
 生产服务端必须重新校验档案包结构，并在账号、空间、权限、数据版本和分页查询上做服务端隔离；前端本机校验只能作为提交前保护。
 
@@ -91,7 +91,35 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary` 和 `package.records`，并把远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
+前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.records` 和可选 `pagination`，并把远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
+
+## 4.1 分页响应
+
+如果服务端返回分页包，可在响应中附加：
+
+```json
+{
+  "ok": true,
+  "message": "远端学习档案返回第 1 页。",
+  "pagination": {
+    "page": 1,
+    "pageSize": 50,
+    "total": 128,
+    "hasMore": true,
+    "nextPageUrl": "/api/history-repository?page=2"
+  },
+  "package": {
+    "kind": "mr-calligraphy-history-repository-v1",
+    "records": {
+      "sessions": [],
+      "artworks": [],
+      "reports": []
+    }
+  }
+}
+```
+
+当前前端第一版只会在状态区提示“还有后续页面，当前前端仅处理本次返回的档案包”，不会自动请求 `nextPageUrl`。生产服务端分页仍需要账号、游标、重试和完整拉取策略。
 
 ## 5. 同 ID 差异策略
 

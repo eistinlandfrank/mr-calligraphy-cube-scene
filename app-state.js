@@ -6692,7 +6692,7 @@
       lastSkippedConflictCount: skippedConflictCount,
       lastPackageId: parsed.package.packageId || null,
       lastError: skippedConflictCount
-        ? `有 ${skippedConflictCount} 条同 ID 差异学习档案已跳过，未覆盖本机记录。`
+        ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机记录。`
         : ""
     });
     addEvent("history-repository-import", `导入学习档案同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}`);
@@ -6805,10 +6805,12 @@
     const parsed = parseHistoryRepositoryPackage(candidate);
     if (parsed.ok) {
       const summary = parsed.package.summary || {};
+      const paginationNotice = getHistoryRepositoryPaginationNotice(payload);
+      const message = payload.message || `远端学习档案包含 ${summary.total || 0} 条记录。`;
       return {
         ok: true,
         package: parsed.package,
-        message: payload.message || `远端学习档案包含 ${summary.total || 0} 条记录。`
+        message: paginationNotice ? `${message} ${paginationNotice}` : message
       };
     }
     if (payload.ok === true) {
@@ -6822,6 +6824,26 @@
       ok: false,
       message: payload.message || parsed.message || "远端学习档案 API 返回格式无效。"
     };
+  }
+
+  function getHistoryRepositoryPaginationNotice(payload = {}) {
+    const pagination = payload.pagination && typeof payload.pagination === "object" ? payload.pagination : {};
+    const hasMore = Boolean(pagination.hasMore || pagination.nextPageUrl || payload.nextPageUrl);
+    if (!hasMore) return "";
+    const page = normalizeInteger(pagination.page, 1, 1, 99999);
+    const pageSize = normalizeInteger(pagination.pageSize || pagination.limit, 0, 0, 99999);
+    const total = normalizeInteger(pagination.total, 0, 0, 999999);
+    const pageText = pageSize && total
+      ? `当前为第 ${page} 页，每页 ${pageSize} 条，共约 ${total} 条`
+      : `当前为第 ${page} 页`;
+    return `远端返回分页结果：${pageText}；还有后续页面，当前前端仅处理本次返回的档案包。`;
+  }
+
+  function formatHistoryRepositoryNetworkError(action, error) {
+    const detail = String(error?.message || "").trim();
+    return detail
+      ? `远端学习档案 API ${action}失败：网络请求异常（${detail}）。`
+      : `远端学习档案 API ${action}失败：网络请求异常。`;
   }
 
   function checkRemoteHistoryRepository() {
@@ -6890,7 +6912,7 @@
         message: `${parsed.message} ${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
-      const message = `远端学习档案 API 检查失败：${error?.message || "网络请求异常"}。`;
+      const message = formatHistoryRepositoryNetworkError("检查", error);
       recordHistoryRepositoryError(message);
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
@@ -6961,7 +6983,7 @@
         message: `已推送 ${recordCount} 条学习档案到远端 API。${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
-      const message = `远端学习档案 API 推送失败：${error?.message || "网络请求异常"}。`;
+      const message = formatHistoryRepositoryNetworkError("推送", error);
       recordHistoryRepositoryError(message);
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
@@ -7008,9 +7030,9 @@
         lastRemoteDirection: "pull",
         lastRemoteRecordCount: recordCount,
         lastPackageId: parsed.package.packageId || imported.status?.lastPackageId || null,
-        lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。`,
-        lastError: imported.skippedConflictCount
-          ? `有 ${imported.skippedConflictCount} 条同 ID 差异学习档案已跳过，未覆盖本机记录。`
+      lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。`,
+      lastError: imported.skippedConflictCount
+          ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机记录。`
           : ""
       });
       addEvent("history-repository-remote-pull", `从远端 API 拉取学习档案：${recordCount} 条记录`);
@@ -7026,7 +7048,7 @@
           : `已从远端 API 拉取学习档案：新增 ${imported.importedCount} 条记录。${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
-      const message = `远端学习档案 API 拉取失败：${error?.message || "网络请求异常"}。`;
+      const message = formatHistoryRepositoryNetworkError("拉取", error);
       recordHistoryRepositoryError(message);
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }

@@ -625,6 +625,7 @@ node scripts/control-inventory.js
 - `MRAppState` 新增学习档案仓库状态、同步包生成/导入、远端配置、GET 检查、PUT 推送和 GET 拉取接口。
 - 前台学习档案面板新增档案仓库状态、“导出同步包 / 导入同步包”和“远端学习档案 API” endpoint/token/检查/推送/拉取入口。
 - 拉取远端档案时，同 ID 且内容不同的记录会跳过并记录冲突数量，不静默覆盖本机练习、作品或报告。
+- 远端返回分页元数据时，前台会提示“还有后续页面，当前仅处理本次返回的档案包”，不会假装完整拉取。
 - `scripts/learning-state-check.js` 新增真实 HTTP mock server 验收，覆盖 GET 检查、PUT 推送、最近档案包拉取、同 ID 差异跳过、回执 digest 和错误 token 拒绝。
 - `scripts/smoke-test.js` 把学习档案仓库 mock server 和前台档案仓库控件纳入检查。
 
@@ -633,23 +634,55 @@ node scripts/control-inventory.js
 - 数据来源：`mr-calligraphy-learning-state-v1.sessions/artworks/reports` 生成的 `mr-calligraphy-history-repository-v1` 同步包。
 - 写入状态：远端配置、最近同步方向、远端记录数、最近 packageId、跳过冲突数量和错误写入 `historyRepository`。
 - 成功反馈：mock server 返回远端版本、服务端 packageId、repositoryDigest 和 receiptDigest；前台状态条显示最近推送/拉取结果。
-- 失败反馈：HTTP 401、404、405、422 和 500 会返回结构化 JSON，不显示同步成功；同 ID 差异不会覆盖本机。
+- 失败反馈：HTTP 401、404、405、422、500 和网络中断都会返回明确错误，不显示同步成功；分页返回会提示仍有后续页面；同 ID 差异不会覆盖本机。
 - 刷新后复现方式：前端保存的 endpoint、最近同步方向、跳过冲突数量和远端状态可刷新读取；mock server 内存状态只用于本地开发验收。
 
 验收：
 
 - 手工验收：运行 `node scripts/history-repository-mock-server.js`，在前台学习档案面板配置输出的 endpoint，产生练习/作品/报告后点击“检查远端 / 推送档案 / 拉取档案”，应看到真实 HTTP 状态和同步结果。
 - 脚本验收：`node scripts/learning-state-check.js` 会启动临时 mock server，验证真实 HTTP GET/PUT、Bearer token、receipt、同 ID 差异跳过和错误 token 拒绝；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 会检查新脚本语法和页面控件。
+- 浏览器验收：`npm run test:e2e -- --grep "history repository handles network"` 覆盖网络中断、分页返回提示和同 ID 差异跳过；全量 `npm run test:e2e` 当前 11 条用例全部通过。
 
 已知限制：
 
 - mock server 是开发验收工具，不提供持久化数据库、账号权限、服务端分页、教师批注、公开作品墙或长期归档。
-- 当前同 ID 差异只跳过并提示，后续需要账号化服务端版本、字段级 merge 和冲突审计。
+- 当前同 ID 差异只跳过并提示，分页只提示不自动追页；后续需要账号化服务端版本、自动分页、字段级 merge 和冲突审计。
 - 学习档案远端同步仍由用户自配 HTTP endpoint 驱动，不是内置云服务。
 
 提交：
 
 - 中文 commit message：`新增学习档案远端仓库`
+
+### 2026-06-12：学习档案分页冲突浏览器验收
+
+完成内容：
+
+- `app-state.js` 将学习档案远端检查、推送、拉取的 fetch 异常统一转成中文“网络请求异常”，并保留底层错误细节。
+- `parseRemoteHistoryRepositoryResponse()` 识别 `pagination.hasMore`、`pagination.nextPageUrl` 和顶层 `nextPageUrl`，在状态文案里提示后续页面尚未自动拉取。
+- `tests/e2e/real-flows.spec.js` 新增 `front history repository handles network, paged pull, and id conflicts`。
+- E2E 通过真实前台面板配置 endpoint/token，覆盖 GET 网络中断、分页远端包检查、分页远端包拉取和同 ID 差异跳过。
+- E2E 确认远端新增记录写入本机，同 ID 差异记录不覆盖本机反馈，`lastSkippedConflictCount` 写入 localStorage。
+
+真实化说明：
+
+- 数据来源：本机真实练习/作品生成的学习档案同步包、同源模拟远端分页响应和实际 Authorization header。
+- 写入状态：网络失败写入 `historyRepository.lastError`；分页检查写入 `lastRemoteStatus`；冲突拉取写入 `lastSkippedConflictCount`。
+- 成功反馈：分页检查明确提示还有后续页面；拉取成功提示新增和跳过冲突数量。
+- 失败反馈：网络中断不会显示同步成功；同 ID 差异不会覆盖本机记录。
+- 刷新后复现方式：分页状态、错误和跳过冲突数量保存在 `mr-calligraphy-learning-state-v1.historyRepository`。
+
+验收：
+
+- 手工验收：配置一个会断开的 endpoint 应显示网络请求异常；配置一个返回分页包且包含同 ID 差异的 endpoint，应提示分页并在拉取时跳过冲突。
+- 脚本验收：`npm run test:e2e -- --grep "history repository handles network"` 覆盖网络中断、分页提示和同 ID 差异跳过。
+
+已知限制：
+
+- 目前只提示分页，不自动追取下一页；同 ID 差异只跳过，不提供字段级合并 UI。
+
+提交：
+
+- 中文 commit message：`新增学习档案分页冲突验收`
 
 ### 2026-06-11：学习计划自动同步队列
 
@@ -740,7 +773,7 @@ node scripts/control-inventory.js
 验收：
 
 - 手工验收：配置一个会拒收 PUT 或断开的计划仓库 endpoint，点击“推送计划/同步队列”，页面应显示失败且待同步状态保留。
-- 脚本验收：`npm run test:e2e -- --grep "keeps pending queue on push failures"` 覆盖 422 和网络中断；全量 `npm run test:e2e` 当前 10 条用例全部通过。
+- 脚本验收：`npm run test:e2e -- --grep "keeps pending queue on push failures"` 覆盖 422 和网络中断；全量 `npm run test:e2e` 当前 11 条用例全部通过。
 
 已知限制：
 

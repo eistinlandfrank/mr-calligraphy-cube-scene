@@ -309,6 +309,113 @@ test("front history repository shows real remote failure feedback", async ({ pag
   expect(putRequest.body.summary.total).toBe(2);
 });
 
+test("front history repository handles network, paged pull, and id conflicts", async ({ page }) => {
+  const networkPath = "/e2e-history-repository-network";
+  const pagedPath = "/e2e-history-repository-paged-conflict";
+  const requests = [];
+  let remotePackage = null;
+
+  await page.route(`**${networkPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: networkPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.abort("failed");
+  });
+
+  await page.route(`**${pagedPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: pagedPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "远端分页学习档案 E2E 返回第 1 页。",
+        pagination: {
+          page: 1,
+          pageSize: 2,
+          total: 5,
+          hasMore: true,
+          nextPageUrl: "/e2e-history-repository-paged-conflict?page=2"
+        },
+        package: remotePackage
+      })
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const seed = await page.evaluate(() => {
+    const result = window.MRAppState.saveArtwork({
+      strokes: [
+        [
+          { x: 0.2, y: 0.32, t: 0, p: 0.42 },
+          { x: 0.39, y: 0.45, t: 18, p: 0.55 },
+          { x: 0.55, y: 0.57, t: 36, p: 0.62 },
+          { x: 0.72, y: 0.68, t: 54, p: 0.48 }
+        ]
+      ],
+      bounds: { minX: 0.2, minY: 0.32, maxX: 0.72, maxY: 0.68 },
+      metrics: { structure: 83, stroke: 82, technique: 84, fluency: 86, force: 80 },
+      score: 83,
+      feedback: ["E2E 学习档案分页冲突本机记录"]
+    });
+    const repositoryPackage = window.MRAppState.getHistoryRepositoryPackage().package;
+    return {
+      ok: result.ok,
+      package: repositoryPackage,
+      sessionId: repositoryPackage.records.sessions[0].id
+    };
+  });
+  expect(seed.ok).toBe(true);
+
+  remotePackage = createPagedHistoryConflictPackage(seed.package, seed.sessionId);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#historyPanel")).toBeVisible();
+  await page.locator(".history-repository-remote summary").click();
+
+  const networkEndpoint = await getSameOriginEndpoint(page, networkPath);
+  await configureHistoryRepositoryRemoteInUi(page, networkEndpoint, "history-network-token");
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("网络请求异常");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("网络请求异常");
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toContain("网络请求异常");
+  expect(requests.some((item) => item.path === networkPath && item.authorization === "Bearer history-network-token")).toBe(true);
+
+  const pagedEndpoint = await getSameOriginEndpoint(page, pagedPath);
+  await configureHistoryRepositoryRemoteInUi(page, pagedEndpoint, "history-paged-token");
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("后续页面");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("分页");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toBe("");
+  expect(learningState.historyRepository.lastRemoteStatus).toContain("后续页面");
+  expect(learningState.historyRepository.lastRemoteRecordCount).toBe(2);
+
+  await page.locator("#historyRepositoryPullButton").click();
+  await expect(page.locator("#noticeState")).toContainText("跳过 1 条同 ID 差异记录");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("同 ID 差异记录已跳过");
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastSkippedConflictCount).toBe(1);
+  expect(learningState.historyRepository.lastError).toContain("同 ID 差异");
+  expect(learningState.sessions).toHaveLength(2);
+  expect(learningState.sessions.some((session) => session.id === "remote-paged-session")).toBe(true);
+  const originalSession = learningState.sessions.find((session) => session.id === seed.sessionId);
+  expect(originalSession.feedback).toContain("E2E 学习档案分页冲突本机记录");
+  expect(originalSession.feedback).not.toContain("远端同 ID 差异记录不应覆盖本机");
+  expect(requests.some((item) => item.path === pagedPath && item.method === "GET" && item.authorization === "Bearer history-paged-token")).toBe(true);
+});
+
 test("front plan repository detects remote conflicts and saves a remote copy", async ({ page }) => {
   const planEndpointPath = "/e2e-plan-repository";
   const planRequests = [];
@@ -1083,6 +1190,48 @@ function createRemotePlanConflictPackage(sourcePackage, options = {}) {
       };
     })
   });
+}
+
+function createPagedHistoryConflictPackage(basePackage, sessionId) {
+  const remotePackage = cloneJson(basePackage);
+  const sourceSession = remotePackage.records.sessions.find((session) => session.id === sessionId)
+    || remotePackage.records.sessions[0];
+  const remoteTime = new Date(Date.now() + 90000).toISOString();
+  const conflictSession = {
+    ...sourceSession,
+    score: 61,
+    endedAt: remoteTime,
+    snapshotAt: remoteTime,
+    feedback: ["远端同 ID 差异记录不应覆盖本机"]
+  };
+  const addedSession = {
+    ...sourceSession,
+    id: "remote-paged-session",
+    title: "分页返回新增远端练习",
+    glyph: "春",
+    startedAt: remoteTime,
+    endedAt: remoteTime,
+    snapshotAt: remoteTime,
+    score: 91,
+    feedback: ["分页返回新增学习档案"]
+  };
+  remotePackage.packageId = "e2e-history-paged-conflict-package";
+  remotePackage.exportedAt = remoteTime;
+  remotePackage.summary = {
+    total: 2,
+    practiceCount: 2,
+    artworkCount: 0,
+    reportCount: 0,
+    teacherReviewedReportCount: 0,
+    averageScore: 76
+  };
+  remotePackage.records = {
+    sessions: [conflictSession, addedSession],
+    artworks: [],
+    reports: []
+  };
+  remotePackage.history = [];
+  return remotePackage;
 }
 
 function cloneJson(value) {

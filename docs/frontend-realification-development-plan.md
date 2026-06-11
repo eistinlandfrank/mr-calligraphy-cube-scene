@@ -482,7 +482,7 @@ git diff --check
 - `npm run test:e2e -- --grep "front plan repository"`
 - `node --check scripts/learning-state-check.js && node scripts/learning-state-check.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `npm run test:e2e`，当前 10 条 Playwright 用例全部通过。
+- `npm run test:e2e`，当前 11 条 Playwright 用例全部通过。
 - `git diff --check`
 
 提交：
@@ -549,7 +549,7 @@ git diff --check
 
 仍待补：
 
-- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收。
+- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收已在后续补齐，后续还需自动追取分页、字段级合并和冲突审计。
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断的浏览器级提示验收已补齐，后续还需超时重试和批量队列失败恢复。
 - 字段级冲突合并 UI 第一版已完成，后续还需要覆盖计划项增删、依赖调整和服务端合并审计。
 
@@ -589,7 +589,7 @@ git diff --check
 
 - 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断的浏览器级提示验收已补齐，后续还需超时重试和批量队列失败恢复。
-- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收。
+- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收已在后续补齐，后续还需自动追取分页、字段级合并和冲突审计。
 
 验收：
 
@@ -629,7 +629,7 @@ git diff --check
 
 - 计划仓库超时重试、批量队列部分失败恢复和服务端合并审计。
 - 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
-- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收。
+- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收已补齐，后续还需自动追取分页、字段级合并和冲突审计。
 
 验收：
 
@@ -642,3 +642,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划推送失败验收`
+
+## 24. 2026-06-12 学习档案分页冲突浏览器验收
+
+本次补齐学习档案远端同步的网络中断、分页返回和同 ID 差异冲突浏览器级验收，避免远端异常或分页结果被误认为完整同步。
+
+完成内容：
+
+- `app-state.js` 将学习档案检查、推送、拉取的 fetch 异常统一转成中文“网络请求异常”，并保留底层错误细节。
+- `app-state.js` 识别远端响应里的 `pagination.hasMore`、`pagination.nextPageUrl` 或顶层 `nextPageUrl`，并在状态文案里提示“还有后续页面，当前前端仅处理本次返回的档案包”。
+- `tests/e2e/real-flows.spec.js` 新增 `front history repository handles network, paged pull, and id conflicts`。
+- E2E 模拟 GET 网络中断，确认页面通知、学习档案仓库摘要和 `historyRepository.lastError` 都显示网络请求异常。
+- E2E 模拟远端分页学习档案包，确认检查远端时页面和 `lastRemoteStatus` 都提示分页/后续页面。
+- E2E 模拟远端同 ID 差异记录加一条新增记录，确认拉取后新增记录写入本机，冲突记录被跳过且没有覆盖本机反馈。
+
+真实化说明：
+
+- 数据来源：真实本机练习/作品生成的同步包、同源模拟远端分页响应、实际 Authorization header 和真实 localStorage 状态。
+- 写入状态：网络失败写入 `historyRepository.lastError`；分页检查写入 `lastRemoteStatus`；冲突拉取写入 `lastSkippedConflictCount` 和同 ID 差异错误说明。
+- 成功反馈：分页检查明确提示仍有后续页面；拉取成功会显示新增数量和跳过冲突数量。
+- 失败反馈：网络中断不会被包装成同步成功；同 ID 差异不会覆盖本机记录。
+- 刷新后复现方式：错误、分页状态和冲突跳过数量都保存在 `mr-calligraphy-learning-state-v1.historyRepository`。
+
+仍待补：
+
+- 学习档案自动追取分页、字段级合并、冲突审计和账号化托管仓库。
+- 计划仓库超时重试、批量队列部分失败恢复和服务端合并审计。
+- 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
+
+验收：
+
+- `node --check app-state.js && node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "history repository handles network"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案分页冲突验收`
