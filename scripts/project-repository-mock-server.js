@@ -45,6 +45,8 @@ function createProjectRepositoryMockServer(options = {}) {
           remoteVersion: "mr-calligraphy-project-repository-mock-v1",
           contract: createContract(),
           package: state.package,
+          packageId: state.receipts[0]?.packageId || "",
+          repositoryDigest: state.receipts[0]?.repositoryDigest || "",
           receiptCount: state.receipts.length,
           latestReceipt: state.receipts[0] || null
         });
@@ -64,12 +66,7 @@ function createProjectRepositoryMockServer(options = {}) {
         }
 
         const receipt = createReceipt(payload, validation);
-        state.package = {
-          ...clone(payload),
-          packageId: receipt.packageId,
-          acceptedAt: receipt.acceptedAt,
-          repositoryDigest: receipt.repositoryDigest
-        };
+        state.package = clone(payload);
         state.receipts.unshift(receipt);
 
         return sendJson(response, 201, {

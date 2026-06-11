@@ -5815,3 +5815,64 @@
 提交：
 
 - 中文 commit message：`新增远端项目仓库适配器`
+
+### 2026-06-12：新增远端项目仓库拉取预览
+
+功能名：远端 `ProjectRepository` 拉取包恢复预览。
+
+涉及文件：
+
+- `project-archive.js`
+- `main-admin.html`
+- `style.css`
+- `scripts/project-repository-mock-server.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/project-repository-api-contract.md`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `project-archive.js` 新增 `pullProjectRepositoryFromRemote()`。
+- 拉取时会用当前远端 endpoint 发起真实 `GET`，读取响应中的 `package`。
+- 拉取包必须是 `mr-calligraphy-project-repository-package-v1`，必须包含 `archive`，并且 `packageDigest` 必须与本机重新计算的稳定 JSON SHA-256 一致。
+- 通过校验后，远端包里的 `archive` 会进入现有项目档案导入差异预览。
+- 主后台远端项目仓库面板新增“拉取预览”按钮，不会直接覆盖本机数据。
+- `scripts/project-repository-mock-server.js` 调整为原样保存最近项目仓库包，避免服务端 packageId 改写破坏 digest。
+- Playwright 主后台用例新增“推送后拉取预览”验收，确认远端包能打开 `projectImportPreview` 并显示“主场景布局”恢复项。
+
+真实化说明：
+
+- 数据来源：远端 API `GET` 响应中的最近项目仓库包。
+- 写入状态：最近拉取状态、远端版本、packageId、packageDigest 和错误信息写入 `mr-calligraphy-project-repository-remote-v1`。
+- 成功反馈：主后台状态条提示远端包已拉取，并展示项目档案恢复预览。
+- 失败反馈：未配置 endpoint、网络失败、缺少 `package`、kind/version 不匹配、缺少 archive 或摘要不匹配时都会明确失败，不进入恢复预览。
+- 恢复边界：拉取只生成预览，用户仍需勾选恢复范围并点击“恢复所选”。
+
+已知限制：
+
+- 当前仍是本机导入预览，不是多人协作冲突解决器。
+- 服务端版本历史、账号空间隔离、字段级三方合并、远端资产签名和不可篡改审计仍待补齐。
+
+验收方式：
+
+- 手工验收：运行 `node scripts/project-repository-mock-server.js`，在主后台配置 endpoint，先推送仓库包，再点击“拉取预览”，应看到项目档案导入预览区出现远端包内容。
+- 脚本验收：`npm run test:e2e -- --grep "main admin publishes"` 覆盖推送、GET 拉取、摘要校验和导入预览可见。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/project-repository-mock-server.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+
+提交：
+
+- 中文 commit message：`新增远端项目仓库拉取预览`

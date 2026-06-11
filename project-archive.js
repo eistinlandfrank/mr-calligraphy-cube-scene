@@ -384,6 +384,82 @@
     }
   }
 
+  async function pullProjectRepositoryFromRemote() {
+    const state = readProjectRepositoryRemoteState();
+    if (!state.endpoint) {
+      return persistProjectRepositoryRemoteError("尚未配置远端项目仓库 API。");
+    }
+    if (typeof fetch !== "function") {
+      return persistProjectRepositoryRemoteError("当前浏览器不支持 fetch，无法拉取项目仓库。");
+    }
+
+    try {
+      const response = await fetch(state.endpoint, {
+        method: "GET",
+        headers: createProjectRepositoryRemoteHeaders(state)
+      });
+      const payload = await parseProjectRepositoryResponse(response, "远端项目仓库拉取失败。");
+      const repositoryPackage = extractProjectRepositoryPackage(payload);
+      await assertProjectRepositoryPackageDigest(repositoryPackage);
+      const archive = migrateProjectArchive(repositoryPackage.archive);
+      validateArchive(archive);
+      const preview = await createArchivePreview(archive);
+      const checkedAt = new Date().toISOString();
+      const message = String(payload.message || `远端项目仓库包已拉取：${repositoryPackage.packageId || "未命名包"}。`).slice(0, 220);
+      writeProjectRepositoryRemoteState({
+        ...state,
+        lastCheckedAt: checkedAt,
+        lastPackageId: String(payload.packageId || repositoryPackage.packageId || state.lastPackageId || "").slice(0, 160),
+        lastRemoteVersion: String(payload.remoteVersion || repositoryPackage.remoteVersion || "").slice(0, 120),
+        lastRemoteStatus: message,
+        lastPackageDigest: normalizeSha256(repositoryPackage.packageDigest) || state.lastPackageDigest,
+        lastRepositoryDigest: normalizeSha256(payload.repositoryDigest || repositoryPackage.repositoryDigest) || state.lastRepositoryDigest,
+        lastError: ""
+      });
+      return {
+        ok: true,
+        message,
+        remote: payload,
+        package: repositoryPackage,
+        archive,
+        preview,
+        status: getProjectRepositoryRemoteStatus()
+      };
+    } catch (error) {
+      return persistProjectRepositoryRemoteError(`远端项目仓库拉取失败：${error?.message || "未知错误"}。`);
+    }
+  }
+
+  function extractProjectRepositoryPackage(payload) {
+    const candidate = payload?.kind === PROJECT_REPOSITORY_PACKAGE_KIND ? payload : payload?.package;
+    if (!candidate || typeof candidate !== "object") {
+      throw new Error("远端响应中没有项目仓库包。");
+    }
+    if (candidate.kind !== PROJECT_REPOSITORY_PACKAGE_KIND) {
+      throw new Error("远端项目仓库包 kind 不匹配。");
+    }
+    if (Number(candidate.version) !== PROJECT_REPOSITORY_REMOTE_VERSION) {
+      throw new Error("远端项目仓库包版本不匹配。");
+    }
+    if (!candidate.archive || typeof candidate.archive !== "object") {
+      throw new Error("远端项目仓库包缺少 archive。");
+    }
+    return candidate;
+  }
+
+  async function assertProjectRepositoryPackageDigest(repositoryPackage) {
+    const expectedDigest = normalizeSha256(repositoryPackage.packageDigest);
+    if (!expectedDigest) {
+      throw new Error("远端项目仓库包缺少 packageDigest。");
+    }
+    const comparable = cloneJsonValue(repositoryPackage);
+    delete comparable.packageDigest;
+    const actualDigest = await createStableJsonSha256(comparable);
+    if (actualDigest !== expectedDigest) {
+      throw new Error("远端项目仓库包摘要不匹配，已拒绝进入恢复预览。");
+    }
+  }
+
   function createProjectRepositoryRemoteHeaders(state, includeJson = false) {
     const headers = { Accept: "application/json" };
     if (includeJson) {
@@ -2617,6 +2693,7 @@
     const repositoryRemoteSaveButton = document.getElementById("projectRepositorySaveRemote");
     const repositoryRemoteCheckButton = document.getElementById("projectRepositoryCheckRemote");
     const repositoryRemotePushButton = document.getElementById("projectRepositoryPushRemote");
+    const repositoryRemotePullButton = document.getElementById("projectRepositoryPullRemote");
     const repositoryReceiptList = document.getElementById("projectRepositoryReceiptList");
 
     if (!exportButton && !importFile) return;
@@ -2641,6 +2718,7 @@
       if (repositoryRemoteSaveButton) repositoryRemoteSaveButton.disabled = isBusy;
       if (repositoryRemoteCheckButton) repositoryRemoteCheckButton.disabled = isBusy;
       if (repositoryRemotePushButton) repositoryRemotePushButton.disabled = isBusy;
+      if (repositoryRemotePullButton) repositoryRemotePullButton.disabled = isBusy;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
       updateRestoreSelectionState();
     };
@@ -3321,6 +3399,28 @@
       }
     });
 
+    repositoryRemotePullButton?.addEventListener("click", async () => {
+      clearPendingImport();
+      setBusy(true);
+      setStatus("正在拉取远端项目仓库包并生成恢复预览。", "loading");
+      try {
+        const result = await pullProjectRepositoryFromRemote();
+        if (!result.ok) {
+          setStatus(result.message || "远端项目仓库拉取失败。", "error");
+          return;
+        }
+        pendingArchive = result.archive;
+        pendingPreview = result.preview;
+        renderImportPreview(result.preview);
+        setStatus(`${result.message || "远端项目仓库包已拉取。"} 请确认差异和恢复范围后再点击“恢复所选”。`, "success");
+      } catch (error) {
+        setStatus(error?.message || "远端项目仓库拉取失败。", "error");
+      } finally {
+        setBusy(false);
+        renderProjectRepositoryRemoteStatus();
+      }
+    });
+
     confirmButton?.addEventListener("click", async () => {
       if (!pendingArchive) {
         setStatus("请先选择项目档案。", "error");
@@ -3390,6 +3490,7 @@
     getProjectRepositoryRemoteStatus,
     checkProjectRepositoryRemote,
     pushProjectRepositoryToRemote,
+    pullProjectRepositoryFromRemote,
     getImportImpactReport,
     downloadImportImpactReport,
     getRestoreAuditLog,

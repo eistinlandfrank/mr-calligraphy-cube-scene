@@ -957,6 +957,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const projectRepositoryEndpointPath = "/e2e-project-repository";
   const remoteRequests = [];
   const projectRepositoryRequests = [];
+  let remoteProjectRepositoryPackage = null;
 
   await page.route(`**${remoteEndpointPath}`, async (route) => {
     const request = route.request();
@@ -1012,6 +1013,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
     if (method === "PUT") {
       const validation = validateProjectRepositoryPackage(body);
       expect(validation.ok, validation.message).toBe(true);
+      remoteProjectRepositoryPackage = JSON.parse(JSON.stringify(body));
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -1042,8 +1044,11 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        message: "项目仓库远端 E2E 可访问。",
-        remoteVersion: "e2e-project-check-v1"
+        message: remoteProjectRepositoryPackage ? "项目仓库远端 E2E 可拉取。" : "项目仓库远端 E2E 可访问。",
+        remoteVersion: "e2e-project-check-v1",
+        packageId: remoteProjectRepositoryPackage ? "e2e-project-repository" : "",
+        repositoryDigest: remoteProjectRepositoryPackage?.packageDigest || "",
+        package: remoteProjectRepositoryPackage
       })
     });
   });
@@ -1114,6 +1119,13 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectRepositoryState.lastRemoteVersion).toBe("e2e-project-repository-v1");
   expect(projectRepositoryState.lastPackageDigest).toBe(projectRepositoryPut.body.packageDigest);
   expect(projectRepositoryState.receipts[0].sourcePackageId).toBe(projectRepositoryPut.body.packageId);
+
+  await page.locator("#projectRepositoryPullRemote").click();
+  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库远端 E2E 可拉取");
+  await expect(page.locator("#projectImportPreview")).toBeVisible();
+  await expect(page.locator("#projectImportPreviewList")).toContainText("主场景布局");
+  const pulledProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(pulledProjectRepositoryState.lastPackageDigest).toBe(projectRepositoryPut.body.packageDigest);
 
   await page.locator(".main-publish-panel .remote-publish-panel summary").click();
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();

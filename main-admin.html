@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法主场景管理页</title>
-  <link rel="stylesheet" href="style.css?v=project-repository-remote-20260612">
+  <link rel="stylesheet" href="style.css?v=project-repository-pull-20260612">
 </head>
 <body class="main-admin-page main-three-admin-page">
   <main class="app-shell">
@@ -182,10 +182,11 @@
                   <input id="projectRepositoryToken" type="password" autocomplete="off" placeholder="可选 Bearer token">
                 </label>
               </div>
-              <div class="remote-publish-actions">
+              <div class="remote-publish-actions project-repository-actions">
                 <button data-feature-state="real-local" id="projectRepositorySaveRemote" type="button">保存远端</button>
                 <button data-feature-state="real-local" id="projectRepositoryCheckRemote" type="button">检查远端</button>
                 <button data-feature-state="real-local" id="projectRepositoryPushRemote" type="button">推送仓库包</button>
+                <button data-feature-state="real-local" id="projectRepositoryPullRemote" type="button">拉取预览</button>
               </div>
               <ul id="projectRepositoryReceiptList" class="main-project-repository-list project-repository-receipt-list" aria-live="polite"></ul>
             </details>
@@ -328,8 +329,8 @@
       }
     }
   </script>
-  <script src="project-schema-utils.js?v=project-repository-remote-20260612"></script>
-  <script src="project-archive.js?v=project-repository-remote-20260612"></script>
+  <script src="project-schema-utils.js?v=project-repository-pull-20260612"></script>
+  <script src="project-archive.js?v=project-repository-pull-20260612"></script>
   <script src="project-remote-publish.js?v=remote-publish-workflow-20260611"></script>
   <script type="module" src="main-admin-scene.js?v=remote-workflow-20260611"></script>
 </body>
