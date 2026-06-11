@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版已完成，但仍缺图表/作品嵌入、云端长期报告和教师批注 | PDF 图表/截图增强、服务端接口草案 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
-| P2 | 后台远端发布生产化 | 远端发布 API adapter 第一版已完成，但仍缺审核流、发布锁和远端资产签名 | 远端发布 diff、审批状态、发布锁、资产签名 |
+| P2 | 后台远端发布生产化 | 远端发布 API adapter 和发布包 manifest/digest 已完成第一版，但仍缺审核流、发布锁和远端资产签名 | 远端发布审批状态、发布锁、远端资产签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
 ## 8. 每个功能完成时的记录格式
@@ -414,6 +414,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增后台远端发布适配`
+
+### 2026-06-11：新增远端发布包 Manifest 摘要
+
+完成内容：
+
+- `MRProjectRemotePublish.createPackage()` 新增 `manifest`，kind 为 `mr-calligraphy-remote-publish-manifest-v1`。
+- manifest 包含 `packageDigest`、`recordDigest`、`releaseDigest`、`layoutDigest` 四个稳定 SHA-256 摘要。
+- manifest 统计发布布局对象数量、可见对象数量、自定义对象数量、导入模型数量、灯光和图层顺序信息。
+- 远端推送成功后，`mr-calligraphy-remote-publish-v1.scenes.*.lastPackageDigest` 会持久化最近发布包摘要。
+- 主后台和写实后台更新 `project-remote-publish.js` 缓存版本，刷新后会加载新的 manifest 逻辑。
+- `scripts/remote-publish-check.js` 新增 manifest、稳定 digest、POST body manifest 和持久化 digest 断言。
+
+真实化说明：
+
+- 数据来源：当前本机发布记录 `record`、当前 release、release layout 和发布场景信息。
+- 写入状态：推送成功后写入远端发布状态中的 `lastPackageDigest`；生成包本身不修改本机发布记录。
+- 成功反馈：mock 远端接收发布包时，脚本可验证 POST body 携带 manifest 和 SHA-256 摘要。
+- 失败反馈：没有本机发布记录、没有远端 endpoint 或没有 `fetch` 时仍返回明确失败，不生成伪远端成功。
+- 刷新后复现方式：远端发布状态保存在 `mr-calligraphy-remote-publish-v1`，刷新后台后仍可读到最近 packageId、releaseId 和 packageDigest。
+
+验收：
+
+- 手工验收：完成一次本机发布并配置远端 API 后推送，服务端收到的 JSON 应包含 `manifest.packageDigest` 等摘要字段。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证 manifest、稳定 digest、POST body 和状态持久化。
+
+已知限制：
+
+- 当前摘要用于本机与远端核对发布包内容，不是远端资产签名、账号审批或不可抵赖签章。
+- 远端服务是否强制校验 digest 仍取决于用户配置的 API 实现。
+
+提交：
+
+- 中文 commit message：`新增远端发布包摘要`
 
 ### 2026-06-11：远端计划 API adapter
 

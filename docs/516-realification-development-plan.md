@@ -4483,6 +4483,59 @@
 - 远端发布 adapter 只负责把本机发布包真实发送给用户配置的 API，不包含账号登录、审核流、发布锁、CDN 部署或远端资产签名。
 - 主后台和写实后台对象 schema 仍未完全统一；后续需要继续做字段迁移、远端 diff 和资产完整性校验。
 
+### 2026-06-11：新增远端发布包摘要
+
+功能名：远端发布包 Manifest 与 SHA-256 摘要。
+
+涉及文件：
+
+- `project-remote-publish.js`
+- `scripts/remote-publish-check.js`
+- `main-admin.html`
+- `realistic-admin.html`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRProjectRemotePublish.createPackage()` 生成 `mr-calligraphy-remote-publish-manifest-v1` manifest。
+- manifest 包含 `packageDigest`、`recordDigest`、`releaseDigest`、`layoutDigest` 四个稳定 SHA-256 摘要。
+- manifest 统计发布布局对象数量、可见对象数量、自定义对象数量、导入模型数量、灯光和图层顺序信息。
+- 远端推送成功后，远端发布状态会持久化 `lastPackageDigest`。
+- 主后台和写实后台更新远端发布脚本缓存版本，刷新后台即可使用新的发布包摘要。
+- 远端发布检查脚本新增 manifest、稳定 digest、POST body 和持久化状态断言。
+
+真实化说明：
+
+- 数据来源：当前本机发布版本、当前 release、release layout 和场景发布配置。
+- 写入状态：推送成功后写入 `mr-calligraphy-remote-publish-v1.scenes.*.lastPackageDigest`。
+- 成功反馈：推送结果返回 `packageDigest`，远端 API 会收到带 manifest 的发布包。
+- 失败反馈：未配置 endpoint、无本机发布记录、缺少 fetch 或远端拒绝时仍明确失败，不写入伪成功 digest。
+- 刷新后复现方式：刷新后台后，`getStatus()` 仍可读取最近 `lastPackageDigest`。
+
+验收方式：
+
+- 手工验收：完成本机发布并配置远端 API 后推送；远端 mock 服务应能看到 `manifest.packageDigest`、`layoutDigest` 和对象统计。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证远端发布包 manifest、稳定摘要、POST body 和持久化状态。
+
+当前验证结果：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-check.js`
+- `node scripts/remote-publish-check.js`
+- `node - <<'NODE' ... manifest SHA-256 交叉校验`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+已知限制：
+
+- 当前摘要是发布包内容核对，不是账号审批、发布锁、远端资产签名或不可抵赖签章。
+- 远端服务是否校验 digest 取决于用户配置的 API 实现。
+
+提交：
+
+- 中文 commit message：`新增远端发布包摘要`
+
 ### 2026-06-11：新增学习报告原生 PDF 导出
 
 功能名：站内学习报告原生 PDF 文件导出。

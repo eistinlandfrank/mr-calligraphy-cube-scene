@@ -49,6 +49,22 @@ async function run() {
   assert(mainPackage.package.sceneId === "mainScene", "主场景发布包应保留 sceneId。");
   assert(mainPackage.package.release.id === "main-release-1", "发布包应包含当前 release ID。");
   assert(mainPackage.package.record.layout.objects.table.visible, "发布包应包含本机发布布局。");
+  assert(
+    mainPackage.package.manifest.kind === "mr-calligraphy-remote-publish-manifest-v1",
+    "发布包应包含远端发布 manifest。"
+  );
+  assert(/^[a-f0-9]{64}$/.test(mainPackage.package.manifest.packageDigest), "发布包 manifest 应包含 SHA-256 摘要。");
+  assert(mainPackage.package.manifest.objectSummary.objectCount === 1, "发布包 manifest 应统计布局对象数量。");
+  const repeatedMainPackage = adapter.createPackage("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(
+    repeatedMainPackage.package.manifest.packageDigest === mainPackage.package.manifest.packageDigest,
+    "同一发布内容重复生成的 packageDigest 应保持稳定。"
+  );
 
   let pushedMainPackage = null;
   const fetchCalls = [];
@@ -84,7 +100,9 @@ async function run() {
   });
   assert(mainPush.ok, "主场景发布包应能推送到远端 API。");
   assert(pushedMainPackage.kind === "mr-calligraphy-remote-publish-package-v1", "推送 body 应是远端发布包。");
+  assert(pushedMainPackage.manifest.packageDigest === mainPackage.package.manifest.packageDigest, "推送 body 应携带同一 manifest 摘要。");
   assert(mainPush.packageId === "accepted-mainScene", "主场景推送应记录远端接收 packageId。");
+  assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
 
   const realisticRecord = createPublishedRecord("realistic-release-1", "写实样张版");
   const realisticPush = await adapter.push("realisticScene", {
@@ -98,11 +116,12 @@ async function run() {
   const persisted = JSON.parse(storage.get("mr-calligraphy-remote-publish-v1"));
   assert(persisted.scenes.mainScene.endpoint === "https://example.test/main-publish", "主场景远端 endpoint 应持久化。");
   assert(persisted.scenes.mainScene.lastPackageId === "accepted-mainScene", "主场景远端 packageId 应持久化。");
+  assert(persisted.scenes.mainScene.lastPackageDigest === mainPackage.package.manifest.packageDigest, "主场景远端 packageDigest 应持久化。");
   assert(persisted.scenes.mainScene.lastReleaseId === "main-release-1", "主场景远端 releaseId 应持久化。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
 }
 
 function createPublishedRecord(releaseId, note) {
