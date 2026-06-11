@@ -55,7 +55,7 @@ const PAGE_CHECKS = [
   {
     path: "/",
     label: "前台学习页",
-    markers: ["MR 书法 360° 全景交互演示", "taskPanel", "historyArtworkCompare", "historyArtworkGallery", "reviewDownloadShare", "reportComparison", "reportSeries", "reportSeriesMetricControls", "reportSeriesTooltip", "reportSeriesTooltipPin", "reportSeriesTooltipCopy", "script.js", "app-state.js"]
+    markers: ["MR 书法 360° 全景交互演示", "taskPanel", "historyArtworkCompare", "historyArtworkGallery", "reviewDownloadShare", "reportComparison", "reportSeries", "reportSeriesMetricControls", "reportSeriesTooltip", "reportSeriesTooltipPin", "reportSeriesTooltipCopy", "reportSeriesZoomIn", "reportSeriesZoomOut", "reportSeriesZoomReset", "script.js", "app-state.js"]
   },
   {
     path: "/main-admin.html",

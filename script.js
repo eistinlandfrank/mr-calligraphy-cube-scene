@@ -945,6 +945,7 @@ let activeArtworkTag = "";
 let activeReportMetricKey = "structure";
 let activeReportSeriesMetricKeys = new Set(["structure"]);
 let activeReportSeriesTooltipTarget = null;
+let activeReportSeriesWindowSize = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
@@ -3568,6 +3569,13 @@ function bindReportControls() {
       return;
     }
 
+    const zoomButton = event.target.closest("[data-report-series-zoom]");
+    if (zoomButton) {
+      updateReportSeriesZoom(zoomButton.dataset.reportSeriesZoom);
+      renderReportPanel(currentIndex);
+      return;
+    }
+
     const metricButton = event.target.closest("[data-report-series-metric]");
     if (metricButton) {
       toggleReportSeriesMetric(metricButton.dataset.reportSeriesMetric);
@@ -4277,21 +4285,23 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
   }
 
   const selectedKeys = getActiveReportSeriesMetricKeys(metricKey);
+  const visibleSeries = getVisibleReportSeries(series);
   const selectedMetrics = selectedKeys
-    .map((key) => (series.metricSeries || []).find((item) => item.key === key))
+    .map((key) => (visibleSeries.metricSeries || []).find((item) => item.key === key))
     .filter(Boolean);
   const metricText = selectedMetrics.length
     ? selectedMetrics.map((metric) => `${metric.label}${formatSignedDelta(metric.delta)}`).join(" / ")
     : "未选择字段";
   const summary = document.createElement("p");
   summary.className = "report-series-summary";
-  summary.textContent = `${series.summary || "已读取本机报告序列。"} 字段对比：${metricText}。`;
+  summary.textContent = `${visibleSeries.summary || series.summary || "已读取本机报告序列。"} 字段对比：${metricText}。`;
 
-  const controls = createReportSeriesMetricControls(selectedKeys, series.metricSeries || []);
-  const chart = createReportSeriesChart(series, selectedMetrics);
+  const zoomControls = createReportSeriesZoomControls(series, visibleSeries);
+  const controls = createReportSeriesMetricControls(selectedKeys, visibleSeries.metricSeries || []);
+  const chart = createReportSeriesChart(visibleSeries, selectedMetrics);
   const points = document.createElement("div");
   points.className = "report-series-points";
-  (series.points || []).forEach((point) => {
+  (visibleSeries.points || []).forEach((point) => {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.featureState = "real-local";
@@ -4311,7 +4321,85 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
     points.appendChild(button);
   });
 
-  els.reportSeries.append(summary, controls, chart, points, createReportSeriesTooltip());
+  els.reportSeries.append(summary, zoomControls, controls, chart, points, createReportSeriesTooltip());
+}
+
+function createReportSeriesZoomControls(series, visibleSeries) {
+  const total = (series.points || []).length;
+  const visibleCount = (visibleSeries.points || []).length;
+  const controls = document.createElement("div");
+  controls.className = "report-series-zoom-controls";
+
+  const status = document.createElement("span");
+  status.id = "reportSeriesZoomStatus";
+  status.textContent = total > visibleCount
+    ? `显示最近 ${visibleCount} / ${total} 份`
+    : `显示全部 ${total} 份`;
+
+  [
+    ["in", "放大", "reportSeriesZoomIn", visibleCount <= 2],
+    ["out", "缩小", "reportSeriesZoomOut", visibleCount >= total],
+    ["reset", "重置", "reportSeriesZoomReset", visibleCount >= total]
+  ].forEach(([action, label, id, disabled]) => {
+    const button = document.createElement("button");
+    button.id = id;
+    button.type = "button";
+    button.dataset.featureState = "real-local";
+    button.dataset.reportSeriesZoom = action;
+    button.disabled = Boolean(disabled);
+    button.textContent = label;
+    controls.appendChild(button);
+  });
+
+  controls.appendChild(status);
+  return controls;
+}
+
+function getVisibleReportSeries(series) {
+  const points = series?.points || [];
+  const total = points.length;
+  if (total <= 2) {
+    activeReportSeriesWindowSize = null;
+    return {
+      ...series,
+      visibleCount: total,
+      totalCount: total
+    };
+  }
+
+  const windowSize = activeReportSeriesWindowSize
+    ? clamp(Math.round(activeReportSeriesWindowSize), 2, total)
+    : total;
+  activeReportSeriesWindowSize = windowSize >= total ? null : windowSize;
+  const visibleCount = activeReportSeriesWindowSize || total;
+  const visiblePoints = points.slice(-visibleCount);
+  const visibleIds = new Set(visiblePoints.map((point) => point.id));
+  const visibleMetricSeries = (series.metricSeries || []).map((metric) => {
+    const metricPoints = (metric.points || []).filter((point) => visibleIds.has(point.id));
+    const first = metricPoints[0]?.value || 0;
+    const latest = metricPoints[metricPoints.length - 1]?.value || 0;
+    return {
+      ...metric,
+      points: metricPoints,
+      first,
+      latest,
+      delta: latest - first
+    };
+  });
+  const firstPoint = visiblePoints[0];
+  const latestPoint = visiblePoints[visiblePoints.length - 1];
+  const averageDelta = (latestPoint?.averageScore || 0) - (firstPoint?.averageScore || 0);
+  return {
+    ...series,
+    points: visiblePoints,
+    metricSeries: visibleMetricSeries,
+    visibleCount,
+    totalCount: total,
+    averageDelta,
+    summary: visibleCount < total
+      ? `已放大查看最近 ${visibleCount} / ${total} 份本机报告，当前视图平均分较首份${formatSignedDelta(averageDelta, "分")}。`
+      : series.summary
+  };
 }
 
 function createReportSeriesMetricControls(selectedKeys, metricSeries = []) {
@@ -4658,6 +4746,37 @@ function setReportDetailActions(detail) {
   if (els.reportDetailDownload) els.reportDetailDownload.disabled = !hasDetail;
   if (els.reportDetailPrint) els.reportDetailPrint.disabled = !hasDetail;
   if (els.reportDetailOpenHistory) els.reportDetailOpenHistory.disabled = !hasDetail;
+}
+
+function updateReportSeriesZoom(action) {
+  const series = window.MRAppState?.getReportSeries?.(activeReportDetailId);
+  const total = series?.ok ? (series.points || []).length : 0;
+  if (total <= 2) {
+    activeReportSeriesWindowSize = null;
+    showNotice("当前报告数量较少，已显示全部趋势。");
+    return;
+  }
+
+  const currentSize = activeReportSeriesWindowSize
+    ? clamp(Math.round(activeReportSeriesWindowSize), 2, total)
+    : total;
+  if (action === "in") {
+    activeReportSeriesWindowSize = Math.max(2, currentSize - 1);
+    showNotice(`已放大到最近 ${activeReportSeriesWindowSize} 份报告。`);
+    return;
+  }
+
+  if (action === "out") {
+    const nextSize = Math.min(total, currentSize + 1);
+    activeReportSeriesWindowSize = nextSize >= total ? null : nextSize;
+    showNotice(activeReportSeriesWindowSize
+      ? `已缩小到最近 ${activeReportSeriesWindowSize} 份报告。`
+      : "已显示全部报告趋势。");
+    return;
+  }
+
+  activeReportSeriesWindowSize = null;
+  showNotice("已重置为全部报告趋势。");
 }
 
 function toggleReportSeriesMetric(key) {
