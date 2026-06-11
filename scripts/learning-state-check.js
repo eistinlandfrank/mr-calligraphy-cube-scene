@@ -214,6 +214,11 @@ assert(planResult.ok, "学习计划应能基于本机状态生成。");
 const latestPlan = window.MRAppState.getLatestPlan();
 assert(latestPlan.items.length === 5, "自动学习计划应生成 5 个任务项。");
 assert(latestPlan.reminderSummary.total === 5, "学习计划应返回提醒汇总。");
+assert(latestPlan.dependencyGraph.nodes.length === 5, "学习计划应生成任务依赖图节点。");
+assert(latestPlan.dependencyGraph.edges.length === 4, "自动学习计划应生成连续依赖边。");
+const focusDependencyNode = latestPlan.dependencyGraph.nodes.find((item) => item.id === "plan-task-focus");
+assert(focusDependencyNode.dependsOn.includes("plan-practice"), "任务重点计划项应依赖首次临摹。");
+assert(focusDependencyNode.status === "blocked", "前置临摹未完成时后续计划项应被依赖阻塞。");
 assert(
   latestPlan.items.every((item) => item.dueAt && item.remindAt && item.reviewAction && item.reminder),
   "学习计划项应包含到期、提醒、复盘动作和派生提醒状态。"
@@ -224,6 +229,9 @@ const toggledPlanItem = window.MRAppState.togglePlanItem(latestPlan.id, firstPla
 assert(toggledPlanItem.ok, "计划项应可勾选完成。");
 const pendingReviewItem = toggledPlanItem.plan.items.find((item) => item.id === firstPlanItem.id);
 assert(pendingReviewItem.reminder.status === "review-pending", "完成计划项后应进入待复盘状态。");
+const dependencyAfterFirstDone = window.MRAppState.getPlanDependencyGraph(latestPlan.id);
+const unlockedFocusNode = dependencyAfterFirstDone.nodes.find((item) => item.id === "plan-task-focus");
+assert(dependencyAfterFirstDone.ok && unlockedFocusNode.status !== "blocked", "完成前置计划项后依赖图应解锁下一项。");
 
 const reviewResult = window.MRAppState.completePlanItemReview(latestPlan.id, firstPlanItem.id);
 assert(reviewResult.ok, "计划项应可写入复盘完成状态。");
@@ -256,6 +264,8 @@ const addPlanResult = window.MRAppState.addPlanItem(latestPlan.id, {
   reviewAction: "custom"
 });
 assert(addPlanResult.ok && addPlanResult.plan.items.length === 6, "学习计划应可新增带排期的自定义任务。");
+assert(addPlanResult.item.dependsOn.includes("plan-report"), "自定义计划项应默认接到依赖链末端。");
+assert(addPlanResult.plan.dependencyGraph.nodes.at(-1).dependsOn.includes("plan-report"), "新增计划项应出现在依赖图中。");
 
 const planExport = window.MRAppState.getPlanExport(latestPlan.id);
 assert(planExport.ok, "学习计划应能生成离线导出页。");
@@ -265,6 +275,8 @@ assert(planExport.html.includes(latestPlan.id), "学习计划导出页 HTML 应�
 assert(planExport.html.includes("本机导出的学习计划"), "学习计划导出页应明确本机导出边界。");
 assert(planExport.html.includes("复盘任务重点"), "学习计划导出页应包含更新后的计划项标题。");
 assert(planExport.html.includes("到期"), "学习计划导出页应包含到期信息。");
+assert(planExport.html.includes("依赖图摘要") && planExport.html.includes("依赖："), "学习计划导出页应包含依赖图摘要和任务依赖。");
+assert(!window.MRAppState.getPlanDependencyGraph("missing-plan").ok, "不存在的计划不应伪造依赖图。");
 assert(!window.MRAppState.getPlanExport("missing-plan").ok, "不存在的计划不应伪造导出成功。");
 
 const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
@@ -273,7 +285,7 @@ assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化�
 assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘和计划离线导出已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划依赖图和计划离线导出已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

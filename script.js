@@ -887,6 +887,7 @@ const els = {
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
   planExportButton: document.getElementById("planExportButton"),
+  planDependencyGraph: document.getElementById("planDependencyGraph"),
   planItemList: document.getElementById("planItemList"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
@@ -3747,6 +3748,7 @@ function bindPlanControls() {
 
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
+  els.planDependencyGraph?.addEventListener("click", handlePlanDependencyClick);
 
   els.planItemList?.addEventListener("change", (event) => {
     const input = event.target.closest("[data-plan-item-id]");
@@ -5471,6 +5473,7 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   if (els.planExportButton) {
     els.planExportButton.disabled = !plan;
   }
+  renderPlanDependencyGraph(plan);
   els.planItemList.innerHTML = "";
 
   if (!plan?.items?.length) {
@@ -5485,6 +5488,8 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     const reminder = item.reminder || {};
     const row = document.createElement("div");
     row.className = "plan-item";
+    row.dataset.planRowId = item.id;
+    row.tabIndex = -1;
     row.classList.toggle("is-done", item.done);
     row.classList.toggle("is-overdue", reminder.status === "overdue");
     row.classList.toggle("is-due", reminder.status === "due");
@@ -5545,6 +5550,93 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     row.append(label, actions);
     els.planItemList.appendChild(row);
   });
+}
+
+function renderPlanDependencyGraph(plan) {
+  if (!els.planDependencyGraph) return;
+  els.planDependencyGraph.innerHTML = "";
+  if (!plan) {
+    els.planDependencyGraph.hidden = false;
+    const empty = document.createElement("p");
+    empty.textContent = "生成学习计划后，这里会显示任务依赖图。";
+    els.planDependencyGraph.appendChild(empty);
+    return;
+  }
+
+  const graph = plan.dependencyGraph || { nodes: [], edges: [], summary: "暂无依赖摘要" };
+  els.planDependencyGraph.hidden = false;
+
+  const header = document.createElement("div");
+  header.className = "plan-dependency-head";
+  const title = document.createElement("strong");
+  title.textContent = "任务依赖图";
+  const summary = document.createElement("span");
+  summary.textContent = graph.summary || "暂无依赖摘要";
+  header.append(title, summary);
+
+  const list = document.createElement("div");
+  list.className = "plan-dependency-list";
+
+  if (!graph.nodes?.length) {
+    const empty = document.createElement("p");
+    empty.textContent = "这份计划还没有可展示的任务依赖。";
+    list.appendChild(empty);
+  } else {
+    graph.nodes.forEach((node) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real-local";
+      button.dataset.planJumpItemId = node.id;
+      button.dataset.planJumpTitle = node.title;
+      button.dataset.dependencyTone = node.tone || "ready";
+      button.className = "plan-dependency-node";
+
+      const step = document.createElement("span");
+      step.className = "plan-dependency-step";
+      step.textContent = String(node.step || 1);
+
+      const body = document.createElement("span");
+      body.className = "plan-dependency-body";
+      const nodeTitle = document.createElement("strong");
+      nodeTitle.textContent = node.title;
+      const detail = document.createElement("small");
+      detail.textContent = node.dependencyLabels?.length
+        ? `依赖：${node.dependencyLabels.join("、")}`
+        : "依赖：起点任务";
+      body.append(nodeTitle, detail);
+
+      const status = document.createElement("em");
+      status.textContent = node.label || "可开始";
+
+      button.append(step, body, status);
+      list.appendChild(button);
+    });
+  }
+
+  els.planDependencyGraph.append(header, list);
+}
+
+function handlePlanDependencyClick(event) {
+  const button = event.target.closest("[data-plan-jump-item-id]");
+  if (!button) return;
+  focusPlanItem(button.dataset.planJumpItemId, button.dataset.planJumpTitle);
+}
+
+function focusPlanItem(itemId, title = "") {
+  if (!els.planItemList || !itemId) return;
+  const rows = Array.from(els.planItemList.querySelectorAll("[data-plan-row-id]"));
+  rows.forEach((row) => row.classList.toggle("is-highlighted", row.dataset.planRowId === itemId));
+  const target = rows.find((row) => row.dataset.planRowId === itemId);
+  if (!target) {
+    showNotice("未找到对应计划项。");
+    return;
+  }
+  target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  target.focus();
+  showNotice(title ? `已定位计划项：${title}` : "已定位计划项。");
+  window.setTimeout(() => {
+    target.classList.remove("is-highlighted");
+  }, 1800);
 }
 
 function renderPlanHistorySelect(planHistory, activeId) {

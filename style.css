@@ -6058,6 +6058,8 @@ body.is-model-view .notice-panel {
 
 .plan-tools {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
   margin-top: 8px;
 }
 
@@ -6084,6 +6086,122 @@ body.is-model-view .notice-panel {
   color: rgba(255, 250, 241, 0.38);
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-dependency-graph {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(116, 255, 219, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-dependency-head {
+  display: grid;
+  gap: 3px;
+}
+
+.plan-dependency-head strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.plan-dependency-head span,
+.plan-dependency-graph p {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.plan-dependency-list {
+  display: grid;
+  gap: 5px;
+}
+
+.plan-dependency-node {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: rgba(255, 250, 241, 0.84);
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  text-align: left;
+}
+
+.plan-dependency-node:hover,
+.plan-dependency-node:focus-visible {
+  border-color: rgba(116, 255, 219, 0.46);
+  outline: none;
+  background: rgba(47, 111, 104, 0.28);
+}
+
+.plan-dependency-node[data-dependency-tone="blocked"] {
+  border-color: rgba(255, 123, 123, 0.28);
+  background: rgba(135, 47, 47, 0.14);
+}
+
+.plan-dependency-node[data-dependency-tone="warning"],
+.plan-dependency-node[data-dependency-tone="review"] {
+  border-color: rgba(247, 215, 139, 0.3);
+  background: rgba(122, 91, 35, 0.14);
+}
+
+.plan-dependency-node[data-dependency-tone="done"] {
+  border-color: rgba(103, 212, 148, 0.28);
+}
+
+.plan-dependency-step {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  color: #0f171c;
+  background: #f7d78b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.plan-dependency-body {
+  min-width: 0;
+}
+
+.plan-dependency-body strong,
+.plan-dependency-body small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.plan-dependency-body strong {
+  color: #fffaf1;
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.plan-dependency-body small {
+  margin-top: 3px;
+  color: rgba(255, 250, 241, 0.56);
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.plan-dependency-node em {
+  max-width: 74px;
+  color: rgba(255, 250, 241, 0.74);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 850;
+  line-height: 1.2;
+  text-align: right;
 }
 
 .plan-item-list {
@@ -6122,6 +6240,11 @@ body.is-model-view .notice-panel {
 
 .plan-item.is-reviewed {
   border-color: rgba(103, 212, 148, 0.26);
+}
+
+.plan-item.is-highlighted {
+  border-color: rgba(116, 255, 219, 0.74);
+  box-shadow: 0 0 0 2px rgba(116, 255, 219, 0.18);
 }
 
 .plan-item-check {

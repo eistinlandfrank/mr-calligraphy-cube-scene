@@ -393,9 +393,9 @@
 
   function normalizePlan(record) {
     if (!record || typeof record !== "object") return null;
-    const items = Array.isArray(record.items)
+    const items = normalizePlanDependencies(Array.isArray(record.items)
       ? record.items.map(normalizePlanItem).filter(Boolean).slice(0, MAX_PLAN_ITEMS)
-      : [];
+      : []);
     const fallbackTask = findTaskForState(record.mode, record.glyph, record.copybook);
     return {
       id: String(record.id || makeId("plan")),
@@ -425,7 +425,8 @@
         remindAt: null,
         snoozedUntil: null,
         reviewAction: "custom",
-        reviewDoneAt: null
+        reviewDoneAt: null,
+        dependsOn: index > 0 ? [`plan-item-${index}`] : []
       };
     }
     if (!item || typeof item !== "object") return null;
@@ -441,8 +442,26 @@
       remindAt: normalizePlanDate(item.remindAt),
       snoozedUntil: normalizePlanDate(item.snoozedUntil),
       reviewAction: normalizePlanReviewAction(item.reviewAction),
-      reviewDoneAt: normalizePlanDate(item.reviewDoneAt)
+      reviewDoneAt: normalizePlanDate(item.reviewDoneAt),
+      dependsOn: Array.isArray(item.dependsOn)
+        ? [...new Set(item.dependsOn.map(String).filter(Boolean))].slice(0, 4)
+        : null
     };
+  }
+
+  function normalizePlanDependencies(items = []) {
+    const idSet = new Set(items.map((item) => item.id));
+    return items.map((item, index) => {
+      const explicit = Array.isArray(item.dependsOn);
+      const fallback = index > 0 ? [items[index - 1].id] : [];
+      const dependsOn = (explicit ? item.dependsOn : fallback)
+        .map(String)
+        .filter((id) => id && id !== item.id && idSet.has(id));
+      return {
+        ...item,
+        dependsOn: [...new Set(dependsOn)].slice(0, 4)
+      };
+    });
   }
 
   function normalizePlanDate(value) {
@@ -1378,8 +1397,9 @@
     return {
       ...clone(plan),
       items,
-      progress: getPlanProgress(plan),
-      reminderSummary: getPlanReminderSummary(items)
+      progress: getPlanProgress({ items }),
+      reminderSummary: getPlanReminderSummary(items),
+      dependencyGraph: buildPlanDependencyGraph(items)
     };
   }
 
@@ -1478,6 +1498,109 @@
       scheduled: counts.scheduled || 0,
       nextDueAt,
       label
+    };
+  }
+
+  function getPlanDependencyGraph(planId = null) {
+    const plan = getPlan(planId);
+    if (!plan) {
+      return {
+        ok: false,
+        message: "还没有可查看依赖图的学习计划。"
+      };
+    }
+
+    return {
+      ok: true,
+      planId: plan.id,
+      title: plan.title,
+      ...clone(plan.dependencyGraph || buildPlanDependencyGraph(plan.items || []))
+    };
+  }
+
+  function buildPlanDependencyGraph(items = []) {
+    const normalizedItems = Array.isArray(items) ? items : [];
+    const itemMap = new Map(normalizedItems.map((item) => [item.id, item]));
+    const nodes = normalizedItems.map((item, index) => {
+      const reminder = item.reminder || getPlanItemReminder(item);
+      const dependsOn = Array.isArray(item.dependsOn)
+        ? item.dependsOn.filter((id) => itemMap.has(id) && id !== item.id)
+        : [];
+      const blockerIds = dependsOn.filter((id) => itemMap.get(id)?.done !== true);
+      const dependencyLabels = dependsOn.map((id) => itemMap.get(id)?.title || id);
+      const blockerLabels = blockerIds.map((id) => itemMap.get(id)?.title || id);
+      const blocked = blockerIds.length > 0 && item.done !== true;
+      let status = "ready";
+      let tone = "ready";
+      let label = "可开始";
+
+      if (item.done && item.reviewDoneAt) {
+        status = "reviewed";
+        tone = "done";
+        label = "已复盘";
+      } else if (item.done) {
+        status = "review-pending";
+        tone = "review";
+        label = "待复盘";
+      } else if (blocked) {
+        status = "blocked";
+        tone = "blocked";
+        label = `等待：${blockerLabels.slice(0, 2).join("、")}`;
+      } else if (reminder.status === "overdue") {
+        status = "overdue";
+        tone = "danger";
+        label = "已逾期";
+      } else if (reminder.status === "due") {
+        status = "due";
+        tone = "warning";
+        label = "已到提醒";
+      }
+
+      return {
+        id: item.id,
+        index,
+        step: index + 1,
+        title: item.title,
+        dependsOn,
+        dependencyLabels,
+        blockerIds,
+        blockerLabels,
+        blocked,
+        status,
+        tone,
+        label,
+        dueLabel: reminder.dueLabel || "未设置到期",
+        reviewLabel: reminder.reviewLabel || "自定义复盘"
+      };
+    });
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const edges = nodes.flatMap((node) => node.dependsOn.map((sourceId) => ({
+      from: sourceId,
+      to: node.id,
+      fromTitle: nodeMap.get(sourceId)?.title || sourceId,
+      toTitle: node.title,
+      resolved: itemMap.get(sourceId)?.done === true
+    })));
+    const blockedCount = nodes.filter((node) => node.status === "blocked").length;
+    const readyCount = nodes.filter((node) => ["ready", "due", "overdue"].includes(node.status)).length;
+    const reviewedCount = nodes.filter((node) => node.status === "reviewed").length;
+    const reviewPendingCount = nodes.filter((node) => node.status === "review-pending").length;
+    const summary = blockedCount
+      ? `${blockedCount} 项等待前置任务，先完成依赖链起点`
+      : reviewPendingCount
+        ? `${reviewPendingCount} 项待复盘，依赖链已推进`
+        : reviewedCount === nodes.length && nodes.length
+          ? "计划依赖已全部完成"
+          : `${readyCount} 项可开始，按依赖链推进`;
+
+    return {
+      nodes,
+      edges,
+      summary,
+      blockedCount,
+      readyCount,
+      reviewedCount,
+      reviewPendingCount
     };
   }
 
@@ -1978,6 +2101,13 @@
     const taskProgress = getTaskProgress(currentTask.id);
     const hasArtwork = taskProgress.artworkCount > 0;
     const hasReport = taskProgress.reportCount > 0;
+    const planItems = [
+      makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`, { dueDays: 1, reviewAction: "practice" }),
+      makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务步骤完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task", dependsOn: ["plan-practice"] }),
+      makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice, { dueDays: 3, reviewAction: "weakness", dependsOn: ["plan-task-focus"] }),
+      makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。", { dueDays: 4, reviewAction: "artwork", dependsOn: ["plan-weakness"] }),
+      makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。", { dueDays: 5, reviewAction: "report", dependsOn: ["plan-artwork"] })
+    ];
     const plan = {
       id: makeId("plan"),
       createdAt: new Date().toISOString(),
@@ -1987,13 +2117,7 @@
       glyph: state.selectedGlyph,
       copybook: state.selectedCopybook,
       summary: `围绕“${currentTask.taskTitle}”和“${state.selectedCopybook}”安排可勾选任务，重点是${currentTask.focus}。`,
-      items: [
-        makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`, { dueDays: 1, reviewAction: "practice" }),
-        makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务步骤完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task" }),
-        makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice, { dueDays: 3, reviewAction: "weakness" }),
-        makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。", { dueDays: 4, reviewAction: "artwork" }),
-        makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。", { dueDays: 5, reviewAction: "report" })
-      ],
+      items: planItems,
       completedAt: null
     };
     state.plans.push(plan);
@@ -2019,7 +2143,10 @@
       remindAt,
       snoozedUntil: null,
       reviewAction: normalizePlanReviewAction(options.reviewAction),
-      reviewDoneAt: null
+      reviewDoneAt: null,
+      dependsOn: Array.isArray(options.dependsOn)
+        ? [...new Set(options.dependsOn.map(String).filter(Boolean))].slice(0, 4)
+        : []
     };
   }
 
@@ -2145,10 +2272,12 @@
       return { ok: false, message: "提醒时间不能晚于到期时间。" };
     }
 
+    const previousItem = plan.items[plan.items.length - 1] || null;
     const planItem = makePlanItem(makeId("plan-custom"), title, detail || "自定义补充任务，完成后可勾选保存进度。", {
       dueAt,
       remindAt,
-      reviewAction: item.reviewAction || "custom"
+      reviewAction: item.reviewAction || "custom",
+      dependsOn: previousItem ? [previousItem.id] : []
     });
     plan.items.push(planItem);
     plan.completedAt = null;
@@ -2190,6 +2319,17 @@
     }
 
     const [item] = plan.items.splice(index, 1);
+    plan.items.forEach((entry) => {
+      if (!Array.isArray(entry.dependsOn) || !entry.dependsOn.includes(item.id)) {
+        return;
+      }
+      const rewired = entry.dependsOn
+        .filter((id) => id !== item.id)
+        .concat(Array.isArray(item.dependsOn) ? item.dependsOn : []);
+      entry.dependsOn = [...new Set(rewired)]
+        .filter((id) => id && id !== entry.id && plan.items.some((candidate) => candidate.id === id))
+        .slice(0, 4);
+    });
     updatePlanCompletion(plan);
     addEvent("plan-item-delete", `删除计划项：${item.title}`);
     saveState();
@@ -2298,10 +2438,16 @@
   function createPlanExportHtml(plan, exportedAt) {
     const progress = plan.progress || getPlanProgress(plan);
     const reminderSummary = plan.reminderSummary || getPlanReminderSummary(plan.items || []);
+    const dependencyGraph = plan.dependencyGraph || buildPlanDependencyGraph(plan.items || []);
+    const dependencyMap = new Map((dependencyGraph.nodes || []).map((node) => [node.id, node]));
     const items = Array.isArray(plan.items) ? plan.items : [];
     const itemRows = items.length
       ? items.map((item, index) => {
         const reminder = item.reminder || getPlanItemReminder(item);
+        const dependencyNode = dependencyMap.get(item.id) || null;
+        const dependencyText = dependencyNode?.dependencyLabels?.length
+          ? `依赖：${dependencyNode.dependencyLabels.join("、")}`
+          : "依赖：起点任务";
         const status = item.done ? "已完成" : "待完成";
         const reviewStatus = reminder.reviewDoneAt ? reminder.reviewDoneLabel : reminder.reviewDoneLabel || "待完成复盘";
         return `<article class="plan-item">
@@ -2314,6 +2460,7 @@
               <li>${escapeHtml(reminder.dueLabel || "未设置到期")}</li>
               <li>${escapeHtml(reminder.remindLabel || "未设置提醒")}</li>
               <li>复盘：${escapeHtml(reminder.reviewLabel || "自定义复盘")}</li>
+              <li>${escapeHtml(dependencyText)}</li>
               <li>${escapeHtml(reviewStatus)}</li>
             </ul>
           </div>
@@ -2376,6 +2523,7 @@
     </section>
     <section class="content" aria-label="计划任务">
       <p class="notice">这是一份本机导出的学习计划，包含任务、到期、提醒、顺延和复盘状态；不是云端同步、消息推送或教师端排课服务。</p>
+      <p class="notice">依赖图摘要：${escapeHtml(dependencyGraph.summary || "暂无依赖摘要")}。</p>
       ${itemRows}
     </section>
     <footer>计划 ID：${escapeHtml(plan.id || "-")}。创建时间：${escapeHtml(formatDateTime(plan.createdAt))}。数据来源：${escapeHtml(STORAGE_KEY)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
@@ -4377,6 +4525,7 @@
     getPlan,
     getPlanHistory,
     getLatestPlan,
+    getPlanDependencyGraph,
     getPlanExport,
     getReportPreview,
     getReportDetail,
