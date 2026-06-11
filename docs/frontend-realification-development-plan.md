@@ -394,8 +394,8 @@ git diff --check
 
 仍待补：
 
-- “保留本机”策略的浏览器级验收。
-- “采用远端”策略的浏览器级验收。
+- “保留本机”策略的浏览器级验收。数据层已在 2026-06-12 计划仓库三策略验收中覆盖。
+- “采用远端”策略的浏览器级验收。数据层已在 2026-06-12 计划仓库三策略验收中覆盖。
 - 远端失败、非法 JSON、无计划包和 token 过期等失败路径验收。
 - 字段级冲突合并 UI，目前仍是计划级处理。
 
@@ -408,3 +408,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划仓库冲突浏览器验收`
+
+## 18. 2026-06-12 计划仓库三策略数据层验收
+
+本次继续补计划 repository 的真实化验收，把冲突解决从单一“另存副本”扩展到三种策略都能在可运行脚本里证明。
+
+完成内容：
+
+- `scripts/learning-state-check.js` 在远端计划 API adapter 流程中继续制造计划级冲突。
+- “另存副本”已验证：远端冲突计划复制成本机新计划，本机待同步项不被覆盖，冲突字段清空。
+- “保留本机”新增验证：冲突后调用 `resolvePlanRepositoryConflict("keep-local")`，会通过远端 PUT 推送本机计划，并清空待同步队列。
+- “采用远端”新增验证：冲突后调用 `resolvePlanRepositoryConflict("use-remote")`，会强制拉取远端包，覆盖本机冲突计划，并记录最近同步方向为 `pull`。
+- 最终会读取 `mr-calligraphy-learning-state-v1`，确认远端模式、endpoint、packageId、冲突清理、采用远端后的计划标题和计划项都已持久化。
+
+真实化说明：
+
+- 数据来源：真实 `MRAppState` 计划、远端计划包、模拟 fetch 请求和 localStorage 持久化结果。
+- 写入状态：保留本机会写回远端 PUT 包；采用远端会写回本机 `plans` 和 `planRepository` 状态。
+- 成功反馈：脚本在任一策略没有真实写入、没有清理冲突、没有保留/覆盖正确计划项时会失败。
+- 失败反馈：仍保留原有未配置远端、非法 endpoint、远端冲突不静默覆盖等断言。
+- 刷新后复现方式：本轮是数据层脚本验收；浏览器刷新复现已由计划仓库 UI 读取同一份 `mr-calligraphy-learning-state-v1` 支撑。
+
+仍待补：
+
+- “保留本机”和“采用远端”的浏览器级按钮验收。
+- 字段级冲突合并 UI。
+- 远端 401、非法 JSON、无计划包等失败路径的浏览器级提示验收。
+
+验收：
+
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+提交：
+
+- 中文 commit message：`新增计划冲突三策略验收`

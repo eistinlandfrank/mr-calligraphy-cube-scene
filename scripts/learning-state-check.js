@@ -516,6 +516,56 @@ async function runRemoteRepositoryChecks() {
   assert(!flushedAutoSync.status.pendingAutoSync, "自动同步 flush 成功后应清空队列。");
   assert(flushedAutoSync.status.lastAutoSyncAt, "自动同步 flush 成功后应记录时间。");
 
+  remotePackage = createRemoteConflictPackageFromPush(capturedPushPackage, {
+    packageId: "remote-keep-local-conflict-package",
+    planId: "plan-remote-pulled",
+    title: "远端保留策略冲突计划",
+    itemTitle: "远端保留策略冲突项",
+    itemDetail: "远端版本不应覆盖选择保留本机后的计划项。"
+  });
+  await delay(5);
+  const keepLocalPlan = window.MRAppState.getPlan("plan-remote-pulled");
+  const keepLocalUpdate = window.MRAppState.updatePlanItem("plan-remote-pulled", keepLocalPlan.items[0].id, {
+    title: "保留本机策略任务",
+    detail: "选择保留本机时，这条本机任务应被推送到远端。"
+  });
+  assert(keepLocalUpdate.ok, "保留本机策略前应能制造本机计划修改。");
+  const keepLocalConflict = await window.MRAppState.pullPlanRepositoryFromRemote();
+  assert(!keepLocalConflict.ok && keepLocalConflict.conflict, "保留本机策略前应检测到远端冲突。");
+  const keptLocal = await window.MRAppState.resolvePlanRepositoryConflict("keep-local");
+  assert(keptLocal.ok, "冲突保留本机策略应可通过远端 PUT 完成。");
+  assert(!keptLocal.status.lastSyncConflictCount, "保留本机后应清理冲突状态。");
+  assert(!keptLocal.status.pendingAutoSync, "保留本机推送成功后应清空待同步队列。");
+  const keptLocalPlan = window.MRAppState.getPlan("plan-remote-pulled");
+  assert(keptLocalPlan.items[0].title === "保留本机策略任务", "保留本机不应覆盖本机计划项。");
+  const keptPushedPlan = capturedPushPackage.plans.find((plan) => plan.id === "plan-remote-pulled");
+  assert(keptPushedPlan.items[0].title === "保留本机策略任务", "保留本机应把本机计划项推送到远端包。");
+
+  remotePackage = createRemoteConflictPackageFromPush(capturedPushPackage, {
+    packageId: "remote-use-remote-conflict-package",
+    planId: "plan-remote-pulled",
+    title: "采用远端策略计划",
+    itemTitle: "采用远端策略任务",
+    itemDetail: "选择采用远端时，这条远端任务应覆盖本机冲突项。"
+  });
+  await delay(5);
+  const useRemotePlan = window.MRAppState.getPlan("plan-remote-pulled");
+  const useRemoteUpdate = window.MRAppState.updatePlanItem("plan-remote-pulled", useRemotePlan.items[0].id, {
+    title: "本机即将被远端覆盖",
+    detail: "选择采用远端后，这条本机任务应被远端版本替换。"
+  });
+  assert(useRemoteUpdate.ok, "采用远端策略前应能制造本机计划修改。");
+  const useRemoteConflict = await window.MRAppState.pullPlanRepositoryFromRemote();
+  assert(!useRemoteConflict.ok && useRemoteConflict.conflict, "采用远端策略前应检测到远端冲突。");
+  const usedRemote = await window.MRAppState.resolvePlanRepositoryConflict("use-remote");
+  assert(usedRemote.ok, "冲突采用远端策略应可强制拉取远端计划。");
+  assert(!usedRemote.status.lastSyncConflictCount, "采用远端后应清理冲突状态。");
+  assert(!usedRemote.status.pendingAutoSync, "采用远端后不应继续显示本机待同步。");
+  const usedRemotePlan = window.MRAppState.getPlan("plan-remote-pulled");
+  assert(usedRemotePlan.title === "采用远端策略计划", "采用远端应覆盖本机计划标题。");
+  assert(usedRemotePlan.items[0].title === "采用远端策略任务", "采用远端应覆盖本机冲突计划项。");
+  assert(usedRemote.status.lastRemoteDirection === "pull", "采用远端应记录最近同步方向为拉取。");
+
   const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
   assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
   assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
@@ -528,18 +578,21 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
   assert(persistedPlanState.planRepository.mode === "remote-api", "计划 repository 应持久化远端 API 模式。");
   assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
-  assert(persistedPlanState.planRepository.lastImportedPlanCount === 1, "计划 repository 导入状态应持久化到 localStorage。");
-  assert(persistedPlanState.planRepository.lastPackageId === "remote-accepted-package", "计划 repository 应持久化最近远端 packageId。");
-  assert(persistedPlanState.planRepository.lastRemoteDirection === "push", "计划 repository 应记录最近远端同步方向。");
-  assert(persistedPlanState.planRepository.lastRemotePlanCount === persistedPlanState.plans.length, "计划 repository 应记录最近远端计划数量。");
-  assert(!persistedPlanState.planRepository.pendingAutoSync, "计划 repository 自动同步成功后不应继续显示待同步。");
+  assert(persistedPlanState.planRepository.lastImportedPlanCount === remotePackage.plans.length, "计划 repository 导入状态应持久化到 localStorage。");
+  assert(persistedPlanState.planRepository.lastPackageId === "remote-use-remote-conflict-package", "计划 repository 应持久化最近采用的远端 packageId。");
+  assert(persistedPlanState.planRepository.lastRemoteDirection === "pull", "计划 repository 应记录最近远端同步方向。");
+  assert(persistedPlanState.planRepository.lastRemotePlanCount === remotePackage.plans.length, "计划 repository 应记录最近远端计划数量。");
+  assert(!persistedPlanState.planRepository.pendingAutoSync, "计划 repository 冲突解决后不应继续显示待同步。");
   assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
   assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "自动同步成功后应清理冲突计数。");
+  const persistedRemotePlan = persistedPlanState.plans.find((plan) => plan.id === "plan-remote-pulled");
+  assert(persistedRemotePlan.title === "采用远端策略计划", "采用远端后的计划标题应持久化到 localStorage。");
+  assert(persistedRemotePlan.items[0].title === "采用远端策略任务", "采用远端后的计划项应持久化到 localStorage。");
 
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {
@@ -676,6 +729,36 @@ function createSession(id, glyph, score, time, metrics = {}) {
     feedback: [`${glyph}字反馈`],
     strokes: []
   };
+}
+
+function createRemoteConflictPackageFromPush(sourcePackage, options = {}) {
+  assert(sourcePackage?.plans?.length, "构造远端冲突包前需要已有推送包。");
+  const planId = options.planId || sourcePackage.plans[0].id;
+  const remoteUpdatedAt = options.updatedAt || new Date(Date.now() + 60000).toISOString();
+  return JSON.parse(JSON.stringify({
+    ...sourcePackage,
+    packageId: options.packageId || `remote-conflict-${Date.now()}`,
+    exportedAt: remoteUpdatedAt,
+    plans: sourcePackage.plans.map((plan) => {
+      if (plan.id !== planId) return plan;
+      return {
+        ...plan,
+        title: options.title || `${plan.title}（远端冲突）`,
+        updatedAt: remoteUpdatedAt,
+        items: plan.items.map((item, index) => index === 0
+          ? {
+              ...item,
+              title: options.itemTitle || `${item.title}（远端冲突）`,
+              detail: options.itemDetail || item.detail
+            }
+          : item)
+      };
+    })
+  }));
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function createArtwork(id, sessionId, glyph, score, time) {
