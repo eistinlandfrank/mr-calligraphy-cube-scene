@@ -841,6 +841,12 @@ const els = {
   reportSeries: document.getElementById("reportSeries"),
   reportLatest: document.getElementById("reportLatest"),
   reportRecommendations: document.getElementById("reportRecommendations"),
+  reportTeacherReviewStatus: document.getElementById("reportTeacherReviewStatus"),
+  reportTeacherReviewView: document.getElementById("reportTeacherReviewView"),
+  reportTeacherReviewerInput: document.getElementById("reportTeacherReviewerInput"),
+  reportTeacherReviewInput: document.getElementById("reportTeacherReviewInput"),
+  reportTeacherReviewSave: document.getElementById("reportTeacherReviewSave"),
+  reportTeacherReviewClear: document.getElementById("reportTeacherReviewClear"),
   reportDetailCopyLink: document.getElementById("reportDetailCopyLink"),
   reportDetailDownload: document.getElementById("reportDetailDownload"),
   reportDetailDownloadPdf: document.getElementById("reportDetailDownloadPdf"),
@@ -3627,6 +3633,8 @@ function bindReportControls() {
   els.reportDetailDownloadPdf?.addEventListener("click", downloadReportPdfDetail);
   els.reportDetailPrint?.addEventListener("click", printReportDetail);
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
+  els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
+  els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
   els.reportMetrics?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-report-metric]");
     if (!button) return;
@@ -4376,6 +4384,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   renderReportSeries(window.MRAppState.getReportSeries?.(detail.id), activeReportMetricKey);
   renderReportLatest(detail);
   renderReportRecommendations(detail.recommendations || []);
+  renderReportTeacherReview(detail);
   setReportDetailActions(detail);
 }
 
@@ -4401,6 +4410,7 @@ function renderReportEmptyState() {
     empty.textContent = "还没有报告记录。完成一次真实练习并导出报告后，这里会显示学习统计、能力结构、趋势和建议。";
     els.reportStats.appendChild(empty);
   }
+  renderReportTeacherReview(null);
 }
 
 function renderReportStats(detail) {
@@ -5181,6 +5191,29 @@ function renderReportRecommendations(items) {
   });
 }
 
+function renderReportTeacherReview(detail) {
+  const review = detail?.teacherReview || null;
+  if (els.reportTeacherReviewStatus) {
+    els.reportTeacherReviewStatus.textContent = review
+      ? `${review.reviewer || "本机教师"} · ${formatHistoryTime(review.reviewedAt)}`
+      : "暂无本机教师批注。";
+  }
+  if (els.reportTeacherReviewView) {
+    els.reportTeacherReviewView.textContent = review?.note || "批注会保存到当前浏览器的报告记录中，不代表云端教师端。";
+  }
+  if (els.reportTeacherReviewerInput && document.activeElement !== els.reportTeacherReviewerInput) {
+    els.reportTeacherReviewerInput.value = review?.reviewer || "";
+  }
+  if (els.reportTeacherReviewInput && document.activeElement !== els.reportTeacherReviewInput) {
+    els.reportTeacherReviewInput.value = review?.note || "";
+  }
+  const hasDetail = Boolean(detail);
+  if (els.reportTeacherReviewerInput) els.reportTeacherReviewerInput.disabled = !hasDetail;
+  if (els.reportTeacherReviewInput) els.reportTeacherReviewInput.disabled = !hasDetail;
+  if (els.reportTeacherReviewSave) els.reportTeacherReviewSave.disabled = !hasDetail;
+  if (els.reportTeacherReviewClear) els.reportTeacherReviewClear.disabled = !hasDetail || !review;
+}
+
 function setReportDetailActions(detail) {
   const hasDetail = Boolean(detail);
   if (els.reportDetailCopyLink) els.reportDetailCopyLink.disabled = !hasDetail;
@@ -5188,6 +5221,39 @@ function setReportDetailActions(detail) {
   if (els.reportDetailDownloadPdf) els.reportDetailDownloadPdf.disabled = !hasDetail;
   if (els.reportDetailPrint) els.reportDetailPrint.disabled = !hasDetail;
   if (els.reportDetailOpenHistory) els.reportDetailOpenHistory.disabled = !hasDetail;
+}
+
+function saveReportTeacherReview() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可批注的学习报告。");
+    renderReportTeacherReview(null);
+    return;
+  }
+  const result = window.MRAppState?.updateReportTeacherReview?.(detail.id, {
+    reviewer: els.reportTeacherReviewerInput?.value || "",
+    note: els.reportTeacherReviewInput?.value || ""
+  });
+  if (result?.ok) {
+    activeReportDetailId = detail.id;
+    renderReportPanel(currentIndex);
+  }
+  showNotice(result?.message || "教师批注保存失败。");
+}
+
+function clearReportTeacherReview() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("还没有可清除批注的学习报告。");
+    renderReportTeacherReview(null);
+    return;
+  }
+  const result = window.MRAppState?.clearReportTeacherReview?.(detail.id);
+  if (result?.ok) {
+    activeReportDetailId = detail.id;
+    renderReportPanel(currentIndex);
+  }
+  showNotice(result?.message || "教师批注清除失败。");
 }
 
 function updateReportSeriesZoom(action) {

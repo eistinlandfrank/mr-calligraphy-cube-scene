@@ -35,7 +35,7 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 56 | 13 | 0 | 0 | 0 | 0 |
+| `index.html` | 58 | 13 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 32 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
@@ -61,7 +61,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势和字段交互已有第一版 | 仍是本机报告，没有云端长期报告、教师批注、签名验真和服务端生成 | 增加报告 schema、服务端保存、教师批注、验真签名和 PDF 资源嵌入验收 |
+| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互和本机教师批注已有第一版 | 仍是本机报告，没有云端长期报告、账号教师端、签名验真和服务端生成 | 增加报告 schema、服务端保存、账号化教师批注、验真签名和 PDF 资源嵌入验收 |
 | 分享成果 | 可导出离线 HTML 分享页 | 没有公开链接、社群分享或课堂发布 | 保持 `real-export`，后续增加公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -182,7 +182,25 @@ node scripts/control-inventory.js --check
 - endpoint 由用户手动配置；没有账号、角色、远端审批、CDN 部署和资产签名服务。
 - 后续需要让服务端保存完整审计链，并返回签名 receipt / CDN asset receipt。
 
-## 10. 验收命令
+## 10. 2026-06-12 报告教师批注真实化
+
+本次把“教师批注”从后续规划补成一个本机真实闭环。
+
+已完成：
+
+- `ReportRecord` 新增 `teacherReview`，包含批注人、批注内容、批注时间和来源。
+- `MRAppState.updateReportTeacherReview()` / `clearReportTeacherReview()` 会真实写入或清除当前报告批注。
+- 新增 `getReportHtmlExport()`，HTML 报告导出不再只能通过下载副作用验证。
+- 站内报告新增教师批注表单，保存后刷新可复现，清除后回到空状态。
+- HTML 报告和原生 PDF 都会包含教师批注状态；PDF 增加 `TeacherReview` 可测标记。
+- `learning-state-check.js` 覆盖空批注拒绝、批注持久化、HTML 导出和 PDF 导出。
+
+仍然不是生产能力的部分：
+
+- 这是本机教师批注，不是账号化教师端，也没有服务端审计、签名验真或课堂权限。
+- 后续需要把报告仓库、教师身份、批注审计和云端长期报告接到服务端。
+
+## 11. 验收命令
 
 提交前至少运行：
 

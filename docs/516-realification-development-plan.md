@@ -47,7 +47,7 @@
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多和档案导出 | 还没有服务端分页和跨设备归档 |
-| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出和第一版 PDF 图表摘要 | 还没有云端长期报告、教师批注、签名验真和服务端报告仓库 |
+| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要和本机教师批注 | 还没有云端长期报告、账号化教师端、签名验真和服务端报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
@@ -5198,3 +5198,62 @@
 提交：
 
 - 中文 commit message：`新增远端发布回执审计`
+
+### 2026-06-12：新增报告教师批注
+
+功能名：站内学习报告本机教师批注。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `ReportRecord` 新增 `teacherReview` 字段，包含批注人、批注内容、批注时间和 `local-teacher-review` 来源。
+- `MRAppState.updateReportTeacherReview()` 会拒绝空批注，并把有效批注写入当前报告。
+- `MRAppState.clearReportTeacherReview()` 可清除当前报告的本机批注。
+- `MRAppState.getReportHtmlExport()` 新增无副作用 HTML 报告导出接口，便于测试和后续服务端复用。
+- 前台站内报告面板新增教师批注状态、批注人输入、批注内容输入、保存批注和清除批注按钮。
+- HTML 报告和原生 PDF 报告都会带上教师批注状态；PDF 增加 `TeacherReview: yes/no` 标记。
+- 学习状态检查新增批注保存、持久化、HTML 导出和 PDF 导出断言。
+- smoke test 新增报告教师批注入口标记。
+
+真实化说明：
+
+- 数据来源：当前站内报告 ID、用户输入的批注人和批注内容。
+- 写入状态：保存后写入 `mr-calligraphy-learning-state-v1.reports[*].teacherReview`；清除后该字段回到空状态。
+- 成功反馈：报告详情显示批注人、批注时间和批注内容；导出 HTML/PDF 保留批注状态。
+- 失败反馈：没有报告或批注为空时不会写入状态，并返回明确提示。
+- 刷新后复现方式：刷新前台后重新打开同一份报告，批注仍从本机报告记录读取。
+
+验收方式：
+
+- 手工验收：打开前台，生成或打开一份站内报告，在“教师批注”中填写批注人和内容，保存后刷新页面，批注应仍显示；下载 HTML/PDF 后应包含批注状态。
+- 脚本验收：`node scripts/learning-state-check.js` 验证空批注拒绝、批注持久化、HTML 导出和 PDF 标记；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证入口存在。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+
+已知限制：
+
+- 这仍是本机教师批注，不是账号化教师端或课堂批改系统。
+- 服务端报告仓库、教师身份、批注审计、签名验真和云端长期报告仍待实现。
+
+提交：
+
+- 中文 commit message：`新增报告教师批注`

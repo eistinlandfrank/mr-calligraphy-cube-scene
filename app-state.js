@@ -387,8 +387,27 @@
       learningMinutes: normalizeInteger(record.learningMinutes, 0, 0, 99999),
       scoreBreakdown: normalizeMetrics(record.scoreBreakdown),
       trend: Array.isArray(record.trend) ? record.trend.map(normalizeReportTrendPoint).filter(Boolean).slice(-8) : [],
-      recommendations: Array.isArray(record.recommendations) ? record.recommendations.map(String) : []
+      recommendations: Array.isArray(record.recommendations) ? record.recommendations.map(String) : [],
+      teacherReview: normalizeReportTeacherReview(record.teacherReview)
     };
+  }
+
+  function normalizeReportTeacherReview(review) {
+    const source = review && typeof review === "object" ? review : {};
+    const note = String(source.note || source.comment || "").trim().replace(/\s+/g, " ").slice(0, 800);
+    if (!note) return null;
+    const reviewer = String(source.reviewer || source.teacher || "本机教师").trim().slice(0, 80) || "本机教师";
+    return {
+      reviewer,
+      note,
+      reviewedAt: normalizeIsoDate(source.reviewedAt || source.updatedAt || source.createdAt),
+      source: String(source.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review"
+    };
+  }
+
+  function normalizeIsoDate(value) {
+    const time = Date.parse(value);
+    return Number.isFinite(time) ? new Date(time).toISOString() : "";
   }
 
   function normalizeReportTrendPoint(point) {
@@ -3175,6 +3194,65 @@
     };
   }
 
+  function updateReportTeacherReview(reportId = null, review = {}) {
+    const report = findReportForUpdate(reportId);
+    if (!report) {
+      return { ok: false, message: "还没有可批注的学习报告。" };
+    }
+    const teacherReview = normalizeReportTeacherReview({
+      reviewer: review.reviewer || review.teacher,
+      note: review.note || review.comment,
+      reviewedAt: new Date().toISOString(),
+      source: "local-teacher-review"
+    });
+    if (!teacherReview) {
+      return { ok: false, message: "教师批注内容不能为空。" };
+    }
+
+    report.teacherReview = teacherReview;
+    addEvent("report-review", `教师批注：${report.id}`);
+    saveState();
+    return {
+      ok: true,
+      report: getReportDetail(report.id),
+      teacherReview: clone(teacherReview),
+      message: `已保存 ${teacherReview.reviewer} 对报告“${report.title || report.id}”的本机教师批注。`
+    };
+  }
+
+  function clearReportTeacherReview(reportId = null) {
+    const report = findReportForUpdate(reportId);
+    if (!report) {
+      return { ok: false, message: "还没有可清除批注的学习报告。" };
+    }
+    if (!report.teacherReview) {
+      return {
+        ok: true,
+        report: getReportDetail(report.id),
+        teacherReview: null,
+        message: "这份报告还没有教师批注。"
+      };
+    }
+
+    report.teacherReview = null;
+    addEvent("report-review-clear", `清除教师批注：${report.id}`);
+    saveState();
+    return {
+      ok: true,
+      report: getReportDetail(report.id),
+      teacherReview: null,
+      message: `已清除报告“${report.title || report.id}”的本机教师批注。`
+    };
+  }
+
+  function findReportForUpdate(reportId = null) {
+    const recordId = String(reportId || "").trim();
+    if (recordId) {
+      return state.reports.find((item) => item.id === recordId) || null;
+    }
+    return state.reports[state.reports.length - 1] || null;
+  }
+
   function downloadJson(record, filename) {
     const payload = JSON.stringify(record, null, 2);
     const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
@@ -3330,6 +3408,9 @@
         return `<li><span class="bar" style="height:${height}%"></span><strong>${item.score}</strong><small>${escapeHtml(item.label)}</small></li>`;
       }).join("")
       : `<li class="trend-empty"><small>暂无分数趋势</small></li>`;
+    const teacherReviewBlock = normalizedReport.teacherReview
+      ? `<section class="teacher-review"><h2>教师批注</h2><p>${escapeHtml(normalizedReport.teacherReview.note)}</p><small>${escapeHtml(normalizedReport.teacherReview.reviewer)} · ${escapeHtml(formatDateTime(normalizedReport.teacherReview.reviewedAt))} · 本机批注记录</small></section>`
+      : `<section class="teacher-review is-empty"><h2>教师批注</h2><p>暂无本机教师批注。</p><small>批注会保存在当前浏览器报告记录中，不代表云端教师端。</small></section>`;
 
     return `<!doctype html>
 <html lang="zh-CN">
@@ -3379,6 +3460,10 @@
     .artwork figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
     .empty { margin-top: 12px; padding: 16px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); background: #ffffff; }
     .recommendations { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 20px; }
+    .teacher-review { margin-top: 26px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; }
+    .teacher-review p { margin-top: 8px; }
+    .teacher-review small { display: block; margin-top: 10px; color: var(--muted); }
+    .teacher-review.is-empty { color: var(--muted); background: #ffffff; }
     footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     @media print {
       @page { size: A4; margin: 14mm; }
@@ -3451,6 +3536,8 @@
       </ol>
     </section>
 
+    ${teacherReviewBlock}
+
     <footer>报告数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。报告水印：${escapeHtml(watermarkText)}。如需迁移项目，请在主后台导出项目档案。</footer>
   </main>
 </body>
@@ -3480,9 +3567,31 @@
         metricCount: 5,
         artworkCard: true,
         artworkAvailable: Boolean(latestArtwork),
-        artworkImageAvailable: Boolean(latestArtwork?.imageData)
+        artworkImageAvailable: Boolean(latestArtwork?.imageData),
+        teacherReview: Boolean(normalizedReport.teacherReview)
       },
-      message: "已生成包含能力条形图和最近作品卡片的原生 PDF 学习报告。"
+      message: "已生成包含能力条形图、最近作品卡片和教师批注状态的原生 PDF 学习报告。"
+    };
+  }
+
+  function getReportHtmlExport(reportId = null) {
+    const report = reportId
+      ? state.reports.find((item) => item.id === String(reportId))
+      : state.reports[state.reports.length - 1];
+    if (!report) {
+      return { ok: false, message: "还没有可导出的 HTML 学习报告。" };
+    }
+    const normalizedReport = normalizeReport(report);
+    return {
+      ok: true,
+      report: clone(normalizedReport),
+      filename: `mr-calligraphy-report-${normalizedReport.id}.html`,
+      mimeType: "text/html;charset=utf-8",
+      html: createReportHtml(normalizedReport),
+      features: {
+        teacherReview: Boolean(normalizedReport.teacherReview)
+      },
+      message: "已生成包含本机教师批注状态的 HTML 学习报告。"
     };
   }
 
@@ -3529,6 +3638,20 @@
       },
       { type: "artworkCard", artwork: latestArtwork, session: latestSession },
       { text: "", size: 6 },
+      { text: "教师批注", size: 16 },
+      {
+        text: normalizedReport.teacherReview
+          ? `${normalizedReport.teacherReview.reviewer}：${normalizedReport.teacherReview.note}`
+          : "暂无本机教师批注。",
+        size: 12
+      },
+      {
+        text: normalizedReport.teacherReview
+          ? `批注时间：${formatDateTime(normalizedReport.teacherReview.reviewedAt)}。来源：本机教师批注记录。`
+          : "教师批注功能只保存到当前浏览器报告记录，不代表云端教师端。",
+        size: 10
+      },
+      { text: "", size: 6 },
       { text: "练习建议", size: 16 },
       ...(normalizedReport.recommendations.length ? normalizedReport.recommendations : ["完成一次书写并保存作品后，会生成更具体的复盘建议。"])
         .slice(0, 6)
@@ -3542,7 +3665,8 @@
       metricCount: metricItems.length,
       artworkCard: true,
       artworkAvailable: Boolean(latestArtwork),
-      artworkImageAvailable: Boolean(latestArtwork?.imageData)
+      artworkImageAvailable: Boolean(latestArtwork?.imageData),
+      teacherReview: Boolean(normalizedReport.teacherReview)
     });
   }
 
@@ -3663,7 +3787,8 @@
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
       `% ArtworkCard: ${metadata.artworkCard ? "yes" : "no"}`,
       `% ArtworkAvailable: ${metadata.artworkAvailable ? "yes" : "no"}`,
-      `% ArtworkImageAvailable: ${metadata.artworkImageAvailable ? "yes" : "no"}`
+      `% ArtworkImageAvailable: ${metadata.artworkImageAvailable ? "yes" : "no"}`,
+      `% TeacherReview: ${metadata.teacherReview ? "yes" : "no"}`
     ].join("\n");
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
@@ -4059,6 +4184,7 @@
       trend: clone(normalizedReport.trend || []),
       metricTrend: clone(getReportMetricTrend(normalizedReport)),
       recommendations: clone(normalizedReport.recommendations || []),
+      teacherReview: normalizedReport.teacherReview ? clone(normalizedReport.teacherReview) : null,
       latestSession: latestSession
         ? {
             id: latestSession.id,
@@ -4426,14 +4552,16 @@
   }
 
   function downloadReport(reportId = null) {
-    const report = reportId
-      ? state.reports.find((item) => item.id === reportId)
-      : state.reports[state.reports.length - 1];
-    if (!report) {
+    const result = getReportHtmlExport(reportId);
+    if (!result.ok) {
       return { ok: false, message: "还没有可下载的报告。" };
     }
-    downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
-    return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印和打印样式。` };
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印、教师批注状态和打印样式。`
+    };
   }
 
   function downloadReportPdf(reportId = null) {
@@ -6853,6 +6981,7 @@
     getPlanExport,
     getReportPreview,
     getReportDetail,
+    getReportHtmlExport,
     getReportPdfExport,
     getReportComparison,
     getReportComparisonExport,
@@ -6914,6 +7043,8 @@
     movePlanItem,
     deletePlanItem,
     createReport,
+    updateReportTeacherReview,
+    clearReportTeacherReview,
     downloadPlan,
     downloadPlanRepository,
     downloadReport,

@@ -156,9 +156,40 @@ assert(reportPdfExport.features.metricCount === 5, "PDF 报告应包含五项能
 assert(reportPdfExport.features.artworkCard, "PDF 报告应声明包含最近作品卡片。");
 assert(reportPdfExport.features.artworkAvailable, "PDF 报告应识别最近作品记录。");
 assert(reportPdfExport.features.artworkImageAvailable, "PDF 报告应识别最近作品截图来源。");
+assert(!reportPdfExport.features.teacherReview, "未批注报告不应伪造教师批注。");
 assert(reportPdfExport.pdf.includes("MetricBars: 5"), "PDF 内容应包含能力条形图标记。");
 assert(reportPdfExport.pdf.includes("ArtworkCard: yes"), "PDF 内容应包含作品卡片标记。");
 assert(reportPdfExport.byteLength > 1000, "PDF 报告不应是空壳文件。");
+
+const emptyTeacherReview = window.MRAppState.updateReportTeacherReview("report-2", {
+  reviewer: "王老师",
+  note: ""
+});
+assert(!emptyTeacherReview.ok, "教师批注为空时不应写入报告。");
+
+const teacherReview = window.MRAppState.updateReportTeacherReview("report-2", {
+  reviewer: "王老师",
+  note: "结构更稳，下一次重点放慢竖钩收笔。"
+});
+assert(teacherReview.ok, "报告教师批注应可写入本机状态。");
+assert(teacherReview.teacherReview.reviewer === "王老师", "教师批注应保留批注人。");
+assert(teacherReview.teacherReview.note.includes("竖钩"), "教师批注应保留批注内容。");
+
+const reviewedDetail = window.MRAppState.getReportDetail("report-2");
+assert(reviewedDetail.teacherReview.note.includes("结构更稳"), "报告详情应返回教师批注。");
+
+const reviewedHtml = window.MRAppState.getReportHtmlExport("report-2");
+assert(reviewedHtml.ok, "报告 HTML 应可通过无副作用 API 生成。");
+assert(reviewedHtml.features.teacherReview, "HTML 报告导出应声明包含教师批注。");
+assert(reviewedHtml.html.includes("教师批注") && reviewedHtml.html.includes("结构更稳"), "HTML 报告应包含教师批注内容。");
+
+const reviewedPdf = window.MRAppState.getReportPdfExport("report-2");
+assert(reviewedPdf.features.teacherReview, "PDF 报告应声明包含教师批注。");
+assert(reviewedPdf.pdf.includes("TeacherReview: yes"), "PDF 内容应包含教师批注标记。");
+
+const persistedReviewedState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+const persistedReviewedReport = persistedReviewedState.reports.find((item) => item.id === "report-2");
+assert(persistedReviewedReport.teacherReview.note.includes("竖钩"), "教师批注应持久化到 localStorage。");
 
 const reportSeries = window.MRAppState.getReportSeries("report-3");
 assert(reportSeries.ok, "三份报告应生成多报告趋势。");
@@ -508,7 +539,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {

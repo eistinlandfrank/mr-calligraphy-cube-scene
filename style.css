@@ -5060,6 +5060,108 @@ body.is-model-view .notice-panel {
   line-height: 1.4;
 }
 
+.report-teacher-review {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(247, 215, 139, 0.18);
+  border-radius: 7px;
+  background: rgba(122, 91, 35, 0.12);
+}
+
+.report-teacher-review-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.report-teacher-review-head strong {
+  color: #fffaf1;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.report-teacher-review-head span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 11px;
+  font-weight: 760;
+  text-align: right;
+}
+
+.report-teacher-review-view {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.72);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.report-teacher-review-fields {
+  display: grid;
+  gap: 7px;
+}
+
+.report-teacher-review-fields label {
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 250, 241, 0.68);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-teacher-review-fields input,
+.report-teacher-review-fields textarea {
+  min-width: 0;
+  border: 1px solid rgba(255, 250, 241, 0.14);
+  border-radius: 6px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.report-teacher-review-fields input {
+  height: 32px;
+}
+
+.report-teacher-review-fields textarea {
+  min-height: 72px;
+  padding: 7px 8px;
+  resize: vertical;
+}
+
+.report-teacher-review-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.report-teacher-review-actions button {
+  min-height: 30px;
+  border: 1px solid rgba(247, 215, 139, 0.28);
+  border-radius: 6px;
+  color: #fffaf1;
+  background: rgba(122, 91, 35, 0.28);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.report-teacher-review-actions button:hover,
+.report-teacher-review-actions button:focus-visible {
+  border-color: rgba(247, 215, 139, 0.56);
+  outline: none;
+  background: rgba(122, 91, 35, 0.46);
+}
+
+.report-teacher-review-fields input:disabled,
+.report-teacher-review-fields textarea:disabled,
+.report-teacher-review-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.44;
+}
+
 .report-actions {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

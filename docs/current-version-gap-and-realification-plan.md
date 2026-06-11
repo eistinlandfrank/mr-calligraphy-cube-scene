@@ -57,7 +57,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
-| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比和多报告趋势 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、教师批注和签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口和导出验收 |
+| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势和本机教师批注 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、账号教师端和签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口、账号化教师批注和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、服务端分页、教师批注和长期归档 | 继续增加账号化 history repository、服务端分页接口、云端详情 URL 和字段级合并 |
 | 分享成果 | 能导出离线 HTML 分享页 | 没有微信、社群、课堂或公开链接 | 分享按钮保持 `real-export`，不能写成“已发布到社交平台”；后续加公开链接服务 |
 
@@ -227,7 +227,7 @@ node scripts/control-inventory.js
 | P1 | 评分解释层 | 评分是核心信任点 | 第一版已完成：基础评分证据、缺数据状态、模型替换接口 |
 | P1 | 任务依赖和完成条件 | 10 步学习路径需要真实进度 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
-| P2 | 报告 PDF/云端适配 | 原生 PDF 第一版已完成，但仍缺图表/作品嵌入、云端长期报告和教师批注 | PDF 图表/截图增强、服务端接口草案 |
+| P2 | 报告 PDF/云端适配 | 原生 PDF 第一版、本机教师批注和导出批注标记已完成，但仍缺图表/作品嵌入、云端长期报告和账号教师端 | PDF 图表/截图增强、服务端接口草案、教师端身份与审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限和服务端资产签名 | 服务端审批合同强化、服务端资产签名、发布锁服务端校验 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
@@ -1232,3 +1232,55 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增远端发布回执审计`
+
+### 2026-06-12：新增报告教师批注
+
+功能名：站内学习报告本机教师批注。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `ReportRecord` 新增 `teacherReview` 字段，保存批注人、批注内容、批注时间和本机来源。
+- `MRAppState` 新增 `updateReportTeacherReview()`、`clearReportTeacherReview()` 和 `getReportHtmlExport()`。
+- 站内报告面板新增“教师批注”表单，支持保存和清除当前报告批注。
+- HTML 报告导出新增教师批注区；原生 PDF 新增教师批注章节和 `TeacherReview` 可测标记。
+- 学习状态检查覆盖空批注拒绝、批注持久化、HTML 导出和 PDF 导出。
+- smoke test 新增报告批注入口标记。
+
+真实化说明：
+
+- 数据来源：当前站内报告 ID、用户输入的批注人和批注内容。
+- 写入状态：保存后写入 `mr-calligraphy-learning-state-v1.reports[*].teacherReview`；空批注不会写入。
+- 成功反馈：报告详情显示批注人、时间和内容；HTML/PDF 导出保留批注状态。
+- 失败反馈：没有报告或批注为空时返回明确提示，不伪造教师反馈。
+- 刷新后复现方式：报告批注保存在本机 localStorage，刷新前台后重新打开报告仍可看到。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+
+已知限制：
+
+- 当前是本机教师批注，不是账号化教师端。
+- 还没有服务端审计、教师身份、课堂权限、签名验真或云端长期报告仓库。
+
+提交：
+
+- 中文 commit message：`新增报告教师批注`
