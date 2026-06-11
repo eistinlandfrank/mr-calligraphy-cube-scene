@@ -394,8 +394,6 @@ git diff --check
 
 仍待补：
 
-- “保留本机”策略的浏览器级验收。数据层已在 2026-06-12 计划仓库三策略验收中覆盖。
-- “采用远端”策略的浏览器级验收。数据层已在 2026-06-12 计划仓库三策略验收中覆盖。
 - 远端失败、非法 JSON、无计划包和 token 过期等失败路径验收。
 - 字段级冲突合并 UI，目前仍是计划级处理。
 
@@ -444,3 +442,51 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划冲突三策略验收`
+
+## 19. 2026-06-12 计划仓库三策略浏览器验收
+
+本次把计划同步冲突的三种处理策略全部补到 Playwright 浏览器级用例里，并把本机 Playwright 运行环境修到可执行状态。
+
+完成内容：
+
+- 新增 `package-lock.json`，让 `@playwright/test` 依赖版本可复现。
+- 安装 Playwright Chromium 缓存后，`npm run test:e2e -- --grep "front plan repository"` 已能在本机运行。
+- `tests/e2e/real-flows.spec.js` 修正初始化逻辑：每个测试只清一次本机 storage，避免 reload / goto 时误删测试中刚生成的计划和报告。
+- “另存副本”浏览器用例继续覆盖：生成真实计划、配置远端、推送、制造本机/远端冲突、拉取显示冲突面板、点击“另存副本”、确认本机新增远端副本。
+- 新增“保留本机”浏览器用例：点击“保留本机”后，冲突面板消失，本机计划项保留，远端 PUT 包包含本机计划项，待同步队列清空。
+- 新增“采用远端”浏览器用例：点击“采用远端”后，冲突面板消失，本机计划标题和计划项被远端包覆盖，最近同步方向记录为 `pull`。
+- 修正前台练习 E2E 的真实操作路径：书写画布在当前桌面视口下会露出但不完全可操作，测试现在先滚动到画布再真实绘制笔迹。
+- 修正 WebGL 非空检查：前台主房间 WebGL 默认 drawing buffer 通过 `drawImage(canvas)` 可能读到黑屏，测试现在会触发渲染并通过 WebGL `readPixels` 采样。
+- 修正主后台远端发布 E2E：先展开“远端发布 API”折叠面板，再填写 endpoint/token；远端版本号改为从本机远端发布状态读取，UI 继续验证服务端可读消息。
+
+真实化说明：
+
+- 数据来源：真实前台页面、真实 `MRAppState.createPlan()` 计划、同源 `page.route()` 模拟的远端 API、localStorage 持久化状态和远端请求体。
+- 写入状态：三种按钮都会真实改写 `mr-calligraphy-learning-state-v1.planRepository`；保留本机还会产生新的远端 PUT 请求。
+- 成功反馈：Playwright 会同时检查 UI 面板隐藏、状态文案、远端请求、Bearer token、本机计划列表、冲突计数和 pending 队列。
+- 失败反馈：测试初始化曾暴露 reload 时误清 storage 的问题；本次已修正，后续报告刷新复现也更可信。
+- 刷新后复现方式：测试通过 reload 后再读计划面板和本机状态，确认不是单次内存变量。
+
+代理和依赖说明：
+
+- 本机存在 `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`，`curl --proxy "$CODEX_PROXY_URL"` 可访问 npm registry。
+- `npm install` 通过清空代理变量直连成功；Playwright 浏览器下载需要同时清空 `ALL_PROXY`。
+- 后续如遇同类问题，可使用 `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy -u NO_PROXY -u no_proxy npx playwright install chromium`。
+
+仍待补：
+
+- 远端失败、非法 JSON、无计划包和 token 过期等失败路径的浏览器级提示验收。
+- 字段级冲突合并 UI，目前仍是计划级处理。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "front plan repository"`
+- `node --check scripts/learning-state-check.js && node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`，当前 6 条 Playwright 用例全部通过。
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划冲突三策略浏览器验收`

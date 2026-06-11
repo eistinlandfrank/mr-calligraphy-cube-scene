@@ -11,7 +11,12 @@ const REALISTIC_PUBLISHED_KEY = "mr-calligraphy-realistic-published-v1";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((keys) => {
+    const markerKey = "__mr_calligraphy_e2e_storage_cleared__";
+    if (window.sessionStorage.getItem(markerKey) === "1") {
+      return;
+    }
     keys.forEach((key) => window.localStorage.removeItem(key));
+    window.sessionStorage.setItem(markerKey, "1");
   }, [
     LEARNING_KEY,
     MAIN_LAYOUT_KEY,
@@ -103,7 +108,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.goto(`/?report=${learningState.reports[0].id}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTitle")).toContainText("学习报告");
-  await expect(page.locator("#reportStats")).toContainText("保存作品");
+  await expect(page.locator("#reportStats")).toContainText("作品1幅");
 
   await page.locator("#reportTeacherReviewerInput").fill("王老师");
   await page.locator("#reportTeacherReviewInput").fill("结构更稳，下一次重点放慢竖钩收笔。");
@@ -226,7 +231,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   await page.locator("#planRepositoryEndpointInput").fill(planEndpoint);
   await page.locator("#planRepositoryTokenInput").fill("plan-token");
   await page.locator("#planRepositorySaveRemoteButton").click();
-  await expect(page.locator("#planRepositorySummary")).toContainText("远端计划 API 已配置");
+  await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
 
   await page.evaluate((endpoint) => {
     window.MRAppState.configurePlanRepositoryRemote({
@@ -237,7 +242,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   }, planEndpoint);
 
   await page.locator("#planRepositoryRemoteButton").click();
-  await expect(page.locator("#planRepositorySummary")).toContainText("E2E 可访问");
+  await expect(page.locator("#noticeState")).toContainText("E2E 可访问");
 
   await page.locator("#planRepositoryPushButton").click();
   await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
@@ -287,7 +292,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   await page.locator("#planRepositoryPullButton").click();
   await expect(page.locator("#planRepositoryConflictPanel")).toBeVisible();
   await expect(page.locator("#planRepositoryConflictStatus")).toContainText("1 份计划");
-  await expect(page.locator("#planRepositoryConflictList")).toContainText("本机冲突");
+  await expect(page.locator("#planRepositoryConflictList")).toContainText(seedPlan.title);
   await expect(page.locator("#planRepositoryConflictList")).toContainText("远端冲突");
 
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
@@ -304,6 +309,60 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(learningState.planRepository.lastSyncConflictCount).toBe(0);
   expect(learningState.planRepository.pendingAutoSync).toBe(true);
   expect(planRequests.some((item) => item.method === "GET" && item.authorization === "Bearer plan-token")).toBe(true);
+});
+
+test("front plan repository keeps local changes when resolving a conflict", async ({ page }) => {
+  const conflict = await setupPlanRepositoryConflict(page, {
+    endpointPath: "/e2e-plan-repository-keep-local",
+    token: "keep-local-token",
+    remoteTitle: "远端保留策略计划",
+    remoteItemTitle: "远端保留策略任务",
+    remoteItemDetail: "远端版本不应覆盖选择保留本机后的计划项。",
+    localItemTitle: "浏览器保留本机任务",
+    localItemDetail: "选择保留本机后，这条任务应继续留在本机并推送到远端。"
+  });
+
+  await page.locator("#planRepositoryKeepLocalButton").click();
+  await expect(page.locator("#planRepositoryConflictPanel")).toBeHidden();
+  await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
+
+  const learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const plan = learningState.plans.find((item) => item.id === conflict.seedPlan.id);
+  expect(plan.items[0].title).toBe("浏览器保留本机任务");
+  expect(learningState.planRepository.lastSyncConflictCount).toBe(0);
+  expect(learningState.planRepository.pendingAutoSync).toBe(false);
+  expect(learningState.planRepository.lastRemoteDirection).toBe("push");
+
+  const lastPut = conflict.planRequests.filter((item) => item.method === "PUT").at(-1);
+  expect(lastPut.authorization).toBe("Bearer keep-local-token");
+  expect(lastPut.body.plans[0].items[0].title).toBe("浏览器保留本机任务");
+  expect(conflict.getRemotePlanPackage().plans[0].items[0].title).toBe("浏览器保留本机任务");
+});
+
+test("front plan repository applies remote changes when resolving a conflict", async ({ page }) => {
+  const conflict = await setupPlanRepositoryConflict(page, {
+    endpointPath: "/e2e-plan-repository-use-remote",
+    token: "use-remote-token",
+    remoteTitle: "浏览器采用远端计划",
+    remoteItemTitle: "浏览器采用远端任务",
+    remoteItemDetail: "采用远端后，这条远端任务应覆盖本机冲突项。",
+    localItemTitle: "本机即将被远端覆盖",
+    localItemDetail: "选择采用远端后，这条本机任务应被远端版本替换。"
+  });
+
+  await page.locator("#planRepositoryUseRemoteButton").click();
+  await expect(page.locator("#planRepositoryConflictPanel")).toBeHidden();
+  await expect(page.locator("#planRepositorySummary")).toContainText("已从远端 API 拉取");
+
+  const learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const plan = learningState.plans.find((item) => item.id === conflict.seedPlan.id);
+  expect(plan.title).toBe("浏览器采用远端计划");
+  expect(plan.items[0].title).toBe("浏览器采用远端任务");
+  expect(learningState.planRepository.lastSyncConflictCount).toBe(0);
+  expect(learningState.planRepository.pendingAutoSync).toBe(false);
+  expect(learningState.planRepository.lastRemoteDirection).toBe("pull");
+  expect(learningState.planRepository.lastPackageId).toBe("e2e-plan-repository-use-remote-conflict");
+  expect(conflict.planRequests.some((item) => item.method === "GET" && item.authorization === "Bearer use-remote-token")).toBe(true);
 });
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
@@ -376,21 +435,25 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(published.layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);
   expect(published.stats.customCount).toBeGreaterThan(0);
 
+  await page.locator(".main-publish-panel .remote-publish-panel summary").click();
+  await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();
   await page.locator("#mainRemotePublishEndpoint").fill(remoteEndpoint);
   await page.locator("#mainRemotePublishToken").fill("e2e-token");
   await page.locator("#mainRemotePublishSave").click();
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("远端发布 API 配置已保存");
 
   await page.locator("#mainRemotePublishCheck").click();
-  await expect(page.locator("#mainRemotePublishStatus")).toContainText("e2e-check-v1");
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 可访问");
+  const checkedRemoteState = await readJsonLocalStorage(page, REMOTE_PUBLISH_KEY);
+  expect(checkedRemoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-check-v1");
 
   await page.locator("#mainRemotePublishRequestReview").click();
   await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("待审核");
   await page.locator("#mainRemotePublishApproveReview").click();
-  await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("已通过");
+  await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("审核通过");
 
   await page.locator("#mainRemotePublishPush").click();
-  await expect(page.locator("#mainRemotePublishStatus")).toContainText("e2e-remote-v1");
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 已接收");
   await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("1 条");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("e2e-mainScene");
 
@@ -462,6 +525,7 @@ test("realistic admin keeps local publish releases and rollback history", async 
 async function drawPracticeStroke(page) {
   const canvas = page.locator("#practiceCanvas");
   await expect(canvas).toBeVisible();
+  await canvas.scrollIntoViewIfNeeded();
   const box = await canvas.boundingBox();
   expect(box).not.toBeNull();
 
@@ -490,6 +554,162 @@ async function getSameOriginEndpoint(page, path) {
   return page.evaluate((endpointPath) => new URL(endpointPath, window.location.href).toString(), path);
 }
 
+async function setupPlanRepositoryConflict(page, options = {}) {
+  const endpointPath = options.endpointPath || "/e2e-plan-repository-conflict";
+  const token = options.token || "plan-token";
+  const planRequests = [];
+  let remotePlanPackage = null;
+
+  await page.route(`**${endpointPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    planRequests.push({
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+
+    if (method === "PUT") {
+      remotePlanPackage = cloneJson({
+        ...body,
+        packageId: `${endpointPath.replace(/^\//, "")}-package`,
+        acceptedAt: new Date().toISOString()
+      });
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `远端计划 E2E 已接收 ${body.summary.planCount} 份计划。`,
+          remoteVersion: "e2e-plan-v1",
+          packageId: remotePlanPackage.packageId,
+          package: remotePlanPackage
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: remotePlanPackage
+          ? `远端计划 E2E 可读，当前包含 ${remotePlanPackage.summary.planCount} 份计划。`
+          : "远端计划 E2E 可访问，当前尚未接收计划包。",
+        remoteVersion: "e2e-plan-v1",
+        package: remotePlanPackage
+      })
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const planEndpoint = await getSameOriginEndpoint(page, endpointPath);
+  const seedPlan = await page.evaluate(() => {
+    const created = window.MRAppState.createPlan();
+    return {
+      id: created.plan.id,
+      itemId: created.plan.items[0].id,
+      title: created.plan.title
+    };
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#planPanel")).toBeVisible();
+  await expect(page.locator("#planTitle")).toContainText(seedPlan.title);
+
+  await page.locator(".plan-repository-remote summary").click();
+  await page.locator("#planRepositoryEndpointInput").fill(planEndpoint);
+  await page.locator("#planRepositoryTokenInput").fill(token);
+  await page.locator("#planRepositorySaveRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
+
+  await page.evaluate(({ endpoint, remoteToken }) => {
+    window.MRAppState.configurePlanRepositoryRemote({
+      remoteEndpoint: endpoint,
+      remoteToken,
+      autoSyncEnabled: false
+    });
+  }, { endpoint: planEndpoint, remoteToken: token });
+
+  await page.locator("#planRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("E2E 可访问");
+
+  await page.locator("#planRepositoryPushButton").click();
+  await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
+
+  const initialPut = planRequests.find((item) => item.method === "PUT");
+  expect(initialPut.authorization).toBe(`Bearer ${token}`);
+  expect(initialPut.body.kind).toBe("mr-calligraphy-plan-repository-v1");
+  expect(initialPut.body.plans[0].id).toBe(seedPlan.id);
+
+  remotePlanPackage = createRemotePlanConflictPackage(remotePlanPackage, {
+    packageId: `${endpointPath.replace(/^\//, "")}-conflict`,
+    planId: seedPlan.id,
+    title: options.remoteTitle || "远端冲突计划",
+    itemTitle: options.remoteItemTitle || "远端冲突任务",
+    itemDetail: options.remoteItemDetail || "远端也修改了第一项任务，等待本机选择处理策略。"
+  });
+
+  await page.waitForTimeout(25);
+  const localEdit = await page.evaluate(({ planId, itemId, title, detail }) => {
+    const result = window.MRAppState.updatePlanItem(planId, itemId, { title, detail });
+    return {
+      ok: result.ok,
+      status: window.MRAppState.getPlanRepositoryStatus()
+    };
+  }, {
+    planId: seedPlan.id,
+    itemId: seedPlan.itemId,
+    title: options.localItemTitle || "本机冲突任务",
+    detail: options.localItemDetail || "本机也修改了第一项任务，应该触发远端冲突提示。"
+  });
+  expect(localEdit.ok).toBe(true);
+  expect(localEdit.status.pendingAutoSync).toBe(true);
+
+  await page.locator("#planRepositoryPullButton").click();
+  await expect(page.locator("#planRepositoryConflictPanel")).toBeVisible();
+  await expect(page.locator("#planRepositoryConflictStatus")).toContainText("1 份计划");
+  await expect(page.locator("#planRepositoryConflictList")).toContainText(seedPlan.title);
+  await expect(page.locator("#planRepositoryConflictList")).toContainText(options.remoteTitle || "远端冲突计划");
+
+  const learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastSyncConflictCount).toBe(1);
+  expect(learningState.planRepository.lastSyncConflictPlans[0].title).toBe(options.remoteTitle || "远端冲突计划");
+
+  return {
+    planRequests,
+    seedPlan,
+    getRemotePlanPackage: () => remotePlanPackage
+  };
+}
+
+function createRemotePlanConflictPackage(sourcePackage, options = {}) {
+  const updatedAt = options.updatedAt || new Date(Date.now() + 60000).toISOString();
+  return cloneJson({
+    ...sourcePackage,
+    packageId: options.packageId || `e2e-plan-conflict-${Date.now()}`,
+    exportedAt: updatedAt,
+    plans: sourcePackage.plans.map((plan) => {
+      if (plan.id !== options.planId) return plan;
+      return {
+        ...plan,
+        title: options.title || "远端冲突计划",
+        updatedAt,
+        items: plan.items.map((item, index) => index === 0
+          ? {
+              ...item,
+              title: options.itemTitle || "远端冲突任务",
+              detail: options.itemDetail || item.detail
+            }
+          : item)
+      };
+    })
+  });
+}
+
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
 }
@@ -502,17 +722,7 @@ async function expectCanvasHasVisiblePixels(page, selector) {
       return false;
     }
 
-    const sample = document.createElement("canvas");
-    sample.width = 32;
-    sample.height = 32;
-    const context = sample.getContext("2d", { willReadFrequently: true });
-    if (!context) {
-      return false;
-    }
-
-    try {
-      context.drawImage(canvas, 0, 0, sample.width, sample.height);
-      const data = context.getImageData(0, 0, sample.width, sample.height).data;
+    const hasVisiblePixels = (data) => {
       let opaquePixels = 0;
       let variedPixels = 0;
       let firstPixel = null;
@@ -530,6 +740,41 @@ async function expectCanvasHasVisiblePixels(page, selector) {
       }
 
       return opaquePixels > 64 && variedPixels > 8;
+    };
+
+    const sample = document.createElement("canvas");
+    sample.width = 32;
+    sample.height = 32;
+    const context = sample.getContext("2d", { willReadFrequently: true });
+
+    try {
+      if (context) {
+        context.drawImage(canvas, 0, 0, sample.width, sample.height);
+        if (hasVisiblePixels(context.getImageData(0, 0, sample.width, sample.height).data)) {
+          return true;
+        }
+      }
+    } catch (error) {
+      // WebGL canvases without a preserved drawing buffer can read as blank here.
+    }
+
+    try {
+      if (typeof window.updateCubeTransform === "function") {
+        window.updateCubeTransform();
+      }
+
+      const gl = canvas.getContext("webgl") || canvas.getContext("webgl2") || canvas.getContext("experimental-webgl");
+      if (!gl) {
+        return false;
+      }
+
+      const sampleWidth = Math.min(32, gl.drawingBufferWidth || canvas.width);
+      const sampleHeight = Math.min(32, gl.drawingBufferHeight || canvas.height);
+      const x = Math.max(0, Math.floor(((gl.drawingBufferWidth || canvas.width) - sampleWidth) / 2));
+      const y = Math.max(0, Math.floor(((gl.drawingBufferHeight || canvas.height) - sampleHeight) / 2));
+      const pixels = new Uint8Array(sampleWidth * sampleHeight * 4);
+      gl.readPixels(x, y, sampleWidth, sampleHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      return hasVisiblePixels(pixels);
     } catch (error) {
       return false;
     }
