@@ -159,7 +159,7 @@ node scripts/control-inventory.js --check
 
 ## 8. 下一批建议开发顺序
 
-1. 给计划 repository、学习档案 repository、项目仓库 repository 和远端发布 adapter 继续补生产服务端实现，明确账号权限、服务端合并、分页、资产签名和不可篡改审计字段。
+1. 给计划 repository、学习档案 repository、项目仓库 repository 和远端发布 adapter 继续补生产服务端实现，明确账号权限、服务端合并、分页、资产签名和不可篡改审计字段；远端发布的服务端锁 / 最近回执预检第一版已完成。
 2. 继续扩展主后台和写实后台统一项目仓库：字段迁移、完整 diff、账号化保存和多人协作接口。
 3. 补 Playwright 可运行环境并扩展端到端用例。
 4. 开始账号化 repository 设计，把计划、档案、作品、报告从本机状态抽象成可替换数据源。
@@ -183,6 +183,23 @@ node scripts/control-inventory.js --check
 - 回执审计当前保存在本机浏览器，不能替代服务端不可篡改审计。
 - endpoint 由用户手动配置；没有账号、角色、远端审批、CDN 部署和资产签名服务。
 - 后续需要让服务端保存完整审计链，并返回签名 receipt / CDN asset receipt。
+
+## 9.1 2026-06-12 远端发布服务端锁预检
+
+本次把远端发布按钮从“只靠本机锁防重复”推进到“推送前读取服务端锁和最近回执”。
+
+已完成：
+
+- `MRProjectRemotePublish.push()` 在 `POST` 前先 `GET` 当前 endpoint。
+- `GET` 响应里的 `publishLock` 或 `latestReceipt` 如果命中当前 `releaseId` / `packageDigest`，前端会阻止 `POST`。
+- 命中服务端锁会写入本机远端发布锁状态，后台面板继续显示发布锁保护。
+- 远端普通 `422` / 网络失败不再遗留“正在推送”的临时本机锁。
+- mock server 的 `GET` 会返回最近回执和 `publishLock`，专项脚本覆盖真实 HTTP 预检。
+
+仍然不是生产能力的部分：
+
+- 服务端账号、远端审批、资产签名、CDN 托管和不可篡改审计仍未接入。
+- 本机“解除发布锁”只能清本机锁；如果服务端仍返回锁，下一次推送仍会被预检阻止。
 
 ## 10. 2026-06-12 报告教师批注真实化
 

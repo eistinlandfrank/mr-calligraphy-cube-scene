@@ -15,7 +15,7 @@
 
 | 方法 | 用途 | 请求体 |
 | --- | --- | --- |
-| `GET` | 检查服务可访问性 | 无 |
+| `GET` | 检查服务可访问性，并在推送前读取服务端最近回执 / 发布锁 | 无 |
 | `POST` | 推送当前发布包 | `mr-calligraphy-remote-publish-package-v1` |
 
 如配置 token，请求会携带：
@@ -57,7 +57,42 @@ Authorization: Bearer <token>
 
 服务端应重新计算这些 digest，并拒绝不匹配的请求。
 
-## 4. 成功回执
+## 4. 检查响应与服务端发布锁
+
+成功的 `GET` 响应建议返回：
+
+```json
+{
+  "ok": true,
+  "message": "远端发布服务可访问。",
+  "remoteVersion": "remote-v1",
+  "receiptCount": 1,
+  "latestReceipt": {
+    "packageId": "remote-package-id",
+    "releaseId": "main-release-1",
+    "sceneId": "mainScene",
+    "packageDigest": "64位sha256",
+    "acceptedAt": "2026-06-12T00:00:00.000Z"
+  },
+  "publishLock": {
+    "locked": true,
+    "sceneId": "mainScene",
+    "releaseId": "main-release-1",
+    "packageDigest": "64位sha256",
+    "lockedAt": "2026-06-12T00:00:00.000Z",
+    "reason": "相同发布包已接收。"
+  }
+}
+```
+
+前端 adapter 在 `POST` 前会先执行一次 `GET` 作为服务端发布锁预检：
+
+- 如果 `publishLock.packageDigest` 或 `publishLock.releaseId` 命中当前发布包，会阻止 `POST`。
+- 如果 `latestReceipt.packageDigest` 或 `latestReceipt.releaseId` 命中当前发布包，会阻止重复 `POST`。
+- 命中服务端锁时，会把远端锁写入本机 `mr-calligraphy-remote-publish-v1.scenes[sceneId].lock`，并显示“远端发布锁校验阻止推送”。
+- 如果 `GET` 本身失败，前端不会继续推送，避免绕过服务端发布锁。
+
+## 5. 成功回执
 
 成功响应建议返回：
 
@@ -84,7 +119,7 @@ Authorization: Bearer <token>
 
 主后台和写实后台会显示最近回执，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。
 
-## 5. 失败响应
+## 6. 失败响应
 
 失败响应建议返回：
 
@@ -106,7 +141,9 @@ Authorization: Bearer <token>
 | `422` | 发布包结构、manifest 或资产摘要校验失败 |
 | `500` | 服务端内部错误 |
 
-## 6. 本机 mock 服务
+如果 `POST` 返回 `409` 且响应中带有 `packageDigest` 或 `releaseId`，前端会把它当作服务端发布锁冲突处理；普通 `422` 或网络异常会释放本机“正在推送”临时锁，避免失败后误锁住当前发布包。
+
+## 7. 本机 mock 服务
 
 启动 mock server：
 
@@ -129,12 +166,13 @@ http://127.0.0.1:8787/api/remote-publish
 mock 服务会：
 
 - `GET` 返回合同、远端版本和最近 receipt。
+- `GET` 在已有回执时返回 `publishLock`，前端会在推送前阻止相同发布包重复 POST。
 - `POST` 重新计算 `packageDigest`、`layoutDigest`、`assetDigest`。
 - 拒绝摘要不匹配的发布包。
 - 拒绝重复 `packageDigest`。
 - 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执写入本机审计列表。
 
-## 7. 验收
+## 8. 验收
 
 脚本验收：
 
@@ -143,4 +181,4 @@ node scripts/remote-publish-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、发布包回执、回执审计导出、重复摘要拒绝和远端发布状态持久化。
+`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、发布包回执、回执审计导出、服务端锁预检、重复摘要拒绝、远端拒收释放临时锁和远端发布状态持久化。

@@ -104,11 +104,13 @@
   function normalizeLockState(lock = {}) {
     const source = lock && typeof lock === "object" ? lock : {};
     const lockedAt = normalizeDate(source.lockedAt);
+    const sourceType = ["local", "in-flight", "remote"].includes(source.source) ? source.source : "local";
     return {
       lockedAt,
       releaseId: lockedAt && source.releaseId ? String(source.releaseId).slice(0, 120) : "",
       packageDigest: lockedAt ? normalizeSha256(source.packageDigest) : "",
-      reason: lockedAt && source.reason ? String(source.reason).slice(0, 160) : ""
+      reason: lockedAt && source.reason ? String(source.reason).slice(0, 160) : "",
+      source: lockedAt ? sourceType : ""
     };
   }
 
@@ -806,6 +808,12 @@
     if (!workflow.canPush) {
       return saveRemoteError(normalizedId, workflow.blockedReason || "远端发布包尚未通过本机审核。");
     }
+
+    const serverLockCheck = await checkRemotePublishServerLock(normalizedId, scene, packaged.package);
+    if (!serverLockCheck.ok) {
+      return serverLockCheck;
+    }
+
     const lock = acquirePublishLock(normalizedId, packaged.package, "远端发布包正在推送，阻止重复提交。");
     if (!lock.ok) {
       return saveRemoteError(normalizedId, lock.message);
@@ -818,6 +826,11 @@
       }));
       const parsed = await parseResponse(response, "远端发布 API 已接收发布包。");
       if (!parsed.ok) {
+        const conflict = getRemotePublishLockConflict(normalizedId, packaged.package, parsed);
+        if (conflict) {
+          return persistRemotePublishServerLock(normalizedId, packaged.package, conflict);
+        }
+        releasePublishLock(normalizedId, packaged.package);
         return saveRemoteError(normalizedId, parsed.message);
       }
 
@@ -838,7 +851,8 @@
           lockedAt: lock.lockedAt,
           releaseId,
           packageDigest: packaged.package.manifest?.packageDigest,
-          reason: "远端已接收该发布包，发布锁用于防止重复推送。"
+          reason: "远端已接收该发布包，发布锁用于防止重复推送。",
+          source: "remote"
         },
         receipts: [receipt, ...nextState.scenes[normalizedId].receipts].slice(0, MAX_RECEIPTS),
         lastError: ""
@@ -884,7 +898,8 @@
         lockedAt,
         releaseId: summary.releaseId,
         packageDigest: summary.packageDigest,
-        reason
+        reason,
+        source: "in-flight"
       },
       lastRemoteStatus: reason,
       lastError: ""
@@ -928,11 +943,9 @@
   }
 
   async function parseResponse(response, fallbackMessage) {
-    if (!response || response.ok === false) {
-      const status = response?.status ? `HTTP ${response.status}` : "无响应";
-      return { ok: false, message: `远端发布 API 请求失败：${status}。` };
+    if (!response) {
+      return { ok: false, status: 0, message: "远端发布 API 请求失败：无响应。" };
     }
-
     let payload = {};
     try {
       const text = typeof response.text === "function"
@@ -943,19 +956,192 @@
       return { ok: false, message: "远端发布 API 返回的不是可解析 JSON。" };
     }
 
+    if (response.ok === false) {
+      const status = response.status ? `HTTP ${response.status}` : "无响应";
+      return normalizeParsedRemotePayload(payload, false, payload.message || `远端发布 API 请求失败：${status}。`, response.status || 0);
+    }
     if (payload.ok === false) {
-      return { ok: false, message: payload.message || "远端发布 API 拒绝了本次请求。" };
+      return normalizeParsedRemotePayload(payload, false, payload.message || "远端发布 API 拒绝了本次请求。", response.status || 200);
+    }
+    return normalizeParsedRemotePayload(payload, true, payload.message || fallbackMessage, response.status || 200);
+  }
+
+  function normalizeParsedRemotePayload(payload = {}, ok, message, status = 0) {
+    const source = payload && typeof payload === "object" ? payload : {};
+    return {
+      ok,
+      status,
+      message,
+      packageId: source.packageId ? String(source.packageId) : "",
+      releaseId: source.releaseId ? String(source.releaseId).slice(0, 160) : "",
+      packageDigest: normalizeSha256(source.packageDigest || source.receipt?.packageDigest),
+      receiptDigest: normalizeSha256(source.receiptDigest || source.receipt?.receiptDigest),
+      remoteVersion: source.remoteVersion ? String(source.remoteVersion).slice(0, 120) : "",
+      receipt: source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : null,
+      latestReceipt: normalizeRemoteStatusReceipt(source.latestReceipt),
+      publishLock: normalizeRemotePublishLock(source.publishLock || source.lock),
+      receiptCount: normalizeCount(source.receiptCount),
+      warnings: normalizeWarningList(source.warnings || source.receipt?.warnings)
+    };
+  }
+
+  async function checkRemotePublishServerLock(sceneId, scene, payload) {
+    try {
+      const response = await fetch(scene.endpoint, createRequest(scene));
+      const parsed = await parseResponse(response, "远端发布 API 检查通过。");
+      if (!parsed.ok) {
+        return saveRemoteError(sceneId, `远端发布锁校验失败：${parsed.message}`);
+      }
+      const conflict = getRemotePublishLockConflict(sceneId, payload, parsed);
+      if (conflict) {
+        return persistRemotePublishServerLock(sceneId, payload, conflict);
+      }
+      const state = readState();
+      state.scenes[sceneId] = normalizeSceneState({
+        ...state.scenes[sceneId],
+        lastCheckedAt: new Date().toISOString(),
+        lastRemoteVersion: parsed.remoteVersion || state.scenes[sceneId].lastRemoteVersion,
+        lastRemoteStatus: `远端发布锁校验通过：${parsed.message}`,
+        lastError: ""
+      });
+      writeState(state);
+      return { ok: true, status: getStatus(sceneId), remote: parsed };
+    } catch (error) {
+      return saveRemoteError(sceneId, `远端发布锁校验失败：${error?.message || "网络请求异常"}。`);
+    }
+  }
+
+  function getRemotePublishLockConflict(sceneId, payload, parsed = {}) {
+    const summary = createCurrentPackageSummary(payload);
+    const remoteLock = parsed.publishLock?.locked ? parsed.publishLock : null;
+    if (remoteLock && remoteLockMatches(sceneId, summary, remoteLock, true)) {
+      return {
+        source: "publishLock",
+        packageDigest: remoteLock.packageDigest || summary.packageDigest,
+        releaseId: remoteLock.releaseId || summary.releaseId,
+        lockedAt: remoteLock.lockedAt,
+        remoteVersion: parsed.remoteVersion,
+        reason: remoteLock.reason || "远端服务当前有发布锁。"
+      };
+    }
+
+    const latestReceipt = parsed.latestReceipt;
+    if (latestReceipt && remoteLockMatches(sceneId, summary, latestReceipt, false)) {
+      return {
+        source: "latestReceipt",
+        packageDigest: latestReceipt.packageDigest || summary.packageDigest,
+        releaseId: latestReceipt.releaseId || summary.releaseId,
+        packageId: latestReceipt.packageId,
+        lockedAt: latestReceipt.acceptedAt || latestReceipt.pushedAt,
+        remoteVersion: parsed.remoteVersion || latestReceipt.remoteVersion,
+        reason: "远端服务已经接收过相同发布包。"
+      };
+    }
+
+    if (parsed.status === 409 && remoteLockMatches(sceneId, summary, parsed, false)) {
+      return {
+        source: "http409",
+        packageDigest: parsed.packageDigest || summary.packageDigest,
+        releaseId: parsed.releaseId || summary.releaseId,
+        packageId: parsed.packageId,
+        remoteVersion: parsed.remoteVersion,
+        reason: parsed.message || "远端服务拒绝重复发布包。"
+      };
+    }
+    return null;
+  }
+
+  function remoteLockMatches(sceneId, summary, remote = {}, allowSceneWideLock = false) {
+    const remoteSceneId = remote.sceneId ? normalizeSceneId(remote.sceneId) : sceneId;
+    if (remoteSceneId !== sceneId) {
+      return false;
+    }
+    const remoteDigest = normalizeSha256(remote.packageDigest);
+    const remoteReleaseId = remote.releaseId ? String(remote.releaseId) : "";
+    if (remoteDigest && summary.packageDigest && remoteDigest === summary.packageDigest) {
+      return true;
+    }
+    if (remoteReleaseId && summary.releaseId && remoteReleaseId === summary.releaseId) {
+      return true;
+    }
+    return Boolean(allowSceneWideLock && !remoteDigest && !remoteReleaseId);
+  }
+
+  function persistRemotePublishServerLock(sceneId, payload, conflict = {}) {
+    const summary = createCurrentPackageSummary(payload);
+    const lockedAt = normalizeDate(conflict.lockedAt) || new Date().toISOString();
+    const packageDigest = normalizeSha256(conflict.packageDigest) || summary.packageDigest;
+    const releaseId = conflict.releaseId ? String(conflict.releaseId).slice(0, 120) : summary.releaseId;
+    const reason = conflict.reason || "远端服务发布锁阻止本次推送。";
+    const message = `远端发布锁校验阻止推送：${reason}`;
+    const state = readState();
+    state.scenes[sceneId] = normalizeSceneState({
+      ...state.scenes[sceneId],
+      lastCheckedAt: new Date().toISOString(),
+      lastRemoteVersion: conflict.remoteVersion || state.scenes[sceneId].lastRemoteVersion,
+      lastRemoteStatus: message,
+      lastError: message,
+      lock: {
+        lockedAt,
+        releaseId,
+        packageDigest,
+        reason,
+        source: "remote"
+      }
+    });
+    writeState(state);
+    return {
+      ok: false,
+      status: getStatus(sceneId),
+      packageId: conflict.packageId || "",
+      releaseId,
+      packageDigest,
+      message
+    };
+  }
+
+  function normalizeRemoteStatusReceipt(receipt = {}) {
+    const source = receipt && typeof receipt === "object" ? receipt : null;
+    if (!source) {
+      return null;
+    }
+    const packageDigest = normalizeSha256(source.packageDigest || source.manifest?.packageDigest);
+    const releaseId = source.releaseId ? String(source.releaseId).slice(0, 160) : "";
+    const packageId = source.packageId ? String(source.packageId).slice(0, 160) : "";
+    if (!packageDigest && !releaseId && !packageId) {
+      return null;
     }
     return {
-      ok: true,
-      message: payload.message || fallbackMessage,
-      packageId: payload.packageId ? String(payload.packageId) : "",
-      releaseId: payload.releaseId ? String(payload.releaseId).slice(0, 160) : "",
-      packageDigest: normalizeSha256(payload.packageDigest || payload.receipt?.packageDigest),
-      receiptDigest: normalizeSha256(payload.receiptDigest || payload.receipt?.receiptDigest),
-      remoteVersion: payload.remoteVersion ? String(payload.remoteVersion).slice(0, 120) : "",
-      receipt: payload.receipt && typeof payload.receipt === "object" ? clone(payload.receipt) : null,
-      warnings: normalizeWarningList(payload.warnings || payload.receipt?.warnings)
+      sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
+      packageId,
+      releaseId,
+      packageDigest,
+      acceptedAt: normalizeDate(source.acceptedAt),
+      pushedAt: normalizeDate(source.pushedAt),
+      remoteVersion: source.remoteVersion ? String(source.remoteVersion).slice(0, 120) : "",
+      reason: source.reason ? String(source.reason).slice(0, 160) : ""
+    };
+  }
+
+  function normalizeRemotePublishLock(lock = {}) {
+    const source = lock && typeof lock === "object" ? lock : null;
+    if (!source) {
+      return null;
+    }
+    const packageDigest = normalizeSha256(source.packageDigest);
+    const releaseId = source.releaseId ? String(source.releaseId).slice(0, 160) : "";
+    const lockedAt = normalizeDate(source.lockedAt || source.acceptedAt);
+    const locked = source.locked === true || source.active === true || Boolean(lockedAt || packageDigest || releaseId);
+    if (!locked) {
+      return { locked: false };
+    }
+    return {
+      locked: true,
+      sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
+      packageDigest,
+      releaseId,
+      lockedAt,
+      reason: source.reason ? String(source.reason).slice(0, 160) : "远端服务当前有发布锁。"
     };
   }
 

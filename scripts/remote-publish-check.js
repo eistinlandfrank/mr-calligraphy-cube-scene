@@ -115,23 +115,47 @@ async function run() {
   assert(!initialWorkflow.canPush, "未审核发布包不应允许远端推送。");
 
   let pushedMainPackage = null;
+  let fakeRemoteLatestReceipt = null;
   const fetchCalls = [];
   global.fetch = async (url, options = {}) => {
     fetchCalls.push({ url, options });
     if (options.method === "POST") {
       const body = JSON.parse(options.body);
       if (body.sceneId === "mainScene") pushedMainPackage = body;
+      fakeRemoteLatestReceipt = {
+        receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
+        packageId: `accepted-${body.sceneId}`,
+        releaseId: body.release.id,
+        sceneId: body.sceneId,
+        packageDigest: body.manifest.packageDigest,
+        acceptedAt: "2026-06-12T08:00:00.000Z",
+        remoteVersion: `${body.sceneId}-remote-v1`
+      };
       return jsonResponse({
         ok: true,
         message: `${body.sceneLabel}远端发布已接收。`,
         packageId: `accepted-${body.sceneId}`,
-        remoteVersion: `${body.sceneId}-remote-v1`
+        releaseId: body.release.id,
+        packageDigest: body.manifest.packageDigest,
+        remoteVersion: `${body.sceneId}-remote-v1`,
+        receipt: fakeRemoteLatestReceipt
       });
     }
     return jsonResponse({
       ok: true,
       message: "远端发布 API 可访问。",
-      remoteVersion: "remote-check-v1"
+      remoteVersion: "remote-check-v1",
+      latestReceipt: fakeRemoteLatestReceipt,
+      publishLock: fakeRemoteLatestReceipt
+        ? {
+            locked: true,
+            sceneId: fakeRemoteLatestReceipt.sceneId,
+            releaseId: fakeRemoteLatestReceipt.releaseId,
+            packageDigest: fakeRemoteLatestReceipt.packageDigest,
+            lockedAt: fakeRemoteLatestReceipt.acceptedAt,
+            reason: "测试远端已有相同发布包。"
+          }
+        : { locked: false }
     });
   };
 
@@ -216,6 +240,89 @@ async function run() {
     release: mainRecord.releases[0]
   });
   assert(unlocked.ok && !unlocked.workflow.lock.lockedAt, "解除发布锁后应清空锁状态。");
+  const postCountBeforeServerLock = fetchCalls.filter((item) => item.options.method === "POST").length;
+  const blockedByServerLock = await adapter.push("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  const postCountAfterServerLock = fetchCalls.filter((item) => item.options.method === "POST").length;
+  assert(!blockedByServerLock.ok && blockedByServerLock.message.includes("远端发布锁校验阻止推送"), "服务端已有相同发布包时应在 POST 前阻止推送。");
+  assert(postCountAfterServerLock === postCountBeforeServerLock, "服务端发布锁命中时不应继续发送 POST。");
+  const serverLockedWorkflow = adapter.getWorkflow("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  assert(serverLockedWorkflow.lockMatches && !serverLockedWorkflow.canPush, "服务端锁命中后应写入本机远端发布锁状态。");
+  adapter.unlock("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: mainRecord,
+    release: mainRecord.releases[0]
+  });
+  fakeRemoteLatestReceipt = null;
+
+  let rejectedPostCount = 0;
+  global.fetch = async (url, options = {}) => {
+    if (options.method === "POST") {
+      rejectedPostCount += 1;
+      return jsonResponse({
+        ok: false,
+        message: "远端发布结构拒收。"
+      }, false, 422);
+    }
+    return jsonResponse({
+      ok: true,
+      message: "远端发布拒收测试服务可访问。",
+      remoteVersion: "reject-check-v1",
+      publishLock: { locked: false }
+    });
+  };
+  const rejectRecord = createPublishedRecord("main-release-reject", "远端拒收版");
+  const rejectOptions = {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: rejectRecord,
+    release: rejectRecord.releases[0]
+  };
+  adapter.requestReview("mainScene", rejectOptions);
+  adapter.approveReview("mainScene", rejectOptions);
+  const rejectedPush = await adapter.push("mainScene", rejectOptions);
+  assert(!rejectedPush.ok && rejectedPush.message.includes("远端发布结构拒收"), "远端 422 拒收应返回真实错误。");
+  assert(rejectedPostCount === 1, "远端拒收路径应真实发送一次 POST。");
+  const rejectWorkflow = adapter.getWorkflow("mainScene", rejectOptions);
+  assert(!rejectWorkflow.lockMatches, "远端普通拒收后应释放本机进行中发布锁。");
+  global.fetch = async (url, options = {}) => {
+    if (options.method === "POST") {
+      const body = JSON.parse(options.body);
+      return jsonResponse({
+        ok: true,
+        message: `${body.sceneLabel}远端发布已接收。`,
+        packageId: `accepted-${body.sceneId}`,
+        releaseId: body.release.id,
+        packageDigest: body.manifest.packageDigest,
+        remoteVersion: `${body.sceneId}-remote-v1`,
+        receipt: {
+          receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
+          packageId: `accepted-${body.sceneId}`,
+          releaseId: body.release.id,
+          sceneId: body.sceneId,
+          packageDigest: body.manifest.packageDigest,
+          acceptedAt: "2026-06-12T08:10:00.000Z",
+          remoteVersion: `${body.sceneId}-remote-v1`
+        }
+      });
+    }
+    return jsonResponse({
+      ok: true,
+      message: "远端发布 API 可访问。",
+      remoteVersion: "remote-check-v1",
+      publishLock: { locked: false }
+    });
+  };
 
   const realisticRecord = createPublishedRecord("realistic-release-1", "写实样张版");
   const realisticReview = adapter.requestReview("realisticScene", {
@@ -259,7 +366,7 @@ async function run() {
 
   await runMockServerChecks(adapter, nativeFetch);
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
 }
 
 async function runMockServerChecks(adapter, fetchApi) {
@@ -301,6 +408,11 @@ async function runMockServerChecks(adapter, fetchApi) {
     assert(mock.state.received[0].receiptDigest, "mock 回执应生成 receiptDigest。");
     const mockAudit = adapter.getReceiptAudit("mainScene");
     assert(mockAudit.latestReceipt.receiptDigest === mock.state.received[0].receiptDigest, "mock 服务回执应进入本机审计列表。");
+    const mockUnlocked = adapter.unlock("mainScene", options);
+    assert(mockUnlocked.ok, "mock 服务重复校验前应可解除本机发布锁。");
+    const mockBlockedByServerLock = await adapter.push("mainScene", options);
+    assert(!mockBlockedByServerLock.ok && mockBlockedByServerLock.message.includes("远端发布锁校验阻止推送"), "mock 服务最近回执应在 POST 前阻止重复推送。");
+    assert(mock.state.received.length === 1, "服务端锁预检命中时 mock 服务不应新增发布回执。");
 
     const duplicate = await fetchApi(endpoint, {
       method: "POST",

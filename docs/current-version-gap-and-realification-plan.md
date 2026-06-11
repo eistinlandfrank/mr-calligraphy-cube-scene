@@ -67,7 +67,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局；项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 执行真实 GET/PUT，支持拉取远端包进入恢复预览 | 保存主体仍在 localStorage / IndexedDB，远端 adapter 不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 能编辑写实样张对象、导入模型、保存快照和发布到演示；已纳入 `project-scene-repository-v1` 统一视图 | 与主后台对象模型仍有字段差异 | 继续做字段迁移、资产引用规则和完整 diff |
-| 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包，远端推送前已有本机审核流和发布锁 | 远端发布 adapter 已完成第一版，但还不是服务端账号权限、CDN 部署或服务器托管 | 继续增加服务端审批合同、账号权限、发布锁远端校验和远端资产签名 |
+| 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包，远端推送前已有本机审核流、本机发布锁、服务端锁 / 最近回执预检和远端回执审计 | 远端发布 adapter 已完成第一版，但还不是服务端账号权限、CDN 部署或服务器托管 | 继续增加服务端审批合同、账号权限、远端资产签名和不可篡改审计 |
 | 项目档案 | 可导出/导入 JSON，含 schema、迁移、模型哈希、选择恢复、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、拉取预览、API 合同和本机 mock 服务 | 三方合并、完整 JSON 树、账号权限和远端资产服务仍弱 | 增加账号化服务端 repository、多人合并策略和远端资产完整性校验 |
 | 后台权限 | 当前无需登录即可编辑，主后台和写实后台已增加本机无权限保护提示与确认状态 | 任何人打开后台仍能改本机内容 | 后端版加入账号、角色、审计和发布权限 |
 
@@ -230,7 +230,7 @@ node scripts/control-inventory.js
 | P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版、本机教师批注和导出批注标记已完成，但仍缺图表/作品嵌入、云端长期报告和账号教师端 | PDF 图表/截图增强、服务端接口草案、教师端身份与审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
-| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限和服务端资产签名 | 服务端审批合同强化、服务端资产签名、发布锁服务端校验 |
+| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、服务端资产签名和不可篡改审计 | 服务端审批合同强化、服务端资产签名、账号权限和审计签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
 ## 8. 每个功能完成时的记录格式
@@ -576,7 +576,7 @@ node scripts/control-inventory.js
 已知限制：
 
 - mock server 是开发验收工具，不提供持久化数据库、账号权限、CDN 上传或生产审计。
-- 服务端资产签名和远端发布锁校验仍需要生产服务实现。
+- 服务端资产签名、账号权限和不可篡改审计仍需要生产服务实现。
 - 当前前端 adapter 读取 `message`、`packageId` 和 `remoteVersion`，完整 receipt 主要用于 mock server 和服务端合同验收。
 
 提交：
@@ -1447,3 +1447,32 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增报告教师批注`
+
+### 2026-06-12：新增远端发布服务端锁预检
+
+完成内容：
+
+- `MRProjectRemotePublish.push()` 在 `POST` 前先 `GET` 远端 endpoint，读取 `publishLock` 和 `latestReceipt`。
+- 服务端锁或最近回执命中当前 `releaseId` / `packageDigest` 时，会阻止 `POST` 并写入本机远端发布锁。
+- 普通远端拒收或网络失败会释放本机“正在推送”临时锁，避免失败后误锁当前包。
+- 远端发布 mock server 的 `GET` 新增 `publishLock`，API 合同新增服务端锁字段说明。
+- `scripts/remote-publish-check.js` 覆盖服务端锁预检、mock 最近回执阻断、`422` 拒收释放临时锁和状态持久化。
+
+真实化说明：
+
+- 数据来源：当前本机发布包、服务端 `GET` 返回的发布锁 / 最近回执。
+- 写入状态：命中服务端锁写入 `mr-calligraphy-remote-publish-v1.scenes[*].lock`、`lastRemoteStatus` 和 `lastError`。
+- 成功反馈：后台显示“远端发布锁校验阻止推送”，不会出现成功回执。
+- 失败反馈：服务端锁校验失败、远端拒收和网络异常都不会伪造成发布成功。
+- 刷新后复现方式：远端锁和错误状态保存在本机远端发布状态中。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node scripts/remote-publish-check.js`
+
+提交：
+
+- 中文 commit message：`新增远端发布服务端锁预检`

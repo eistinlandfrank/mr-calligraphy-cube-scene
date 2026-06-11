@@ -27,13 +27,25 @@ function createRemotePublishMockServer(options = {}) {
       }
 
       if (request.method === "GET") {
+        const latestReceipt = state.received[0] || null;
         return sendJson(response, 200, {
           ok: true,
           message: "远端发布 mock 服务可访问。",
           remoteVersion: "mr-calligraphy-remote-publish-mock-v1",
           contract: createContract(),
           receiptCount: state.received.length,
-          latestReceipt: state.received[0] || null
+          latestReceipt,
+          publishLock: latestReceipt
+            ? {
+                locked: true,
+                source: "latestReceipt",
+                sceneId: latestReceipt.sceneId,
+                releaseId: latestReceipt.releaseId,
+                packageDigest: latestReceipt.packageDigest,
+                lockedAt: latestReceipt.acceptedAt,
+                reason: "远端 mock 已接收最近发布包，相同 release 或 packageDigest 会被拒绝。"
+              }
+            : { locked: false }
         });
       }
 
@@ -186,7 +198,8 @@ function createContract() {
     packageKind: PACKAGE_KIND,
     manifestKind: MANIFEST_KIND,
     requiredTopLevelFields: ["kind", "version", "packageId", "sceneId", "release", "record", "releaseLayout", "assetManifest", "manifest"],
-    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt"]
+    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt"],
+    lockFields: ["publishLock.locked", "publishLock.sceneId", "publishLock.releaseId", "publishLock.packageDigest", "latestReceipt"]
   };
 }
 
