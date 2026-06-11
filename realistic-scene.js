@@ -5,6 +5,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import {
+  createArrayBufferSha256,
   createImportMetrics,
   createModelStore,
   formatImportMetrics,
@@ -813,6 +814,7 @@ function normalizeImportedRecord(record = {}, index = 0) {
     type,
     fileName,
     label: String(record.label || normalizeImportLabel(fileName)),
+    sha256: normalizeSha256(record.sha256),
     metrics: normalizeImportMetrics(record.metrics)
   };
 }
@@ -836,6 +838,11 @@ function toRadians(degrees) {
 function makeImportedModelId(fileName) {
   const safeName = fileName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 36) || "model";
   return `import-${Date.now()}-${safeName}`;
+}
+
+function normalizeSha256(value) {
+  const hash = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
 }
 
 function setImportStatus(message) {
@@ -1582,6 +1589,7 @@ async function handleImportModel(event) {
     };
     const arrayBuffer = await file.arrayBuffer();
     validateImportBuffer(type, arrayBuffer, file.name);
+    record.sha256 = await createArrayBufferSha256(arrayBuffer);
     setImportStatus(`正在解析 ${file.name}...`);
     const importPack = await createImportedModelObject(record, arrayBuffer);
     record.metrics = importPack.metrics;

@@ -191,6 +191,20 @@ export function createImportMetrics(metrics, byteLength) {
   };
 }
 
+export async function createArrayBufferSha256(arrayBuffer) {
+  if (!arrayBuffer?.byteLength) {
+    return "";
+  }
+  const cryptoApi = globalThis.crypto || globalThis.window?.crypto;
+  if (!cryptoApi?.subtle) {
+    return "";
+  }
+  const digest = await cryptoApi.subtle.digest("SHA-256", arrayBuffer.slice(0));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export function formatImportMetrics(metrics = {}) {
   const dimensions = metrics.dimensions
     ? `${formatMetricNumber(metrics.dimensions.width)}×${formatMetricNumber(metrics.dimensions.height)}×${formatMetricNumber(metrics.dimensions.depth)}`
@@ -238,6 +252,7 @@ export function createModelStore(options = {}) {
           label: record.label,
           fileName: record.fileName,
           type: record.type,
+          sha256: record.sha256,
           metrics: record.metrics,
           arrayBuffer: arrayBuffer.slice(0)
         };

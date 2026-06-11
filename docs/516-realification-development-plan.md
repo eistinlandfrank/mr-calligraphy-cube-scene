@@ -4635,11 +4635,69 @@
 
 - 当前审核、退回和锁是本机浏览器工作流，不是服务端账号角色审批。
 - 当前锁用于阻断本机重复推送；远端服务端仍应独立校验 release/digest、审核状态和并发锁。
-- 远端资产签名、CDN 发布、多人审核和不可篡改审计仍未接入。
+- 远端资产清单和哈希摘要已在后续功能补齐；CDN 发布、多人审核、服务端资产签名和不可篡改审计仍未接入。
 
 提交：
 
 - 中文 commit message：`新增远端发布审核锁`
+
+### 2026-06-11：新增远端发布资产清单
+
+功能名：远端发布导入模型资产清单与哈希摘要。
+
+涉及文件：
+
+- `model-import-utils.js`
+- `main-admin-scene.js`
+- `realistic-scene.js`
+- `project-remote-publish.js`
+- `project-schema-utils.js`
+- `scripts/remote-publish-check.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 新增 `createArrayBufferSha256()`，导入 GLB / OBJ 时使用浏览器 `crypto.subtle.digest("SHA-256")` 计算模型哈希。
+- 主后台和写实后台导入模型会把 `sha256` 写入布局记录，并通过 `model-import-utils` 存入 IndexedDB 模型仓库。
+- 导入模型归一化逻辑会保留已有 `sha256`，避免刷新、发布或项目档案恢复时丢失资产哈希。
+- `MRProjectRemotePublish.createPackage()` 新增 `assetManifest`，按当前 release 的 `importedModels` 生成远端资产清单。
+- 远端发布 manifest 新增 `assetSummary` 和 `assetDigest`，并把 `assetManifest` 纳入 `packageDigest`。
+- `validatePackage()` 新增资产校验：资产摘要不匹配、资产统计不匹配、资产数量和布局不一致、资产 ID 与布局不一致时失败；缺 SHA-256 时给出 warning。
+- `project-schema-utils` 兼容 `metrics.fileBytes`，项目 schema 资产统计能读取导入工具实际写入的文件大小。
+- 远端发布检查脚本新增带哈希资产、资产摘要、资产篡改失败、缺哈希 warning 和 POST body 携带资产哈希断言。
+
+真实化说明：
+
+- 数据来源：真实导入模型文件的 ArrayBuffer、导入模型记录、当前本机发布 release 布局。
+- 写入状态：模型导入时写入本机布局和 IndexedDB 的 `sha256`；远端发布状态仍只在配置、审核、推送和锁变化时写入。
+- 成功反馈：发布包包含 `assetManifest.assets`，manifest 包含 `assetSummary` 和 `assetDigest`，远端 mock 能看到模型 SHA-256。
+- 失败反馈：篡改资产清单或让资产清单与布局不一致会导致预检失败，不执行 POST；缺哈希资产会返回明确 warning。
+- 刷新后复现方式：重新打开后台后，已导入模型记录和 IndexedDB 仍保留 SHA-256；本机发布后重新生成远端包仍能得到资产摘要。
+
+验收方式：
+
+- 手工验收：导入一个模型并本机发布后，在控制台调用 `MRProjectRemotePublish.createPackage()`，检查 `package.assetManifest.assets`、`manifest.assetSummary` 和 `manifest.assetDigest`。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证资产清单、资产摘要、资产篡改失败和缺哈希 warning。
+
+当前验证结果：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --input-type=module --check < model-import-utils.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node scripts/remote-publish-check.js`
+
+已知限制：
+
+- 历史导入模型如果没有 `sha256`，不会被静默伪造哈希；系统会在发布包预检中提示缺哈希。
+- 当前资产清单只描述远端需要校验的资产，不负责上传二进制模型、CDN 部署或服务端签名。
+
+提交：
+
+- 中文 commit message：`新增远端发布资产清单`
 
 ### 2026-06-11：新增学习报告原生 PDF 导出
 

@@ -380,7 +380,7 @@
         stored,
         sha256,
         hashStatus: !stored ? "missing-binary" : sha256 ? "sha256" : "missing-hash",
-        bytes: normalizeCount(record.metrics?.fileSize || record.size || record.archiveBytes || 0)
+        bytes: normalizeCount(record.metrics?.fileBytes || record.metrics?.fileSize || record.size || record.archiveBytes || 0)
       };
     });
   }

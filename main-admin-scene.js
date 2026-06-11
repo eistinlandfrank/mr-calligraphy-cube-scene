@@ -5,6 +5,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import {
+  createArrayBufferSha256,
   createImportMetrics,
   createModelStore,
   formatImportMetrics,
@@ -536,6 +537,7 @@ async function handleImportModel(event) {
     const entry = await createImportedModel(record, arrayBuffer, { select: true, updateLayout: false });
 
     const importedRecord = entry.object.userData.importRecord;
+    importedRecord.sha256 = await createArrayBufferSha256(arrayBuffer);
     await storeImportedModel(importedRecord, arrayBuffer);
     layout.importedModels.push(importedRecord);
     saveEntry(entry);
@@ -813,7 +815,8 @@ function normalizeImportedModel(record = {}, index = 0) {
     ],
     scale: readNumber(record.scale, 1),
     baseScale: Number.isFinite(baseScale) && baseScale > 0 ? baseScale : undefined,
-    metrics: normalizeImportMetrics(record.metrics)
+    metrics: normalizeImportMetrics(record.metrics),
+    sha256: normalizeSha256(record.sha256)
   };
 }
 
@@ -834,6 +837,11 @@ function normalizeColor(value) {
   const string = String(value || "").trim();
 
   return /^#[0-9a-f]{6}$/i.test(string) ? string : "#8b5a2b";
+}
+
+function normalizeSha256(value) {
+  const hash = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
 }
 
 function getState(spec) {

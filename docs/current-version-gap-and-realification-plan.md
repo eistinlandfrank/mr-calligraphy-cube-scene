@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版已完成，但仍缺图表/作品嵌入、云端长期报告和教师批注 | PDF 图表/截图增强、服务端接口草案 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
-| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流和发布锁已完成第一版，但仍缺服务端账号权限和远端资产签名 | 服务端审批合同、远端资产签名、发布锁服务端校验 |
+| P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁和资产清单哈希已完成第一版，但仍缺服务端账号权限和服务端资产签名 | 服务端审批合同、服务端资产签名、发布锁服务端校验 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
 ## 8. 每个功能完成时的记录格式
@@ -508,11 +508,44 @@ node scripts/control-inventory.js
 
 - 当前审核人与发布锁仍是本机浏览器状态，不是服务端账号、角色权限或不可篡改审批。
 - 远端 API 是否二次校验审核状态和锁状态，仍取决于用户配置的服务端实现。
-- 远端资产签名和 CDN 发布合同尚未接入。
+- CDN 发布合同尚未接入；远端资产清单和哈希摘要已在后续功能补齐，但服务端资产签名仍待接入。
 
 提交：
 
 - 中文 commit message：`新增远端发布审核锁`
+
+### 2026-06-11：新增远端发布资产清单
+
+完成内容：
+
+- `model-import-utils.js` 新增 `createArrayBufferSha256()`，主后台和写实后台导入 GLB / OBJ 时会计算并保存模型 SHA-256。
+- 导入模型记录和 IndexedDB 模型仓库会保留 `sha256`，后续发布、项目 schema 和项目档案都能读取同一资产哈希。
+- `MRProjectRemotePublish.createPackage()` 新增 `assetManifest`，列出当前 release 布局依赖的导入模型资产、文件名、类型、大小和 SHA-256。
+- 远端发布 manifest 新增 `assetSummary` 和 `assetDigest`，并把资产清单纳入 `packageDigest`。
+- `validatePackage()` 会校验资产摘要、资产统计、资产数量和布局导入模型 ID 是否一致；缺哈希资产会给出预检警告。
+- `scripts/remote-publish-check.js` 新增资产清单、资产摘要、资产 SHA-256、资产篡改失败和缺哈希警告断言。
+
+真实化说明：
+
+- 数据来源：主后台 / 写实后台导入模型的真实文件 ArrayBuffer、当前本机发布 release 布局和模型记录。
+- 写入状态：新导入模型的 `sha256` 会写入本机布局记录与 IndexedDB；远端发布包生成时不额外写状态，只把资产清单放进发布包。
+- 成功反馈：远端发布包包含 `assetManifest.assets`、`manifest.assetSummary` 和 `manifest.assetDigest`，mock 远端可接收并校验。
+- 失败反馈：资产清单被篡改、资产摘要不匹配、资产数量与布局不一致时预检失败；缺哈希资产不阻止本机发布包生成，但会返回明确 warning。
+- 刷新后复现方式：新导入模型哈希保存在本机布局和 IndexedDB；刷新后台、本机发布后重新生成远端发布包仍能得到同一资产 SHA-256。
+
+验收：
+
+- 手工验收：导入 GLB / OBJ 后完成本机发布，在控制台调用 `MRProjectRemotePublish.createPackage()`，应看到 `assetManifest.assets[0].sha256`；篡改 `assetManifest` 后 `validatePackage()` 应失败。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证资产清单、资产摘要、缺哈希 warning 和资产篡改失败。
+
+已知限制：
+
+- 旧的本机导入模型如果没有重新导入或没有通过项目档案刷新，可能缺少 SHA-256；系统会警告但不阻断发布包生成。
+- 当前资产哈希是浏览器本机计算的 SHA-256，不是远端服务端签名，也不包含 CDN 上传或资产托管。
+
+提交：
+
+- 中文 commit message：`新增远端发布资产清单`
 
 ### 2026-06-11：远端计划 API adapter
 

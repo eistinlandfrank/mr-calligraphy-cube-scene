@@ -231,6 +231,7 @@
     );
     const staleLock = Boolean(lock.lockedAt && !lockMatches);
     const approvedForCurrent = review.status === "approved" && reviewMatches;
+    const validationWarnings = Array.isArray(current.validation?.warnings) ? current.validation.warnings : [];
 
     let tone = "idle";
     let message = packaged.ok ? "当前发布包尚未提交本机审核。" : packaged.message;
@@ -253,6 +254,10 @@
     } else if (staleLock && approvedForCurrent) {
       message += " 上一个发布包仍有锁定记录，可按需解除。";
     }
+    if (validationWarnings.length && !lockMatches) {
+      tone = "warning";
+      message += ` 预检警告：${validationWarnings.join("；")}`;
+    }
 
     return {
       ok: true,
@@ -266,6 +271,7 @@
       tone,
       message,
       current,
+      warnings: validationWarnings,
       review,
       lock,
       reviewMatches,
@@ -412,6 +418,8 @@
 
     const createdAt = new Date().toISOString();
     const packageId = `remote-publish-${normalizedId}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const releaseLayout = clone(release.layout || record.layout || {});
+    const assetManifest = createReleaseAssetManifest(releaseLayout, normalizedId);
     const payload = {
       kind: PACKAGE_KIND,
       version: VERSION,
@@ -430,7 +438,8 @@
         stats: clone(release.stats || record.stats || {})
       },
       record,
-      releaseLayout: clone(release.layout || record.layout || {})
+      releaseLayout,
+      assetManifest
     };
     payload.manifest = createPackageManifest(payload);
     const validation = validatePackage(payload);
@@ -446,6 +455,8 @@
   function createPackageManifest(payload = {}) {
     const releaseLayout = payload.releaseLayout || {};
     const objectSummary = summarizeReleaseLayout(releaseLayout);
+    const assetManifest = normalizeAssetManifest(payload.assetManifest || createReleaseAssetManifest(releaseLayout, payload.sceneId));
+    const assetSummary = summarizeAssetManifest(assetManifest);
     return {
       kind: "mr-calligraphy-remote-publish-manifest-v1",
       version: VERSION,
@@ -454,6 +465,7 @@
       releaseNumber: Number(payload.release?.releaseNumber || 0),
       storageKey: payload.storageKey || "",
       objectSummary,
+      assetSummary,
       packageDigest: sha256StableJson({
         kind: payload.kind,
         version: payload.version,
@@ -462,11 +474,13 @@
         storageKey: payload.storageKey,
         release: payload.release,
         record: payload.record,
-        releaseLayout: payload.releaseLayout
+        releaseLayout: payload.releaseLayout,
+        assetManifest
       }),
       recordDigest: sha256StableJson(payload.record || {}),
       releaseDigest: sha256StableJson(payload.release || {}),
-      layoutDigest: sha256StableJson(releaseLayout)
+      layoutDigest: sha256StableJson(releaseLayout),
+      assetDigest: sha256StableJson(assetManifest)
     };
   }
 
@@ -482,6 +496,66 @@
       importedModelCount: importedModels.length,
       hasLighting: Boolean(layout.lighting && typeof layout.lighting === "object"),
       hasLayerOrder: Array.isArray(layout.layerOrder)
+    };
+  }
+
+  function createReleaseAssetManifest(layout = {}, sceneId = "") {
+    const importedModels = Array.isArray(layout.importedModels) ? layout.importedModels : [];
+    return normalizeAssetManifest({
+      version: 1,
+      sceneId: normalizeSceneId(sceneId),
+      assets: importedModels.map((record, index) => {
+        const id = String(record?.id || record?.dbKey || record?.key || `asset-${index + 1}`);
+        const dbKey = String(record?.dbKey || record?.key || record?.id || id);
+        const sha256 = normalizeSha256(record?.sha256);
+        return {
+          id,
+          dbKey,
+          label: String(record?.label || record?.fileName || id).slice(0, 120),
+          fileName: String(record?.fileName || "").slice(0, 160),
+          type: String(record?.type || "").slice(0, 16),
+          bytes: Math.max(0, Math.round(Number(record?.metrics?.fileBytes || record?.bytes || record?.size || 0))),
+          sha256,
+          hashStatus: sha256 ? "sha256" : "missing-hash"
+        };
+      })
+    });
+  }
+
+  function normalizeAssetManifest(manifest = {}) {
+    const source = manifest && typeof manifest === "object" ? manifest : {};
+    const assets = Array.isArray(source.assets) ? source.assets : [];
+    return {
+      version: VERSION,
+      sceneId: normalizeSceneId(source.sceneId),
+      assets: assets.map((asset, index) => normalizeAssetRecord(asset, index))
+    };
+  }
+
+  function normalizeAssetRecord(asset = {}, index = 0) {
+    const id = String(asset?.id || asset?.dbKey || asset?.key || `asset-${index + 1}`);
+    const dbKey = String(asset?.dbKey || asset?.key || asset?.id || id);
+    const sha256 = normalizeSha256(asset?.sha256);
+    return {
+      id,
+      dbKey,
+      label: String(asset?.label || asset?.fileName || id).slice(0, 120),
+      fileName: String(asset?.fileName || "").slice(0, 160),
+      type: String(asset?.type || "").slice(0, 16),
+      bytes: Math.max(0, Math.round(Number(asset?.bytes || asset?.metrics?.fileBytes || 0))),
+      sha256,
+      hashStatus: sha256 ? "sha256" : "missing-hash"
+    };
+  }
+
+  function summarizeAssetManifest(manifest = {}) {
+    const normalized = normalizeAssetManifest(manifest);
+    const assets = normalized.assets;
+    return {
+      importedModelCount: assets.length,
+      hashedAssetCount: assets.filter((asset) => Boolean(asset.sha256)).length,
+      missingHashCount: assets.filter((asset) => !asset.sha256).length,
+      totalBytes: assets.reduce((sum, asset) => sum + Math.max(0, Number(asset.bytes || 0)), 0)
     };
   }
 
@@ -514,6 +588,9 @@
     if (!payload.releaseLayout || typeof payload.releaseLayout !== "object") {
       errors.push("缺少 releaseLayout");
     }
+    if (!payload.assetManifest || typeof payload.assetManifest !== "object") {
+      errors.push("缺少 assetManifest");
+    }
     if (!payload.manifest || typeof payload.manifest !== "object") {
       errors.push("缺少 manifest");
     }
@@ -524,8 +601,12 @@
       compareManifestField(errors, payload.manifest, expectedManifest, "recordDigest", "发布记录摘要不匹配");
       compareManifestField(errors, payload.manifest, expectedManifest, "releaseDigest", "release 摘要不匹配");
       compareManifestField(errors, payload.manifest, expectedManifest, "layoutDigest", "布局摘要不匹配");
+      compareManifestField(errors, payload.manifest, expectedManifest, "assetDigest", "资产摘要不匹配");
       if (stableStringify(payload.manifest.objectSummary || {}) !== stableStringify(expectedManifest.objectSummary)) {
         errors.push("布局对象摘要不匹配");
+      }
+      if (stableStringify(payload.manifest.assetSummary || {}) !== stableStringify(expectedManifest.assetSummary)) {
+        errors.push("资产摘要统计不匹配");
       }
       if (payload.manifest.sceneId !== expectedManifest.sceneId) {
         errors.push("manifest sceneId 不匹配");
@@ -543,6 +624,16 @@
     ) {
       warnings.push("发布布局没有可统计对象，请确认是否为空场景。");
     }
+    const assetSummary = payload.manifest?.assetSummary || {};
+    if (Number(assetSummary.importedModelCount || 0) !== Number(objectSummary.importedModelCount || 0)) {
+      errors.push("导入模型资产数量与布局不匹配");
+    }
+    if (!assetManifestMatchesLayout(payload.assetManifest, payload.releaseLayout)) {
+      errors.push("导入模型资产清单与布局不匹配");
+    }
+    if (Number(assetSummary.missingHashCount || 0) > 0) {
+      warnings.push(`远端发布包有 ${assetSummary.missingHashCount} 个导入模型缺少 SHA-256，请重新导入或用项目档案刷新资产哈希。`);
+    }
 
     return {
       ok: errors.length === 0,
@@ -556,6 +647,17 @@
     if (actual?.[key] !== expected?.[key]) {
       errors.push(message);
     }
+  }
+
+  function assetManifestMatchesLayout(assetManifest = {}, layout = {}) {
+    const layoutIds = new Set((Array.isArray(layout?.importedModels) ? layout.importedModels : []).map((record, index) => {
+      return String(record?.id || record?.dbKey || record?.key || `asset-${index + 1}`);
+    }));
+    const assetIds = new Set(normalizeAssetManifest(assetManifest).assets.map((asset) => asset.id));
+    if (layoutIds.size !== assetIds.size) {
+      return false;
+    }
+    return [...layoutIds].every((id) => assetIds.has(id));
   }
 
   function createCurrentPackageSummary(payload = {}) {
@@ -944,6 +1046,7 @@
     getWorkflow,
     createPackage,
     createPackageManifest,
+    createReleaseAssetManifest,
     validatePackage,
     requestReview,
     approveReview,

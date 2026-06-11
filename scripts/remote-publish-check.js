@@ -57,6 +57,10 @@ async function run() {
   assert(adapter.validatePackage(mainPackage.package).ok, "远端发布包预检 API 应接受未篡改发布包。");
   assert(/^[a-f0-9]{64}$/.test(mainPackage.package.manifest.packageDigest), "发布包 manifest 应包含 SHA-256 摘要。");
   assert(mainPackage.package.manifest.objectSummary.objectCount === 1, "发布包 manifest 应统计布局对象数量。");
+  assert(mainPackage.package.assetManifest.assets.length === 1, "发布包应包含导入模型资产清单。");
+  assert(mainPackage.package.assetManifest.assets[0].sha256 === "a".repeat(64), "导入模型资产清单应保留 SHA-256。");
+  assert(mainPackage.package.manifest.assetSummary.hashedAssetCount === 1, "发布包 manifest 应统计带哈希资产。");
+  assert(/^[a-f0-9]{64}$/.test(mainPackage.package.manifest.assetDigest), "发布包 manifest 应包含资产摘要。");
   const repeatedMainPackage = adapter.createPackage("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -75,6 +79,30 @@ async function run() {
     tamperedValidation.errors.some((item) => item.includes("摘要不匹配")),
     "远端发布包预检应说明摘要不匹配。"
   );
+  const tamperedAssetPackage = JSON.parse(JSON.stringify(mainPackage.package));
+  tamperedAssetPackage.assetManifest.assets[0].sha256 = "b".repeat(64);
+  const tamperedAssetValidation = adapter.validatePackage(tamperedAssetPackage);
+  assert(!tamperedAssetValidation.ok, "远端发布包预检应拒绝资产摘要不匹配的发布包。");
+  assert(
+    tamperedAssetValidation.errors.some((item) => item.includes("资产摘要不匹配")),
+    "远端发布包预检应说明资产摘要不匹配。"
+  );
+  const missingHashRecord = createPublishedRecord("main-release-missing-hash", "缺哈希模型", { assetHash: "" });
+  const missingHashPackage = adapter.createPackage("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: missingHashRecord,
+    release: missingHashRecord.releases[0]
+  });
+  assert(missingHashPackage.ok, "缺哈希资产不应阻止生成发布包。");
+  assert(missingHashPackage.validation.warnings.some((item) => item.includes("缺少 SHA-256")), "缺哈希资产应给出预检警告。");
+  const missingHashWorkflow = adapter.getWorkflow("mainScene", {
+    sceneLabel: "主场景",
+    storageKey: "mr-calligraphy-main-scene-published-v1",
+    record: missingHashRecord,
+    release: missingHashRecord.releases[0]
+  });
+  assert(missingHashWorkflow.message.includes("预检警告"), "缺哈希 warning 应进入远端发布工作流提示。");
   const initialWorkflow = adapter.getWorkflow("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -153,6 +181,7 @@ async function run() {
   assert(mainPush.ok, "主场景发布包应能推送到远端 API。");
   assert(pushedMainPackage.kind === "mr-calligraphy-remote-publish-package-v1", "推送 body 应是远端发布包。");
   assert(pushedMainPackage.manifest.packageDigest === mainPackage.package.manifest.packageDigest, "推送 body 应携带同一 manifest 摘要。");
+  assert(pushedMainPackage.assetManifest.assets[0].sha256 === "a".repeat(64), "推送 body 应携带资产 SHA-256。");
   assert(mainPush.packageId === "accepted-mainScene", "主场景推送应记录远端接收 packageId。");
   assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
   assert(mainPush.validation.ok, "主场景推送结果应包含通过的预检结果。");
@@ -212,10 +241,20 @@ async function run() {
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
   assert(persisted.scenes.realisticScene.lock.packageDigest, "写实场景推送成功后应持久化发布锁。");
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送和状态持久化已验证。");
 }
 
-function createPublishedRecord(releaseId, note) {
+function createPublishedRecord(releaseId, note, options = {}) {
+  const assetHash = options.assetHash === undefined ? "a".repeat(64) : options.assetHash;
+  const importedModel = {
+    id: "asset-1",
+    dbKey: "asset-1",
+    label: "发布模型",
+    fileName: "publish-model.glb",
+    type: "glb",
+    metrics: { fileBytes: 2048, meshCount: 1, vertexCount: 12 },
+    ...(assetHash ? { sha256: assetHash } : {})
+  };
   const release = {
     id: releaseId,
     releaseNumber: 1,
@@ -228,13 +267,13 @@ function createPublishedRecord(releaseId, note) {
         table: { visible: true, position: [0, 0, 0] }
       },
       customObjects: [],
-      importedModels: [],
+      importedModels: [importedModel],
       lighting: { ambient: 0.6 }
     },
     stats: {
       objectCount: 1,
       customCount: 0,
-      importedCount: 0
+      importedCount: 1
     }
   };
   return {
