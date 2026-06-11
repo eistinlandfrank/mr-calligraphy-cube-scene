@@ -308,3 +308,34 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增WebGL画布非空验收`
+
+## 15. 2026-06-12 主后台远端发布回执浏览器验收
+
+本次把主后台远端发布回执从数据层脚本扩展到浏览器真实流程。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 在主后台新增基础物体并完成本机发布后，继续配置远端发布 endpoint/token。
+- E2E 使用 `page.route()` 模拟远端发布 API，覆盖 GET 检查和 POST 推送，不依赖真实公网服务。
+- E2E 会点击“检查远端”“提交审核”“通过审核”“推送发布包”，断言 UI 显示远端版本和回执条目。
+- E2E 会断言 POST body 是 `mr-calligraphy-remote-publish-package-v1`，包含 `sceneId: "mainScene"` 和 `manifest.packageDigest`。
+- E2E 会读取 `mr-calligraphy-remote-publish-v1`，确认远端 packageId、remoteVersion 和 receipts 持久化。
+- E2E 会点击“导出回执”，确认生成 `mr-calligraphy-mainScene-remote-receipts-*.html` 下载。
+
+真实化说明：
+
+- 数据来源：主后台真实发布快照、远端发布 adapter 生成的发布包、Playwright 模拟的远端 API 响应。
+- 写入状态：远端配置、检查结果、推送回执、发布锁和 receipt 审计写入 `mr-calligraphy-remote-publish-v1`。
+- 成功反馈：远端状态区显示远端版本，回执区域显示远端 packageId，并可导出审计 HTML。
+- 失败反馈：未配置 endpoint、未审核、发布锁和网络失败仍由 adapter 返回明确错误；本用例覆盖通过路径。
+- 刷新后复现方式：回执保存在本机远端发布状态中，刷新后台仍可读取。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`，在已安装 Playwright 依赖和浏览器的环境运行
+
+提交：
+
+- 中文 commit message：`新增主后台远端回执浏览器验收`

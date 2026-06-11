@@ -4,6 +4,7 @@ const LEARNING_KEY = "mr-calligraphy-learning-state-v1";
 const MAIN_LAYOUT_KEY = "mr-calligraphy-main-scene-layout-v1";
 const MAIN_HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
+const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
 const REALISTIC_HISTORY_KEY = "mr-calligraphy-realistic-history-v1";
 const REALISTIC_PUBLISHED_KEY = "mr-calligraphy-realistic-published-v1";
@@ -16,6 +17,7 @@ test.beforeEach(async ({ page }) => {
     MAIN_LAYOUT_KEY,
     MAIN_HISTORY_KEY,
     MAIN_PUBLISHED_KEY,
+    REMOTE_PUBLISH_KEY,
     REALISTIC_LAYOUT_KEY,
     REALISTIC_HISTORY_KEY,
     REALISTIC_PUBLISHED_KEY
@@ -79,6 +81,50 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
+  const remoteEndpoint = "https://e2e.example/remote-publish";
+  const remoteRequests = [];
+
+  await page.route(remoteEndpoint, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "POST" ? request.postDataJSON() : null;
+    remoteRequests.push({
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+    if (method === "POST") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: "主场景远端 E2E 已接收。",
+          packageId: `e2e-${body.sceneId}`,
+          releaseId: body.release.id,
+          packageDigest: body.manifest.packageDigest,
+          remoteVersion: "e2e-remote-v1",
+          receipt: {
+            packageId: `e2e-${body.sceneId}`,
+            releaseId: body.release.id,
+            packageDigest: body.manifest.packageDigest,
+            remoteVersion: "e2e-remote-v1",
+            message: "主场景远端 E2E 回执。"
+          }
+        })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "主场景远端 E2E 可访问。",
+        remoteVersion: "e2e-check-v1"
+      })
+    });
+  });
 
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
@@ -101,6 +147,41 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const published = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
   expect(published.layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);
   expect(published.stats.customCount).toBeGreaterThan(0);
+
+  await page.locator("#mainRemotePublishEndpoint").fill(remoteEndpoint);
+  await page.locator("#mainRemotePublishToken").fill("e2e-token");
+  await page.locator("#mainRemotePublishSave").click();
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("远端发布 API 配置已保存");
+
+  await page.locator("#mainRemotePublishCheck").click();
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("e2e-check-v1");
+
+  await page.locator("#mainRemotePublishRequestReview").click();
+  await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("待审核");
+  await page.locator("#mainRemotePublishApproveReview").click();
+  await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("已通过");
+
+  await page.locator("#mainRemotePublishPush").click();
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("e2e-remote-v1");
+  await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("1 条");
+  await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("e2e-mainScene");
+
+  expect(remoteRequests.some((item) => item.method === "GET" && item.authorization === "Bearer e2e-token")).toBe(true);
+  const postRequest = remoteRequests.find((item) => item.method === "POST");
+  expect(postRequest.authorization).toBe("Bearer e2e-token");
+  expect(postRequest.body.kind).toBe("mr-calligraphy-remote-publish-package-v1");
+  expect(postRequest.body.sceneId).toBe("mainScene");
+  expect(postRequest.body.manifest.packageDigest).toBeTruthy();
+
+  const remoteState = await readJsonLocalStorage(page, REMOTE_PUBLISH_KEY);
+  expect(remoteState.scenes.mainScene.lastPackageId).toBe("e2e-mainScene");
+  expect(remoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-remote-v1");
+  expect(remoteState.scenes.mainScene.receipts[0].packageId).toBe("e2e-mainScene");
+
+  const receiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#mainRemotePublishReceiptExport").click();
+  const receiptDownload = await receiptDownloadPromise;
+  expect(receiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-mainScene-remote-receipts-/);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
