@@ -5138,3 +5138,63 @@
 提交：
 
 - 中文 commit message：`新增项目档案恢复审计`
+
+### 2026-06-12：新增远端发布回执审计
+
+功能名：主后台和写实后台远端发布回执审计与导出。
+
+涉及文件：
+
+- `project-remote-publish.js`
+- `main-admin.html`
+- `realistic-admin.html`
+- `main-admin-scene.js`
+- `realistic-scene.js`
+- `style.css`
+- `scripts/remote-publish-check.js`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/remote-publish-api-contract.md`
+- `docs/smoke-test.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 远端发布状态新增 `receipts` 审计列表，按主场景和写实场景分别保存最近 12 条回执。
+- 远端推送成功后会保存服务端 receipt、本机 packageDigest、releaseId、endpoint、acceptedAt、pushedAt、receiptDigest 和远端消息。
+- `MRProjectRemotePublish.getReceiptAudit()` 可返回当前场景回执摘要和列表。
+- `MRProjectRemotePublish.getReceiptAuditExport()` 可生成离线 HTML 审计报告。
+- 主后台和写实后台远端发布面板新增回执审计状态、最近回执列表和“导出回执”按钮。
+- 远端发布检查脚本新增回执持久化、导出 HTML、mock 服务 receipt 回写和本机审计列表断言。
+- smoke test 新增主后台/写实后台回执审计 DOM 标记。
+
+真实化说明：
+
+- 数据来源：当前本机发布版本、远端发布 POST 响应、服务端 receipt、远端 endpoint 和本机推送时间。
+- 写入状态：只有远端推送成功后才写入 `mr-calligraphy-remote-publish-v1.scenes[*].receipts`；未审核、审核中、发布锁阻断或网络失败不会写成功回执。
+- 成功反馈：后台回执审计区显示最近回执；点击“导出回执”下载 `mr-calligraphy-*-remote-receipts-*.html`。
+- 失败反馈：没有回执时导出按钮禁用，导出 API 返回“暂无可导出的远端发布回执”。
+- 刷新后复现方式：刷新两个后台后，回执列表仍从本机状态读取。
+
+验收方式：
+
+- 手工验收：启动 `node scripts/remote-publish-mock-server.js`，在任一后台配置 endpoint，完成本机发布、提交审核、通过审核、推送发布包后，回执审计区应出现最近回执；点击“导出回执”应下载 HTML。
+- 脚本验收：`node scripts/remote-publish-check.js` 验证回执持久化、导出和 mock 服务 receipt；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证两个后台入口存在。
+
+当前验证结果：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+
+已知限制：
+
+- 回执审计仍是本机浏览器审计，不能替代服务端不可篡改审计。
+- 账号权限、远端审批、CDN 部署、服务端资产签名和审计签名仍待生产服务端实现。
+
+提交：
+
+- 中文 commit message：`新增远端发布回执审计`

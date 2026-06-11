@@ -69,7 +69,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "projectImportExportImpact", "projectAuditExport", "projectAuditList", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "mainRemotePublishReviewStatus", "mainRemotePublishRequestReview", "mainRemotePublishApproveReview", "mainRemotePublishRejectReview", "mainRemotePublishUnlock", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "projectImportExportImpact", "projectAuditExport", "projectAuditList", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "mainRemotePublishReviewStatus", "mainRemotePublishRequestReview", "mainRemotePublishApproveReview", "mainRemotePublishRejectReview", "mainRemotePublishUnlock", "mainRemotePublishReceiptStatus", "mainRemotePublishReceiptList", "mainRemotePublishReceiptExport", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",
@@ -79,7 +79,7 @@ const PAGE_CHECKS = [
   {
     path: "/realistic-admin.html",
     label: "写实后台",
-    markers: ["MR 书法场景管理页", "designObjectSelect", "realisticAdminRiskBanner", "realisticPublishNote", "realisticPublishDiffSummary", "realisticPublishHistoryList", "realisticRemotePublishStatus", "realisticRemotePublishEndpoint", "realisticRemotePublishToken", "realisticRemotePublishSave", "realisticRemotePublishCheck", "realisticRemotePublishPush", "realisticRemotePublishReviewStatus", "realisticRemotePublishRequestReview", "realisticRemotePublishApproveReview", "realisticRemotePublishRejectReview", "realisticRemotePublishUnlock", "project-remote-publish.js", "realistic-scene.js"]
+    markers: ["MR 书法场景管理页", "designObjectSelect", "realisticAdminRiskBanner", "realisticPublishNote", "realisticPublishDiffSummary", "realisticPublishHistoryList", "realisticRemotePublishStatus", "realisticRemotePublishEndpoint", "realisticRemotePublishToken", "realisticRemotePublishSave", "realisticRemotePublishCheck", "realisticRemotePublishPush", "realisticRemotePublishReviewStatus", "realisticRemotePublishRequestReview", "realisticRemotePublishApproveReview", "realisticRemotePublishRejectReview", "realisticRemotePublishUnlock", "realisticRemotePublishReceiptStatus", "realisticRemotePublishReceiptList", "realisticRemotePublishReceiptExport", "project-remote-publish.js", "realistic-scene.js"]
   }
 ];
 

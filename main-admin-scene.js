@@ -98,6 +98,9 @@ const remotePublishRequestReviewButton = document.getElementById("mainRemotePubl
 const remotePublishApproveReviewButton = document.getElementById("mainRemotePublishApproveReview");
 const remotePublishRejectReviewButton = document.getElementById("mainRemotePublishRejectReview");
 const remotePublishUnlockButton = document.getElementById("mainRemotePublishUnlock");
+const remotePublishReceiptStatus = document.getElementById("mainRemotePublishReceiptStatus");
+const remotePublishReceiptList = document.getElementById("mainRemotePublishReceiptList");
+const remotePublishReceiptExportButton = document.getElementById("mainRemotePublishReceiptExport");
 const adminRiskBanner = document.getElementById("mainAdminRiskBanner");
 const adminRiskAcknowledgeButton = document.getElementById("mainAdminRiskAcknowledge");
 const adminRiskStatus = document.getElementById("mainAdminRiskStatus");
@@ -1278,6 +1281,7 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
   const status = adapter?.getStatus?.("mainScene", { ...context, hasLocalRelease });
   const workflow = adapter?.getWorkflow?.("mainScene", context);
   const config = adapter?.getConfig?.("mainScene");
+  const receiptAudit = adapter?.getReceiptAudit?.("mainScene");
 
   if (remotePublishStatus) {
     remotePublishStatus.textContent = status
@@ -1318,6 +1322,34 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
   if (remotePublishUnlockButton) {
     remotePublishUnlockButton.disabled = !adapter || !workflow?.canUnlock;
   }
+  renderRemotePublishReceipts(receiptAudit);
+}
+
+function renderRemotePublishReceipts(audit) {
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (remotePublishReceiptStatus) {
+    remotePublishReceiptStatus.textContent = audit?.message || "暂无远端发布回执。";
+    remotePublishReceiptStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (remotePublishReceiptExportButton) {
+    remotePublishReceiptExportButton.disabled = !receipts.length;
+  }
+  if (!remotePublishReceiptList) {
+    return;
+  }
+  remotePublishReceiptList.replaceChildren();
+  receipts.slice(0, 5).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.packageId || receipt.releaseId || "远端回执";
+    const meta = document.createElement("span");
+    const digest = receipt.receiptDigest || receipt.packageDigest || "";
+    meta.textContent = `${formatDateTime(receipt.acceptedAt || receipt.pushedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}`;
+    const message = document.createElement("small");
+    message.textContent = receipt.message || receipt.remoteVersion || "远端已接收。";
+    item.append(title, meta, message);
+    remotePublishReceiptList.appendChild(item);
+  });
 }
 
 function createRemotePublishContext(record = loadPublishedLayoutRecord()) {
@@ -1407,6 +1439,29 @@ function unlockRemotePublish() {
   showNotice(result?.message || "远端发布锁解除失败。");
 }
 
+function exportRemotePublishReceipts() {
+  const result = window.MRProjectRemotePublish?.getReceiptAuditExport?.("mainScene");
+  if (!result?.ok) {
+    showNotice(result?.message || "暂无可导出的远端发布回执。");
+    renderRemotePublishPanel();
+    return;
+  }
+  downloadHtmlFile(result.html, result.filename);
+  showNotice(result.message || "已导出远端发布回执审计。");
+}
+
+function downloadHtmlFile(html, filename) {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename || "mr-calligraphy-remote-receipts.html";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function setRemotePublishBusy(isBusy) {
   [
     remotePublishSaveButton,
@@ -1415,7 +1470,8 @@ function setRemotePublishBusy(isBusy) {
     remotePublishRequestReviewButton,
     remotePublishApproveReviewButton,
     remotePublishRejectReviewButton,
-    remotePublishUnlockButton
+    remotePublishUnlockButton,
+    remotePublishReceiptExportButton
   ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);
@@ -3156,6 +3212,7 @@ function bindUi() {
   remotePublishApproveReviewButton?.addEventListener("click", approveRemotePublishReview);
   remotePublishRejectReviewButton?.addEventListener("click", rejectRemotePublishReview);
   remotePublishUnlockButton?.addEventListener("click", unlockRemotePublish);
+  remotePublishReceiptExportButton?.addEventListener("click", exportRemotePublishReceipts);
   renderPublishPanel();
   snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
   snapshotRefreshButton?.addEventListener("click", () => {

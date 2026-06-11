@@ -187,6 +187,14 @@ async function run() {
   assert(mainPush.packageId === "accepted-mainScene", "主场景推送应记录远端接收 packageId。");
   assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
   assert(mainPush.validation.ok, "主场景推送结果应包含通过的预检结果。");
+  assert(mainPush.receipt && mainPush.receipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本机回执审计记录。");
+  assert(mainPush.receipt.receiptDigest, "主场景回执审计记录应包含 receiptDigest。");
+  const mainAudit = adapter.getReceiptAudit("mainScene");
+  assert(mainAudit.total === 1, "主场景推送成功后应保存一条远端回执审计。");
+  assert(mainAudit.latestReceipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景回执审计应保留 packageDigest。");
+  const mainAuditExport = adapter.getReceiptAuditExport("mainScene");
+  assert(mainAuditExport.ok && mainAuditExport.html.includes("MR 书法远端发布回执审计"), "主场景回执审计应可导出 HTML。");
+  assert(mainAuditExport.html.includes("accepted-mainScene"), "主场景回执审计导出应包含远端 packageId。");
   const lockedWorkflow = adapter.getWorkflow("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -231,6 +239,9 @@ async function run() {
     release: realisticRecord.releases[0]
   });
   assert(realisticPush.ok, "写实场景发布包应能推送到远端 API。");
+  const realisticAudit = adapter.getReceiptAudit("realisticScene");
+  assert(realisticAudit.total === 1, "写实场景推送成功后应保存远端回执审计。");
+  assert(realisticAudit.latestReceipt.packageId === "accepted-realisticScene", "写实场景回执审计应保留远端 packageId。");
 
   const persisted = JSON.parse(storage.get("mr-calligraphy-remote-publish-v1"));
   assert(persisted.scenes.mainScene.endpoint === "https://example.test/main-publish", "主场景远端 endpoint 应持久化。");
@@ -238,14 +249,17 @@ async function run() {
   assert(persisted.scenes.mainScene.lastPackageDigest === mainPackage.package.manifest.packageDigest, "主场景远端 packageDigest 应持久化。");
   assert(persisted.scenes.mainScene.lastReleaseId === "main-release-1", "主场景远端 releaseId 应持久化。");
   assert(persisted.scenes.mainScene.review.status === "approved", "主场景审核通过状态应持久化。");
+  assert(persisted.scenes.mainScene.receipts.length === 1, "主场景回执审计应持久化。");
+  assert(persisted.scenes.mainScene.receipts[0].receiptDigest, "主场景持久化回执应包含 receiptDigest。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
   assert(persisted.scenes.realisticScene.lock.packageDigest, "写实场景推送成功后应持久化发布锁。");
+  assert(persisted.scenes.realisticScene.receipts.length === 1, "写实场景回执审计应持久化。");
 
   await runMockServerChecks(adapter, nativeFetch);
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
 }
 
 async function runMockServerChecks(adapter, fetchApi) {
@@ -281,9 +295,12 @@ async function runMockServerChecks(adapter, fetchApi) {
     assert(pushed.ok, "远端发布 mock 服务应接收真实 POST 发布包。");
     assert(pushed.packageId.startsWith("mock-mainScene-"), "mock 服务应返回稳定 packageId 前缀。");
     assert(pushed.remoteVersion === "mr-calligraphy-remote-publish-mock-v1", "mock 服务应返回远端版本。");
+    assert(pushed.receipt && pushed.receipt.receiptDigest, "adapter 应保存 mock 服务返回的回执摘要。");
     assert(mock.state.received.length === 1, "mock 服务应记录一条发布回执。");
     assert(mock.state.received[0].packageDigest === mockPackage.package.manifest.packageDigest, "mock 回执应保留 packageDigest。");
     assert(mock.state.received[0].receiptDigest, "mock 回执应生成 receiptDigest。");
+    const mockAudit = adapter.getReceiptAudit("mainScene");
+    assert(mockAudit.latestReceipt.receiptDigest === mock.state.received[0].receiptDigest, "mock 服务回执应进入本机审计列表。");
 
     const duplicate = await fetchApi(endpoint, {
       method: "POST",

@@ -80,7 +80,9 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`packageId` 和 `remoteVersion`，并把本机 `releaseId`、`packageDigest`、发布锁和最近远端状态写回 `mr-calligraphy-remote-publish-v1`。
+前端 adapter 会读取 `message`、`packageId`、`releaseId`、`packageDigest`、`remoteVersion` 和 `receipt`，并把本机 `releaseId`、`packageDigest`、发布锁、最近远端状态和最近回执审计写回 `mr-calligraphy-remote-publish-v1`。
+
+主后台和写实后台会显示最近回执，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。
 
 ## 5. 失败响应
 
@@ -130,7 +132,7 @@ mock 服务会：
 - `POST` 重新计算 `packageDigest`、`layoutDigest`、`assetDigest`。
 - 拒绝摘要不匹配的发布包。
 - 拒绝重复 `packageDigest`。
-- 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执。
+- 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执写入本机审计列表。
 
 ## 7. 验收
 
@@ -141,4 +143,4 @@ node scripts/remote-publish-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、发布包回执、重复摘要拒绝和远端发布状态持久化。
+`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、发布包回执、回执审计导出、重复摘要拒绝和远端发布状态持久化。

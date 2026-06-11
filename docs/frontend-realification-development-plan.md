@@ -36,9 +36,9 @@ node scripts/control-inventory.js --check
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `index.html` | 56 | 13 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 32 | 3 | 1 | 0 | 0 | 0 |
+| `main-admin.html` | 32 | 4 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 22 | 0 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 26 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
@@ -71,7 +71,7 @@ node scripts/control-inventory.js --check
 | 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用 | 保存范围主要是当前浏览器 | 抽象项目 repository，补远端保存和协作接口 |
 | 写实后台编辑 | 写实对象、相机、导入模型、快照、发布到演示可用 | 和主后台对象 schema 仍未完全统一 | 统一对象 schema、字段迁移和资产引用规则 |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史、差异、回滚 | 只是本机发布，不是线上部署 | UI 保持“本机发布”；线上发布必须走远端发布合同 |
-| 远端发布 | 可配置 endpoint/token，生成发布包、manifest、资产清单，预检、审核锁和 POST 推送已有第一版 | 还不是账号权限、CDN 托管、服务端审批和不可篡改审计 | 增加服务端发布合同、远端审核状态、资产签名、CDN 回执和审计日志 |
+| 远端发布 | 可配置 endpoint/token，生成发布包、manifest、资产清单，预检、审核锁、POST 推送、服务端回执持久化和 HTML 审计导出已有第一版 | 还不是账号权限、CDN 托管、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、资产签名、CDN 回执和不可篡改审计日志 |
 | 项目档案 | JSON 导出/导入、schema、迁移、字段恢复、模型哈希和恢复审计可用 | 三方合并、完整 JSON 树、远端资产校验仍弱 | 增加字段级 merge UI、冲突解决、远端资产完整性校验 |
 | 后台权限 | 已显示“本机静态后台”风险提示 | 任何能打开页面的人都能编辑本机内容 | 后端版加入账号、角色、权限和操作审计 |
 
@@ -82,7 +82,7 @@ node scripts/control-inventory.js --check
 | 高预期词汇 | “AI 讲解”“发布”“同步”“分享”容易被理解成云端能力 | 文案必须加边界：本机语音、本机发布、本机同步包、远端 API adapter |
 | 静态叙事残留 | 部分热点像固定剧本，不像学习状态驱动 | 用真实练习、作品、报告、计划项替换静态指标 |
 | 本机真实被误认为生产真实 | 按钮可点，但只写 localStorage/IndexedDB | 控件状态保留 `real-local`，并在状态区说明保存范围 |
-| 远端 adapter 仍缺生产服务 | endpoint、接口文档和 mock 服务已能真实验收，但用户可能以为已经部署上线 | 下一步接账号化托管仓库、服务端合并、权限和失败反馈 |
+| 远端 adapter 仍缺生产服务 | endpoint、接口文档、mock 服务和回执审计已能真实验收，但用户可能以为已经部署上线 | 下一步接账号化托管仓库、服务端合并、权限和失败反馈 |
 | 测试不足 | smoke test 只能证明页面存在，不能证明复杂交互都能用 | 补 Playwright 和数据层测试，覆盖端到端闭环 |
 
 ## 6. 控件真实化定义
@@ -125,7 +125,7 @@ node scripts/control-inventory.js --check
 
 - `main-admin.html` 和 `realistic-admin.html` 保留本机权限风险提示。
 - “发布到前台/演示”继续标为本机发布。
-- 远端发布 API 面板已有服务端合同文档、mock endpoint 和回执字段第一版；后续补账号权限和服务端签名。
+- 远端发布 API 面板已有服务端合同文档、mock endpoint、回执持久化和回执审计导出第一版；后续补账号权限和服务端签名。
 - 审核与发布锁从本机状态升级为远端校验状态。
 
 ### P1：把学习状态从本机原型升级为可同步业务
@@ -157,13 +157,32 @@ node scripts/control-inventory.js --check
 
 ## 8. 下一批建议开发顺序
 
-1. 给计划 repository、学习档案 repository 和远端发布 adapter 继续补生产服务端实现，明确账号权限、服务端合并、分页、资产签名和审计字段。
+1. 给计划 repository、学习档案 repository 和远端发布 adapter 继续补生产服务端实现，明确账号权限、服务端合并、分页、资产签名和不可篡改审计字段。
 2. 统一主后台和写实后台对象 schema，减少两套编辑器分叉。
 3. 补 Playwright 可运行环境并扩展端到端用例。
 4. 开始账号化 repository 设计，把计划、档案、作品、报告从本机状态抽象成可替换数据源。
 5. 将学习计划冲突解决从计划级继续细化到计划项字段级合并。
 
-## 9. 验收命令
+## 9. 2026-06-12 远端发布回执真实化
+
+本次把后台“远端发布 API”的成功回执从合同字段升级为真实可见能力。
+
+已完成：
+
+- `MRProjectRemotePublish.push()` 现在会解析服务端 `receipt`，并把回执审计写入 `mr-calligraphy-remote-publish-v1.scenes[*].receipts`。
+- `getStatus()` 会返回 `latestReceipt`、`receiptCount` 和 `receipts`，后台不用直接读取底层 storage。
+- 新增 `getReceiptAudit()` 和 `getReceiptAuditExport()`，可生成离线 HTML 审计页。
+- 主后台和写实后台新增“回执审计”区域，显示最近远端回执，并提供“导出回执”真实下载。
+- `remote-publish-check.js` 新增回执持久化、回执导出、mock 服务 receipt 回写断言。
+- smoke test 新增两个后台的回执审计 DOM 标记。
+
+仍然不是生产能力的部分：
+
+- 回执审计当前保存在本机浏览器，不能替代服务端不可篡改审计。
+- endpoint 由用户手动配置；没有账号、角色、远端审批、CDN 部署和资产签名服务。
+- 后续需要让服务端保存完整审计链，并返回签名 receipt / CDN asset receipt。
+
+## 10. 验收命令
 
 提交前至少运行：
 

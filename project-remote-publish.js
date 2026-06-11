@@ -2,6 +2,7 @@
   const STORAGE_KEY = "mr-calligraphy-remote-publish-v1";
   const PACKAGE_KIND = "mr-calligraphy-remote-publish-package-v1";
   const VERSION = 1;
+  const MAX_RECEIPTS = 12;
   const BOUNDARY = "远端发布 API adapter 会真实发送当前本机发布包；它不是账号权限、审核流、CDN 部署或服务器托管本身。";
 
   function readState() {
@@ -43,7 +44,42 @@
       lastPackageDigest: normalizeSha256(source.lastPackageDigest),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : "",
       review: normalizeReviewState(source.review),
-      lock: normalizeLockState(source.lock)
+      lock: normalizeLockState(source.lock),
+      receipts: Array.isArray(source.receipts)
+        ? source.receipts.map((receipt) => normalizeRemoteReceipt(receipt)).filter(Boolean).slice(0, MAX_RECEIPTS)
+        : []
+    };
+  }
+
+  function normalizeRemoteReceipt(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const receipt = source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : {};
+    const sceneId = normalizeSceneId(source.sceneId || receipt.sceneId);
+    const packageId = String(source.packageId || receipt.packageId || "").slice(0, 160);
+    const releaseId = String(source.releaseId || receipt.releaseId || "").slice(0, 160);
+    const packageDigest = normalizeSha256(source.packageDigest || receipt.packageDigest);
+    const acceptedAt = normalizeDate(source.acceptedAt || receipt.acceptedAt);
+    const pushedAt = normalizeDate(source.pushedAt);
+    const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest)
+      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt });
+    const warnings = normalizeWarningList(source.warnings || receipt.warnings);
+    return {
+      id: String(source.id || `receipt-${sceneId}-${receiptDigest.slice(0, 16)}`).slice(0, 180),
+      sceneId,
+      sceneLabel: String(source.sceneLabel || receipt.sceneLabel || sceneLabelFromId(sceneId)).slice(0, 80),
+      packageId,
+      releaseId,
+      packageDigest,
+      receiptDigest,
+      remoteVersion: String(source.remoteVersion || receipt.remoteVersion || "").slice(0, 120),
+      endpoint: String(source.endpoint || "").slice(0, 240),
+      acceptedAt,
+      pushedAt,
+      message: String(source.message || "").slice(0, 180),
+      warningCount: normalizeCount(source.warningCount ?? receipt.warningCount ?? warnings.length),
+      warnings,
+      receiptKind: String(source.receiptKind || receipt.receiptKind || "").slice(0, 120),
+      receipt
     };
   }
 
@@ -190,6 +226,9 @@
       lastError: scene.lastError,
       review: scene.review,
       lock: scene.lock,
+      latestReceipt: scene.receipts[0] || null,
+      receiptCount: scene.receipts.length,
+      receipts: scene.receipts,
       workflow
     };
   }
@@ -204,6 +243,43 @@
       token: scene.token,
       hasToken: Boolean(scene.token),
       boundary: BOUNDARY
+    };
+  }
+
+  function getReceiptAudit(sceneId) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const scene = readState().scenes[normalizedId];
+    const receipts = Array.isArray(scene.receipts) ? scene.receipts : [];
+    return {
+      ok: true,
+      sceneId: normalizedId,
+      sceneLabel: sceneLabelFromId(normalizedId),
+      total: receipts.length,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: BOUNDARY,
+      message: receipts.length
+        ? `已保存 ${receipts.length} 条远端发布回执，最近一次：${formatDateTime(receipts[0].acceptedAt || receipts[0].pushedAt)}。`
+        : "暂无远端发布回执。"
+    };
+  }
+
+  function getReceiptAuditExport(sceneId) {
+    const audit = getReceiptAudit(sceneId);
+    if (!audit.receipts.length) {
+      return {
+        ok: false,
+        sceneId: audit.sceneId,
+        message: "暂无可导出的远端发布回执。"
+      };
+    }
+    const generatedAt = new Date().toISOString();
+    return {
+      ok: true,
+      sceneId: audit.sceneId,
+      filename: `mr-calligraphy-${audit.sceneId}-remote-receipts-${generatedAt.slice(0, 10)}.html`,
+      html: renderReceiptAuditHtml(audit, generatedAt),
+      message: `已生成 ${audit.sceneLabel}远端发布回执审计导出。`
     };
   }
 
@@ -746,15 +822,16 @@
       }
 
       const now = new Date().toISOString();
-      const releaseId = packaged.package.release.id;
+      const receipt = createRemoteReceiptRecord(normalizedId, packaged.package, parsed, scene.endpoint, now);
+      const releaseId = receipt.releaseId || packaged.package.release.id;
       const nextState = readState();
       nextState.scenes[normalizedId] = normalizeSceneState({
         ...nextState.scenes[normalizedId],
         lastCheckedAt: now,
         lastPushedAt: now,
-        lastPackageId: parsed.packageId || packaged.package.packageId,
+        lastPackageId: receipt.packageId || packaged.package.packageId,
         lastReleaseId: releaseId,
-        lastRemoteVersion: parsed.remoteVersion,
+        lastRemoteVersion: receipt.remoteVersion || parsed.remoteVersion,
         lastRemoteStatus: parsed.message,
         lastPackageDigest: packaged.package.manifest?.packageDigest,
         lock: {
@@ -763,17 +840,19 @@
           packageDigest: packaged.package.manifest?.packageDigest,
           reason: "远端已接收该发布包，发布锁用于防止重复推送。"
         },
+        receipts: [receipt, ...nextState.scenes[normalizedId].receipts].slice(0, MAX_RECEIPTS),
         lastError: ""
       });
       writeState(nextState);
       return {
         ok: true,
         status: getStatus(normalizedId),
-        packageId: parsed.packageId || packaged.package.packageId,
+        packageId: receipt.packageId || packaged.package.packageId,
         releaseId,
         packageDigest: packaged.package.manifest?.packageDigest || "",
         validation,
-        remoteVersion: parsed.remoteVersion,
+        remoteVersion: receipt.remoteVersion || parsed.remoteVersion,
+        receipt,
         message: `${parsed.message} ${BOUNDARY}`
       };
     } catch (error) {
@@ -871,8 +950,51 @@
       ok: true,
       message: payload.message || fallbackMessage,
       packageId: payload.packageId ? String(payload.packageId) : "",
-      remoteVersion: payload.remoteVersion ? String(payload.remoteVersion).slice(0, 120) : ""
+      releaseId: payload.releaseId ? String(payload.releaseId).slice(0, 160) : "",
+      packageDigest: normalizeSha256(payload.packageDigest || payload.receipt?.packageDigest),
+      receiptDigest: normalizeSha256(payload.receiptDigest || payload.receipt?.receiptDigest),
+      remoteVersion: payload.remoteVersion ? String(payload.remoteVersion).slice(0, 120) : "",
+      receipt: payload.receipt && typeof payload.receipt === "object" ? clone(payload.receipt) : null,
+      warnings: normalizeWarningList(payload.warnings || payload.receipt?.warnings)
     };
+  }
+
+  function createRemoteReceiptRecord(sceneId, packagePayload, parsed, endpoint, pushedAt) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const receipt = parsed.receipt && typeof parsed.receipt === "object" ? clone(parsed.receipt) : {};
+    const releaseId = String(parsed.releaseId || receipt.releaseId || packagePayload.release?.id || "").slice(0, 160);
+    const packageId = String(parsed.packageId || receipt.packageId || packagePayload.packageId || "").slice(0, 160);
+    const packageDigest = normalizeSha256(parsed.packageDigest || receipt.packageDigest || packagePayload.manifest?.packageDigest);
+    const acceptedAt = normalizeDate(receipt.acceptedAt) || pushedAt;
+    const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
+      || sha256StableJson({
+        sceneId: normalizedId,
+        packageId,
+        releaseId,
+        packageDigest,
+        remoteVersion: parsed.remoteVersion || receipt.remoteVersion || "",
+        acceptedAt,
+        pushedAt
+      });
+    const warnings = normalizeWarningList(parsed.warnings || receipt.warnings);
+    return normalizeRemoteReceipt({
+      id: `remote-receipt-${normalizedId}-${receiptDigest.slice(0, 16)}`,
+      sceneId: normalizedId,
+      sceneLabel: packagePayload.sceneLabel || sceneLabelFromId(normalizedId),
+      packageId,
+      releaseId,
+      packageDigest,
+      receiptDigest,
+      remoteVersion: parsed.remoteVersion || receipt.remoteVersion || "",
+      endpoint,
+      acceptedAt,
+      pushedAt,
+      message: parsed.message || "",
+      warningCount: warnings.length,
+      warnings,
+      receiptKind: receipt.receiptKind || "",
+      receipt
+    });
   }
 
   function saveRemoteError(sceneId, message) {
@@ -889,6 +1011,10 @@
 
   function normalizeSceneId(sceneId) {
     return sceneId === "realisticScene" ? "realisticScene" : "mainScene";
+  }
+
+  function sceneLabelFromId(sceneId) {
+    return normalizeSceneId(sceneId) === "realisticScene" ? "写实场景" : "主场景";
   }
 
   function sha256StableJson(value) {
@@ -1020,6 +1146,16 @@
     return String(value || "").trim().slice(0, 160);
   }
 
+  function normalizeCount(value, max = 9999) {
+    const count = Math.max(0, Math.round(Number(value || 0)));
+    return Math.min(count, max);
+  }
+
+  function normalizeWarningList(value) {
+    const warnings = Array.isArray(value) ? value : [];
+    return warnings.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 8);
+  }
+
   function shortDigest(value) {
     const digest = normalizeSha256(value);
     return digest ? `${digest.slice(0, 10)}...` : "摘要未知";
@@ -1030,6 +1166,63 @@
     if (!Number.isFinite(date.getTime())) return "时间未知";
     const pad = (number) => String(number).padStart(2, "0");
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function renderReceiptAuditHtml(audit, generatedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const warnings = receipt.warnings.length ? receipt.warnings.join("；") : "无";
+      return `
+        <section class="receipt">
+          <h2>${escapeHtml(receipt.packageId || "packageId 未知")}</h2>
+          <dl>
+            <dt>Release</dt><dd>${escapeHtml(receipt.releaseId || "未知")}</dd>
+            <dt>Package Digest</dt><dd>${escapeHtml(receipt.packageDigest || "未知")}</dd>
+            <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
+            <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
+            <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
+            <dt>Pushed At</dt><dd>${escapeHtml(receipt.pushedAt || "未知")}</dd>
+            <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
+            <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
+          </dl>
+          <pre>${escapeHtml(JSON.stringify(receipt.receipt || {}, null, 2))}</pre>
+        </section>`;
+    }).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法远端发布回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 12px; font-size: 17px; overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 6px; background: #1f2937; color: #f8fafc; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法远端发布回执审计</h1>
+    <p class="meta">场景：${escapeHtml(audit.sceneLabel)} · 导出时间：${escapeHtml(generatedAt)} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+  </main>
+</body>
+</html>`;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   function clone(value) {
@@ -1044,6 +1237,8 @@
     getStatus,
     getConfig,
     getWorkflow,
+    getReceiptAudit,
+    getReceiptAuditExport,
     createPackage,
     createPackageManifest,
     createReleaseAssetManifest,

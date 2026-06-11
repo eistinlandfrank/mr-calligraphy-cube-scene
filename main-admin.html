@@ -231,6 +231,14 @@
                 <button data-feature-state="real-local" id="mainRemotePublishUnlock" type="button">解除发布锁</button>
               </div>
             </div>
+            <div class="remote-publish-receipts" aria-label="远端发布回执审计">
+              <div class="remote-publish-receipts-head">
+                <strong>回执审计</strong>
+                <button data-feature-state="real-export" id="mainRemotePublishReceiptExport" type="button">导出回执</button>
+              </div>
+              <p id="mainRemotePublishReceiptStatus" class="remote-publish-receipt-status">暂无远端回执。</p>
+              <ul id="mainRemotePublishReceiptList" class="remote-publish-receipt-list"></ul>
+            </div>
           </details>
           <div class="main-publish-diff" aria-label="主场景发布差异">
             <strong id="mainPublishDiffSummary">尚未计算发布差异。</strong>

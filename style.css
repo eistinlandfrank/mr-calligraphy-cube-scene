@@ -1731,6 +1731,112 @@ button {
   opacity: 0.44;
 }
 
+.remote-publish-receipts {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(116, 255, 219, 0.16);
+  border-radius: 6px;
+  background: rgba(47, 111, 104, 0.12);
+}
+
+.remote-publish-receipts-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.remote-publish-receipts-head strong {
+  min-width: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.remote-publish-receipts-head button {
+  min-height: 28px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.remote-publish-receipts-head button:hover,
+.remote-publish-receipts-head button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.58);
+  outline: none;
+  background: rgba(47, 111, 104, 0.52);
+}
+
+.remote-publish-receipts-head button:disabled {
+  cursor: not-allowed;
+  opacity: 0.44;
+}
+
+.remote-publish-receipt-status {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.remote-publish-receipt-status[data-receipt-tone="ready"] {
+  color: #bcf5d9;
+}
+
+.remote-publish-receipt-list {
+  display: grid;
+  gap: 6px;
+  min-height: 0;
+  max-height: 168px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.remote-publish-receipt-list li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.remote-publish-receipt-list strong,
+.remote-publish-receipt-list span,
+.remote-publish-receipt-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.remote-publish-receipt-list strong {
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.remote-publish-receipt-list span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 10px;
+  font-weight: 760;
+}
+
+.remote-publish-receipt-list small {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
 .main-publish-diff {
   display: grid;
   gap: 7px;
