@@ -6318,6 +6318,30 @@ body.is-model-view .notice-panel {
   background: rgba(122, 91, 35, 0.22);
 }
 
+.history-repository-summary {
+  margin-top: 8px;
+  padding: 7px 8px;
+  border: 1px solid rgba(160, 197, 255, 0.2);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.78);
+  background: rgba(49, 74, 122, 0.18);
+  font-size: 11px;
+  font-weight: 820;
+  line-height: 1.35;
+}
+
+.history-repository-summary[data-repository-tone="ready"] {
+  border-color: rgba(116, 255, 219, 0.32);
+  color: #e8fff9;
+  background: rgba(47, 111, 104, 0.24);
+}
+
+.history-repository-summary[data-repository-tone="warning"] {
+  border-color: rgba(247, 215, 139, 0.42);
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.22);
+}
+
 .plan-cycle-summary {
   margin-top: 8px;
   padding: 7px 8px;
@@ -6465,6 +6489,88 @@ body.is-model-view .notice-panel {
 }
 
 .plan-repository-actions button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.history-repository-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.history-repository-remote {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.history-repository-remote summary {
+  cursor: pointer;
+  color: rgba(255, 250, 241, 0.8);
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.history-repository-fields {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.history-repository-fields label {
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-repository-fields input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.history-repository-remote-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.history-repository-actions button,
+.history-repository-remote-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(160, 197, 255, 0.28);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(49, 74, 122, 0.34);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.history-repository-actions button:hover,
+.history-repository-actions button:focus-visible,
+.history-repository-remote-actions button:hover,
+.history-repository-remote-actions button:focus-visible {
+  border-color: rgba(160, 197, 255, 0.56);
+  outline: none;
+  background: rgba(49, 74, 122, 0.54);
+}
+
+.history-repository-actions button:disabled,
+.history-repository-remote-actions button:disabled {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.38);
   border-color: rgba(255, 255, 255, 0.12);

@@ -10,6 +10,8 @@
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
+  const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
+  const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包，但仍不包含账号权限、服务端分页、教师批注或公开作品墙。";
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -297,6 +299,7 @@
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       planReminderService: normalizePlanReminderService(source?.planReminderService),
       planRepository: normalizePlanRepository(source?.planRepository),
+      historyRepository: normalizeHistoryRepository(source?.historyRepository),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
@@ -563,6 +566,30 @@
       remoteTitle: String(record.remoteTitle || record.title || id).slice(0, 120),
       localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
       remoteUpdatedAt: normalizePlanDate(record.remoteUpdatedAt)
+    };
+  }
+
+  function normalizeHistoryRepository(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
+      ? source.lastRemoteDirection
+      : "";
+    return {
+      mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
+      remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
+      remoteToken: typeof source.remoteToken === "string" ? source.remoteToken.trim() : "",
+      lastExportedAt: normalizePlanDate(source.lastExportedAt),
+      lastImportedAt: normalizePlanDate(source.lastImportedAt),
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
+      lastRemoteDirection,
+      lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).slice(0, 180) : "",
+      lastExportedRecordCount: normalizeInteger(source.lastExportedRecordCount, 0, 0, 99999),
+      lastImportedRecordCount: normalizeInteger(source.lastImportedRecordCount, 0, 0, 99999),
+      lastRemoteRecordCount: normalizeInteger(source.lastRemoteRecordCount, 0, 0, 99999),
+      lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
+      lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
 
@@ -6026,6 +6053,609 @@
     return { ok: true, count: payload.history.length, message: `已导出 ${payload.history.length} 条所选学习档案。` };
   }
 
+  function getHistoryRepositoryRecordCount() {
+    return state.sessions.length + state.artworks.length + state.reports.length;
+  }
+
+  function getHistoryRepositoryStatus() {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const recordCount = getHistoryRepositoryRecordCount();
+    const remoteConfigured = Boolean(repository.remoteEndpoint);
+    let tone = "idle";
+    let message = remoteConfigured
+      ? `远端学习档案 API 已配置：${repository.remoteEndpoint}。`
+      : recordCount
+        ? `本机学习档案有 ${recordCount} 条记录，可导出 JSON 同步包。`
+        : "还没有可同步的学习档案记录。";
+
+    if (repository.lastRemoteSyncAt) {
+      const directionLabel = {
+        check: "检查",
+        push: "推送",
+        pull: "拉取"
+      }[repository.lastRemoteDirection] || "同步";
+      tone = "ready";
+      message = repository.lastRemoteStatus
+        || `最近${directionLabel}远端学习档案：${formatPlanDate(repository.lastRemoteSyncAt)}，${repository.lastRemoteRecordCount} 条记录。`;
+    } else if (repository.lastImportedAt) {
+      tone = "ready";
+      message = `最近导入 ${repository.lastImportedRecordCount} 条学习档案：${formatPlanDate(repository.lastImportedAt)}。`;
+    } else if (repository.lastExportedAt) {
+      tone = "ready";
+      message = `最近导出 ${repository.lastExportedRecordCount} 条学习档案：${formatPlanDate(repository.lastExportedAt)}。`;
+    }
+    if (repository.lastSkippedConflictCount > 0) {
+      tone = "warning";
+      message = `远端学习档案有 ${repository.lastSkippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机记录。`;
+    }
+    if (repository.lastError) {
+      tone = "warning";
+      message = repository.lastError;
+    }
+
+    return {
+      ok: true,
+      kind: HISTORY_REPOSITORY_KIND,
+      mode: repository.mode,
+      remoteConfigured,
+      remoteEndpoint: remoteConfigured ? repository.remoteEndpoint : "",
+      hasRemoteToken: Boolean(repository.remoteToken),
+      fetchSupported: typeof fetch === "function",
+      recordCount,
+      sessionCount: state.sessions.length,
+      artworkCount: state.artworks.length,
+      reportCount: state.reports.length,
+      tone,
+      message,
+      boundary: HISTORY_REPOSITORY_BOUNDARY,
+      lastExportedAt: repository.lastExportedAt,
+      lastImportedAt: repository.lastImportedAt,
+      lastCheckedAt: repository.lastCheckedAt,
+      lastRemoteSyncAt: repository.lastRemoteSyncAt,
+      lastRemoteDirection: repository.lastRemoteDirection,
+      lastRemoteStatus: repository.lastRemoteStatus,
+      lastExportedRecordCount: repository.lastExportedRecordCount,
+      lastImportedRecordCount: repository.lastImportedRecordCount,
+      lastRemoteRecordCount: repository.lastRemoteRecordCount,
+      lastSkippedConflictCount: repository.lastSkippedConflictCount,
+      lastPackageId: repository.lastPackageId,
+      lastError: repository.lastError
+    };
+  }
+
+  function getHistoryRepositoryRemoteConfig() {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    return {
+      ok: true,
+      mode: repository.mode,
+      remoteEndpoint: repository.remoteEndpoint,
+      remoteToken: repository.remoteToken,
+      hasRemoteToken: Boolean(repository.remoteToken),
+      boundary: HISTORY_REPOSITORY_BOUNDARY
+    };
+  }
+
+  function getHistoryRepositoryPackage(options = {}) {
+    const selectedIds = Array.isArray(options.ids)
+      ? new Set(options.ids.map(String).filter(Boolean))
+      : null;
+    const sessions = state.sessions
+      .filter((session) => !selectedIds || selectedIds.has(session.id))
+      .map(normalizeSession)
+      .filter(Boolean);
+    const artworks = state.artworks
+      .filter((artwork) => !selectedIds || selectedIds.has(artwork.id))
+      .map(normalizeArtwork)
+      .filter(Boolean);
+    const reports = state.reports
+      .filter((report) => !selectedIds || selectedIds.has(report.id))
+      .map(normalizeReport)
+      .filter(Boolean);
+    const history = [
+      ...sessions.map(sessionToHistoryEntry),
+      ...artworks.map(artworkToHistoryEntry),
+      ...reports.map(reportToHistoryEntry)
+    ]
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+    const recordCount = sessions.length + artworks.length + reports.length;
+    if (!recordCount) {
+      return {
+        ok: false,
+        message: "还没有可导出的学习档案同步包。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const packageId = `history-repository-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const repository = getHistoryRepositoryStatus();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-history-repository-${Date.now()}.json`,
+      package: {
+        kind: HISTORY_REPOSITORY_KIND,
+        version: VERSION,
+        packageId,
+        exportedAt,
+        storageKey: STORAGE_KEY,
+        source: {
+          mode: repository.mode,
+          boundary: HISTORY_REPOSITORY_BOUNDARY
+        },
+        summary: getHistorySummary(history),
+        records: {
+          sessions: clone(sessions),
+          artworks: clone(artworks),
+          reports: clone(reports)
+        },
+        history: history.map((entry) => getHistoryDetail(entry.id)).filter(Boolean)
+      },
+      message: `已生成 ${recordCount} 条学习档案的本机 JSON 同步包。${HISTORY_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function downloadHistoryRepository(options = {}) {
+    const result = getHistoryRepositoryPackage(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadJson(result.package, result.filename);
+    const now = new Date().toISOString();
+    state.historyRepository = normalizeHistoryRepository({
+      ...state.historyRepository,
+      mode: "local-json",
+      lastExportedAt: now,
+      lastCheckedAt: now,
+      lastExportedRecordCount: result.package.summary.total,
+      lastPackageId: result.package.packageId,
+      lastSkippedConflictCount: 0,
+      lastError: ""
+    });
+    addEvent("history-repository-export", `导出学习档案同步包：${result.package.summary.total} 条记录`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      status: getHistoryRepositoryStatus(),
+      message: `已下载学习档案 JSON 同步包：${result.filename}。${HISTORY_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function parseHistoryRepositoryPackage(input) {
+    let source = input;
+    if (typeof input === "string") {
+      try {
+        source = JSON.parse(input);
+      } catch (error) {
+        return { ok: false, message: "学习档案同步包 JSON 解析失败。" };
+      }
+    }
+    if (!source || typeof source !== "object") {
+      return { ok: false, message: "学习档案同步包格式无效。" };
+    }
+    if (source.kind !== HISTORY_REPOSITORY_KIND) {
+      return { ok: false, message: "这不是 MR 书法学习档案同步包。" };
+    }
+    if (!source.records || typeof source.records !== "object") {
+      return { ok: false, message: "学习档案同步包缺少 records 对象。" };
+    }
+    if (!Array.isArray(source.records.sessions) || !Array.isArray(source.records.artworks) || !Array.isArray(source.records.reports)) {
+      return { ok: false, message: "学习档案同步包缺少 sessions、artworks 或 reports 数组。" };
+    }
+    return { ok: true, package: source };
+  }
+
+  function recordHistoryRepositoryError(message) {
+    state.historyRepository = normalizeHistoryRepository({
+      ...state.historyRepository,
+      lastCheckedAt: new Date().toISOString(),
+      lastError: message
+    });
+    saveState();
+  }
+
+  function mergeHistoryRecords(collection, incomingRecords, normalizeRecord) {
+    const existingIndex = new Map(collection.map((record, index) => [record.id, index]));
+    let importedCount = 0;
+    let updatedCount = 0;
+    let skippedConflictCount = 0;
+
+    incomingRecords
+      .map(normalizeRecord)
+      .filter(Boolean)
+      .forEach((record) => {
+        if (!existingIndex.has(record.id)) {
+          collection.push(record);
+          existingIndex.set(record.id, collection.length - 1);
+          importedCount += 1;
+          return;
+        }
+        const index = existingIndex.get(record.id);
+        const existing = normalizeRecord(collection[index]);
+        if (stablePlanStringify(existing) === stablePlanStringify(record)) {
+          return;
+        }
+        skippedConflictCount += 1;
+      });
+
+    return { importedCount, updatedCount, skippedConflictCount };
+  }
+
+  function importHistoryRepositoryPackage(input) {
+    const parsed = parseHistoryRepositoryPackage(input);
+    if (!parsed.ok) {
+      recordHistoryRepositoryError(parsed.message);
+      return parsed;
+    }
+
+    const records = parsed.package.records || {};
+    const sessions = Array.isArray(records.sessions) ? records.sessions : [];
+    const artworks = Array.isArray(records.artworks) ? records.artworks : [];
+    const reports = Array.isArray(records.reports) ? records.reports : [];
+    const incomingCount = sessions.length + artworks.length + reports.length;
+    if (!incomingCount) {
+      const message = "同步包里没有可导入的学习档案记录。";
+      recordHistoryRepositoryError(message);
+      return { ok: false, message };
+    }
+
+    const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession);
+    const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork);
+    const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport);
+    const importedCount = sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount;
+    const updatedCount = sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount;
+    const skippedConflictCount = sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount;
+    const now = new Date().toISOString();
+
+    state.historyRepository = normalizeHistoryRepository({
+      ...state.historyRepository,
+      mode: "local-json",
+      lastImportedAt: now,
+      lastCheckedAt: now,
+      lastImportedRecordCount: importedCount + updatedCount,
+      lastSkippedConflictCount: skippedConflictCount,
+      lastPackageId: parsed.package.packageId || null,
+      lastError: skippedConflictCount
+        ? `有 ${skippedConflictCount} 条同 ID 差异学习档案已跳过，未覆盖本机记录。`
+        : ""
+    });
+    addEvent("history-repository-import", `导入学习档案同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}`);
+    saveState();
+    return {
+      ok: true,
+      importedCount,
+      updatedCount,
+      skippedConflictCount,
+      totalRecordCount: getHistoryRepositoryRecordCount(),
+      status: getHistoryRepositoryStatus(),
+      message: skippedConflictCount
+        ? `已导入学习档案同步包：新增 ${importedCount} 条，跳过 ${skippedConflictCount} 条同 ID 差异记录。${HISTORY_REPOSITORY_BOUNDARY}`
+        : `已导入学习档案同步包：新增 ${importedCount} 条。${HISTORY_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function configureHistoryRepositoryRemote(config = {}) {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
+    const tokenInput = config.remoteToken ?? config.token;
+    const remoteEndpoint = String(endpointInput || "").trim();
+    const remoteToken = tokenInput === undefined
+      ? repository.remoteToken
+      : String(tokenInput || "").trim();
+
+    if (!remoteEndpoint) {
+      state.historyRepository = normalizeHistoryRepository({
+        ...repository,
+        mode: "local-json",
+        remoteEndpoint: "",
+        remoteToken: "",
+        lastCheckedAt: new Date().toISOString(),
+        lastRemoteStatus: "",
+        lastError: ""
+      });
+      addEvent("history-repository-remote", "清除远端学习档案 API 配置");
+      saveState();
+      return {
+        ok: true,
+        status: getHistoryRepositoryStatus(),
+        message: "已清除远端学习档案 API 配置，当前回到本机 JSON 同步包。"
+      };
+    }
+
+    const validation = validatePlanRepositoryEndpoint(remoteEndpoint);
+    if (!validation.ok) {
+      recordHistoryRepositoryError(validation.message.replace("远端计划 API", "远端学习档案 API"));
+      return {
+        ok: false,
+        status: getHistoryRepositoryStatus(),
+        message: validation.message.replace("远端计划 API", "远端学习档案 API")
+      };
+    }
+
+    state.historyRepository = normalizeHistoryRepository({
+      ...repository,
+      mode: "remote-api",
+      remoteEndpoint: validation.endpoint,
+      remoteToken,
+      lastCheckedAt: new Date().toISOString(),
+      lastRemoteStatus: "远端学习档案 API 配置已保存，尚未检查服务可用性。",
+      lastError: ""
+    });
+    addEvent("history-repository-remote", `配置远端学习档案 API：${validation.endpoint}`);
+    saveState();
+    return {
+      ok: true,
+      status: getHistoryRepositoryStatus(),
+      message: "已保存远端学习档案 API 配置。请点击“检查远端”确认服务可用。"
+    };
+  }
+
+  function buildHistoryRepositoryRequest(repository, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {})
+    };
+    if (repository.remoteToken) {
+      headers.Authorization = `Bearer ${repository.remoteToken}`;
+    }
+    return {
+      method: options.method || "GET",
+      headers,
+      ...(options.body ? { body: JSON.stringify(options.body) } : {})
+    };
+  }
+
+  async function parseRemoteHistoryRepositoryResponse(response) {
+    if (!response || response.ok === false) {
+      const status = response?.status ? `HTTP ${response.status}` : "无响应";
+      return { ok: false, message: `远端学习档案 API 请求失败：${status}。` };
+    }
+
+    let payload = {};
+    try {
+      const text = typeof response.text === "function"
+        ? await response.text()
+        : JSON.stringify(typeof response.json === "function" ? await response.json() : {});
+      payload = text ? JSON.parse(text) : {};
+    } catch (error) {
+      return { ok: false, message: "远端学习档案 API 返回的不是可解析 JSON。" };
+    }
+
+    const candidate = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : payload.repository && typeof payload.repository === "object"
+        ? payload.repository
+        : payload;
+    const parsed = parseHistoryRepositoryPackage(candidate);
+    if (parsed.ok) {
+      const summary = parsed.package.summary || {};
+      return {
+        ok: true,
+        package: parsed.package,
+        message: payload.message || `远端学习档案包含 ${summary.total || 0} 条记录。`
+      };
+    }
+    if (payload.ok === true) {
+      return {
+        ok: true,
+        package: null,
+        message: payload.message || "远端学习档案 API 检查通过，但没有返回档案包。"
+      };
+    }
+    return {
+      ok: false,
+      message: payload.message || parsed.message || "远端学习档案 API 返回格式无效。"
+    };
+  }
+
+  function checkRemoteHistoryRepository() {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const remoteConfigured = Boolean(repository.remoteEndpoint);
+    const fetchApi = getPlanRepositoryFetch();
+    const now = new Date().toISOString();
+    state.historyRepository = normalizeHistoryRepository({
+      ...repository,
+      mode: remoteConfigured ? "remote-api" : "local-json",
+      lastCheckedAt: now,
+      lastError: remoteConfigured ? "" : "尚未配置远端学习档案 repository；当前只能使用本机 JSON 同步包。"
+    });
+    if (!remoteConfigured || !fetchApi) {
+      if (remoteConfigured && !fetchApi) {
+        state.historyRepository = normalizeHistoryRepository({
+          ...state.historyRepository,
+          lastError: "当前运行环境不支持 fetch，无法检查远端学习档案 API。"
+        });
+      }
+      saveState();
+      const status = getHistoryRepositoryStatus();
+      return {
+        ok: false,
+        status,
+        message: `${status.message} ${HISTORY_REPOSITORY_BOUNDARY}`
+      };
+    }
+    return checkRemoteHistoryRepositoryAsync(repository, fetchApi);
+  }
+
+  async function checkRemoteHistoryRepositoryAsync(repository, fetchApi) {
+    try {
+      const response = await fetchApi(repository.remoteEndpoint, buildHistoryRepositoryRequest(repository));
+      const parsed = await parseRemoteHistoryRepositoryResponse(response);
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.historyRepository = normalizeHistoryRepository({
+          ...repository,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
+      }
+
+      const recordCount = parsed.package?.summary?.total || 0;
+      state.historyRepository = normalizeHistoryRepository({
+        ...repository,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "check",
+        lastRemoteRecordCount: recordCount,
+        lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastRemoteStatus: parsed.message,
+        lastError: ""
+      });
+      addEvent("history-repository-remote-check", `检查远端学习档案 API：${recordCount} 条记录`);
+      saveState();
+      return {
+        ok: true,
+        status: getHistoryRepositoryStatus(),
+        package: parsed.package || null,
+        message: `${parsed.message} ${HISTORY_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = `远端学习档案 API 检查失败：${error?.message || "网络请求异常"}。`;
+      recordHistoryRepositoryError(message);
+      return { ok: false, status: getHistoryRepositoryStatus(), message };
+    }
+  }
+
+  function pushHistoryRepositoryToRemote(options = {}) {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const fetchApi = getPlanRepositoryFetch();
+    if (!repository.remoteEndpoint) {
+      return checkRemoteHistoryRepository();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法推送学习档案到远端 API。";
+      recordHistoryRepositoryError(message);
+      return { ok: false, status: getHistoryRepositoryStatus(), message };
+    }
+    const packageResult = getHistoryRepositoryPackage(options);
+    if (!packageResult.ok) {
+      return packageResult;
+    }
+    return pushHistoryRepositoryToRemoteAsync(repository, fetchApi, packageResult.package);
+  }
+
+  async function pushHistoryRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage) {
+    try {
+      const response = await fetchApi(
+        repository.remoteEndpoint,
+        buildHistoryRepositoryRequest(repository, {
+          method: "PUT",
+          body: repositoryPackage
+        })
+      );
+      const parsed = await parseRemoteHistoryRepositoryResponse(response);
+      const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
+      const recordCount = repositoryPackage.summary.total;
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.historyRepository = normalizeHistoryRepository({
+          ...repository,
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
+      }
+
+      state.historyRepository = normalizeHistoryRepository({
+        ...repository,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "push",
+        lastRemoteRecordCount: recordCount,
+        lastExportedAt: now,
+        lastExportedRecordCount: recordCount,
+        lastPackageId: acceptedPackageId,
+        lastSkippedConflictCount: 0,
+        lastRemoteStatus: `已推送 ${recordCount} 条学习档案到远端 API。`,
+        lastError: ""
+      });
+      addEvent("history-repository-remote-push", `推送学习档案到远端 API：${recordCount} 条记录`);
+      saveState();
+      return {
+        ok: true,
+        status: getHistoryRepositoryStatus(),
+        packageId: acceptedPackageId,
+        pushedRecordCount: recordCount,
+        message: `已推送 ${recordCount} 条学习档案到远端 API。${HISTORY_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = `远端学习档案 API 推送失败：${error?.message || "网络请求异常"}。`;
+      recordHistoryRepositoryError(message);
+      return { ok: false, status: getHistoryRepositoryStatus(), message };
+    }
+  }
+
+  function pullHistoryRepositoryFromRemote() {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const fetchApi = getPlanRepositoryFetch();
+    if (!repository.remoteEndpoint) {
+      return checkRemoteHistoryRepository();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法从远端 API 拉取学习档案。";
+      recordHistoryRepositoryError(message);
+      return { ok: false, status: getHistoryRepositoryStatus(), message };
+    }
+    return pullHistoryRepositoryFromRemoteAsync(repository, fetchApi);
+  }
+
+  async function pullHistoryRepositoryFromRemoteAsync(repository, fetchApi) {
+    try {
+      const response = await fetchApi(repository.remoteEndpoint, buildHistoryRepositoryRequest(repository));
+      const parsed = await parseRemoteHistoryRepositoryResponse(response);
+      if (!parsed.ok) {
+        recordHistoryRepositoryError(parsed.message);
+        return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
+      }
+      if (!parsed.package) {
+        const message = "远端学习档案 API 没有返回可导入的档案包。";
+        recordHistoryRepositoryError(message);
+        return { ok: false, status: getHistoryRepositoryStatus(), message };
+      }
+
+      const imported = importHistoryRepositoryPackage(parsed.package);
+      const now = new Date().toISOString();
+      const recordCount = parsed.package.summary?.total || 0;
+      state.historyRepository = normalizeHistoryRepository({
+        ...state.historyRepository,
+        mode: "remote-api",
+        remoteEndpoint: repository.remoteEndpoint,
+        remoteToken: repository.remoteToken,
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "pull",
+        lastRemoteRecordCount: recordCount,
+        lastPackageId: parsed.package.packageId || imported.status?.lastPackageId || null,
+        lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。`,
+        lastError: imported.skippedConflictCount
+          ? `有 ${imported.skippedConflictCount} 条同 ID 差异学习档案已跳过，未覆盖本机记录。`
+          : ""
+      });
+      addEvent("history-repository-remote-pull", `从远端 API 拉取学习档案：${recordCount} 条记录`);
+      saveState();
+      return {
+        ok: true,
+        status: getHistoryRepositoryStatus(),
+        importedCount: imported.importedCount,
+        skippedConflictCount: imported.skippedConflictCount,
+        pulledRecordCount: recordCount,
+        message: imported.skippedConflictCount
+          ? `已从远端 API 拉取学习档案：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录。${HISTORY_REPOSITORY_BOUNDARY}`
+          : `已从远端 API 拉取学习档案：新增 ${imported.importedCount} 条记录。${HISTORY_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = `远端学习档案 API 拉取失败：${error?.message || "网络请求异常"}。`;
+      recordHistoryRepositoryError(message);
+      return { ok: false, status: getHistoryRepositoryStatus(), message };
+    }
+  }
+
   function deleteHistoryRecords(ids) {
     const selectedIds = normalizeHistoryIds(ids);
     if (!selectedIds.length) {
@@ -6217,6 +6847,9 @@
     getPlanRepositoryStatus,
     getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
+    getHistoryRepositoryStatus,
+    getHistoryRepositoryRemoteConfig,
+    getHistoryRepositoryPackage,
     getPlanExport,
     getReportPreview,
     getReportDetail,
@@ -6239,13 +6872,19 @@
     clearHistoryTrash,
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
+    downloadHistoryRepository,
     configurePlanRepositoryRemote,
+    configureHistoryRepositoryRemote,
     queuePlanRepositorySync,
     flushPlanRepositoryAutoSync,
     importPlanRepositoryPackage,
+    importHistoryRepositoryPackage,
     checkRemotePlanRepository,
+    checkRemoteHistoryRepository,
     pushPlanRepositoryToRemote,
+    pushHistoryRepositoryToRemote,
     pullPlanRepositoryFromRemote,
+    pullHistoryRepositoryFromRemote,
     resolvePlanRepositoryConflict,
     setMode,
     selectDailyGlyph,

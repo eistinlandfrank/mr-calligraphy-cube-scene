@@ -849,6 +849,16 @@ const els = {
   historyPanel: document.getElementById("historyPanel"),
   historySummary: document.getElementById("historySummary"),
   historyDownloadArchive: document.getElementById("historyDownloadArchive"),
+  historyRepositorySummary: document.getElementById("historyRepositorySummary"),
+  historyRepositoryExportButton: document.getElementById("historyRepositoryExportButton"),
+  historyRepositoryImportButton: document.getElementById("historyRepositoryImportButton"),
+  historyRepositoryEndpointInput: document.getElementById("historyRepositoryEndpointInput"),
+  historyRepositoryTokenInput: document.getElementById("historyRepositoryTokenInput"),
+  historyRepositorySaveRemoteButton: document.getElementById("historyRepositorySaveRemoteButton"),
+  historyRepositoryRemoteButton: document.getElementById("historyRepositoryRemoteButton"),
+  historyRepositoryPushButton: document.getElementById("historyRepositoryPushButton"),
+  historyRepositoryPullButton: document.getElementById("historyRepositoryPullButton"),
+  historyRepositoryImportInput: document.getElementById("historyRepositoryImportInput"),
   historyFilterButtons: Array.from(document.querySelectorAll("[data-history-filter]")),
   historySelectVisible: document.getElementById("historySelectVisible"),
   historySelectionStatus: document.getElementById("historySelectionStatus"),
@@ -3801,6 +3811,13 @@ function bindHistoryControls() {
       showNotice(result.message);
     }
   });
+  els.historyRepositoryExportButton?.addEventListener("click", downloadHistoryRepositoryPackage);
+  els.historyRepositoryImportButton?.addEventListener("click", chooseHistoryRepositoryImport);
+  els.historyRepositorySaveRemoteButton?.addEventListener("click", saveHistoryRepositoryRemoteConfig);
+  els.historyRepositoryRemoteButton?.addEventListener("click", checkHistoryRepositoryRemote);
+  els.historyRepositoryPushButton?.addEventListener("click", pushHistoryRepositoryRemote);
+  els.historyRepositoryPullButton?.addEventListener("click", pullHistoryRepositoryRemote);
+  els.historyRepositoryImportInput?.addEventListener("change", importHistoryRepositoryFile);
 }
 
 function bindPlanControls() {
@@ -5408,6 +5425,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
     ? `${summary.practiceCount} 次练习 / ${summary.artworkCount} 幅作品 / ${summary.reportCount} 份报告 / 平均 ${summary.averageScore} 分`
     : "暂无记录";
   els.historyDownloadArchive.disabled = history.total === 0;
+  renderHistoryRepositoryStatus(history);
   pruneHistorySelection(history.allIds || []);
 
   renderHistoryTrend(history.trend, history.dailyTrend, history.metricTrend);
@@ -5473,6 +5491,39 @@ function renderHistoryBatchControls(history) {
   }
 }
 
+function renderHistoryRepositoryStatus(history) {
+  const status = window.MRAppState?.getHistoryRepositoryStatus?.();
+  const config = window.MRAppState?.getHistoryRepositoryRemoteConfig?.();
+  if (els.historyRepositorySummary) {
+    els.historyRepositorySummary.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "学习档案仓库尚未初始化。";
+    els.historyRepositorySummary.dataset.repositoryTone = status?.tone || "idle";
+  }
+  if (els.historyRepositoryExportButton) {
+    els.historyRepositoryExportButton.disabled = !history?.total;
+  }
+  if (els.historyRepositoryImportButton) {
+    els.historyRepositoryImportButton.disabled = !window.FileReader;
+  }
+  if (els.historyRepositoryEndpointInput && document.activeElement !== els.historyRepositoryEndpointInput) {
+    els.historyRepositoryEndpointInput.value = config?.remoteEndpoint || "";
+  }
+  if (els.historyRepositoryTokenInput && document.activeElement !== els.historyRepositoryTokenInput) {
+    els.historyRepositoryTokenInput.value = config?.remoteToken || "";
+  }
+  if (els.historyRepositoryRemoteButton) {
+    els.historyRepositoryRemoteButton.disabled = false;
+    els.historyRepositoryRemoteButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
+  }
+  if (els.historyRepositoryPushButton) {
+    els.historyRepositoryPushButton.disabled = !status?.remoteConfigured || !history?.total;
+  }
+  if (els.historyRepositoryPullButton) {
+    els.historyRepositoryPullButton.disabled = !status?.remoteConfigured;
+  }
+}
+
 function renderHistoryTrashList(trash = { entries: [] }) {
   if (!els.historyTrashList) {
     return;
@@ -5514,6 +5565,118 @@ function renderHistoryTrashList(trash = { entries: [] }) {
 
     row.append(body, actions);
     els.historyTrashList.appendChild(row);
+  });
+}
+
+function refreshHistoryRepositoryViews() {
+  renderHistoryPanel(currentIndex);
+  renderLearningStateSummary();
+  updateSceneText(currentIndex);
+  updatePathPanel(currentIndex);
+}
+
+function downloadHistoryRepositoryPackage() {
+  const result = window.MRAppState?.downloadHistoryRepository?.();
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderHistoryPanel(currentIndex);
+}
+
+function chooseHistoryRepositoryImport() {
+  if (!els.historyRepositoryImportInput) return;
+  els.historyRepositoryImportInput.value = "";
+  els.historyRepositoryImportInput.click();
+}
+
+function importHistoryRepositoryFile(event) {
+  const file = event.target.files?.[0] || null;
+  if (!file) return;
+  const reader = new FileReader();
+  reader.addEventListener("load", () => {
+    const result = window.MRAppState?.importHistoryRepositoryPackage?.(String(reader.result || ""));
+    refreshHistoryRepositoryViews();
+    showNotice(result?.message || "学习档案同步包导入失败。");
+  });
+  reader.addEventListener("error", () => {
+    showNotice("学习档案同步包读取失败。");
+  });
+  reader.readAsText(file);
+}
+
+function saveHistoryRepositoryRemoteConfig() {
+  const endpoint = els.historyRepositoryEndpointInput?.value || "";
+  const token = els.historyRepositoryTokenInput?.value || "";
+  const result = window.MRAppState?.configureHistoryRepositoryRemote?.({
+    remoteEndpoint: endpoint,
+    remoteToken: token
+  });
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderHistoryPanel(currentIndex);
+}
+
+async function checkHistoryRepositoryRemote() {
+  setHistoryRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.checkRemoteHistoryRepository?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端学习档案 API 检查失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setHistoryRepositoryRemoteBusy(false);
+    renderHistoryPanel(currentIndex);
+  }
+}
+
+async function pushHistoryRepositoryRemote() {
+  setHistoryRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pushHistoryRepositoryToRemote?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端学习档案 API 推送失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setHistoryRepositoryRemoteBusy(false);
+    renderHistoryPanel(currentIndex);
+  }
+}
+
+async function pullHistoryRepositoryRemote() {
+  setHistoryRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pullHistoryRepositoryFromRemote?.());
+    if (result?.ok) {
+      refreshHistoryRepositoryViews();
+    } else {
+      renderHistoryPanel(currentIndex);
+    }
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端学习档案 API 拉取失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setHistoryRepositoryRemoteBusy(false);
+    renderHistoryPanel(currentIndex);
+  }
+}
+
+function setHistoryRepositoryRemoteBusy(isBusy) {
+  [
+    els.historyRepositorySaveRemoteButton,
+    els.historyRepositoryRemoteButton,
+    els.historyRepositoryPushButton,
+    els.historyRepositoryPullButton
+  ].forEach((button) => {
+    if (button) {
+      button.disabled = Boolean(isBusy);
+    }
   });
 }
 

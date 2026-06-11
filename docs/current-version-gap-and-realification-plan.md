@@ -30,7 +30,7 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 51 | 12 | 0 | 0 | 0 | 0 |
+| `index.html` | 56 | 13 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 32 | 3 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 22 | 0 | 1 | 0 | 0 | 0 |
@@ -58,7 +58,7 @@ node scripts/control-inventory.js
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
 | 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比和多报告趋势 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、教师批注和签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口和导出验收 |
-| 学习档案 | 有筛选、趋势、详情、回收站、导出和直达链接 | 本机分页和本机 URL，不能跨设备访问 | 抽象档案 repository，短期本机，长期替换服务端分页接口 |
+| 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、服务端分页、教师批注和长期归档 | 继续增加账号化 history repository、服务端分页接口、云端详情 URL 和字段级合并 |
 | 分享成果 | 能导出离线 HTML 分享页 | 没有微信、社群、课堂或公开链接 | 分享按钮保持 `real-export`，不能写成“已发布到社交平台”；后续加公开链接服务 |
 
 ### 3.3 主后台和写实后台
@@ -259,7 +259,7 @@ node scripts/control-inventory.js
 
 ## 9. 本轮结论
 
-目前版本的基础已经比最早的静态页面强很多，但还没有达到“真实产品”的标准。下一阶段不应该继续堆新 Demo，而应该继续补真实闭环，尤其是账号化计划 repository、浏览器级自动化验收、报告 PDF/云端适配和后台远端发布生产化。
+目前版本的基础已经比最早的静态页面强很多，但还没有达到“真实产品”的标准。下一阶段不应该继续堆新 Demo，而应该继续补真实闭环，尤其是账号化计划/档案 repository、浏览器级自动化验收、报告 PDF/云端适配和后台远端发布生产化。
 
 最重要的原则是：可以先做本机能力，但必须说清楚是本机能力；可以保留演示内容，但不能让用户误以为它已经接入真实业务。
 
@@ -615,6 +615,41 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增计划仓库mock服务`
+
+### 2026-06-12：远端学习档案仓库合同与 mock 服务
+
+完成内容：
+
+- 新增 `docs/history-repository-api-contract.md`，明确远端学习档案仓库 `GET` 检查/拉取、`PUT` 推送、`OPTIONS` 跨端口预检、Authorization、档案包字段、成功回执、同 ID 差异策略和失败状态码。
+- 新增 `scripts/history-repository-mock-server.js`，使用 Node 标准库启动本地 HTTP mock 服务，不依赖 npm 包。
+- `MRAppState` 新增学习档案仓库状态、同步包生成/导入、远端配置、GET 检查、PUT 推送和 GET 拉取接口。
+- 前台学习档案面板新增档案仓库状态、“导出同步包 / 导入同步包”和“远端学习档案 API” endpoint/token/检查/推送/拉取入口。
+- 拉取远端档案时，同 ID 且内容不同的记录会跳过并记录冲突数量，不静默覆盖本机练习、作品或报告。
+- `scripts/learning-state-check.js` 新增真实 HTTP mock server 验收，覆盖 GET 检查、PUT 推送、最近档案包拉取、同 ID 差异跳过、回执 digest 和错误 token 拒绝。
+- `scripts/smoke-test.js` 把学习档案仓库 mock server 和前台档案仓库控件纳入检查。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.sessions/artworks/reports` 生成的 `mr-calligraphy-history-repository-v1` 同步包。
+- 写入状态：远端配置、最近同步方向、远端记录数、最近 packageId、跳过冲突数量和错误写入 `historyRepository`。
+- 成功反馈：mock server 返回远端版本、服务端 packageId、repositoryDigest 和 receiptDigest；前台状态条显示最近推送/拉取结果。
+- 失败反馈：HTTP 401、404、405、422 和 500 会返回结构化 JSON，不显示同步成功；同 ID 差异不会覆盖本机。
+- 刷新后复现方式：前端保存的 endpoint、最近同步方向、跳过冲突数量和远端状态可刷新读取；mock server 内存状态只用于本地开发验收。
+
+验收：
+
+- 手工验收：运行 `node scripts/history-repository-mock-server.js`，在前台学习档案面板配置输出的 endpoint，产生练习/作品/报告后点击“检查远端 / 推送档案 / 拉取档案”，应看到真实 HTTP 状态和同步结果。
+- 脚本验收：`node scripts/learning-state-check.js` 会启动临时 mock server，验证真实 HTTP GET/PUT、Bearer token、receipt、同 ID 差异跳过和错误 token 拒绝；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 会检查新脚本语法和页面控件。
+
+已知限制：
+
+- mock server 是开发验收工具，不提供持久化数据库、账号权限、服务端分页、教师批注、公开作品墙或长期归档。
+- 当前同 ID 差异只跳过并提示，后续需要账号化服务端版本、字段级 merge 和冲突审计。
+- 学习档案远端同步仍由用户自配 HTTP endpoint 驱动，不是内置云服务。
+
+提交：
+
+- 中文 commit message：`新增学习档案远端仓库`
 
 ### 2026-06-11：学习计划自动同步队列
 

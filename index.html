@@ -209,6 +209,30 @@
             </div>
             <button data-feature-state="real-export" id="historyDownloadArchive" type="button">导出档案</button>
           </div>
+          <div id="historyRepositorySummary" class="history-repository-summary" data-history-repository-summary="historyRepositorySummary">学习档案仓库尚未检查</div>
+          <div class="history-repository-actions">
+            <button data-feature-state="real-export" id="historyRepositoryExportButton" type="button">导出同步包</button>
+            <button data-feature-state="real-local" id="historyRepositoryImportButton" type="button">导入同步包</button>
+          </div>
+          <details class="history-repository-remote">
+            <summary>远端学习档案 API</summary>
+            <div class="history-repository-fields">
+              <label>
+                <span>Endpoint</span>
+                <input id="historyRepositoryEndpointInput" type="url" inputmode="url" placeholder="https://example.com/api/history-repository">
+              </label>
+              <label>
+                <span>Token</span>
+                <input id="historyRepositoryTokenInput" type="password" autocomplete="off" placeholder="可选 Bearer token">
+              </label>
+            </div>
+            <div class="history-repository-remote-actions">
+              <button data-feature-state="real-local" id="historyRepositorySaveRemoteButton" type="button">保存远端</button>
+              <button data-feature-state="real-local" id="historyRepositoryRemoteButton" type="button">检查远端</button>
+              <button data-feature-state="real-local" id="historyRepositoryPushButton" type="button">推送档案</button>
+              <button data-feature-state="real-local" id="historyRepositoryPullButton" type="button">拉取档案</button>
+            </div>
+          </details>
           <div class="history-filters" aria-label="历史筛选">
             <button data-feature-state="real-local" class="is-active" type="button" data-history-filter="all">全部</button>
             <button data-feature-state="real-local" type="button" data-history-filter="practice">练习</button>
@@ -263,6 +287,7 @@
               <button data-feature-state="real-local" id="historyDetailDelete" type="button">删除记录</button>
             </div>
           </div>
+          <input id="historyRepositoryImportInput" type="file" accept="application/json,.json" hidden>
         </section>
 
         <dialog id="historyRenameDialog" class="history-edit-dialog" aria-labelledby="historyRenameDialogTitle">
