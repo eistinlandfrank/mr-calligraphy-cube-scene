@@ -152,6 +152,17 @@ assert(
 );
 assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应伪造多报告趋势。");
 
+const practiceScoreEvidence = window.MRAppState.recordPracticeResult(createPracticeResult());
+assert(practiceScoreEvidence.ok, "带评分证据的练习结果应可写入本机状态。");
+assert(practiceScoreEvidence.practice.scoreEvidence.label === "基础练习评分", "练习结果应保留基础评分类型。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.coveragePercent === 58, "练习结果应保留覆盖范围证据。");
+assert(
+  practiceScoreEvidence.practice.scoreEvidence.reasons.some((reason) => reason.key === "structure" && reason.evidence.includes("重心")),
+  "练习结果应保留结构评分解释。"
+);
+const stateAfterPractice = window.MRAppState.getState();
+assert(stateAfterPractice.sessions.at(-1).scoreEvidence.reasons.length === 5, "练习会话应持久化五项评分理由。");
+
 const breakdownStage = window.MRAppState.recordLearningStage("strokeBreakdown", { target: 4 });
 assert(breakdownStage.ok, "进入笔画拆解应写入本机阶段记录。");
 assert(breakdownStage.stageRecord.stage === "strokeBreakdown", "笔画拆解阶段记录应保留阶段类型。");
@@ -226,11 +237,12 @@ const addPlanResult = window.MRAppState.addPlanItem(latestPlan.id, {
 assert(addPlanResult.ok && addPlanResult.plan.items.length === 6, "学习计划应可新增带排期的自定义任务。");
 
 const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
 assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、学习阶段记录和学习计划提醒复盘已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录和学习计划提醒复盘已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {
@@ -289,6 +301,66 @@ function createReport(id, averageScore, time, scoreBreakdown) {
     scoreBreakdown,
     trend: [],
     recommendations: [`第 ${reportNumber} 份报告建议`]
+  };
+}
+
+function createPracticeResult() {
+  return {
+    glyph: "永",
+    strokes: [
+      [
+        { x: 0.42, y: 0.18, t: 0, p: 0.45 },
+        { x: 0.48, y: 0.32, t: 80, p: 0.52 },
+        { x: 0.5, y: 0.48, t: 160, p: 0.6 }
+      ],
+      [
+        { x: 0.28, y: 0.42, t: 260, p: 0.48 },
+        { x: 0.72, y: 0.43, t: 350, p: 0.56 }
+      ],
+      [
+        { x: 0.5, y: 0.2, t: 480, p: 0.5 },
+        { x: 0.49, y: 0.78, t: 700, p: 0.62 }
+      ]
+    ],
+    strokeCount: 3,
+    pointCount: 7,
+    bounds: { minX: 0.28, minY: 0.18, maxX: 0.72, maxY: 0.78 },
+    metrics: {
+      structure: 82,
+      stroke: 74,
+      technique: 79,
+      fluency: 76,
+      force: 81
+    },
+    score: 78,
+    scoreEvidence: {
+      kind: "local-heuristic-v1",
+      label: "基础练习评分",
+      disclaimer: "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。",
+      glyph: "永",
+      weights: { structure: 0.26, stroke: 0.24, technique: 0.2, fluency: 0.18, force: 0.12 },
+      evidence: {
+        targetStrokeCount: 8,
+        strokeCount: 3,
+        pointCount: 7,
+        coveragePercent: 58,
+        centerOffsetPercent: 6,
+        totalLength: 1.42,
+        segmentVariationPercent: 35,
+        longBreaks: 1,
+        pressureSpreadPercent: 17,
+        boundsWidthPercent: 44,
+        boundsHeightPercent: 60
+      },
+      reasons: [
+        { key: "structure", label: "结构", score: 82, evidence: "重心偏移约 6%，书写覆盖约 58%。" },
+        { key: "stroke", label: "笔画", score: 74, evidence: "当前 3 笔，目标约 8 笔。" },
+        { key: "technique", label: "笔法", score: 79, evidence: "笔迹总长度 1.42，采样点 7 个。" },
+        { key: "fluency", label: "流畅", score: 76, evidence: "线段变化 35%，长停顿 1 次。" },
+        { key: "force", label: "力度", score: 81, evidence: "压感跨度约 17%，笔画差 5。" }
+      ]
+    },
+    feedback: ["评分证据测试"]
   };
 }
 

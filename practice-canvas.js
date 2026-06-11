@@ -4,6 +4,13 @@
     "和": 8,
     "雅": 12
   };
+  const SCORE_WEIGHTS = {
+    structure: 0.26,
+    stroke: 0.24,
+    technique: 0.2,
+    fluency: 0.18,
+    force: 0.12
+  };
 
   const state = {
     canvas: null,
@@ -469,7 +476,19 @@
         bounds: null,
         metrics: { structure: 0, stroke: 0, technique: 0, fluency: 0, force: 0 },
         score: 0,
-        feedback: ["请先在练习格中书写。"]
+        feedback: ["请先在练习格中书写。"],
+        scoreEvidence: buildScoreEvidence({
+          glyph,
+          targetCount,
+          strokeCount: 0,
+          pointCount: 0,
+          metrics: { structure: 0, stroke: 0, technique: 0, fluency: 0, force: 0 },
+          coverage: 0,
+          centerOffset: 0,
+          totalLength: 0,
+          segmentStats: { variation: 0, pressureSpread: 0, longBreaks: 0 },
+          bounds: null
+        })
       };
     }
 
@@ -515,7 +534,86 @@
       },
       metrics,
       score,
+      scoreEvidence: buildScoreEvidence({
+        glyph,
+        targetCount,
+        strokeCount: strokes.length,
+        pointCount: allPoints.length,
+        metrics,
+        coverage,
+        centerOffset,
+        totalLength,
+        segmentStats,
+        bounds
+      }),
       feedback: buildFeedback({ metrics, strokes, targetCount, coverage, centerOffset })
+    };
+  }
+
+  function buildScoreEvidence({ glyph, targetCount, strokeCount, pointCount, metrics, coverage, centerOffset, totalLength, segmentStats, bounds }) {
+    const coveragePercent = Math.round(clamp(coverage, 0, 1) * 100);
+    const centerOffsetPercent = Math.round(clamp(centerOffset, 0, 1) * 100);
+    const variationPercent = Math.round(clamp(segmentStats.variation || 0, 0, 3) * 100);
+    const pressureSpreadPercent = Math.round(clamp(segmentStats.pressureSpread || 0, 0, 1) * 100);
+    const widthPercent = bounds ? Math.round(clamp(bounds.maxX - bounds.minX, 0, 1) * 100) : 0;
+    const heightPercent = bounds ? Math.round(clamp(bounds.maxY - bounds.minY, 0, 1) * 100) : 0;
+    return {
+      kind: "local-heuristic-v1",
+      label: "基础练习评分",
+      disclaimer: "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。",
+      glyph,
+      weights: {
+        structure: SCORE_WEIGHTS.structure,
+        stroke: SCORE_WEIGHTS.stroke,
+        technique: SCORE_WEIGHTS.technique,
+        fluency: SCORE_WEIGHTS.fluency,
+        force: SCORE_WEIGHTS.force
+      },
+      evidence: {
+        targetStrokeCount: targetCount,
+        strokeCount,
+        pointCount,
+        coveragePercent,
+        centerOffsetPercent,
+        totalLength: Number((totalLength || 0).toFixed(3)),
+        segmentVariationPercent: variationPercent,
+        longBreaks: segmentStats.longBreaks || 0,
+        pressureSpreadPercent,
+        boundsWidthPercent: widthPercent,
+        boundsHeightPercent: heightPercent
+      },
+      reasons: [
+        {
+          key: "structure",
+          label: "结构",
+          score: metrics.structure || 0,
+          evidence: `重心偏移约 ${centerOffsetPercent}%，书写覆盖约 ${coveragePercent}%。`
+        },
+        {
+          key: "stroke",
+          label: "笔画",
+          score: metrics.stroke || 0,
+          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔。`
+        },
+        {
+          key: "technique",
+          label: "笔法",
+          score: metrics.technique || 0,
+          evidence: `笔迹总长度 ${Number((totalLength || 0).toFixed(2))}，采样点 ${pointCount} 个。`
+        },
+        {
+          key: "fluency",
+          label: "流畅",
+          score: metrics.fluency || 0,
+          evidence: `线段变化 ${variationPercent}%，长停顿 ${segmentStats.longBreaks || 0} 次。`
+        },
+        {
+          key: "force",
+          label: "力度",
+          score: metrics.force || 0,
+          evidence: `压感跨度约 ${pressureSpreadPercent}%，笔画差 ${Math.abs(strokeCount - targetCount)}。`
+        }
+      ]
     };
   }
 

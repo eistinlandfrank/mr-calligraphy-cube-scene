@@ -258,6 +258,7 @@
       bounds: normalizeBounds(record.bounds),
       metrics: normalizeMetrics(record.metrics),
       score: normalizeScore(record.score, 86),
+      scoreEvidence: normalizeScoreEvidence(record.scoreEvidence, record),
       feedback,
       snapshotAt: record.snapshotAt ? String(record.snapshotAt) : null,
       status: ["active", "saved"].includes(record.status) ? record.status : "active"
@@ -280,6 +281,7 @@
       score: normalizeScore(record.score, 86),
       strokeCount: normalizeInteger(record.strokeCount, 0, 0, 999),
       pointCount: normalizeInteger(record.pointCount, 0, 0, 99999),
+      scoreEvidence: normalizeScoreEvidence(record.scoreEvidence, record),
       feedback,
       tags: Array.isArray(record.tags) ? normalizeArtworkTags(record.tags) : getDefaultArtworkTags(record),
       imageData: typeof record.imageData === "string" && record.imageData.startsWith("data:image/")
@@ -595,6 +597,115 @@
     };
   }
 
+  function normalizeScoreEvidence(evidence, record = {}) {
+    const source = evidence && typeof evidence === "object" ? evidence : {};
+    const metrics = normalizeMetrics(record.metrics || source.metrics);
+    const rawEvidence = source.evidence && typeof source.evidence === "object" ? source.evidence : {};
+    const strokeCount = normalizeInteger(rawEvidence.strokeCount ?? record.strokeCount, 0, 0, 999);
+    const pointCount = normalizeInteger(rawEvidence.pointCount ?? record.pointCount, 0, 0, 99999);
+    const targetStrokeCount = normalizeInteger(rawEvidence.targetStrokeCount, Math.max(1, strokeCount || 8), 1, 80);
+    const fallbackCoverage = getBoundsCoveragePercent(record.bounds);
+    const normalized = {
+      kind: String(source.kind || "local-heuristic-v1"),
+      label: String(source.label || "基础练习评分"),
+      disclaimer: String(source.disclaimer || "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。"),
+      glyph: String(source.glyph || record.glyph || "永"),
+      weights: normalizeScoreWeights(source.weights),
+      evidence: {
+        targetStrokeCount,
+        strokeCount,
+        pointCount,
+        coveragePercent: normalizeInteger(rawEvidence.coveragePercent, fallbackCoverage, 0, 100),
+        centerOffsetPercent: normalizeInteger(rawEvidence.centerOffsetPercent, getBoundsCenterOffsetPercent(record.bounds), 0, 100),
+        totalLength: normalizeNumber(rawEvidence.totalLength, 0, 0, 999),
+        segmentVariationPercent: normalizeInteger(rawEvidence.segmentVariationPercent, 0, 0, 300),
+        longBreaks: normalizeInteger(rawEvidence.longBreaks, 0, 0, 999),
+        pressureSpreadPercent: normalizeInteger(rawEvidence.pressureSpreadPercent, 0, 0, 100),
+        boundsWidthPercent: normalizeInteger(rawEvidence.boundsWidthPercent, getBoundsWidthPercent(record.bounds), 0, 100),
+        boundsHeightPercent: normalizeInteger(rawEvidence.boundsHeightPercent, getBoundsHeightPercent(record.bounds), 0, 100)
+      },
+      reasons: normalizeScoreReasons(source.reasons, metrics, {
+        targetStrokeCount,
+        strokeCount,
+        pointCount
+      })
+    };
+    return normalized;
+  }
+
+  function normalizeScoreWeights(weights = {}) {
+    return {
+      structure: normalizeNumber(weights.structure, 0.26, 0, 1),
+      stroke: normalizeNumber(weights.stroke, 0.24, 0, 1),
+      technique: normalizeNumber(weights.technique, 0.2, 0, 1),
+      fluency: normalizeNumber(weights.fluency, 0.18, 0, 1),
+      force: normalizeNumber(weights.force, 0.12, 0, 1)
+    };
+  }
+
+  function normalizeScoreReasons(reasons, metrics, fallback = {}) {
+    const labels = {
+      structure: "结构",
+      stroke: "笔画",
+      technique: "笔法",
+      fluency: "流畅",
+      force: "力度"
+    };
+    const defaults = {
+      structure: "依据重心偏移、书写覆盖和字形范围估算。",
+      stroke: `依据 ${fallback.strokeCount || 0} 笔和目标 ${fallback.targetStrokeCount || 0} 笔的接近程度估算。`,
+      technique: `依据笔迹长度和 ${fallback.pointCount || 0} 个采样点估算。`,
+      fluency: "依据线段变化和长停顿次数估算。",
+      force: "依据压感跨度和笔画数量差估算。"
+    };
+    const byKey = new Map(
+      (Array.isArray(reasons) ? reasons : [])
+        .filter((reason) => reason && typeof reason === "object")
+        .map((reason) => [String(reason.key || ""), reason])
+    );
+    return Object.keys(labels).map((key) => {
+      const reason = byKey.get(key) || {};
+      return {
+        key,
+        label: String(reason.label || labels[key]),
+        score: normalizeScore(reason.score ?? metrics[key], 0),
+        evidence: String(reason.evidence || defaults[key])
+      };
+    });
+  }
+
+  function normalizeNumber(value, fallback, min, max) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return fallback;
+    return Math.min(max, Math.max(min, Number(number.toFixed(3))));
+  }
+
+  function getBoundsWidthPercent(bounds) {
+    const normalized = normalizeBounds(bounds);
+    return normalized ? Math.round((normalized.maxX - normalized.minX) * 100) : 0;
+  }
+
+  function getBoundsHeightPercent(bounds) {
+    const normalized = normalizeBounds(bounds);
+    return normalized ? Math.round((normalized.maxY - normalized.minY) * 100) : 0;
+  }
+
+  function getBoundsCoveragePercent(bounds) {
+    const normalized = normalizeBounds(bounds);
+    if (!normalized) return 0;
+    const width = normalized.maxX - normalized.minX;
+    const height = normalized.maxY - normalized.minY;
+    return Math.round(Math.sqrt(Math.max(0, width * height)) * 100);
+  }
+
+  function getBoundsCenterOffsetPercent(bounds) {
+    const normalized = normalizeBounds(bounds);
+    if (!normalized) return 0;
+    const centerX = (normalized.minX + normalized.maxX) / 2;
+    const centerY = (normalized.minY + normalized.maxY) / 2;
+    return Math.round(Math.hypot(centerX - 0.5, centerY - 0.5) * 100);
+  }
+
   function normalizeStrokes(strokes) {
     if (!Array.isArray(strokes)) return [];
     return strokes
@@ -673,6 +784,13 @@
       bounds: normalizeBounds(result.bounds),
       metrics,
       score: normalizeScore(result.score, Math.round((metrics.structure + metrics.stroke + metrics.technique + metrics.fluency + metrics.force) / 5)),
+      scoreEvidence: normalizeScoreEvidence(result.scoreEvidence, {
+        glyph: result.glyph || state.selectedGlyph,
+        strokeCount: result.strokeCount,
+        pointCount: result.pointCount,
+        bounds: result.bounds,
+        metrics
+      }),
       feedback: normalizeStringList(result.feedback),
       imageData: typeof result.imageData === "string" && result.imageData.startsWith("data:image/")
         ? result.imageData
@@ -1430,6 +1548,7 @@
         force: scoreBase - 1
       }),
       score: normalizeScore(scoreBase + 1, 86),
+      scoreEvidence: null,
       feedback: [],
       snapshotAt: null,
       status: "active"
@@ -1501,6 +1620,7 @@
     session.bounds = practice.bounds;
     session.metrics = practice.metrics;
     session.score = practice.score;
+    session.scoreEvidence = practice.scoreEvidence;
     session.feedback = practice.feedback;
     session.snapshotAt = new Date().toISOString();
     addEvent("practice-score", `记录笔迹评分：${practice.score}`);
@@ -1546,6 +1666,7 @@
       score: session.score,
       strokeCount: session.strokeCount || practice?.strokeCount || 0,
       pointCount: session.pointCount || practice?.pointCount || 0,
+      scoreEvidence: session.scoreEvidence || practice?.scoreEvidence || null,
       feedback: session.feedback || practice?.feedback || [],
       tags: getDefaultArtworkTags({
         glyph: session.glyph,

@@ -4130,6 +4130,7 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   }
 
   const feedback = artwork?.feedback?.length ? artwork.feedback : session?.feedback || [];
+  const scoreEvidence = artwork?.scoreEvidence || session?.scoreEvidence || null;
   els.reviewTitle.textContent = artwork?.title || "暂无作品";
   els.reviewStatus.textContent = report ? "报告已生成" : artwork ? "可复盘" : "待保存";
   els.reviewScore.textContent = artwork ? `${artwork.score}` : session ? `${session.score}` : "-";
@@ -4153,7 +4154,14 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   }
 
   els.reviewFeedback.innerHTML = "";
-  (feedback.length ? feedback : ["完成一次书写并保存作品后，会显示针对笔迹的复盘建议。"]).forEach((item) => {
+  const reviewItems = feedback.length ? [...feedback] : ["完成一次书写并保存作品后，会显示针对笔迹的复盘建议。"];
+  if (scoreEvidence) {
+    reviewItems.push(`评分依据：${scoreEvidence.label || "基础练习评分"}，${scoreEvidence.disclaimer || "本机启发式评分，不等同于专业评级。"}`);
+    (scoreEvidence.reasons || []).slice(0, 3).forEach((reason) => {
+      reviewItems.push(`${reason.label} ${reason.score}分：${reason.evidence}`);
+    });
+  }
+  reviewItems.forEach((item) => {
     const li = document.createElement("li");
     li.textContent = item;
     els.reviewFeedback.appendChild(li);
@@ -7695,6 +7703,7 @@ function getLatestAnalyzablePractice(stats) {
       metrics: latestSession.metrics || {},
       strokeCount: latestSession.strokeCount || 0,
       pointCount: latestSession.pointCount || 0,
+      scoreEvidence: latestSession.scoreEvidence || null,
       feedback: latestSession.feedback || [],
       createdAt: latestSession.snapshotAt || latestSession.endedAt || latestSession.startedAt
     };
@@ -7708,6 +7717,7 @@ function getLatestAnalyzablePractice(stats) {
       metrics: latestSession?.metrics || {},
       strokeCount: latestArtwork.strokeCount || 0,
       pointCount: latestArtwork.pointCount || 0,
+      scoreEvidence: latestArtwork.scoreEvidence || latestSession?.scoreEvidence || null,
       feedback: latestArtwork.feedback?.length ? latestArtwork.feedback : latestSession?.feedback || [],
       createdAt: latestArtwork.createdAt
     };
@@ -7726,6 +7736,7 @@ function buildPracticeAnalysisDetail(recorded = null) {
         metrics: recorded.practice.metrics || {},
         strokeCount: recorded.practice.strokeCount || 0,
         pointCount: recorded.practice.pointCount || 0,
+        scoreEvidence: recorded.practice.scoreEvidence || null,
         feedback: recorded.practice.feedback || [],
         createdAt: new Date().toISOString()
       }
@@ -7750,23 +7761,55 @@ function buildPracticeAnalysisDetail(recorded = null) {
   const feedback = practice.feedback?.length
     ? practice.feedback
     : ["暂无自动建议，请保存更多笔迹后继续复盘。"];
+  const scoreEvidence = practice.scoreEvidence || null;
+  const evidenceMetrics = getScoreEvidenceMetrics(scoreEvidence);
+  const evidenceItems = getScoreEvidenceItems(scoreEvidence);
 
   return {
     type: "analysis",
-    eyebrow: "笔画分析",
+    eyebrow: "基础练习评分",
     title: `${practice.glyph || stats?.glyph || "当前字"}字真实笔迹分析`,
     status: practice.source,
-    summary: `${practice.source}包含 ${practice.strokeCount} 笔、${practice.pointCount} 个采样点，综合评分 ${practice.score || "未评分"}。`,
+    summary: `${practice.source}包含 ${practice.strokeCount} 笔、${practice.pointCount} 个采样点，综合评分 ${practice.score || "未评分"}。该评分来自浏览器本机基础练习算法。`,
     metrics: [
       { label: "综合", value: practice.score ? `${practice.score}分` : "未评分" },
       { label: "结构", value: getMetricValue(practice.metrics, "structure") },
       { label: "笔画", value: getMetricValue(practice.metrics, "stroke") },
       { label: "笔法", value: getMetricValue(practice.metrics, "technique") },
       { label: "流畅", value: getMetricValue(practice.metrics, "fluency") },
-      { label: "力度", value: getMetricValue(practice.metrics, "force") }
+      { label: "力度", value: getMetricValue(practice.metrics, "force") },
+      ...evidenceMetrics
     ],
-    items: feedback
+    items: [...evidenceItems, ...feedback]
   };
+}
+
+function getScoreEvidenceMetrics(scoreEvidence) {
+  if (!scoreEvidence?.evidence) {
+    return [];
+  }
+  const evidence = scoreEvidence.evidence;
+  return [
+    { label: "评分类型", value: scoreEvidence.label || "基础练习评分" },
+    { label: "目标笔画", value: `${evidence.targetStrokeCount || 0}笔` },
+    { label: "覆盖范围", value: `${evidence.coveragePercent || 0}%` },
+    { label: "重心偏移", value: `${evidence.centerOffsetPercent || 0}%` },
+    { label: "长停顿", value: `${evidence.longBreaks || 0}次` },
+    { label: "压感跨度", value: `${evidence.pressureSpreadPercent || 0}%` }
+  ];
+}
+
+function getScoreEvidenceItems(scoreEvidence) {
+  if (!scoreEvidence) {
+    return ["本记录缺少早期评分证据，后续新书写会保存完整评分依据。"];
+  }
+  const reasons = Array.isArray(scoreEvidence.reasons)
+    ? scoreEvidence.reasons.map((reason) => `${reason.label} ${reason.score}分：${reason.evidence}`)
+    : [];
+  return [
+    scoreEvidence.disclaimer || "本评分为浏览器本机基础练习评分，不等同于专业评级。",
+    ...reasons
+  ];
 }
 
 function buildAchievementDetail() {
