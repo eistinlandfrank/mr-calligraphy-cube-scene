@@ -257,13 +257,23 @@ const addPlanResult = window.MRAppState.addPlanItem(latestPlan.id, {
 });
 assert(addPlanResult.ok && addPlanResult.plan.items.length === 6, "学习计划应可新增带排期的自定义任务。");
 
+const planExport = window.MRAppState.getPlanExport(latestPlan.id);
+assert(planExport.ok, "学习计划应能生成离线导出页。");
+assert(planExport.filename.includes("mr-calligraphy-plan"), "学习计划导出页应返回可下载文件名。");
+assert(planExport.html.includes("MR Calligraphy Plan"), "学习计划导出页 HTML 应包含导出页标识。");
+assert(planExport.html.includes(latestPlan.id), "学习计划导出页 HTML 应包含计划 ID。");
+assert(planExport.html.includes("本机导出的学习计划"), "学习计划导出页应明确本机导出边界。");
+assert(planExport.html.includes("复盘任务重点"), "学习计划导出页应包含更新后的计划项标题。");
+assert(planExport.html.includes("到期"), "学习计划导出页应包含到期信息。");
+assert(!window.MRAppState.getPlanExport("missing-plan").ok, "不存在的计划不应伪造导出成功。");
+
 const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
 assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则和学习计划提醒复盘已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘和计划离线导出已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

@@ -2273,6 +2273,117 @@
     return { type: reviewAction, label: meta.label, targetStep: meta.targetStep };
   }
 
+  function getPlanExport(planId = null) {
+    const plan = getPlan(planId);
+    if (!plan) {
+      return {
+        ok: false,
+        message: "还没有可导出的学习计划。请先点击“制定计划”。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const safePlanId = String(plan.id || "latest").replace(/[^\w-]+/g, "-");
+    const filename = `mr-calligraphy-plan-${safePlanId}.html`;
+    return {
+      ok: true,
+      plan: clone(plan),
+      exportedAt,
+      filename,
+      html: createPlanExportHtml(plan, exportedAt),
+      message: "已生成学习计划离线 HTML，可下载后打印或保存为 PDF。"
+    };
+  }
+
+  function createPlanExportHtml(plan, exportedAt) {
+    const progress = plan.progress || getPlanProgress(plan);
+    const reminderSummary = plan.reminderSummary || getPlanReminderSummary(plan.items || []);
+    const items = Array.isArray(plan.items) ? plan.items : [];
+    const itemRows = items.length
+      ? items.map((item, index) => {
+        const reminder = item.reminder || getPlanItemReminder(item);
+        const status = item.done ? "已完成" : "待完成";
+        const reviewStatus = reminder.reviewDoneAt ? reminder.reviewDoneLabel : reminder.reviewDoneLabel || "待完成复盘";
+        return `<article class="plan-item">
+          <div class="plan-index">${index + 1}</div>
+          <div>
+            <div class="plan-item-head"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(status)}</span></div>
+            <p>${escapeHtml(item.detail || "完成后回到前台勾选，进度会保存到本机。")}</p>
+            <ul>
+              <li>${escapeHtml(reminder.label || "未设置提醒")}</li>
+              <li>${escapeHtml(reminder.dueLabel || "未设置到期")}</li>
+              <li>${escapeHtml(reminder.remindLabel || "未设置提醒")}</li>
+              <li>复盘：${escapeHtml(reminder.reviewLabel || "自定义复盘")}</li>
+              <li>${escapeHtml(reviewStatus)}</li>
+            </ul>
+          </div>
+        </article>`;
+      }).join("")
+      : `<p class="empty">这份计划暂时没有任务项。</p>`;
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(plan.title || "MR 书法学习计划")}</title>
+  <style>
+    :root { color-scheme: light; font-family: "Noto Serif SC", "Songti SC", serif; color: #1f2933; background: #f7f4ee; }
+    body { margin: 0; padding: 32px; }
+    main { max-width: 920px; margin: 0 auto; background: #fffdf8; border: 1px solid #d8c7a2; box-shadow: 0 18px 48px rgba(31, 41, 51, 0.12); }
+    header { padding: 32px; border-bottom: 1px solid #e6d8bb; background: #efe3cb; }
+    h1 { margin: 8px 0 12px; font-size: 32px; line-height: 1.2; }
+    .meta, .muted { color: #6b5f4b; }
+    .eyebrow { font-size: 13px; letter-spacing: 0; color: #8b5e34; }
+    .summary { padding: 24px 32px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .stat { border: 1px solid #eadcc4; padding: 14px; background: #fffaf0; }
+    .stat span { display: block; font-size: 12px; color: #7a6b55; }
+    .stat strong { display: block; margin-top: 6px; font-size: 20px; }
+    .content { padding: 0 32px 32px; }
+    .notice { margin: 0 0 20px; padding: 14px; background: #f3efe5; border-left: 4px solid #936d3d; color: #574831; }
+    .plan-item { display: grid; grid-template-columns: 42px 1fr; gap: 16px; padding: 18px 0; border-top: 1px solid #eadcc4; }
+    .plan-index { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: #1f2933; color: white; font-weight: 700; }
+    .plan-item-head { display: flex; justify-content: space-between; gap: 16px; align-items: baseline; }
+    .plan-item-head strong { font-size: 18px; }
+    .plan-item-head span { color: #8b5e34; white-space: nowrap; }
+    p { line-height: 1.7; }
+    ul { margin: 10px 0 0; padding-left: 20px; color: #5f523f; line-height: 1.7; }
+    footer { padding: 20px 32px; border-top: 1px solid #eadcc4; color: #6b5f4b; font-size: 13px; }
+    @media (max-width: 720px) {
+      body { padding: 16px; }
+      header, .summary, .content, footer { padding-left: 20px; padding-right: 20px; }
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .plan-item-head { display: block; }
+    }
+    @media print {
+      body { padding: 0; background: white; }
+      main { box-shadow: none; border: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">MR Calligraphy Plan · ${escapeHtml(formatDateTime(exportedAt))}</div>
+      <h1>${escapeHtml(plan.title || "MR 书法学习计划")}</h1>
+      <p class="meta">${escapeHtml(plan.summary || "本计划基于当前浏览器里的本机学习状态生成。")}</p>
+    </header>
+    <section class="summary" aria-label="计划摘要">
+      <div class="stat"><span>当前字</span><strong>${escapeHtml(plan.glyph || "-")}</strong></div>
+      <div class="stat"><span>碑帖</span><strong>${escapeHtml(plan.copybook || "-")}</strong></div>
+      <div class="stat"><span>完成度</span><strong>${escapeHtml(`${progress.done || 0}/${progress.total || 0}`)}</strong></div>
+      <div class="stat"><span>提醒</span><strong>${escapeHtml(reminderSummary.label || "暂无计划提醒")}</strong></div>
+    </section>
+    <section class="content" aria-label="计划任务">
+      <p class="notice">这是一份本机导出的学习计划，包含任务、到期、提醒、顺延和复盘状态；不是云端同步、消息推送或教师端排课服务。</p>
+      ${itemRows}
+    </section>
+    <footer>计划 ID：${escapeHtml(plan.id || "-")}。创建时间：${escapeHtml(formatDateTime(plan.createdAt))}。数据来源：${escapeHtml(STORAGE_KEY)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function createReport() {
     const stats = getStats();
     const reportTrend = getReportTrend();
@@ -3296,6 +3407,20 @@
     return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印和打印样式。` };
   }
 
+  function downloadPlan(planId = null) {
+    const result = getPlanExport(planId);
+    if (!result.ok) {
+      return { ok: false, message: result.message };
+    }
+
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      message: "已下载学习计划离线 HTML，可打开后打印或保存为 PDF。"
+    };
+  }
+
   function downloadReportComparison(reportId = null) {
     const result = getReportComparisonExport(reportId);
     if (!result.ok) {
@@ -4252,6 +4377,7 @@
     getPlan,
     getPlanHistory,
     getLatestPlan,
+    getPlanExport,
     getReportPreview,
     getReportDetail,
     getReportComparison,
@@ -4296,6 +4422,7 @@
     movePlanItem,
     deletePlanItem,
     createReport,
+    downloadPlan,
     downloadReport,
     downloadReportComparison,
     downloadArtworkSharePage,

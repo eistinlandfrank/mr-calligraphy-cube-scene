@@ -886,6 +886,7 @@ const els = {
   planReminderSummary: document.getElementById("planReminderSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
+  planExportButton: document.getElementById("planExportButton"),
   planItemList: document.getElementById("planItemList"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
@@ -3745,6 +3746,7 @@ function bindPlanControls() {
   });
 
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
+  els.planExportButton?.addEventListener("click", downloadActivePlan);
 
   els.planItemList?.addEventListener("change", (event) => {
     const input = event.target.closest("[data-plan-item-id]");
@@ -5466,6 +5468,9 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   if (els.planAddItem) {
     els.planAddItem.disabled = !plan;
   }
+  if (els.planExportButton) {
+    els.planExportButton.disabled = !plan;
+  }
   els.planItemList.innerHTML = "";
 
   if (!plan?.items?.length) {
@@ -5681,6 +5686,12 @@ function addCustomPlanItem() {
     updatePathPanel(currentIndex);
     renderLearningStateSummary();
   }
+}
+
+function downloadActivePlan() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  const result = window.MRAppState?.downloadPlan?.(planId);
+  showNotice(result?.message || "暂无可导出的学习计划。");
 }
 
 function followPlanReviewAction(nextAction = {}) {
