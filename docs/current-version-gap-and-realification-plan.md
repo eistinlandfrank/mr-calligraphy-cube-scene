@@ -31,7 +31,7 @@ node scripts/control-inventory.js
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `index.html` | 48 | 12 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 28 | 1 | 1 | 0 | 0 | 0 |
+| `main-admin.html` | 28 | 2 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 18 | 0 | 1 | 0 | 0 | 0 |
 
@@ -227,7 +227,7 @@ node scripts/control-inventory.js
 | P1 | 任务依赖和完成条件 | 10 步学习路径需要真实进度 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版已完成，但仍缺图表/作品嵌入、云端长期报告和教师批注 | PDF 图表/截图增强、服务端接口草案 |
-| P2 | 项目档案 merge 和冲突解决 | 导入导出已可用，但长期项目需要更稳 | 字段级 merge、冲突 UI、测试 |
+| P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter 第一版已完成，但仍缺审核流、发布锁和远端资产签名 | 远端发布 diff、审批状态、发布锁、资产签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
 
@@ -322,6 +322,38 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`增强学习报告PDF图表`
+
+### 2026-06-11：新增项目档案导入差异报告
+
+完成内容：
+
+- 主后台项目档案导入预览区新增“导出差异报告”按钮，标记为 `real-export`。
+- `MRProjectArchive` 新增 `getImportImpactReport(preview, options)` 和 `downloadImportImpactReport(preview, options)`。
+- 差异报告会生成离线 HTML，包含档案时间、来源、schema 摘要、storage 新增/覆盖/清空统计、模型数量、哈希统计和迁移记录。
+- 报告复用当前导入预览的字段级差异、字段 JSON 片段、模型新增/修改/删除、命名冲突和当前恢复选择。
+- `scripts/archive-migration-check.js` 新增差异报告断言；`scripts/smoke-test.js` 新增主后台 `projectImportExportImpact` 入口检查。
+
+真实化说明：
+
+- 数据来源：`MRProjectArchive.prepareImportProject()` 生成的真实导入预览对象，包括本机 localStorage、IndexedDB 模型仓库和导入档案内容的差异。
+- 写入状态：导出差异报告不会恢复、覆盖或删除任何本机数据，只生成 HTML 文件。
+- 成功反馈：选择项目档案并生成预览后，点击“导出差异报告”会下载 `mr-calligraphy-archive-impact-*.html`。
+- 失败反馈：未选择档案或预览不存在时返回“请先选择项目档案并生成差异预览”，不会生成空报告。
+- 刷新后复现方式：重新选择同一项目档案，预览会再次计算本机与档案差异，并可导出同样结构的审阅报告。
+
+验收：
+
+- 手工验收：在主后台选择项目档案 JSON，预览出现后点击“导出差异报告”，离线 HTML 应显示字段覆盖、模型冲突和当前恢复选择。
+- 脚本验收：`node scripts/archive-migration-check.js` 验证 HTML 标题、深层字段、命名冲突、自定义冲突名称和“不直接覆盖本机数据”说明；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证入口存在。
+
+已知限制：
+
+- 差异报告是导入前审阅产物，不等同于多人协作审计日志；恢复动作完成后尚未生成独立的永久审计历史。
+- 当前报告复用本机预览结果，不会连接远端项目仓库或资产服务。
+
+提交：
+
+- 中文 commit message：`新增项目档案差异报告`
 
 ### 2026-06-11：后台远端发布 API adapter
 

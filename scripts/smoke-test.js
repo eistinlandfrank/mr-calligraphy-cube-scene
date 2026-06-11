@@ -66,7 +66,7 @@ const PAGE_CHECKS = [
   {
     path: "/main-admin.html",
     label: "主场景后台",
-    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
+    markers: ["MR 书法主场景管理页", "mainAdminCanvas", "mainAdminRiskBanner", "projectImportExportImpact", "mainPublishNote", "mainPublishDiffSummary", "mainPublishHistoryList", "mainRemotePublishStatus", "mainRemotePublishEndpoint", "mainRemotePublishToken", "mainRemotePublishSave", "mainRemotePublishCheck", "mainRemotePublishPush", "project-schema-utils.js", "project-remote-publish.js", "main-admin-scene.js"]
   },
   {
     path: "/realistic-demo.html",

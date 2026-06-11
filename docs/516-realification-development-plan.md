@@ -4575,3 +4575,57 @@
 提交：
 
 - 中文 commit message：`增强学习报告PDF图表`
+
+### 2026-06-11：新增项目档案差异报告
+
+功能名：项目档案导入影响 HTML 报告。
+
+涉及文件：
+
+- `main-admin.html`
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 主后台项目档案导入预览区新增“导出差异报告”按钮。
+- `MRProjectArchive` 新增 `getImportImpactReport()` 和 `downloadImportImpactReport()`。
+- 差异报告以离线 HTML 展示档案来源、schema 摘要、storage 差异、IndexedDB 模型差异、迁移记录、哈希统计和当前恢复选择。
+- 报告会标出深层字段覆盖、模型命名冲突、自动改名/替换/自定义命名选择，并说明报告只用于审阅，不会直接覆盖本机数据。
+- 迁移检查脚本新增差异报告断言；smoke test 新增主后台入口标记。
+
+真实化说明：
+
+- 数据来源：`prepareImportProject()` 生成的导入预览，预览来自当前浏览器本机状态、IndexedDB 模型仓库和导入档案 JSON。
+- 写入状态：导出报告不写入 localStorage 或 IndexedDB；只有用户点击“恢复所选”才会进入恢复流程。
+- 成功反馈：生成 `mr-calligraphy-archive-impact-*.html`，文件内包含当前勾选的恢复范围。
+- 失败反馈：没有待导入预览时按钮禁用；直接调用 API 会返回明确失败，不生成空文件。
+- 刷新后复现方式：重新选择同一档案后，系统会重新计算当前本机差异并可再次导出报告。
+
+验收方式：
+
+- 手工验收：打开 `http://localhost:41496/main-admin.html`，选择项目档案 JSON，预览出现后点击“导出差异报告”，离线 HTML 应展示字段差异和模型冲突。
+- 脚本验收：`node scripts/archive-migration-check.js` 验证差异报告内容；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证主后台入口。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/archive-migration-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+已知限制：
+
+- 该报告是导入前影响审阅，不是多人协作审计日志；恢复后的长期审计历史仍待补充。
+- 差异报告不连接远端项目仓库，也不拉取远端资产签名。
+
+提交：
+
+- 中文 commit message：`新增项目档案差异报告`

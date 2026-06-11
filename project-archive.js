@@ -1687,6 +1687,232 @@
     };
   }
 
+  function getImportImpactReport(preview, options = {}) {
+    if (!preview || typeof preview !== "object" || !preview.summary || !Array.isArray(preview.storage)) {
+      return {
+        ok: false,
+        message: "还没有可导出的项目档案差异报告。请先选择并校验项目档案。"
+      };
+    }
+
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-archive-impact-${formatTimestamp(new Date(exportedAt))}.html`;
+    const html = createImportImpactReportHtml(preview, {
+      exportedAt,
+      restoreOptions: options.restoreOptions || null
+    });
+    return {
+      ok: true,
+      filename,
+      mimeType: "text/html;charset=utf-8",
+      html,
+      byteLength: html.length,
+      message: `已生成项目档案导入差异报告：${filename}。`
+    };
+  }
+
+  function downloadImportImpactReport(preview, options = {}) {
+    const result = getImportImpactReport(preview, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      message: `已下载项目档案导入差异报告：${result.filename}。`
+    };
+  }
+
+  function createImportImpactReportHtml(preview, options = {}) {
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const summary = preview.summary || {};
+    const schema = preview.schemaSummary || {};
+    const restorePlan = createImpactRestorePlan(preview, options.restoreOptions);
+    const storageRows = (preview.storage || []).map((item) => createImpactStorageSection(item, restorePlan)).join("");
+    const dbRows = (preview.indexedDb || []).map((item) => createImpactDbSection(item, restorePlan)).join("");
+    const migrationRows = (preview.migrations || []).length
+      ? `<section><h2>迁移记录</h2><ul class="list">${preview.migrations.map((migration) => `<li><strong>${escapeHtml(migration.target || migration.type || "迁移")}</strong><span>${escapeHtml(migration.message || "")}</span></li>`).join("")}</ul></section>`
+      : "";
+    const selectedText = restorePlan.selectedCount
+      ? `${restorePlan.selectedStorageCount} 组本机配置 / ${restorePlan.selectedDbCount} 个模型库 / ${restorePlan.selectedFieldCount} 个字段 / ${restorePlan.selectedModelCount} 个模型`
+      : "尚未选择恢复项，仅导出差异预览";
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法项目档案导入差异报告</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; --warn:#8a5b11; --danger:#9d3027; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(1040px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 44px; }
+    header { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: clamp(28px, 5vw, 48px); line-height: 1.08; }
+    h2 { margin-bottom: 10px; font-size: 18px; }
+    h3 { font-size: 14px; }
+    section { margin-top: 22px; }
+    .meta, .muted { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+    .stat, .card { border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .stat { padding: 14px; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 24px; line-height: 1.1; }
+    .plan { padding: 14px; background: #fffdf8; }
+    .stack { display: grid; gap: 10px; }
+    .card { display: grid; gap: 8px; padding: 14px; }
+    .card[data-change="remove"] { border-color: rgba(157, 48, 39, 0.35); }
+    .card[data-change="add"], .card[data-change="update"], .card[data-change="replace"] { border-color: rgba(36, 122, 103, 0.35); }
+    .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+    .badge { display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px; border-radius: 99px; color: #ffffff; background: var(--jade); font-size: 12px; font-weight: 700; }
+    .badge.remove { background: var(--danger); }
+    .badge.same, .badge.empty, .badge.same-count { color: var(--muted); background: #eef3f0; }
+    .list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+    .list li { display: grid; gap: 2px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .fields, .models { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .fields li, .models li { padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: #fbfdfb; }
+    .fields li[data-selected="true"], .models li[data-selected="true"] { border-color: rgba(36, 122, 103, 0.4); background: #eef8f3; }
+    .conflict { color: var(--warn); font-weight: 700; }
+    pre { max-height: 220px; margin: 6px 0 0; padding: 8px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #f7faf8; color: #24332f; white-space: pre-wrap; word-break: break-word; }
+    footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 760px) { main { width: min(100% - 20px, 1040px); padding-top: 22px; } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .item-head { display: grid; } }
+    @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card, .stat, .list li { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="meta">MR Calligraphy Project Archive Impact · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
+      <h1>项目档案导入差异报告</h1>
+      <p class="muted">本报告只用于审阅导入影响，不会恢复或覆盖任何本机数据。恢复动作仍需在主后台手动确认。</p>
+    </header>
+
+    <div class="grid">
+      <div class="stat"><span>新增配置</span><strong>${escapeHtml(summary.storageAdded || 0)}</strong></div>
+      <div class="stat"><span>覆盖配置</span><strong>${escapeHtml(summary.storageUpdated || 0)}</strong></div>
+      <div class="stat"><span>清空配置</span><strong>${escapeHtml(summary.storageRemoved || 0)}</strong></div>
+      <div class="stat"><span>档案模型</span><strong>${escapeHtml(summary.incomingModelCount || 0)}</strong></div>
+    </div>
+
+    <section class="card plan">
+      <h2>恢复选择</h2>
+      <p>${escapeHtml(selectedText)}</p>
+      <p class="muted">档案时间：${escapeHtml(formatArchiveDate(preview.exportedAt))}；来源：${escapeHtml(preview.source || "未知")}；schema v${escapeHtml(schema.version || "-")}；模型哈希 ${escapeHtml(summary.assetHashCount || 0)}，缺哈希 ${escapeHtml(summary.missingAssetHashCount || 0)}。</p>
+    </section>
+
+    ${migrationRows}
+
+    <section>
+      <h2>本机配置差异</h2>
+      <div class="stack">${storageRows || `<article class="card"><p class="muted">没有可展示的本机配置差异。</p></article>`}</div>
+    </section>
+
+    <section>
+      <h2>IndexedDB 模型差异</h2>
+      <div class="stack">${dbRows || `<article class="card"><p class="muted">没有可展示的模型差异。</p></article>`}</div>
+    </section>
+
+    <footer>报告生成时间：${escapeHtml(formatArchiveDate(exportedAt))}。导入前请确认覆盖范围；含模型二进制的档案仍会在恢复前执行 SHA-256 校验。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function createImpactRestorePlan(preview, restoreOptions) {
+    const storageKeys = new Set(Array.isArray(restoreOptions?.storageKeys) ? restoreOptions.storageKeys : []);
+    const dbIds = new Set(Array.isArray(restoreOptions?.dbIds) ? restoreOptions.dbIds : []);
+    const storageFields = restoreOptions?.storageFields && typeof restoreOptions.storageFields === "object" ? restoreOptions.storageFields : {};
+    const dbRecords = restoreOptions?.dbRecords && typeof restoreOptions.dbRecords === "object" ? restoreOptions.dbRecords : {};
+    const selectedFieldCount = Object.values(storageFields).reduce((sum, fields) => sum + (Array.isArray(fields) ? fields.length : 0), 0);
+    const selectedModelCount = Object.values(dbRecords).reduce((sum, models) => sum + (Array.isArray(models) ? models.length : 0), 0);
+    return {
+      storageKeys,
+      dbIds,
+      storageFields,
+      dbRecords,
+      selectedStorageCount: storageKeys.size,
+      selectedDbCount: dbIds.size,
+      selectedFieldCount,
+      selectedModelCount,
+      selectedCount: storageKeys.size + dbIds.size,
+      storageTotal: Array.isArray(preview.storage) ? preview.storage.length : 0,
+      dbTotal: Array.isArray(preview.indexedDb) ? preview.indexedDb.length : 0
+    };
+  }
+
+  function createImpactStorageSection(item, restorePlan) {
+    const selected = restorePlan.storageKeys.has(item.id);
+    const selectedFields = new Set((restorePlan.storageFields[item.id] || []).map((field) => `${field.action}:${field.path}`));
+    const fieldItems = Array.isArray(item.fieldSelections) && item.fieldSelections.length
+      ? item.fieldSelections.map((field) => {
+          const fieldSelected = selectedFields.size ? selectedFields.has(`${field.action}:${field.path}`) : selected;
+          return `<li data-selected="${fieldSelected ? "true" : "false"}"><strong>${escapeHtml(field.label)}</strong><span>${escapeHtml(field.impact)} · ${escapeHtml(field.detail)}</span>${createImpactPreviewBlocks(field.currentPreview, field.incomingPreview)}</li>`;
+        }).join("")
+      : (item.fieldDiffs || []).map((fieldDiff) => `<li><span>${escapeHtml(fieldDiff)}</span></li>`).join("");
+    const fieldList = fieldItems ? `<ul class="fields">${fieldItems}</ul>` : "";
+    return `<article class="card" data-change="${escapeAttr(item.change || "normal")}">
+      <div class="item-head"><h3>${escapeHtml(item.label)}</h3><span class="badge ${escapeAttr(item.change || "")}">${escapeHtml(getImpactChangeLabel(item.change))}${selected ? " · 已选择" : ""}</span></div>
+      <p class="muted">${escapeHtml(describeStorageChange(item))}</p>
+      ${item.fieldDiffSummary ? `<p>${escapeHtml(item.fieldDiffSummary)}</p>` : ""}
+      ${item.fieldImpactSummary ? `<p class="conflict">${escapeHtml(item.fieldImpactSummary)}</p>` : ""}
+      ${fieldList}
+      ${item.migrationNote ? `<p class="muted">${escapeHtml(item.migrationNote)}</p>` : ""}
+    </article>`;
+  }
+
+  function createImpactDbSection(item, restorePlan) {
+    const selected = restorePlan.dbIds.has(item.id);
+    const selectedModels = new Map((restorePlan.dbRecords[item.id] || []).map((model) => [`${model.action}:${model.key}`, model]));
+    const modelItems = Array.isArray(item.modelSelections) && item.modelSelections.length
+      ? item.modelSelections.map((model) => {
+          const modelSelected = selectedModels.size ? selectedModels.has(`${model.action}:${model.key}`) : selected;
+          const selection = selectedModels.get(`${model.action}:${model.key}`);
+          const conflictText = model.conflictSummary
+            ? `<span class="conflict">${escapeHtml(model.conflictSummary)}${selection?.conflictMode ? ` · 选择：${escapeHtml(formatConflictMode(selection.conflictMode, selection.customLabel))}` : ""}</span>`
+            : "";
+          return `<li data-selected="${modelSelected ? "true" : "false"}"><strong>${escapeHtml(model.label)}</strong><span>${escapeHtml(model.detail || model.key)}</span>${conflictText}${createImpactPreviewBlocks(model.currentPreview, model.incomingPreview)}</li>`;
+        }).join("")
+      : (item.modelDiffs || []).map((modelDiff) => `<li><span>${escapeHtml(modelDiff)}</span></li>`).join("");
+    const modelList = modelItems ? `<ul class="models">${modelItems}</ul>` : "";
+    return `<article class="card" data-change="${escapeAttr(item.change || "normal")}">
+      <div class="item-head"><h3>${escapeHtml(item.label)}</h3><span class="badge ${escapeAttr(item.change || "")}">${escapeHtml(getImpactChangeLabel(item.change))}${selected ? " · 已选择" : ""}</span></div>
+      <p class="muted">${escapeHtml(describeDbChange(item))}</p>
+      ${item.modelDiffSummary ? `<p>${escapeHtml(item.modelDiffSummary)}</p>` : ""}
+      ${modelList}
+      ${item.migrationNote ? `<p class="muted">${escapeHtml(item.migrationNote)}</p>` : ""}
+    </article>`;
+  }
+
+  function createImpactPreviewBlocks(currentPreview, incomingPreview) {
+    if (!currentPreview && !incomingPreview) {
+      return "";
+    }
+    return `<details><summary>查看片段</summary><pre>当前本机\n${escapeHtml(currentPreview || "无")}</pre><pre>导入档案\n${escapeHtml(incomingPreview || "无")}</pre></details>`;
+  }
+
+  function getImpactChangeLabel(change) {
+    const labels = {
+      add: "新增",
+      update: "覆盖",
+      replace: "替换",
+      remove: "清空",
+      same: "相同",
+      empty: "空",
+      "same-count": "数量相同"
+    };
+    return labels[change] || "变更";
+  }
+
+  function formatConflictMode(mode, customLabel = "") {
+    if (mode === "replace") return "替换本机同名模型";
+    if (mode === "custom") return `自定义名称${customLabel ? `：${customLabel}` : ""}`;
+    return "自动改名";
+  }
+
   function downloadJson(data, filename) {
     const payload = JSON.stringify(data, null, 2);
     const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
@@ -1698,6 +1924,31 @@
     link.click();
     link.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function downloadHtml(html, filename) {
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
+  function escapeAttr(value) {
+    return escapeHtml(value).replace(/`/g, "&#096;");
   }
 
   function formatTimestamp(date) {
@@ -1761,11 +2012,13 @@
     const selectAllInput = document.getElementById("projectImportSelectAll");
     const selectionStatus = document.getElementById("projectImportSelectionStatus");
     const confirmButton = document.getElementById("projectImportConfirm");
+    const impactButton = document.getElementById("projectImportExportImpact");
     const cancelButton = document.getElementById("projectImportCancel");
 
     if (!exportButton && !importFile) return;
 
     let pendingArchive = null;
+    let pendingPreview = null;
     let isBusy = false;
 
     const setStatus = (message, tone = "normal") => {
@@ -1778,6 +2031,7 @@
       isBusy = Boolean(busy);
       if (exportButton) exportButton.disabled = isBusy;
       if (importFile) importFile.disabled = isBusy;
+      if (impactButton) impactButton.disabled = isBusy || !pendingPreview;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
       updateRestoreSelectionState();
     };
@@ -1928,6 +2182,9 @@
       if (confirmButton) {
         confirmButton.disabled = isBusy || !pendingArchive || selectedCount === 0;
       }
+      if (impactButton) {
+        impactButton.disabled = isBusy || !pendingPreview;
+      }
     };
 
     const createPreviewGrid = (items, className) => {
@@ -1947,6 +2204,7 @@
 
     const clearPendingImport = () => {
       pendingArchive = null;
+      pendingPreview = null;
       if (previewBox) previewBox.hidden = true;
       if (previewList) previewList.innerHTML = "";
       if (previewTitle) previewTitle.textContent = "待导入档案";
@@ -1958,6 +2216,7 @@
         selectAllInput.disabled = true;
       }
       if (confirmButton) confirmButton.disabled = true;
+      if (impactButton) impactButton.disabled = true;
       if (cancelButton) cancelButton.disabled = true;
     };
 
@@ -2244,6 +2503,7 @@
         try {
           const result = await prepareImportProject(file);
           pendingArchive = result.archive;
+          pendingPreview = result.preview;
           renderImportPreview(result.preview);
           const migrationText = result.preview.migrations?.length
             ? ` 已应用 ${result.preview.migrations.length} 条兼容迁移；旧档案缺失的新条目默认保留本机内容。`
@@ -2257,6 +2517,18 @@
         }
       });
     }
+
+    impactButton?.addEventListener("click", () => {
+      if (!pendingPreview) {
+        setStatus("请先选择项目档案并生成差异预览。", "error");
+        return;
+      }
+
+      const result = downloadImportImpactReport(pendingPreview, {
+        restoreOptions: getSelectedRestoreOptions()
+      });
+      setStatus(result.message || "项目档案差异报告导出失败。", result.ok ? "success" : "error");
+    });
 
     confirmButton?.addEventListener("click", async () => {
       if (!pendingArchive) {
@@ -2314,6 +2586,8 @@
     exportProject,
     importProject,
     prepareImportProject,
+    getImportImpactReport,
+    downloadImportImpactReport,
     restoreProjectArchive,
     migrateProjectArchive,
     validateArchiveAssetHashes,

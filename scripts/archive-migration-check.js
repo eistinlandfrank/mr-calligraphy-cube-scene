@@ -254,6 +254,33 @@ async function main() {
     conflictingModelSelection?.suggestedLabel === "本机旧模型（档案）",
     "主场景模型仓库命名冲突预览应提供自定义名称建议。"
   );
+  const impactReport = window.MRProjectArchive.getImportImpactReport(previewResult.preview, {
+    exportedAt: "2026-06-11T10:00:00.000Z",
+    restoreOptions: {
+      storageKeys: ["mr-calligraphy-learning-state-v1"],
+      dbIds: ["mainModels"],
+      storageFields: {
+        "mr-calligraphy-learning-state-v1": [{ path: "sessions[0].score", action: "update" }]
+      },
+      dbRecords: {
+        mainModels: [{ key: "model-3", action: "add", conflictMode: "custom", customLabel: "手动命名档案模型" }]
+      }
+    }
+  });
+  assert(impactReport.ok, "项目档案应能生成导入差异报告。");
+  assert(impactReport.filename.endsWith(".html"), "项目档案导入差异报告应返回 HTML 文件名。");
+  assert(impactReport.mimeType.includes("text/html"), "项目档案导入差异报告应返回 text/html MIME。");
+  assert(
+    impactReport.html.includes("项目档案导入差异报告") &&
+      impactReport.html.includes("sessions[0].score") &&
+      impactReport.html.includes("命名冲突") &&
+      impactReport.html.includes("手动命名档案模型"),
+    "项目档案导入差异报告应包含标题、字段差异、模型冲突和当前恢复选择。"
+  );
+  assert(
+    impactReport.html.includes("本报告只用于审阅导入影响，不会恢复或覆盖任何本机数据"),
+    "项目档案导入差异报告应说明不会直接覆盖本机数据。"
+  );
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
     storageKeys: ["mr-calligraphy-learning-state-v1"],
