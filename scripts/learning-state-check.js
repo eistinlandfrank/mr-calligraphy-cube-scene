@@ -80,6 +80,63 @@ const { startHistoryRepositoryMockServer } = require("./history-repository-mock-
 
 require("../app-state.js");
 
+const initialLectureService = window.MRAppState.getLectureServiceStatus();
+assert(initialLectureService.status === "idle", "初始讲解服务应为待检查状态。");
+assert(initialLectureService.boundary.includes("不是云端 AI 音频"), "讲解服务应说明本机服务边界。");
+
+const lectureCapability = window.MRAppState.updateLectureServiceCapabilities({
+  supported: true,
+  voiceName: "测试中文语音"
+});
+assert(lectureCapability.ok, "讲解服务应能记录浏览器语音能力。");
+assert(lectureCapability.status.status === "ready", "支持语音时讲解服务应进入可用状态。");
+assert(lectureCapability.status.voiceName === "测试中文语音", "讲解服务应记录本机语音名称。");
+
+const lectureStart = window.MRAppState.startLecture();
+assert(lectureStart.ok, "讲解应能启动。");
+assert(lectureStart.lecture.currentStep.title.includes("永字目标"), "讲解应读取当前任务段落。");
+
+const lecturePlaying = window.MRAppState.recordLectureServiceEvent({
+  mode: "local-tts",
+  status: "playing",
+  supported: true,
+  voiceName: "测试中文语音",
+  stepTitle: lectureStart.lecture.currentStep.title,
+  message: "本机语音测试播放中"
+});
+assert(lecturePlaying.status.status === "playing", "讲解服务应记录播放中状态。");
+
+const lectureSpoken = window.MRAppState.recordLectureServiceEvent({
+  mode: "local-tts",
+  status: "playing",
+  supported: true,
+  voiceName: "测试中文语音",
+  stepTitle: lectureStart.lecture.currentStep.title,
+  spoken: true,
+  message: "已朗读测试段落"
+});
+assert(lectureSpoken.status.spokenStepCount === 1, "讲解服务应累计真实朗读段数。");
+
+const lectureFallback = window.MRAppState.recordLectureServiceEvent({
+  mode: "local-text-timer",
+  status: "fallback",
+  stepTitle: "结构观察",
+  message: "测试文本计时降级"
+});
+assert(lectureFallback.status.fallbackStepCount === 1, "讲解服务应累计文本降级段数。");
+
+const lectureComplete = window.MRAppState.recordLectureServiceEvent({
+  status: "complete",
+  stepTitle: "复盘标准",
+  message: "本机讲解测试完成"
+});
+assert(lectureComplete.status.status === "complete", "讲解服务应记录完成状态。");
+
+const persistedLectureService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).lectureService;
+assert(persistedLectureService.spokenStepCount === 1, "讲解服务朗读次数应持久化。");
+assert(persistedLectureService.fallbackStepCount === 1, "讲解服务降级次数应持久化。");
+assert(persistedLectureService.lastCompletedAt, "讲解服务完成时间应持久化。");
+
 const comparison = window.MRAppState.getArtworkComparison("永");
 assert(comparison.ok, "同字两幅作品应生成作品对比。");
 assert(comparison.glyph === "永", "作品对比应保留请求的字。");
@@ -670,7 +727,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {

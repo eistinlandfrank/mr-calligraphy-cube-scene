@@ -5492,3 +5492,64 @@
 提交：
 
 - 中文 commit message：`新增本机分享链接服务`
+
+### 2026-06-12：新增本机讲解服务 adapter
+
+功能名：本机讲解服务 adapter。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 状态层新增 `lectureService`，记录讲解来源、服务状态、本机语音支持、语音名称、朗读段数、文本计时降级次数、失败次数和完成时间。
+- 新增 `MRAppState.getLectureServiceStatus()`、`updateLectureServiceCapabilities()` 和 `recordLectureServiceEvent()`。
+- 前台讲解面板新增“本机讲解服务”摘要，播放时会显示本机语音、文本降级、失败和完成边界。
+- 讲解播放开始时检查浏览器 Web Speech 能力；本机语音可用时记录真实 `speechSynthesis` 播放事件，不可用或播放失败时改用文本计时推进。
+- smoke test 新增讲解服务摘要控件标记，E2E 用浏览器内 fake speech adapter 覆盖真实播放、完成和状态持久化。
+
+真实化说明：
+
+- 数据来源：当前浏览器的 Web Speech API、讲解步骤和本机学习状态。
+- 写入状态：讲解服务状态写入 `mr-calligraphy-learning-state-v1.lectureService`。
+- 成功反馈：播放、朗读完成和全段完成都会写入服务状态、事件记录和讲解面板。
+- 失败反馈：浏览器不支持、语音播放失败或启动异常时显示文本计时降级/失败，不伪装成云端 AI 音频。
+- 刷新后复现方式：刷新同一浏览器页面后，讲解服务最近一次能力检查、语音名称、朗读/降级次数和完成时间仍保留在本机学习状态中。
+
+验收方式：
+
+- 手工验收：打开前台讲解面板，点击“播放讲解”，应看到本机讲解服务摘要从待检查变为本机语音或文本计时降级；播放结束后显示已完成。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖讲解服务状态层；`npm run test:e2e -- --grep "front practice saves real strokes"` 覆盖前台播放和持久化流程。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `npm run test:e2e`
+
+已知限制：
+
+- 当前是本机讲解服务，不是云端 AI 音频、真人录音、视频流或根据真实笔迹动态生成的讲解。
+- 后续接入生产后端后，再补 `remote-ai-audio`、`remote-ai-text`、账号化讲解历史、音频资源缓存和服务端生成审计。
+
+提交：
+
+- 中文 commit message：`新增本机讲解服务适配器`

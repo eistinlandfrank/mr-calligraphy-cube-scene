@@ -76,10 +76,52 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     });
   });
 
+  await page.addInitScript(() => {
+    class FakeSpeechSynthesisUtterance {
+      constructor(text) {
+        this.text = text;
+        this.lang = "";
+        this.rate = 1;
+        this.pitch = 1;
+        this.voice = null;
+        this.onstart = null;
+        this.onend = null;
+        this.onerror = null;
+      }
+    }
+
+    Object.defineProperty(window, "SpeechSynthesisUtterance", {
+      configurable: true,
+      value: FakeSpeechSynthesisUtterance
+    });
+    Object.defineProperty(window, "speechSynthesis", {
+      configurable: true,
+      value: {
+        cancel() {},
+        getVoices() {
+          return [{ lang: "zh-CN", name: "E2E 中文语音" }];
+        },
+        speak(utterance) {
+          window.setTimeout(() => utterance.onstart?.(), 0);
+          window.setTimeout(() => utterance.onend?.(), 8);
+        }
+      }
+    });
+  });
+
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);
+
+  await page.getByRole("button", { name: /切换到步骤 3/ }).click();
+  await page.getByRole("button", { name: "播放讲解" }).click();
+  await expect(page.locator("#lectureStatusLabel")).toContainText("已完成");
+  await expect(page.locator("#lectureServiceSummary")).toContainText("本机语音");
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.lectureService.voiceName).toBe("E2E 中文语音");
+  expect(learningState.lectureService.spokenStepCount).toBeGreaterThanOrEqual(5);
+  expect(learningState.lectureService.status).toBe("complete");
 
   await drawPracticeStroke(page);
   await expect(page.locator("#practiceCanvasStatus")).toContainText(/1 笔|2 笔|当前评分/);
@@ -88,7 +130,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.getByRole("button", { name: "保存作品" }).click();
   await expect(page.locator("#actionFeedback")).toContainText("作品已真实保存到本机记录");
 
-  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.artworks).toHaveLength(1);
   expect(learningState.artworks[0].strokeCount).toBeGreaterThan(0);
   expect(learningState.sessions.some((session) => session.status === "saved" && session.strokeCount > 0)).toBe(true);

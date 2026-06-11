@@ -8,6 +8,7 @@
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
+  const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
@@ -330,6 +331,7 @@
       trainingMode: ["guide", "compare"].includes(source?.trainingMode) ? source.trainingMode : "guide",
       lectureStatus: lecture.status,
       lecture,
+      lectureService: normalizeLectureService(source?.lectureService),
       artworkStyle: String(source?.artworkStyle || "楷书"),
       currentSessionId: typeof source?.currentSessionId === "string" ? source.currentSessionId : null,
       sessions: Array.isArray(source?.sessions) ? source.sessions.map(normalizeSession).filter(Boolean) : [],
@@ -950,6 +952,32 @@
       startedAt: record?.startedAt ? String(record.startedAt) : null,
       updatedAt: record?.updatedAt ? String(record.updatedAt) : null,
       completedAt: record?.completedAt ? String(record.completedAt) : status === "complete" ? new Date().toISOString() : null
+    };
+  }
+
+  function normalizeLectureService(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const mode = ["local-tts", "local-text-timer", "remote-ai-audio", "remote-ai-text"].includes(source.mode)
+      ? source.mode
+      : "local-tts";
+    const status = ["idle", "ready", "playing", "fallback", "complete", "error"].includes(source.status)
+      ? source.status
+      : "idle";
+    return {
+      mode,
+      status,
+      supported: source.supported === true,
+      voiceName: source.voiceName ? String(source.voiceName).slice(0, 120) : "",
+      lastMessage: source.lastMessage ? String(source.lastMessage).slice(0, 220) : "",
+      lastStepTitle: source.lastStepTitle ? String(source.lastStepTitle).slice(0, 80) : "",
+      spokenStepCount: normalizeInteger(source.spokenStepCount, 0, 0, 9999),
+      fallbackStepCount: normalizeInteger(source.fallbackStepCount, 0, 0, 9999),
+      errorCount: normalizeInteger(source.errorCount, 0, 0, 9999),
+      lastStartedAt: normalizePlanDate(source.lastStartedAt),
+      lastPlayedAt: normalizePlanDate(source.lastPlayedAt),
+      lastFallbackAt: normalizePlanDate(source.lastFallbackAt),
+      lastCompletedAt: normalizePlanDate(source.lastCompletedAt),
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt)
     };
   }
 
@@ -1678,6 +1706,95 @@
       elapsedSeconds: completedSteps * LECTURE_STEP_SECONDS,
       totalSeconds: steps.length * LECTURE_STEP_SECONDS
     };
+  }
+
+  function getLectureServiceStatus() {
+    const service = normalizeLectureService(state.lectureService);
+    const modeLabel = getLectureServiceModeLabel(service.mode);
+    const statusLabel = getLectureServiceStatusLabel(service.status);
+    const voiceText = service.voiceName ? `，声音：${service.voiceName}` : "";
+    return {
+      ...clone(service),
+      modeLabel,
+      statusLabel,
+      boundary: LECTURE_SERVICE_BOUNDARY,
+      message: `${modeLabel} / ${statusLabel}${voiceText}。已朗读 ${service.spokenStepCount} 段，文本降级 ${service.fallbackStepCount} 段，失败 ${service.errorCount} 次。`
+    };
+  }
+
+  function updateLectureServiceCapabilities(capabilities = {}) {
+    const source = capabilities && typeof capabilities === "object" ? capabilities : {};
+    state.lectureService = normalizeLectureService({
+      ...state.lectureService,
+      supported: source.supported === true,
+      voiceName: source.voiceName ? String(source.voiceName).slice(0, 120) : state.lectureService.voiceName,
+      mode: source.supported === true ? "local-tts" : "local-text-timer",
+      status: source.supported === true ? "ready" : "fallback",
+      lastMessage: source.supported === true
+        ? "浏览器支持本机语音合成。"
+        : "浏览器不支持本机语音合成，将使用文本计时推进。",
+      lastCheckedAt: new Date().toISOString()
+    });
+    saveState();
+    return {
+      ok: true,
+      status: getLectureServiceStatus(),
+      message: state.lectureService.lastMessage
+    };
+  }
+
+  function recordLectureServiceEvent(event = {}) {
+    const source = event && typeof event === "object" ? event : {};
+    const now = new Date().toISOString();
+    const eventStatus = ["ready", "playing", "fallback", "complete", "error"].includes(source.status)
+      ? source.status
+      : "ready";
+    const eventMode = ["local-tts", "local-text-timer", "remote-ai-audio", "remote-ai-text"].includes(source.mode)
+      ? source.mode
+      : eventStatus === "fallback"
+        ? "local-text-timer"
+        : "local-tts";
+    const next = normalizeLectureService({
+      ...state.lectureService,
+      mode: eventMode,
+      status: eventStatus,
+      supported: source.supported === true || (eventMode === "local-tts" && state.lectureService.supported),
+      voiceName: source.voiceName ? String(source.voiceName).slice(0, 120) : state.lectureService.voiceName,
+      lastMessage: source.message || state.lectureService.lastMessage,
+      lastStepTitle: source.stepTitle || state.lectureService.lastStepTitle,
+      spokenStepCount: state.lectureService.spokenStepCount + (source.spoken === true ? 1 : 0),
+      fallbackStepCount: state.lectureService.fallbackStepCount + (eventStatus === "fallback" ? 1 : 0),
+      errorCount: state.lectureService.errorCount + (eventStatus === "error" ? 1 : 0),
+      lastStartedAt: eventStatus === "playing" && !state.lectureService.lastStartedAt ? now : state.lectureService.lastStartedAt,
+      lastPlayedAt: eventStatus === "playing" || source.spoken === true ? now : state.lectureService.lastPlayedAt,
+      lastFallbackAt: eventStatus === "fallback" ? now : state.lectureService.lastFallbackAt,
+      lastCompletedAt: eventStatus === "complete" ? now : state.lectureService.lastCompletedAt,
+      lastCheckedAt: now
+    });
+    state.lectureService = next;
+    addEvent("lecture-service", `${getLectureServiceModeLabel(next.mode)}：${getLectureServiceStatusLabel(next.status)}`);
+    saveState();
+    return {
+      ok: true,
+      status: getLectureServiceStatus(),
+      message: next.lastMessage || "已更新本机讲解服务状态。"
+    };
+  }
+
+  function getLectureServiceModeLabel(mode) {
+    if (mode === "remote-ai-audio") return "云端 AI 音频";
+    if (mode === "remote-ai-text") return "云端 AI 文本";
+    if (mode === "local-text-timer") return "本机文本计时";
+    return "本机语音";
+  }
+
+  function getLectureServiceStatusLabel(status) {
+    if (status === "ready") return "可用";
+    if (status === "playing") return "播放中";
+    if (status === "fallback") return "降级";
+    if (status === "complete") return "已完成";
+    if (status === "error") return "失败";
+    return "待检查";
   }
 
   function getPlanProgress(plan) {
@@ -7979,6 +8096,7 @@
     getTaskProgress,
     getStageProgress,
     getLectureProgress,
+    getLectureServiceStatus,
     getPlan,
     getPlanHistory,
     getLatestPlan,
@@ -8039,6 +8157,8 @@
     startLecture,
     advanceLecture,
     playLecture,
+    updateLectureServiceCapabilities,
+    recordLectureServiceEvent,
     startPractice,
     setTrainingMode,
     moveStroke,

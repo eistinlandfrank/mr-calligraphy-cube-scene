@@ -27,14 +27,14 @@
 
 需要继续把 10 步路径改成由 `LearningTask`、`PracticeSession`、`ArtworkRecord`、`ReportRecord` 和 `PlanRecord` 推导内容、完成条件、下一步动作和锁定状态。
 
-### 2.3 AI 讲解只是本机语音，不是 AI 服务
+### 2.3 AI 讲解已有本机服务 adapter，但不是云端 AI
 
-当前讲解能力调用浏览器 `speechSynthesis` 朗读本机讲解文本。这是可用的本机语音功能，但不是云端 AI 音频，也不是根据学生真实笔迹生成的动态反馈。
+当前讲解能力已从直接调用浏览器 `speechSynthesis` 升级为本机 `LectureService` adapter：前台会检查浏览器本机语音能力，记录语音名称、播放段落、文本计时降级次数、失败次数和完成时间，并在讲解面板显示服务边界。这是可验证的本机讲解服务，但仍不是云端 AI 音频、真人录音、视频流，也不是根据学生真实笔迹生成的动态反馈。
 
 真实化方向：
 
 - UI 文案保留“本机语音讲解”边界。
-- 新增 `LectureService` adapter，支持 `local-tts`、`remote-ai-audio`、`remote-ai-text` 三种来源。
+- 已新增 `LectureService` adapter，当前支持 `local-tts` 和 `local-text-timer`；后续扩展 `remote-ai-audio`、`remote-ai-text` 来源。
 - 把讲解生成结果写入报告和学习记录，避免只在界面临时播放。
 
 ### 2.4 评分仍是启发式，不是专业书法识别模型

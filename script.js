@@ -810,6 +810,7 @@ const els = {
   lectureProgressFill: document.getElementById("lectureProgressFill"),
   lectureBody: document.getElementById("lectureBody"),
   lectureVoiceStatus: document.getElementById("lectureVoiceStatus"),
+  lectureServiceSummary: document.getElementById("lectureServiceSummary"),
   lectureStepList: document.getElementById("lectureStepList"),
   glyphValue: document.getElementById("practiceGlyphGuide"),
   practiceCanvas: document.getElementById("practiceCanvas"),
@@ -4085,6 +4086,7 @@ function renderLecturePanel(sceneIndex = currentIndex) {
   els.lectureProgressFill.style.width = `${progress.progressPercent}%`;
   els.lectureBody.textContent = progress.currentStep?.body || "选择讲解后显示当前段落。";
   updateLectureVoiceStatus(progress);
+  renderLectureServiceSummary();
   els.lectureStepList.innerHTML = "";
 
   progress.steps.forEach((step, index) => {
@@ -4111,6 +4113,7 @@ function startLecturePlayback() {
   }
 
   const result = appState.startLecture();
+  syncLectureServiceCapabilities();
   const token = ++lecturePlaybackToken;
   isLecturePlaybackActive = true;
   renderLearningStateSummary();
@@ -4135,6 +4138,12 @@ function playOrScheduleLectureStep(progress, token) {
     return speech;
   }
 
+  recordLectureServiceEvent({
+    mode: "local-text-timer",
+    status: "fallback",
+    stepTitle: progress.currentStep?.title,
+    message: speech.message
+  });
   setLectureVoiceStatus(speech.message, "fallback");
   scheduleLectureAdvance(token, LECTURE_PLAYBACK_STEP_MS);
   return {
@@ -4172,6 +4181,11 @@ function advanceLecturePlayback(token) {
   }
   if (result?.lecture?.status === "complete") {
     isLecturePlaybackActive = false;
+    recordLectureServiceEvent({
+      status: "complete",
+      stepTitle: result.lecture.currentStep?.title,
+      message: "本机讲解服务已完成全部段落。"
+    });
     setLectureVoiceStatus("本机语音讲解已完成，进度已保存。", "complete");
     showNotice("AI 讲解已完成，进度已保存。");
     return;
@@ -4193,16 +4207,39 @@ function speakLectureStep(progress, token) {
     utterance.voice = getLectureSpeechVoice();
     utterance.onstart = () => {
       if (token !== lecturePlaybackToken) return;
+      recordLectureServiceEvent({
+        mode: "local-tts",
+        status: "playing",
+        supported: true,
+        voiceName: utterance.voice?.name || "",
+        stepTitle: progress.currentStep?.title,
+        message: `本机语音朗读中：${progress.currentStep?.title || "当前段落"}`
+      });
       setLectureVoiceStatus(`本机语音朗读中：${progress.currentStep?.title || "当前段落"}`, "playing");
     };
     utterance.onend = () => {
       if (token !== lecturePlaybackToken) return;
       lectureSpeechUtterance = null;
+      recordLectureServiceEvent({
+        mode: "local-tts",
+        status: "playing",
+        supported: true,
+        voiceName: utterance.voice?.name || "",
+        stepTitle: progress.currentStep?.title,
+        spoken: true,
+        message: `已朗读：${progress.currentStep?.title || "当前段落"}`
+      });
       scheduleLectureAdvance(token, 180);
     };
     utterance.onerror = () => {
       if (token !== lecturePlaybackToken) return;
       lectureSpeechUtterance = null;
+      recordLectureServiceEvent({
+        mode: "local-text-timer",
+        status: "fallback",
+        stepTitle: progress.currentStep?.title,
+        message: "本机语音播放失败，已改用文本计时推进。"
+      });
       setLectureVoiceStatus("本机语音播放失败，已改用文本计时推进。", "fallback");
       scheduleLectureAdvance(token, LECTURE_PLAYBACK_STEP_MS);
     };
@@ -4212,6 +4249,12 @@ function speakLectureStep(progress, token) {
   } catch (error) {
     console.warn("本机语音讲解启动失败", error);
     lectureSpeechUtterance = null;
+    recordLectureServiceEvent({
+      mode: "local-text-timer",
+      status: "error",
+      stepTitle: progress.currentStep?.title,
+      message: "本机语音启动失败。"
+    });
     return { ok: false, message: "本机语音启动失败。" };
   }
 }
@@ -4232,6 +4275,40 @@ function getLectureSpeechText(progress) {
   const title = progress?.currentStep?.title || "当前讲解";
   const body = progress?.currentStep?.body || "";
   return `${title}。${body}`;
+}
+
+function syncLectureServiceCapabilities() {
+  const supported = supportsLectureSpeech();
+  const voice = supported ? getLectureSpeechVoice() : null;
+  return window.MRAppState?.updateLectureServiceCapabilities?.({
+    supported,
+    voiceName: voice?.name || ""
+  });
+}
+
+function recordLectureServiceEvent(event = {}) {
+  return window.MRAppState?.recordLectureServiceEvent?.(event);
+}
+
+function renderLectureServiceSummary() {
+  if (!els.lectureServiceSummary) return;
+  const status = window.MRAppState?.getLectureServiceStatus?.();
+  if (!status) {
+    els.lectureServiceSummary.textContent = "本机讲解服务尚未初始化。";
+    els.lectureServiceSummary.dataset.serviceTone = "idle";
+    return;
+  }
+
+  els.lectureServiceSummary.textContent = `${status.message} ${status.boundary}`;
+  els.lectureServiceSummary.dataset.serviceTone = status.status === "complete" || status.status === "ready"
+    ? "ready"
+    : status.status === "fallback"
+      ? "warning"
+      : status.status === "error"
+        ? "danger"
+        : status.status === "playing"
+          ? "playing"
+          : "idle";
 }
 
 function updateLectureVoiceStatus(progress) {
