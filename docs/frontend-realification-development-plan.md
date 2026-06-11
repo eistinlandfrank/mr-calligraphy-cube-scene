@@ -55,7 +55,7 @@ node scripts/control-inventory.js --check
 | AI 讲解 | 浏览器本机语音能朗读讲解段落 | 不是云端 AI 音频，也不是按真实笔迹实时生成 | 抽象讲解服务接口，保留本机语音 fallback，UI 明确写“本机语音” |
 | 书写练习 | 鼠标/触控笔迹、撤销、清空、回放、保存和基础评分可用 | 缺压感、笔锋、笔画顺序模型、硬件适配和专业评分模型 | 增加范字路径库、笔画顺序校验、压感字段和评分服务 adapter |
 | 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒和教师端通知 | 做账号化 repository、服务端合并策略、跨设备提醒和教师端视图 |
-| 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、服务端分页、长期归档和教师批注 | 做账号化 history repository、服务端分页接口、云端详情 URL 和字段级合并 |
+| 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、`nextPageUrl` 分页自动追取、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、生产级分页查询、长期归档和教师批注审计 | 做账号化 history repository、云端详情 URL、字段级合并和服务端审计 |
 
 ### 4.2 作品、报告和分享
 
@@ -549,7 +549,7 @@ git diff --check
 
 仍待补：
 
-- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收已在后续补齐，后续还需自动追取分页、字段级合并和冲突审计。
+- 学习档案远端网络中断、分页返回、同 ID 差异冲突和 `nextPageUrl` 自动追取分页已在后续补齐，后续还需字段级合并和冲突审计。
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断的浏览器级提示验收已补齐，后续还需超时重试和批量队列失败恢复。
 - 字段级冲突合并 UI 第一版已完成，后续还需要覆盖计划项增删、依赖调整和服务端合并审计。
 
@@ -589,7 +589,7 @@ git diff --check
 
 - 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断的浏览器级提示验收已补齐，后续还需超时重试和批量队列失败恢复。
-- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收已在后续补齐，后续还需自动追取分页、字段级合并和冲突审计。
+- 学习档案远端网络中断、分页返回、同 ID 差异冲突和 `nextPageUrl` 自动追取分页已在后续补齐，后续还需字段级合并和冲突审计。
 
 验收：
 
@@ -629,7 +629,7 @@ git diff --check
 
 - 计划仓库超时重试、批量队列部分失败恢复和服务端合并审计。
 - 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
-- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收已补齐，后续还需自动追取分页、字段级合并和冲突审计。
+- 学习档案远端网络中断、分页返回、同 ID 差异冲突和 `nextPageUrl` 自动追取分页已补齐，后续还需字段级合并和冲突审计。
 
 验收：
 
@@ -650,7 +650,7 @@ git diff --check
 完成内容：
 
 - `app-state.js` 将学习档案检查、推送、拉取的 fetch 异常统一转成中文“网络请求异常”，并保留底层错误细节。
-- `app-state.js` 识别远端响应里的 `pagination.hasMore`、`pagination.nextPageUrl` 或顶层 `nextPageUrl`，并在状态文案里提示“还有后续页面，当前前端仅处理本次返回的档案包”。
+- `app-state.js` 识别远端响应里的 `pagination.hasMore`、`pagination.nextPageUrl` 或顶层 `nextPageUrl`，并在状态文案里提示后续页面。自动追取能力已在下一步补齐。
 - `tests/e2e/real-flows.spec.js` 新增 `front history repository handles network, paged pull, and id conflicts`。
 - E2E 模拟 GET 网络中断，确认页面通知、学习档案仓库摘要和 `historyRepository.lastError` 都显示网络请求异常。
 - E2E 模拟远端分页学习档案包，确认检查远端时页面和 `lastRemoteStatus` 都提示分页/后续页面。
@@ -666,7 +666,7 @@ git diff --check
 
 仍待补：
 
-- 学习档案自动追取分页、字段级合并、冲突审计和账号化托管仓库。
+- 学习档案字段级合并、冲突审计和账号化托管仓库。
 - 计划仓库超时重试、批量队列部分失败恢复和服务端合并审计。
 - 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
 
@@ -681,3 +681,41 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案分页冲突验收`
+
+## 25. 2026-06-12 学习档案分页自动追取
+
+本次把学习档案远端分页从“只提示后续页面”推进到“拉取时自动追取 `nextPageUrl` 并合并导入”，避免远端分页包只导入第一页。
+
+完成内容：
+
+- `app-state.js` 新增学习档案分页解析，支持响应里的 `pagination.nextPageUrl` 和顶层 `nextPageUrl`。
+- `pullHistoryRepositoryFromRemote()` 会从当前 endpoint 开始继续 GET 后续页，最多追取 20 页，并用已访问 URL 防止循环分页。
+- 拉取完成后会把多页 `records.sessions`、`records.artworks`、`records.reports` 一次性合并到本机学习状态。
+- 同 ID 差异策略仍保持安全边界：同 ID 内容不同的远端记录会跳过，不覆盖本机记录。
+- 检查远端仍只展示当前响应，不导入后续页；真正导入发生在“拉取档案”操作。
+- `tests/e2e/real-flows.spec.js` 将分页用例升级为两页远端响应，并断言第二页请求携带同一个 Bearer token。
+
+真实化说明：
+
+- 数据来源：真实本机学习档案同步包、远端分页 JSON 响应、`pagination.nextPageUrl` 和实际 GET 请求。
+- 写入状态：多页新增记录写入 `mr-calligraphy-learning-state-v1.sessions/artworks/reports`，同步摘要写入 `historyRepository.lastRemoteRecordCount`、`lastImportedRecordCount`、`lastRemoteStatus` 和 `lastSkippedConflictCount`。
+- 成功反馈：拉取提示会显示页数、新增数量和跳过冲突数量。
+- 失败反馈：网络异常、远端错误、分页循环或超过 20 页都会停止追取并保留明确状态；已冲突记录仍不覆盖本机。
+- 刷新后复现方式：导入后的学习档案、最近远端状态和冲突跳过数量保存在 `mr-calligraphy-learning-state-v1`。
+
+仍待补：
+
+- 学习档案字段级合并、冲突审计、账号化托管仓库、服务端游标重试和跨设备长期归档。
+
+验收：
+
+- `node --check app-state.js && node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "history repository handles network"`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案分页自动追取`

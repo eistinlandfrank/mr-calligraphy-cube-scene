@@ -58,7 +58,7 @@ node scripts/control-inventory.js
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
 | 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势和本机教师批注 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、账号教师端和签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口、账号化教师批注和导出验收 |
-| 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、服务端分页、教师批注和长期归档 | 继续增加账号化 history repository、服务端分页接口、云端详情 URL 和字段级合并 |
+| 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、字段级合并和服务端审计 |
 | 分享成果 | 能导出离线 HTML 分享页 | 没有微信、社群、课堂或公开链接 | 分享按钮保持 `real-export`，不能写成“已发布到社交平台”；后续加公开链接服务 |
 
 ### 3.3 主后台和写实后台
@@ -625,7 +625,7 @@ node scripts/control-inventory.js
 - `MRAppState` 新增学习档案仓库状态、同步包生成/导入、远端配置、GET 检查、PUT 推送和 GET 拉取接口。
 - 前台学习档案面板新增档案仓库状态、“导出同步包 / 导入同步包”和“远端学习档案 API” endpoint/token/检查/推送/拉取入口。
 - 拉取远端档案时，同 ID 且内容不同的记录会跳过并记录冲突数量，不静默覆盖本机练习、作品或报告。
-- 远端返回分页元数据时，前台会提示“还有后续页面，当前仅处理本次返回的档案包”，不会假装完整拉取。
+- 远端返回分页元数据时，前台检查会提示仍有后续页面；点击拉取时会沿 `pagination.nextPageUrl` 或顶层 `nextPageUrl` 自动追取后续页并合并导入。
 - `scripts/learning-state-check.js` 新增真实 HTTP mock server 验收，覆盖 GET 检查、PUT 推送、最近档案包拉取、同 ID 差异跳过、回执 digest 和错误 token 拒绝。
 - `scripts/smoke-test.js` 把学习档案仓库 mock server 和前台档案仓库控件纳入检查。
 
@@ -634,19 +634,19 @@ node scripts/control-inventory.js
 - 数据来源：`mr-calligraphy-learning-state-v1.sessions/artworks/reports` 生成的 `mr-calligraphy-history-repository-v1` 同步包。
 - 写入状态：远端配置、最近同步方向、远端记录数、最近 packageId、跳过冲突数量和错误写入 `historyRepository`。
 - 成功反馈：mock server 返回远端版本、服务端 packageId、repositoryDigest 和 receiptDigest；前台状态条显示最近推送/拉取结果。
-- 失败反馈：HTTP 401、404、405、422、500 和网络中断都会返回明确错误，不显示同步成功；分页返回会提示仍有后续页面；同 ID 差异不会覆盖本机。
+- 失败反馈：HTTP 401、404、405、422、500 和网络中断都会返回明确错误，不显示同步成功；分页循环或超过 20 页会停止追取并给出警告；同 ID 差异不会覆盖本机。
 - 刷新后复现方式：前端保存的 endpoint、最近同步方向、跳过冲突数量和远端状态可刷新读取；mock server 内存状态只用于本地开发验收。
 
 验收：
 
 - 手工验收：运行 `node scripts/history-repository-mock-server.js`，在前台学习档案面板配置输出的 endpoint，产生练习/作品/报告后点击“检查远端 / 推送档案 / 拉取档案”，应看到真实 HTTP 状态和同步结果。
 - 脚本验收：`node scripts/learning-state-check.js` 会启动临时 mock server，验证真实 HTTP GET/PUT、Bearer token、receipt、同 ID 差异跳过和错误 token 拒绝；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 会检查新脚本语法和页面控件。
-- 浏览器验收：`npm run test:e2e -- --grep "history repository handles network"` 覆盖网络中断、分页返回提示和同 ID 差异跳过；全量 `npm run test:e2e` 当前 11 条用例全部通过。
+- 浏览器验收：`npm run test:e2e -- --grep "history repository handles network"` 覆盖网络中断、分页检查提示、拉取自动追取第二页和同 ID 差异跳过；全量 `npm run test:e2e` 当前 11 条用例全部通过。
 
 已知限制：
 
-- mock server 是开发验收工具，不提供持久化数据库、账号权限、服务端分页、教师批注、公开作品墙或长期归档。
-- 当前同 ID 差异只跳过并提示，分页只提示不自动追页；后续需要账号化服务端版本、自动分页、字段级 merge 和冲突审计。
+- mock server 是开发验收工具，不提供持久化数据库、账号权限、生产级分页查询、教师批注审计、公开作品墙或长期归档。
+- 当前同 ID 差异只跳过并提示；后续需要账号化服务端版本、字段级 merge、冲突审计、服务端游标重试和空间隔离。
 - 学习档案远端同步仍由用户自配 HTTP endpoint 驱动，不是内置云服务。
 
 提交：
@@ -658,7 +658,7 @@ node scripts/control-inventory.js
 完成内容：
 
 - `app-state.js` 将学习档案远端检查、推送、拉取的 fetch 异常统一转成中文“网络请求异常”，并保留底层错误细节。
-- `parseRemoteHistoryRepositoryResponse()` 识别 `pagination.hasMore`、`pagination.nextPageUrl` 和顶层 `nextPageUrl`，在状态文案里提示后续页面尚未自动拉取。
+- `parseRemoteHistoryRepositoryResponse()` 识别 `pagination.hasMore`、`pagination.nextPageUrl` 和顶层 `nextPageUrl`，在状态文案里提示后续页面。自动追取已在下一功能补齐。
 - `tests/e2e/real-flows.spec.js` 新增 `front history repository handles network, paged pull, and id conflicts`。
 - E2E 通过真实前台面板配置 endpoint/token，覆盖 GET 网络中断、分页远端包检查、分页远端包拉取和同 ID 差异跳过。
 - E2E 确认远端新增记录写入本机，同 ID 差异记录不覆盖本机反馈，`lastSkippedConflictCount` 写入 localStorage。
@@ -678,11 +678,42 @@ node scripts/control-inventory.js
 
 已知限制：
 
-- 目前只提示分页，不自动追取下一页；同 ID 差异只跳过，不提供字段级合并 UI。
+- 目前同 ID 差异只跳过，不提供字段级合并 UI；自动追取下一页已在后续功能补齐。
 
 提交：
 
 - 中文 commit message：`新增学习档案分页冲突验收`
+
+### 2026-06-12：学习档案分页自动追取
+
+完成内容：
+
+- `app-state.js` 新增学习档案分页对象解析，支持 `pagination.nextPageUrl` 和顶层 `nextPageUrl`。
+- `pullHistoryRepositoryFromRemote()` 会从远端 endpoint 开始，自动 GET 后续分页，最多追取 20 页，并用已访问 URL 防止循环。
+- 多页返回的练习、作品和报告记录会合并导入；同 ID 差异仍跳过，不覆盖本机记录。
+- 拉取状态会记录实际处理记录数、页数、新增数量和跳过冲突数量。
+- `tests/e2e/real-flows.spec.js` 将分页场景升级为两页响应，断言第二页请求真实发生且继续携带 Bearer token。
+
+真实化说明：
+
+- 数据来源：远端学习档案 API、分页响应里的 `nextPageUrl`、真实本机学习档案状态和实际 GET 请求。
+- 写入状态：多页新增记录写入 `mr-calligraphy-learning-state-v1.sessions/artworks/reports`，同步状态写入 `historyRepository`。
+- 成功反馈：拉取提示显示“2 页”、新增数量和跳过冲突数量。
+- 失败反馈：网络异常、错误响应、分页循环或超过 20 页会停止追取并给出明确状态，不会显示假成功。
+- 刷新后复现方式：导入记录、最近远端状态和冲突跳过数量保存在 `mr-calligraphy-learning-state-v1`。
+
+验收：
+
+- 手工验收：配置一个返回 `pagination.nextPageUrl` 的远端学习档案 endpoint，点击“拉取档案”后应请求下一页并导入第二页记录。
+- 脚本验收：`npm run test:e2e -- --grep "history repository handles network"` 覆盖网络中断、分页检查提示、第二页自动追取和同 ID 差异跳过。
+
+已知限制：
+
+- 自动追取是前端 adapter 的分页消费能力，不等同账号化托管仓库；仍缺服务端游标重试、字段级合并、冲突审计和长期归档。
+
+提交：
+
+- 中文 commit message：`新增学习档案分页自动追取`
 
 ### 2026-06-11：学习计划自动同步队列
 

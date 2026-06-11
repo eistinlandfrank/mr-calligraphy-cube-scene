@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。它不是账号系统、公开作品墙、教师批注、自动服务端分页追取或长期归档服务本身。
+远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端拉取时会按响应里的 `nextPageUrl` 追取分页，但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
 
 生产服务端必须重新校验档案包结构，并在账号、空间、权限、数据版本和分页查询上做服务端隔离；前端本机校验只能作为提交前保护。
 
@@ -119,7 +119,7 @@ Authorization: Bearer <token>
 }
 ```
 
-当前前端第一版只会在状态区提示“还有后续页面，当前前端仅处理本次返回的档案包”，不会自动请求 `nextPageUrl`。生产服务端分页仍需要账号、游标、重试和完整拉取策略。
+当前前端拉取时会从初始 endpoint 开始，沿 `pagination.nextPageUrl` 或顶层 `nextPageUrl` 自动请求后续页面，最多追取 20 页，并用已访问 URL 防止分页循环。检查远端时只展示当前响应状态，不会导入后续页。生产服务端分页仍需要账号、游标、超时重试、服务端查询隔离和完整审计策略。
 
 ## 5. 同 ID 差异策略
 
@@ -191,4 +191,4 @@ node scripts/learning-state-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl` 并合并后续页。

@@ -11,7 +11,8 @@
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
-  const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包，但仍不包含账号权限、服务端分页、教师批注或公开作品墙。";
+  const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包并按 nextPageUrl 追取分页，但仍不包含账号权限、教师批注审计或公开作品墙。";
+  const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const PLAN_REPOSITORY_MERGE_PLAN_FIELDS = ["title", "summary"];
   const PLAN_REPOSITORY_MERGE_ITEM_FIELDS = ["title", "detail", "dueAt", "remindAt", "reviewAction"];
   const PLAN_REPOSITORY_MERGE_LABELS = {
@@ -6781,7 +6782,7 @@
     };
   }
 
-  async function parseRemoteHistoryRepositoryResponse(response) {
+  async function parseRemoteHistoryRepositoryResponse(response, options = {}) {
     if (!response || response.ok === false) {
       const status = response?.status ? `HTTP ${response.status}` : "无响应";
       return { ok: false, message: `远端学习档案 API 请求失败：${status}。` };
@@ -6805,11 +6806,13 @@
     const parsed = parseHistoryRepositoryPackage(candidate);
     if (parsed.ok) {
       const summary = parsed.package.summary || {};
-      const paginationNotice = getHistoryRepositoryPaginationNotice(payload);
+      const pagination = getHistoryRepositoryPagination(payload, options.requestUrl || response.url || "");
+      const paginationNotice = getHistoryRepositoryPaginationNotice(payload, options);
       const message = payload.message || `远端学习档案包含 ${summary.total || 0} 条记录。`;
       return {
         ok: true,
         package: parsed.package,
+        pagination,
         message: paginationNotice ? `${message} ${paginationNotice}` : message
       };
     }
@@ -6817,6 +6820,7 @@
       return {
         ok: true,
         package: null,
+        pagination: getHistoryRepositoryPagination(payload, options.requestUrl || response.url || ""),
         message: payload.message || "远端学习档案 API 检查通过，但没有返回档案包。"
       };
     }
@@ -6826,17 +6830,40 @@
     };
   }
 
-  function getHistoryRepositoryPaginationNotice(payload = {}) {
+  function getHistoryRepositoryPagination(payload = {}, currentUrl = "") {
     const pagination = payload.pagination && typeof payload.pagination === "object" ? payload.pagination : {};
-    const hasMore = Boolean(pagination.hasMore || pagination.nextPageUrl || payload.nextPageUrl);
-    if (!hasMore) return "";
-    const page = normalizeInteger(pagination.page, 1, 1, 99999);
-    const pageSize = normalizeInteger(pagination.pageSize || pagination.limit, 0, 0, 99999);
-    const total = normalizeInteger(pagination.total, 0, 0, 999999);
-    const pageText = pageSize && total
-      ? `当前为第 ${page} 页，每页 ${pageSize} 条，共约 ${total} 条`
-      : `当前为第 ${page} 页`;
-    return `远端返回分页结果：${pageText}；还有后续页面，当前前端仅处理本次返回的档案包。`;
+    const rawNextPageUrl = String(pagination.nextPageUrl || payload.nextPageUrl || "").trim();
+    const nextPageUrl = resolveHistoryRepositoryPageUrl(rawNextPageUrl, currentUrl);
+    const hasMore = Boolean(pagination.hasMore || rawNextPageUrl);
+    return {
+      hasMore,
+      nextPageUrl,
+      page: normalizeInteger(pagination.page, 1, 1, 99999),
+      pageSize: normalizeInteger(pagination.pageSize || pagination.limit, 0, 0, 99999),
+      total: normalizeInteger(pagination.total, 0, 0, 999999)
+    };
+  }
+
+  function resolveHistoryRepositoryPageUrl(nextPageUrl, currentUrl = "") {
+    const rawUrl = String(nextPageUrl || "").trim();
+    if (!rawUrl) return "";
+    try {
+      const baseUrl = currentUrl || (typeof window !== "undefined" ? window.location.href : "");
+      return baseUrl ? new URL(rawUrl, baseUrl).toString() : new URL(rawUrl).toString();
+    } catch (error) {
+      return /^https?:\/\//i.test(rawUrl) ? rawUrl : "";
+    }
+  }
+
+  function getHistoryRepositoryPaginationNotice(payload = {}, options = {}) {
+    const pagination = getHistoryRepositoryPagination(payload, options.requestUrl || "");
+    if (!pagination.hasMore) return "";
+    const pageText = pagination.pageSize && pagination.total
+      ? `当前为第 ${pagination.page} 页，每页 ${pagination.pageSize} 条，共约 ${pagination.total} 条`
+      : `当前为第 ${pagination.page} 页`;
+    return pagination.nextPageUrl
+      ? `远端返回分页结果：${pageText}；拉取时会继续请求后续页面。`
+      : `远端返回分页结果：${pageText}；远端未提供下一页地址，当前只能处理本次返回的档案包。`;
   }
 
   function formatHistoryRepositoryNetworkError(action, error) {
@@ -6878,7 +6905,7 @@
   async function checkRemoteHistoryRepositoryAsync(repository, fetchApi) {
     try {
       const response = await fetchApi(repository.remoteEndpoint, buildHistoryRepositoryRequest(repository));
-      const parsed = await parseRemoteHistoryRepositoryResponse(response);
+      const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: repository.remoteEndpoint });
       const now = new Date().toISOString();
       if (!parsed.ok) {
         state.historyRepository = normalizeHistoryRepository({
@@ -6945,7 +6972,7 @@
           body: repositoryPackage
         })
       );
-      const parsed = await parseRemoteHistoryRepositoryResponse(response);
+      const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: repository.remoteEndpoint });
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const recordCount = repositoryPackage.summary.total;
       const now = new Date().toISOString();
@@ -6989,6 +7016,100 @@
     }
   }
 
+  function countHistoryRepositoryPackageRecords(repositoryPackage) {
+    const records = repositoryPackage?.records && typeof repositoryPackage.records === "object"
+      ? repositoryPackage.records
+      : {};
+    const sessions = Array.isArray(records.sessions) ? records.sessions.length : 0;
+    const artworks = Array.isArray(records.artworks) ? records.artworks.length : 0;
+    const reports = Array.isArray(records.reports) ? records.reports.length : 0;
+    return sessions + artworks + reports;
+  }
+
+  function mergeHistoryRepositoryPackages(repositoryPackages = []) {
+    let importedCount = 0;
+    let updatedCount = 0;
+    let skippedConflictCount = 0;
+    let processedRecordCount = 0;
+    let latestPackageId = null;
+
+    repositoryPackages.forEach((repositoryPackage) => {
+      const records = repositoryPackage?.records || {};
+      const sessions = Array.isArray(records.sessions) ? records.sessions : [];
+      const artworks = Array.isArray(records.artworks) ? records.artworks : [];
+      const reports = Array.isArray(records.reports) ? records.reports : [];
+      processedRecordCount += sessions.length + artworks.length + reports.length;
+      if (repositoryPackage?.packageId) {
+        latestPackageId = repositoryPackage.packageId;
+      }
+
+      const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession);
+      const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork);
+      const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport);
+      importedCount += sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount;
+      updatedCount += sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount;
+      skippedConflictCount += sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount;
+    });
+
+    return {
+      importedCount,
+      updatedCount,
+      skippedConflictCount,
+      processedRecordCount,
+      latestPackageId,
+      totalRecordCount: getHistoryRepositoryRecordCount()
+    };
+  }
+
+  async function fetchRemoteHistoryRepositoryPages(repository, fetchApi) {
+    const pages = [];
+    const visitedUrls = new Set();
+    let nextPageUrl = repository.remoteEndpoint;
+    let warning = "";
+
+    while (nextPageUrl) {
+      if (pages.length >= HISTORY_REPOSITORY_MAX_PULL_PAGES) {
+        warning = `远端分页超过 ${HISTORY_REPOSITORY_MAX_PULL_PAGES} 页，已停止继续追取。`;
+        break;
+      }
+      if (visitedUrls.has(nextPageUrl)) {
+        warning = "远端分页 nextPageUrl 出现循环，已停止继续追取。";
+        break;
+      }
+
+      visitedUrls.add(nextPageUrl);
+      const response = await fetchApi(nextPageUrl, buildHistoryRepositoryRequest(repository));
+      const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: nextPageUrl });
+      if (!parsed.ok) {
+        return {
+          ok: false,
+          pages,
+          warning,
+          message: parsed.message
+        };
+      }
+
+      pages.push(parsed);
+      if (!parsed.pagination?.hasMore) {
+        break;
+      }
+      if (!parsed.pagination.nextPageUrl) {
+        warning = "远端提示还有后续页面，但未提供下一页地址，已停止继续追取。";
+        break;
+      }
+      nextPageUrl = parsed.pagination.nextPageUrl;
+    }
+
+    return {
+      ok: true,
+      pages,
+      warning,
+      message: pages.length > 1
+        ? `已追取远端学习档案 ${pages.length} 页。`
+        : pages[0]?.message || "远端学习档案 API 检查通过。"
+    };
+  }
+
   function pullHistoryRepositoryFromRemote() {
     const repository = normalizeHistoryRepository(state.historyRepository);
     const fetchApi = getPlanRepositoryFetch();
@@ -7005,21 +7126,23 @@
 
   async function pullHistoryRepositoryFromRemoteAsync(repository, fetchApi) {
     try {
-      const response = await fetchApi(repository.remoteEndpoint, buildHistoryRepositoryRequest(repository));
-      const parsed = await parseRemoteHistoryRepositoryResponse(response);
-      if (!parsed.ok) {
-        recordHistoryRepositoryError(parsed.message);
-        return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
+      const remotePages = await fetchRemoteHistoryRepositoryPages(repository, fetchApi);
+      if (!remotePages.ok) {
+        recordHistoryRepositoryError(remotePages.message);
+        return { ok: false, status: getHistoryRepositoryStatus(), message: remotePages.message };
       }
-      if (!parsed.package) {
+      const repositoryPackages = remotePages.pages.map((page) => page.package).filter(Boolean);
+      if (!repositoryPackages.length) {
         const message = "远端学习档案 API 没有返回可导入的档案包。";
         recordHistoryRepositoryError(message);
         return { ok: false, status: getHistoryRepositoryStatus(), message };
       }
 
-      const imported = importHistoryRepositoryPackage(parsed.package);
+      const imported = mergeHistoryRepositoryPackages(repositoryPackages);
       const now = new Date().toISOString();
-      const recordCount = parsed.package.summary?.total || 0;
+      const recordCount = repositoryPackages.reduce((total, repositoryPackage) => total + countHistoryRepositoryPackageRecords(repositoryPackage), 0);
+      const pageCountText = remotePages.pages.length > 1 ? `（${remotePages.pages.length} 页）` : "";
+      const warningText = remotePages.warning ? ` ${remotePages.warning}` : "";
       state.historyRepository = normalizeHistoryRepository({
         ...state.historyRepository,
         mode: "remote-api",
@@ -7029,13 +7152,16 @@
         lastRemoteSyncAt: now,
         lastRemoteDirection: "pull",
         lastRemoteRecordCount: recordCount,
-        lastPackageId: parsed.package.packageId || imported.status?.lastPackageId || null,
-      lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。`,
-      lastError: imported.skippedConflictCount
+        lastImportedAt: now,
+        lastImportedRecordCount: imported.importedCount + imported.updatedCount,
+        lastPackageId: imported.latestPackageId || repository.lastPackageId || null,
+        lastSkippedConflictCount: imported.skippedConflictCount,
+        lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。${warningText}`,
+        lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机记录。`
           : ""
       });
-      addEvent("history-repository-remote-pull", `从远端 API 拉取学习档案：${recordCount} 条记录`);
+      addEvent("history-repository-remote-pull", `从远端 API 拉取学习档案：${recordCount} 条记录，${remotePages.pages.length} 页`);
       saveState();
       return {
         ok: true,
@@ -7044,8 +7170,8 @@
         skippedConflictCount: imported.skippedConflictCount,
         pulledRecordCount: recordCount,
         message: imported.skippedConflictCount
-          ? `已从远端 API 拉取学习档案：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录。${HISTORY_REPOSITORY_BOUNDARY}`
-          : `已从远端 API 拉取学习档案：新增 ${imported.importedCount} 条记录。${HISTORY_REPOSITORY_BOUNDARY}`
+          ? `已从远端 API 拉取学习档案${pageCountText}：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
+          : `已从远端 API 拉取学习档案${pageCountText}：新增 ${imported.importedCount} 条记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatHistoryRepositoryNetworkError("拉取", error);

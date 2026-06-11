@@ -101,7 +101,7 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习。
 - 前台点击“导出报告”，确认下载 HTML 报告、写入报告记录，并能通过 `?report=报告ID` 打开站内报告。
 - 站内报告填写本机教师批注后，确认批注人和批注内容写入 `ReportRecord`，刷新页面后仍能复现，并可清除回到空批注状态。
-- 前台学习档案配置远端 endpoint/token 后，用浏览器路由模拟学习档案仓库，覆盖检查远端、推送档案包、Bearer token、远端 packageId 持久化、拉取远端包和 `historyRepository` 状态更新。
+- 前台学习档案配置远端 endpoint/token 后，用浏览器路由模拟学习档案仓库，覆盖检查远端、推送档案包、Bearer token、远端 packageId 持久化、拉取远端包、分页第二页自动追取和 `historyRepository` 状态更新。
 - 主后台新增基础物体后检查发布差异，点击“发布到前台”，确认草稿、发布快照、差异归零和前台读取来源都是真实本机状态。
 - 主后台配置远端发布 endpoint/token 后，用浏览器路由模拟远端 API，覆盖检查远端、提交审核、通过审核、推送发布包、显示回执、写入 `mr-calligraphy-remote-publish-v1` 和导出回执审计 HTML。
 - 写实后台连续发布、修改坐标、检查发布差异并回滚旧版本，确认 `mr-calligraphy-realistic-published-v1` 会记录发布版本列表和回滚动作。
