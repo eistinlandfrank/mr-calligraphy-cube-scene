@@ -249,3 +249,33 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增当前版本真实化审计文档`
+
+## 13. 2026-06-12 报告教师批注浏览器验收
+
+本次把报告教师批注从数据层检查扩展到浏览器级真实流程。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 在前台真实书写、保存作品、导出报告之后，继续打开站内报告详情。
+- E2E 会填写批注人和批注内容，点击“保存批注”，断言页面状态显示批注人和批注内容。
+- E2E 会读取 `mr-calligraphy-learning-state-v1`，确认 `reports[0].teacherReview` 真实写入批注人和内容。
+- E2E 会刷新报告页，确认本机教师批注仍能复现。
+- E2E 会点击“清除批注”，确认 UI 回到“暂无本机教师批注”，并确认本机报告记录中的 `teacherReview` 变为 `null`。
+
+真实化说明：
+
+- 数据来源：前台真实 canvas 笔迹、作品记录和生成的 `ReportRecord`。
+- 写入状态：批注保存写入 `mr-calligraphy-learning-state-v1.reports[*].teacherReview`；清除批注写回 `null`。
+- 成功反馈：报告页状态区显示批注人，批注内容区显示保存的批注文本。
+- 失败反馈：没有报告详情时批注输入和按钮禁用；空批注仍由状态层拒绝。
+- 刷新后复现方式：E2E 直接刷新 `?report=报告ID` 页面并重新读取批注状态。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`，在已安装 Playwright 依赖和浏览器的环境运行
+
+提交：
+
+- 中文 commit message：`新增报告批注浏览器验收`

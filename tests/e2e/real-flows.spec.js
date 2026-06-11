@@ -54,6 +54,26 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTitle")).toContainText("学习报告");
   await expect(page.locator("#reportStats")).toContainText("保存作品");
+
+  await page.locator("#reportTeacherReviewerInput").fill("王老师");
+  await page.locator("#reportTeacherReviewInput").fill("结构更稳，下一次重点放慢竖钩收笔。");
+  await page.locator("#reportTeacherReviewSave").click();
+  await expect(page.locator("#reportTeacherReviewStatus")).toContainText("王老师");
+  await expect(page.locator("#reportTeacherReviewView")).toContainText("竖钩");
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reports[0].teacherReview.reviewer).toBe("王老师");
+  expect(learningState.reports[0].teacherReview.note).toContain("竖钩");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#reportPanel")).toBeVisible();
+  await expect(page.locator("#reportTeacherReviewStatus")).toContainText("王老师");
+  await expect(page.locator("#reportTeacherReviewView")).toContainText("竖钩");
+
+  await page.locator("#reportTeacherReviewClear").click();
+  await expect(page.locator("#reportTeacherReviewStatus")).toContainText("暂无本机教师批注");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reports[0].teacherReview).toBeNull();
 });
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
