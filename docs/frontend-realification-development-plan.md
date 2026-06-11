@@ -279,3 +279,32 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告批注浏览器验收`
+
+## 14. 2026-06-12 WebGL 画布非空验收
+
+本次把“页面有 canvas 标签”升级为“浏览器里真的渲染出非空画面”的验收。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 新增 `expectCanvasHasVisiblePixels()`。
+- 前台主房间 `#roomCanvas` 会被绘制到临时 2D canvas 中采样，确认存在可见像素和像素变化。
+- 主场景后台 `#mainAdminCanvas` 增加同样的非空像素检查，避免后台只显示空白画布。
+- 写实后台 `#realisticCanvas` 增加同样的非空像素检查，覆盖写实 3D 编辑器。
+
+真实化说明：
+
+- 数据来源：真实浏览器渲染后的 canvas 像素，不再只是 HTML 字符串或 DOM 存在性。
+- 写入状态：本次只增加测试，不改写运行时状态。
+- 成功反馈：Playwright 会在 canvas 没有可见像素或完全空白时失败。
+- 失败反馈：WebGL 不可用、canvas 隐藏、渲染缓冲为空或跨源污染导致无法采样时，测试会超时失败。
+- 刷新后复现方式：每次运行 `npm run test:e2e` 都重新打开页面并采样当前画布。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`，在已安装 Playwright 依赖和浏览器的环境运行
+
+提交：
+
+- 中文 commit message：`新增WebGL画布非空验收`

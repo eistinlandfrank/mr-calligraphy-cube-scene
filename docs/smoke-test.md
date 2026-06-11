@@ -97,6 +97,7 @@ npm run test:e2e
 
 Playwright 会启动本地静态服务器，并覆盖以下闭环：
 
+- 前台主房间、主后台和写实后台会采样 WebGL canvas 像素，确认画布不是空白 DOM。
 - 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习。
 - 前台点击“导出报告”，确认下载 HTML 报告、写入报告记录，并能通过 `?report=报告ID` 打开站内报告。
 - 站内报告填写本机教师批注后，确认批注人和批注内容写入 `ReportRecord`，刷新页面后仍能复现，并可清除回到空批注状态。
@@ -121,6 +122,6 @@ Smoke test 通过：21 个脚本，4 个页面。
 
 ## 当前边界
 
-- 轻量 smoke test 不会打开真实浏览器，也不会验证 WebGL 是否完成渲染。
+- 轻量 smoke test 不会打开真实浏览器；WebGL 非空渲染由 Playwright 像素采样覆盖。
 - Playwright 已覆盖首批真实交互闭环、报告教师批注持久化和写实发布历史源码，但当前环境缺少依赖时仍需在具备 npm 代理认证的环境执行；测试仍未覆盖所有下载、导入模型、回收站和移动端视口。
 - 当前 Codex 环境访问 npm registry 会返回 `407 Proxy Authentication Required`，因此本机尚未生成 `package-lock.json`，需要在具备 npm 代理认证的环境里执行 `npm install` 后运行 E2E。

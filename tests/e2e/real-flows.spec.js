@@ -25,6 +25,7 @@ test.beforeEach(async ({ page }) => {
 test("front practice saves real strokes and exports a report", async ({ page }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
+  await expectCanvasHasVisiblePixels(page, "#roomCanvas");
 
   await drawPracticeStroke(page);
   await expect(page.locator("#practiceCanvasStatus")).toContainText(/1 笔|2 笔|当前评分/);
@@ -81,6 +82,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
 
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
 
   await page.locator("#mainNewObjectName").fill(objectLabel);
   await page.locator("#mainNewObjectType").selectOption("box");
@@ -115,6 +117,7 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticPublishNote")).toBeVisible();
+  await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
 
   await page.locator("#realisticPublishNote").fill(firstNote);
   await page.locator("#realisticPublishLayout").click();
@@ -172,4 +175,46 @@ async function readJsonLocalStorage(page, key) {
     const raw = window.localStorage.getItem(storageKey);
     return raw ? JSON.parse(raw) : null;
   }, key);
+}
+
+async function expectCanvasHasVisiblePixels(page, selector) {
+  await expect(page.locator(selector)).toBeVisible();
+  await page.waitForFunction((canvasSelector) => {
+    const canvas = document.querySelector(canvasSelector);
+    if (!canvas || canvas.hidden || canvas.width < 8 || canvas.height < 8) {
+      return false;
+    }
+
+    const sample = document.createElement("canvas");
+    sample.width = 32;
+    sample.height = 32;
+    const context = sample.getContext("2d", { willReadFrequently: true });
+    if (!context) {
+      return false;
+    }
+
+    try {
+      context.drawImage(canvas, 0, 0, sample.width, sample.height);
+      const data = context.getImageData(0, 0, sample.width, sample.height).data;
+      let opaquePixels = 0;
+      let variedPixels = 0;
+      let firstPixel = null;
+
+      for (let index = 0; index < data.length; index += 4) {
+        const pixel = `${data[index]},${data[index + 1]},${data[index + 2]},${data[index + 3]}`;
+        if (data[index + 3] > 8) {
+          opaquePixels += 1;
+        }
+        if (firstPixel === null) {
+          firstPixel = pixel;
+        } else if (pixel !== firstPixel) {
+          variedPixels += 1;
+        }
+      }
+
+      return opaquePixels > 64 && variedPixels > 8;
+    } catch (error) {
+      return false;
+    }
+  }, selector);
 }
