@@ -4385,4 +4385,51 @@
 已知限制：
 
 - JSON 同步包是手动跨浏览器/跨设备迁移，不是自动云端账号同步。
-- 远端 API adapter、账号登录、教师端通知和后台推送仍未接入。
+- 账号登录、教师端通知和后台推送仍未接入；远端 API adapter 已在下一步完成第一版。
+
+### 2026-06-11：新增远端计划同步适配
+
+功能名：前台学习计划远端 API adapter。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `style.css`
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `MRAppState.planRepository` 新增远端 endpoint、token、最近远端同步时间、同步方向、远端计划数量和远端状态文案。
+- 新增 `configurePlanRepositoryRemote()` 和 `getPlanRepositoryRemoteConfig()`，可保存或清除 HTTP/HTTPS 远端计划 API 配置。
+- `checkRemotePlanRepository()` 在配置 endpoint 后会真实调用 `fetch` GET，解析远端计划同步包或明确返回错误。
+- 新增 `pushPlanRepositoryToRemote()`，会把当前本机计划仓库通过 PUT 推送到远端 endpoint。
+- 新增 `pullPlanRepositoryFromRemote()`，会从远端 GET 拉取计划包并合并进本机计划历史。
+- 前台学习计划面板新增“远端 API 同步”折叠区，包含 endpoint、token、保存、检查、推送和拉取控件。
+- 学习状态检查用 mock `fetch` 覆盖 endpoint/token、Bearer header、远端检查、PUT 推送、GET 拉取、远端计划导入和远端状态持久化。
+
+验收方式：
+
+- 打开 `http://localhost:41496/`，生成至少一份学习计划。
+- 展开“远端 API 同步”，输入 HTTP/HTTPS endpoint 并保存。
+- 点击“检查远端 / 推送计划 / 拉取计划”，应向 endpoint 发起真实请求；服务不可用或返回格式不符时应显示明确失败。
+- 使用可返回 `mr-calligraphy-plan-repository-v1` JSON 包的 endpoint 时，“拉取计划”应合并计划并刷新计划历史。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+
+已知限制：
+
+- 远端 API adapter 只是静态前端可配置的 HTTP 同步边界，不包含账号登录、权限、后台托管仓库、教师端排课或服务器推送。
+- 跨设备提醒目前只能通过计划包同步到其他设备后由当地浏览器本机提醒处理，还不是远端推送提醒。

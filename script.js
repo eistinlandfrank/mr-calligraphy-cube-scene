@@ -902,7 +902,12 @@ const els = {
   planReminderPermissionButton: document.getElementById("planReminderPermissionButton"),
   planRepositoryExportButton: document.getElementById("planRepositoryExportButton"),
   planRepositoryImportButton: document.getElementById("planRepositoryImportButton"),
+  planRepositoryEndpointInput: document.getElementById("planRepositoryEndpointInput"),
+  planRepositoryTokenInput: document.getElementById("planRepositoryTokenInput"),
+  planRepositorySaveRemoteButton: document.getElementById("planRepositorySaveRemoteButton"),
   planRepositoryRemoteButton: document.getElementById("planRepositoryRemoteButton"),
+  planRepositoryPushButton: document.getElementById("planRepositoryPushButton"),
+  planRepositoryPullButton: document.getElementById("planRepositoryPullButton"),
   planRepositoryImportInput: document.getElementById("planRepositoryImportInput"),
   planExportButton: document.getElementById("planExportButton"),
   planNextCycleButton: document.getElementById("planNextCycleButton"),
@@ -3802,7 +3807,10 @@ function bindPlanControls() {
   els.planReminderPermissionButton?.addEventListener("click", requestActivePlanReminderPermission);
   els.planRepositoryExportButton?.addEventListener("click", downloadPlanRepositoryPackage);
   els.planRepositoryImportButton?.addEventListener("click", choosePlanRepositoryImport);
+  els.planRepositorySaveRemoteButton?.addEventListener("click", savePlanRepositoryRemoteConfig);
   els.planRepositoryRemoteButton?.addEventListener("click", checkPlanRepositoryRemote);
+  els.planRepositoryPushButton?.addEventListener("click", pushPlanRepositoryRemote);
+  els.planRepositoryPullButton?.addEventListener("click", pullPlanRepositoryRemote);
   els.planRepositoryImportInput?.addEventListener("change", importPlanRepositoryFile);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
@@ -5672,6 +5680,7 @@ function renderPlanReminderService(plan) {
 
 function renderPlanRepositoryStatus(planHistory = []) {
   const status = window.MRAppState?.getPlanRepositoryStatus?.();
+  const config = window.MRAppState?.getPlanRepositoryRemoteConfig?.();
   if (els.planRepositorySummary) {
     els.planRepositorySummary.textContent = status
       ? `${status.message} ${status.boundary}`
@@ -5684,9 +5693,24 @@ function renderPlanRepositoryStatus(planHistory = []) {
   if (els.planRepositoryImportButton) {
     els.planRepositoryImportButton.disabled = !window.FileReader;
   }
+  if (els.planRepositoryEndpointInput && document.activeElement !== els.planRepositoryEndpointInput) {
+    els.planRepositoryEndpointInput.value = config?.remoteEndpoint || "";
+  }
+  if (els.planRepositoryTokenInput && document.activeElement !== els.planRepositoryTokenInput) {
+    els.planRepositoryTokenInput.value = config?.remoteToken || "";
+  }
+  if (els.planRepositorySaveRemoteButton) {
+    els.planRepositorySaveRemoteButton.disabled = false;
+  }
   if (els.planRepositoryRemoteButton) {
     els.planRepositoryRemoteButton.disabled = false;
     els.planRepositoryRemoteButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
+  }
+  if (els.planRepositoryPushButton) {
+    els.planRepositoryPushButton.disabled = !status?.remoteConfigured || !planHistory.length;
+  }
+  if (els.planRepositoryPullButton) {
+    els.planRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
 }
 
@@ -6012,12 +6036,81 @@ function importPlanRepositoryFile(event) {
   reader.readAsText(file);
 }
 
-function checkPlanRepositoryRemote() {
-  const result = window.MRAppState?.checkRemotePlanRepository?.();
+function savePlanRepositoryRemoteConfig() {
+  const endpoint = els.planRepositoryEndpointInput?.value || "";
+  const token = els.planRepositoryTokenInput?.value || "";
+  const result = window.MRAppState?.configurePlanRepositoryRemote?.({
+    remoteEndpoint: endpoint,
+    remoteToken: token
+  });
   if (result?.message) {
     showNotice(result.message);
   }
   renderPlanPanel(currentIndex);
+}
+
+async function checkPlanRepositoryRemote() {
+  setPlanRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.checkRemotePlanRepository?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端计划 API 检查失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setPlanRepositoryRemoteBusy(false);
+    renderPlanPanel(currentIndex);
+  }
+}
+
+async function pushPlanRepositoryRemote() {
+  setPlanRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pushPlanRepositoryToRemote?.());
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端计划 API 推送失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setPlanRepositoryRemoteBusy(false);
+    renderPlanPanel(currentIndex);
+  }
+}
+
+async function pullPlanRepositoryRemote() {
+  setPlanRepositoryRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pullPlanRepositoryFromRemote?.());
+    if (result?.ok) {
+      activePlanId = window.MRAppState?.getLatestPlan?.()?.id || activePlanId;
+      updateSceneText(currentIndex);
+      updatePathPanel(currentIndex);
+      renderLearningStateSummary();
+    }
+    if (result?.message) {
+      showNotice(result.message);
+    }
+  } catch (error) {
+    showNotice(`远端计划 API 拉取失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setPlanRepositoryRemoteBusy(false);
+    renderPlanPanel(currentIndex);
+  }
+}
+
+function setPlanRepositoryRemoteBusy(isBusy) {
+  [
+    els.planRepositorySaveRemoteButton,
+    els.planRepositoryRemoteButton,
+    els.planRepositoryPushButton,
+    els.planRepositoryPullButton
+  ].forEach((button) => {
+    if (button) {
+      button.disabled = Boolean(isBusy);
+    }
+  });
 }
 
 async function requestActivePlanReminderPermission() {

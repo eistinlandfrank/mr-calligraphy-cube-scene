@@ -6172,6 +6172,77 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.plan-repository-remote {
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.plan-repository-remote summary {
+  cursor: pointer;
+  color: rgba(255, 250, 241, 0.8);
+  font-size: 12px;
+  font-weight: 860;
+}
+
+.plan-repository-fields {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.plan-repository-fields label {
+  display: grid;
+  gap: 4px;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.plan-repository-fields input {
+  min-width: 0;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  font: inherit;
+}
+
+.plan-repository-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.plan-repository-actions button {
+  min-height: 32px;
+  border: 1px solid rgba(160, 197, 255, 0.28);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(49, 74, 122, 0.34);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.plan-repository-actions button:hover,
+.plan-repository-actions button:focus-visible {
+  border-color: rgba(160, 197, 255, 0.56);
+  outline: none;
+  background: rgba(49, 74, 122, 0.54);
+}
+
+.plan-repository-actions button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .plan-dependency-graph {
   display: grid;
   gap: 7px;

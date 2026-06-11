@@ -9,7 +9,7 @@
   const MAX_STAGE_RECORDS = 80;
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
-  const PLAN_REPOSITORY_BOUNDARY = "当前同步仓库是本机 JSON 同步包，可用于手动迁移；还不是云端账号同步、教师端排课或后台推送。";
+  const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -510,12 +510,20 @@
 
   function normalizePlanRepository(record = {}) {
     const source = record && typeof record === "object" ? record : {};
+    const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
+      ? source.lastRemoteDirection
+      : "";
     return {
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
+      remoteToken: typeof source.remoteToken === "string" ? source.remoteToken.trim() : "",
       lastExportedAt: normalizePlanDate(source.lastExportedAt),
       lastImportedAt: normalizePlanDate(source.lastImportedAt),
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
+      lastRemoteDirection,
+      lastRemotePlanCount: normalizeInteger(source.lastRemotePlanCount, 0, 0, 9999),
+      lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).slice(0, 180) : "",
       lastExportedPlanCount: normalizeInteger(source.lastExportedPlanCount, 0, 0, 9999),
       lastImportedPlanCount: normalizeInteger(source.lastImportedPlanCount, 0, 0, 9999),
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
@@ -1614,11 +1622,22 @@
     const planCount = state.plans.length;
     const remoteConfigured = Boolean(repository.remoteEndpoint);
     let tone = "idle";
-    let message = planCount
-      ? `本机同步仓库有 ${planCount} 份计划，可导出 JSON 同步包。`
-      : "还没有可同步的学习计划。";
+    let message = remoteConfigured
+      ? `远端计划 API 已配置：${repository.remoteEndpoint}。`
+      : planCount
+        ? `本机同步仓库有 ${planCount} 份计划，可导出 JSON 同步包。`
+        : "还没有可同步的学习计划。";
 
-    if (repository.lastImportedAt) {
+    if (repository.lastRemoteSyncAt) {
+      const directionLabel = {
+        check: "检查",
+        push: "推送",
+        pull: "拉取"
+      }[repository.lastRemoteDirection] || "同步";
+      tone = "ready";
+      message = repository.lastRemoteStatus
+        || `最近${directionLabel}远端计划仓库：${formatPlanDate(repository.lastRemoteSyncAt)}，${repository.lastRemotePlanCount} 份计划。`;
+    } else if (repository.lastImportedAt) {
       tone = "ready";
       message = `最近导入 ${repository.lastImportedPlanCount} 份计划：${formatPlanDate(repository.lastImportedAt)}。`;
     } else if (repository.lastExportedAt) {
@@ -1636,6 +1655,8 @@
       mode: repository.mode,
       remoteConfigured,
       remoteEndpoint: remoteConfigured ? repository.remoteEndpoint : "",
+      hasRemoteToken: Boolean(repository.remoteToken),
+      fetchSupported: typeof fetch === "function",
       planCount,
       tone,
       message,
@@ -1643,6 +1664,10 @@
       lastExportedAt: repository.lastExportedAt,
       lastImportedAt: repository.lastImportedAt,
       lastCheckedAt: repository.lastCheckedAt,
+      lastRemoteSyncAt: repository.lastRemoteSyncAt,
+      lastRemoteDirection: repository.lastRemoteDirection,
+      lastRemotePlanCount: repository.lastRemotePlanCount,
+      lastRemoteStatus: repository.lastRemoteStatus,
       lastExportedPlanCount: repository.lastExportedPlanCount,
       lastImportedPlanCount: repository.lastImportedPlanCount,
       lastPackageId: repository.lastPackageId,
@@ -4202,25 +4227,361 @@
     saveState();
   }
 
+  function getPlanRepositoryRemoteConfig() {
+    const repository = normalizePlanRepository(state.planRepository);
+    return {
+      ok: true,
+      mode: repository.mode,
+      remoteEndpoint: repository.remoteEndpoint,
+      remoteToken: repository.remoteToken,
+      hasRemoteToken: Boolean(repository.remoteToken),
+      boundary: PLAN_REPOSITORY_BOUNDARY
+    };
+  }
+
+  function configurePlanRepositoryRemote(config = {}) {
+    const repository = normalizePlanRepository(state.planRepository);
+    const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
+    const tokenInput = config.remoteToken ?? config.token;
+    const remoteEndpoint = String(endpointInput || "").trim();
+    const remoteToken = tokenInput === undefined
+      ? repository.remoteToken
+      : String(tokenInput || "").trim();
+
+    if (!remoteEndpoint) {
+      state.planRepository = normalizePlanRepository({
+        ...repository,
+        mode: "local-json",
+        remoteEndpoint: "",
+        remoteToken: "",
+        lastCheckedAt: new Date().toISOString(),
+        lastRemoteStatus: "",
+        lastError: ""
+      });
+      addEvent("plan-repository-remote", "清除远端计划 API 配置");
+      saveState();
+      return {
+        ok: true,
+        status: getPlanRepositoryStatus(),
+        message: "已清除远端计划 API 配置，当前回到本机 JSON 同步包。"
+      };
+    }
+
+    const validation = validatePlanRepositoryEndpoint(remoteEndpoint);
+    if (!validation.ok) {
+      recordPlanRepositoryError(validation.message);
+      return {
+        ok: false,
+        status: getPlanRepositoryStatus(),
+        message: validation.message
+      };
+    }
+
+    state.planRepository = normalizePlanRepository({
+      ...repository,
+      mode: "remote-api",
+      remoteEndpoint: validation.endpoint,
+      remoteToken,
+      lastCheckedAt: new Date().toISOString(),
+      lastRemoteStatus: "远端计划 API 配置已保存，尚未检查服务可用性。",
+      lastError: ""
+    });
+    addEvent("plan-repository-remote", `配置远端计划 API：${validation.endpoint}`);
+    saveState();
+    return {
+      ok: true,
+      status: getPlanRepositoryStatus(),
+      message: "已保存远端计划 API 配置。请点击“检查远端”确认服务可用。"
+    };
+  }
+
+  function validatePlanRepositoryEndpoint(endpoint) {
+    try {
+      const base = typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
+      const url = new URL(endpoint, base);
+      if (!["http:", "https:"].includes(url.protocol)) {
+        return { ok: false, message: "远端计划 API 只支持 http 或 https 地址。" };
+      }
+      return { ok: true, endpoint: url.href };
+    } catch (error) {
+      return { ok: false, message: "远端计划 API 地址无效。" };
+    }
+  }
+
+  function getPlanRepositoryFetch() {
+    return typeof fetch === "function" ? fetch.bind(typeof globalThis !== "undefined" ? globalThis : null) : null;
+  }
+
+  function buildPlanRepositoryRequest(repository, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {})
+    };
+    if (repository.remoteToken) {
+      headers.Authorization = `Bearer ${repository.remoteToken}`;
+    }
+    return {
+      method: options.method || "GET",
+      headers,
+      ...(options.body ? { body: JSON.stringify(options.body) } : {})
+    };
+  }
+
+  async function parseRemotePlanRepositoryResponse(response) {
+    if (!response || response.ok === false) {
+      const status = response?.status ? `HTTP ${response.status}` : "无响应";
+      return { ok: false, message: `远端计划 API 请求失败：${status}。` };
+    }
+
+    let payload = {};
+    try {
+      const text = typeof response.text === "function"
+        ? await response.text()
+        : JSON.stringify(typeof response.json === "function" ? await response.json() : {});
+      payload = text ? JSON.parse(text) : {};
+    } catch (error) {
+      return { ok: false, message: "远端计划 API 返回的不是可解析 JSON。" };
+    }
+
+    const candidate = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : payload.repository && typeof payload.repository === "object"
+        ? payload.repository
+        : payload;
+    const parsed = parsePlanRepositoryPackage(candidate);
+    if (parsed.ok) {
+      return {
+        ok: true,
+        package: parsed.package,
+        message: payload.message || `远端计划仓库包含 ${parsed.package.plans.length} 份计划。`
+      };
+    }
+    if (payload.ok === true) {
+      return {
+        ok: true,
+        package: null,
+        message: payload.message || "远端计划 API 检查通过，但没有返回计划包。"
+      };
+    }
+    return {
+      ok: false,
+      message: payload.message || parsed.message || "远端计划 API 返回格式无效。"
+    };
+  }
+
   function checkRemotePlanRepository() {
     const repository = normalizePlanRepository(state.planRepository);
     const now = new Date().toISOString();
     const remoteConfigured = Boolean(repository.remoteEndpoint);
+    const fetchApi = getPlanRepositoryFetch();
     state.planRepository = normalizePlanRepository({
       ...repository,
       mode: remoteConfigured ? "remote-api" : "local-json",
       lastCheckedAt: now,
       lastError: remoteConfigured ? "" : "尚未配置远端计划 repository；当前只能使用本机 JSON 同步包。"
     });
-    saveState();
-    const status = getPlanRepositoryStatus();
-    return {
-      ok: remoteConfigured,
-      status,
-      message: remoteConfigured
-        ? `远端计划 repository 已配置：${repository.remoteEndpoint}。`
-        : `${status.message} ${PLAN_REPOSITORY_BOUNDARY}`
-    };
+    if (!remoteConfigured || !fetchApi) {
+      if (remoteConfigured && !fetchApi) {
+        state.planRepository = normalizePlanRepository({
+          ...state.planRepository,
+          lastError: "当前运行环境不支持 fetch，无法检查远端计划 API。"
+        });
+      }
+      saveState();
+      const status = getPlanRepositoryStatus();
+      return {
+        ok: false,
+        status,
+        message: remoteConfigured
+          ? `${status.message} ${PLAN_REPOSITORY_BOUNDARY}`
+          : `${status.message} ${PLAN_REPOSITORY_BOUNDARY}`
+      };
+    }
+    return checkRemotePlanRepositoryAsync(repository, fetchApi);
+  }
+
+  async function checkRemotePlanRepositoryAsync(repository, fetchApi) {
+    try {
+      const response = await fetchApi(repository.remoteEndpoint, buildPlanRepositoryRequest(repository));
+      const parsed = await parseRemotePlanRepositoryResponse(response);
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.planRepository = normalizePlanRepository({
+          ...repository,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getPlanRepositoryStatus(), message: parsed.message };
+      }
+
+      const remotePlanCount = parsed.package?.plans?.length || 0;
+      state.planRepository = normalizePlanRepository({
+        ...repository,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "check",
+        lastRemotePlanCount: remotePlanCount,
+        lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastRemoteStatus: parsed.message,
+        lastError: ""
+      });
+      addEvent("plan-repository-remote-check", `检查远端计划 API：${remotePlanCount} 份计划`);
+      saveState();
+      return {
+        ok: true,
+        status: getPlanRepositoryStatus(),
+        package: parsed.package || null,
+        message: `${parsed.message} ${PLAN_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = `远端计划 API 检查失败：${error?.message || "网络请求异常"}。`;
+      recordPlanRepositoryError(message);
+      return { ok: false, status: getPlanRepositoryStatus(), message };
+    }
+  }
+
+  function pushPlanRepositoryToRemote(options = {}) {
+    const repository = normalizePlanRepository(state.planRepository);
+    const fetchApi = getPlanRepositoryFetch();
+    if (!repository.remoteEndpoint) {
+      return checkRemotePlanRepository();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法推送计划到远端 API。";
+      recordPlanRepositoryError(message);
+      return { ok: false, status: getPlanRepositoryStatus(), message };
+    }
+    const packageResult = getPlanRepositoryPackage(options);
+    if (!packageResult.ok) {
+      return packageResult;
+    }
+    return pushPlanRepositoryToRemoteAsync(repository, fetchApi, packageResult.package);
+  }
+
+  async function pushPlanRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage) {
+    try {
+      const response = await fetchApi(
+        repository.remoteEndpoint,
+        buildPlanRepositoryRequest(repository, {
+          method: "PUT",
+          body: repositoryPackage
+        })
+      );
+      const parsed = await parseRemotePlanRepositoryResponse(response);
+      const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
+      const planCount = repositoryPackage.plans.length;
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.planRepository = normalizePlanRepository({
+          ...repository,
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getPlanRepositoryStatus(), message: parsed.message };
+      }
+
+      state.planRepository = normalizePlanRepository({
+        ...repository,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "push",
+        lastRemotePlanCount: planCount,
+        lastExportedAt: now,
+        lastExportedPlanCount: planCount,
+        lastPackageId: acceptedPackageId,
+        lastRemoteStatus: `已推送 ${planCount} 份计划到远端 API。`,
+        lastError: ""
+      });
+      addEvent("plan-repository-remote-push", `推送计划到远端 API：${planCount} 份计划`);
+      saveState();
+      return {
+        ok: true,
+        status: getPlanRepositoryStatus(),
+        packageId: acceptedPackageId,
+        pushedPlanCount: planCount,
+        message: `已推送 ${planCount} 份计划到远端 API。${PLAN_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = `远端计划 API 推送失败：${error?.message || "网络请求异常"}。`;
+      recordPlanRepositoryError(message);
+      return { ok: false, status: getPlanRepositoryStatus(), message };
+    }
+  }
+
+  function pullPlanRepositoryFromRemote(options = {}) {
+    const repository = normalizePlanRepository(state.planRepository);
+    const fetchApi = getPlanRepositoryFetch();
+    if (!repository.remoteEndpoint) {
+      return checkRemotePlanRepository();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法从远端 API 拉取计划。";
+      recordPlanRepositoryError(message);
+      return { ok: false, status: getPlanRepositoryStatus(), message };
+    }
+    return pullPlanRepositoryFromRemoteAsync(repository, fetchApi, options);
+  }
+
+  async function pullPlanRepositoryFromRemoteAsync(repository, fetchApi, options = {}) {
+    try {
+      const response = await fetchApi(repository.remoteEndpoint, buildPlanRepositoryRequest(repository));
+      const parsed = await parseRemotePlanRepositoryResponse(response);
+      if (!parsed.ok) {
+        recordPlanRepositoryError(parsed.message);
+        return { ok: false, status: getPlanRepositoryStatus(), message: parsed.message };
+      }
+      if (!parsed.package) {
+        const message = "远端计划 API 没有返回可导入的计划包。";
+        recordPlanRepositoryError(message);
+        return { ok: false, status: getPlanRepositoryStatus(), message };
+      }
+
+      const imported = importPlanRepositoryPackage(parsed.package, { mode: options.mode });
+      const now = new Date().toISOString();
+      if (!imported.ok) {
+        state.planRepository = normalizePlanRepository({
+          ...repository,
+          lastCheckedAt: now,
+          lastError: imported.message
+        });
+        saveState();
+        return { ok: false, status: getPlanRepositoryStatus(), message: imported.message };
+      }
+
+      const planCount = parsed.package.plans.length;
+      state.planRepository = normalizePlanRepository({
+        ...state.planRepository,
+        mode: "remote-api",
+        remoteEndpoint: repository.remoteEndpoint,
+        remoteToken: repository.remoteToken,
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "pull",
+        lastRemotePlanCount: planCount,
+        lastPackageId: parsed.package.packageId || imported.status?.lastPackageId || null,
+        lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
+        lastError: ""
+      });
+      addEvent("plan-repository-remote-pull", `从远端 API 拉取计划：${planCount} 份计划`);
+      saveState();
+      return {
+        ok: true,
+        status: getPlanRepositoryStatus(),
+        importedCount: imported.importedCount,
+        updatedCount: imported.updatedCount,
+        pulledPlanCount: planCount,
+        message: `已从远端 API 拉取计划：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = `远端计划 API 拉取失败：${error?.message || "网络请求异常"}。`;
+      recordPlanRepositoryError(message);
+      return { ok: false, status: getPlanRepositoryStatus(), message };
+    }
   }
 
   function downloadReportComparison(reportId = null) {
@@ -5183,6 +5544,7 @@
     getPlanCycleStatus,
     getPlanReminderServiceStatus,
     getPlanRepositoryStatus,
+    getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
     getPlanExport,
     getReportPreview,
@@ -5205,8 +5567,11 @@
     clearHistoryTrash,
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
+    configurePlanRepositoryRemote,
     importPlanRepositoryPackage,
     checkRemotePlanRepository,
+    pushPlanRepositoryToRemote,
+    pullPlanRepositoryFromRemote,
     setMode,
     selectDailyGlyph,
     rotateCopybook,

@@ -358,20 +358,101 @@ assert(window.MRAppState.getPlan("plan-imported-cross-device").title === "导入
 const remoteCheck = window.MRAppState.checkRemotePlanRepository();
 assert(!remoteCheck.ok && remoteCheck.message.includes("尚未配置远端计划 repository"), "未配置远端时应明确失败而不是伪造同步成功。");
 
-const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
-assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
-assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
-assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
-assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
-assert(persistedPlanState.plans[0].cycleRule.generatedNextPlanId === nextCycleResult.plan.id, "源计划应持久化下一周期 ID。");
-assert(persistedPlanState.plans[1].cycleRule.previousPlanId === latestPlan.id, "下一周期应持久化上一周期 ID。");
-assert(persistedPlanState.planReminderService.enabled, "本机提醒启用状态应持久化到 localStorage。");
-assert(persistedPlanState.planReminderService.lastPlanId === latestPlan.id, "本机提醒应记录最近计划 ID。");
-assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
-assert(persistedPlanState.planRepository.lastImportedPlanCount === 1, "计划 repository 导入状态应持久化到 localStorage。");
-assert(persistedPlanState.planRepository.lastPackageId === "plan-package-test", "计划 repository 应持久化最近同步包 ID。");
+runRemoteRepositoryChecks().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、计划依赖图、计划周期循环和计划离线导出已生成。");
+async function runRemoteRepositoryChecks() {
+  const invalidRemoteConfig = window.MRAppState.configurePlanRepositoryRemote({
+    remoteEndpoint: "ftp://example.test/plan-repository"
+  });
+  assert(!invalidRemoteConfig.ok, "远端计划 API 不应接受非 HTTP 地址。");
+
+  const configuredRemote = window.MRAppState.configurePlanRepositoryRemote({
+    remoteEndpoint: "https://example.test/plan-repository",
+    remoteToken: "test-token"
+  });
+  assert(configuredRemote.ok, "远端计划 API 配置应可写入本机状态。");
+  assert(configuredRemote.status.remoteConfigured, "保存远端配置后应显示已配置。");
+
+  const remotePlan = {
+    ...planRepositoryPackage.package.plans[0],
+    id: "plan-remote-pulled",
+    title: "远端拉取的跨设备计划",
+    createdAt: "2026-06-13T08:00:00.000Z"
+  };
+  const remotePackage = {
+    ...planRepositoryPackage.package,
+    packageId: "remote-package-test",
+    exportedAt: "2026-06-13T08:10:00.000Z",
+    plans: [remotePlan]
+  };
+  let capturedPushPackage = null;
+  const fetchCalls = [];
+  global.fetch = async (url, options = {}) => {
+    fetchCalls.push({ url, options });
+    if (options.method === "PUT") {
+      capturedPushPackage = JSON.parse(options.body);
+      return createJsonResponse({
+        ok: true,
+        message: "远端已接收计划仓库。",
+        package: {
+          ...capturedPushPackage,
+          packageId: "remote-accepted-package"
+        }
+      });
+    }
+    return createJsonResponse({
+      ok: true,
+      message: "远端计划仓库可读。",
+      package: remotePackage
+    });
+  };
+
+  const checkedRemote = await window.MRAppState.checkRemotePlanRepository();
+  assert(checkedRemote.ok, "配置远端后应真实调用 fetch 检查计划仓库。");
+  assert(checkedRemote.package.plans.length === 1, "远端检查应解析计划包。");
+  assert(fetchCalls[0].url === "https://example.test/plan-repository", "远端检查应请求已保存的 endpoint。");
+  assert(fetchCalls[0].options.headers.Authorization === "Bearer test-token", "远端请求应携带本机保存的 Bearer token。");
+
+  const pushedRemote = await window.MRAppState.pushPlanRepositoryToRemote();
+  assert(pushedRemote.ok, "推送计划应真实调用远端 PUT。");
+  assert(capturedPushPackage.kind === "mr-calligraphy-plan-repository-v1", "远端推送应发送稳定计划仓库包。");
+  assert(capturedPushPackage.plans.length >= 3, "远端推送应包含当前本机计划列表。");
+  assert(pushedRemote.packageId === "remote-accepted-package", "推送结果应记录远端接收的 packageId。");
+
+  const pulledRemote = await window.MRAppState.pullPlanRepositoryFromRemote();
+  assert(pulledRemote.ok && pulledRemote.importedCount === 1, "拉取远端计划包应导入新增计划。");
+  assert(window.MRAppState.getPlan("plan-remote-pulled").title === "远端拉取的跨设备计划", "远端拉取计划应可从计划历史读取。");
+
+  const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+  assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
+  assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
+  assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
+  assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
+  assert(persistedPlanState.plans[0].cycleRule.generatedNextPlanId === nextCycleResult.plan.id, "源计划应持久化下一周期 ID。");
+  assert(persistedPlanState.plans[1].cycleRule.previousPlanId === latestPlan.id, "下一周期应持久化上一周期 ID。");
+  assert(persistedPlanState.planReminderService.enabled, "本机提醒启用状态应持久化到 localStorage。");
+  assert(persistedPlanState.planReminderService.lastPlanId === latestPlan.id, "本机提醒应记录最近计划 ID。");
+  assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
+  assert(persistedPlanState.planRepository.mode === "remote-api", "计划 repository 应持久化远端 API 模式。");
+  assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
+  assert(persistedPlanState.planRepository.lastImportedPlanCount === 1, "计划 repository 导入状态应持久化到 localStorage。");
+  assert(persistedPlanState.planRepository.lastPackageId === "remote-package-test", "计划 repository 应持久化最近远端 packageId。");
+  assert(persistedPlanState.planRepository.lastRemoteDirection === "pull", "计划 repository 应记录最近远端同步方向。");
+  assert(persistedPlanState.planRepository.lastRemotePlanCount === 1, "计划 repository 应记录最近远端计划数量。");
+
+  console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划依赖图、计划周期循环和计划离线导出已生成。");
+}
+
+function createJsonResponse(payload, ok = true, status = 200) {
+  return {
+    ok,
+    status,
+    text: async () => JSON.stringify(payload)
+  };
+}
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

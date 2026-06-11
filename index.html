@@ -325,10 +325,28 @@
             <button data-feature-state="real-local" id="planReminderPermissionButton" type="button">启用本机提醒</button>
             <button data-feature-state="real-export" id="planRepositoryExportButton" type="button">导出同步包</button>
             <button data-feature-state="real-local" id="planRepositoryImportButton" type="button">导入同步包</button>
-            <button data-feature-state="real-local" id="planRepositoryRemoteButton" type="button">检查远端</button>
             <button data-feature-state="real-export" id="planExportButton" type="button">导出计划</button>
             <button data-feature-state="real-local" id="planNextCycleButton" type="button">生成下周期</button>
           </div>
+          <details class="plan-repository-remote">
+            <summary>远端 API 同步</summary>
+            <div class="plan-repository-fields">
+              <label>
+                <span>Endpoint</span>
+                <input id="planRepositoryEndpointInput" type="url" inputmode="url" placeholder="https://example.com/api/plan-repository">
+              </label>
+              <label>
+                <span>Token</span>
+                <input id="planRepositoryTokenInput" type="password" autocomplete="off" placeholder="可选 Bearer token">
+              </label>
+            </div>
+            <div class="plan-repository-actions">
+              <button data-feature-state="real-local" id="planRepositorySaveRemoteButton" type="button">保存远端</button>
+              <button data-feature-state="real-local" id="planRepositoryRemoteButton" type="button">检查远端</button>
+              <button data-feature-state="real-local" id="planRepositoryPushButton" type="button">推送计划</button>
+              <button data-feature-state="real-local" id="planRepositoryPullButton" type="button">拉取计划</button>
+            </div>
+          </details>
           <input id="planRepositoryImportInput" type="file" accept="application/json,.json" hidden>
           <div id="planDependencyGraph" class="plan-dependency-graph" data-plan-dependency-graph="planDependencyGraph" aria-label="计划依赖图"></div>
           <div id="planItemList" class="plan-item-list"></div>
