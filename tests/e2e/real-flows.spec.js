@@ -162,6 +162,153 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token")).toBe(true);
 });
 
+test("front history repository shows real remote failure feedback", async ({ page }) => {
+  const requests = [];
+  const routes = [
+    {
+      path: "/e2e-history-repository-expired-token",
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "学习档案 token 已过期，请重新登录。"
+      })
+    },
+    {
+      path: "/e2e-history-repository-server-error",
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "学习档案服务端 E2E 故障。"
+      })
+    },
+    {
+      path: "/e2e-history-repository-invalid-json",
+      status: 200,
+      contentType: "application/json",
+      body: "{not-json"
+    },
+    {
+      path: "/e2e-history-repository-empty-package",
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "远端空学习档案 E2E 可访问，但没有返回档案包。"
+      })
+    },
+    {
+      path: "/e2e-history-repository-rejected-push",
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "学习档案包结构被 E2E 服务端拒绝。"
+      })
+    }
+  ];
+
+  for (const routeConfig of routes) {
+    await page.route(`**${routeConfig.path}`, async (route) => {
+      const request = route.request();
+      requests.push({
+        path: routeConfig.path,
+        method: request.method(),
+        authorization: request.headers().authorization || "",
+        body: request.method() === "PUT" ? request.postDataJSON() : null
+      });
+      await route.fulfill({
+        status: routeConfig.status,
+        contentType: routeConfig.contentType,
+        body: routeConfig.body
+      });
+    });
+  }
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const seed = await page.evaluate(() => {
+    const result = window.MRAppState.saveArtwork({
+      strokes: [
+        [
+          { x: 0.28, y: 0.34, t: 0, p: 0.45 },
+          { x: 0.42, y: 0.43, t: 16, p: 0.58 },
+          { x: 0.57, y: 0.52, t: 32, p: 0.62 },
+          { x: 0.71, y: 0.61, t: 48, p: 0.5 }
+        ]
+      ],
+      bounds: { minX: 0.28, minY: 0.34, maxX: 0.71, maxY: 0.61 },
+      metrics: { structure: 86, stroke: 84, technique: 85, fluency: 88, force: 82 },
+      score: 85,
+      feedback: ["E2E 学习档案失败路径记录"]
+    });
+    return {
+      ok: result.ok,
+      status: window.MRAppState.getHistoryRepositoryStatus()
+    };
+  });
+  expect(seed.ok).toBe(true);
+  expect(seed.status.recordCount).toBe(2);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#historyPanel")).toBeVisible();
+  await page.locator(".history-repository-remote summary").click();
+
+  const expiredEndpoint = await getSameOriginEndpoint(page, "/e2e-history-repository-expired-token");
+  await configureHistoryRepositoryRemoteInUi(page, expiredEndpoint, "history-expired-token");
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 401");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("HTTP 401");
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toContain("HTTP 401");
+  expect(requests.some((item) => item.path === "/e2e-history-repository-expired-token" && item.authorization === "Bearer history-expired-token")).toBe(true);
+
+  const serverErrorEndpoint = await getSameOriginEndpoint(page, "/e2e-history-repository-server-error");
+  await configureHistoryRepositoryRemoteInUi(page, serverErrorEndpoint, "history-server-error-token");
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 500");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("HTTP 500");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toContain("HTTP 500");
+
+  const invalidJsonEndpoint = await getSameOriginEndpoint(page, "/e2e-history-repository-invalid-json");
+  await configureHistoryRepositoryRemoteInUi(page, invalidJsonEndpoint, "history-invalid-json-token");
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("不是可解析 JSON");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("不是可解析 JSON");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toContain("不是可解析 JSON");
+
+  const emptyPackageEndpoint = await getSameOriginEndpoint(page, "/e2e-history-repository-empty-package");
+  await configureHistoryRepositoryRemoteInUi(page, emptyPackageEndpoint, "history-empty-package-token");
+  await page.locator("#historyRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("远端空学习档案 E2E 可访问");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toBe("");
+  expect(learningState.historyRepository.lastRemoteStatus).toContain("远端空学习档案 E2E 可访问");
+
+  await page.locator("#historyRepositoryPullButton").click();
+  await expect(page.locator("#noticeState")).toContainText("没有返回可导入的档案包");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("没有返回可导入的档案包");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toContain("没有返回可导入的档案包");
+  expect(requests.some((item) => item.path === "/e2e-history-repository-empty-package" && item.authorization === "Bearer history-empty-package-token")).toBe(true);
+
+  const rejectedPushEndpoint = await getSameOriginEndpoint(page, "/e2e-history-repository-rejected-push");
+  await configureHistoryRepositoryRemoteInUi(page, rejectedPushEndpoint, "history-rejected-push-token");
+  await page.locator("#historyRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 422");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("HTTP 422");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toContain("HTTP 422");
+
+  const putRequest = requests.find((item) => item.path === "/e2e-history-repository-rejected-push" && item.method === "PUT");
+  expect(putRequest.authorization).toBe("Bearer history-rejected-push-token");
+  expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
+  expect(putRequest.body.summary.total).toBe(2);
+});
+
 test("front plan repository detects remote conflicts and saves a remote copy", async ({ page }) => {
   const planEndpointPath = "/e2e-plan-repository";
   const planRequests = [];
@@ -661,6 +808,13 @@ async function configurePlanRepositoryRemoteInUi(page, endpoint, token = "") {
   await page.locator("#planRepositoryTokenInput").fill(token);
   await page.locator("#planRepositorySaveRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
+}
+
+async function configureHistoryRepositoryRemoteInUi(page, endpoint, token = "") {
+  await page.locator("#historyRepositoryEndpointInput").fill(endpoint);
+  await page.locator("#historyRepositoryTokenInput").fill(token);
+  await page.locator("#historyRepositorySaveRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已保存远端学习档案 API 配置");
 }
 
 async function setupPlanRepositoryConflict(page, options = {}) {

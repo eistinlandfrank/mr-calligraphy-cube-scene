@@ -482,7 +482,7 @@ git diff --check
 - `npm run test:e2e -- --grep "front plan repository"`
 - `node --check scripts/learning-state-check.js && node scripts/learning-state-check.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `npm run test:e2e`，当前 7 条 Playwright 用例全部通过。
+- `npm run test:e2e`，当前 8 条 Playwright 用例全部通过。
 - `git diff --check`
 
 提交：
@@ -512,7 +512,6 @@ git diff --check
 仍待补：
 
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支。
-- 学习档案远端失败路径的浏览器级提示验收。
 - 字段级冲突合并 UI，目前仍是计划级处理。
 
 验收：
@@ -527,3 +526,41 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划仓库失败路径验收`
+
+## 21. 2026-06-12 学习档案远端失败浏览器验收
+
+本次补齐前台学习档案远端 API 的失败路径浏览器级验收，重点验证远端不可用、格式错误或服务端拒收时，页面不会显示假成功，也不会清掉本机档案记录。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 新增 `front history repository shows real remote failure feedback`。
+- E2E 通过 `MRAppState.saveArtwork()` 先生成真实本机练习会话和作品档案，再打开前台学习档案面板。
+- E2E 通过 `page.route()` 模拟五类远端异常：token 过期 / 401、服务端故障 / 500、200 但返回非法 JSON、200 但没有返回档案包、PUT 推送被服务端 422 拒收。
+- 每一类异常都会真实配置 endpoint/token，点击前台“检查远端”“拉取档案”或“推送档案”，并同时检查 `#noticeState`、`#historyRepositorySummary` 和 `mr-calligraphy-learning-state-v1.historyRepository`。
+- 401 和 422 路径会断言浏览器请求带上 Bearer token；422 路径还会断言 PUT body 是 `mr-calligraphy-history-repository-v1`，且包含 2 条真实学习档案记录。
+
+真实化说明：
+
+- 数据来源：前台状态层真实生成的练习会话和作品记录、真实学习档案远端面板、同源模拟远端响应和实际 Authorization header。
+- 写入状态：失败会写入 `historyRepository.lastError`，空仓库检查成功会写入 `lastRemoteStatus` 且保持 `lastError` 为空。
+- 成功反馈：只有服务可访问才显示远端可访问；没有档案包时不能假装拉取成功。
+- 失败反馈：401、500、非法 JSON、无档案包、422 拒收都会在页面通知和学习档案仓库摘要中出现明确错误。
+- 刷新后复现方式：错误状态保存在 `mr-calligraphy-learning-state-v1.historyRepository`，后续刷新仍由同一状态区读取。
+
+仍待补：
+
+- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收。
+- 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支。
+- 字段级冲突合并 UI，目前仍是计划级处理。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "history repository shows real remote failure feedback"`
+- `npm run test:e2e`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案失败路径验收`
