@@ -3563,6 +3563,12 @@ function bindReportControls() {
     renderReportPanel(currentIndex);
   });
   els.reportComparison?.addEventListener("click", (event) => {
+    const exportButton = event.target.closest("[data-report-comparison-export]");
+    if (exportButton) {
+      downloadReportComparisonDetail(exportButton.dataset.reportComparisonExport);
+      return;
+    }
+
     const button = event.target.closest("[data-report-jump]");
     if (!button) return;
     openReportDetailRoute(button.dataset.reportJump);
@@ -4298,6 +4304,13 @@ function renderReportComparison(comparison) {
     button.textContent = label;
     actions.appendChild(button);
   });
+  const exportButton = document.createElement("button");
+  exportButton.id = "reportComparisonExport";
+  exportButton.type = "button";
+  exportButton.dataset.featureState = "real-export";
+  exportButton.dataset.reportComparisonExport = comparison.current.id;
+  exportButton.textContent = "导出对比页";
+  actions.appendChild(exportButton);
 
   els.reportComparison.append(meta, summary, stats, metrics, actions);
 }
@@ -6220,6 +6233,16 @@ function downloadReportDetail() {
   if (result?.message) {
     showNotice(result.message);
   }
+}
+
+function downloadReportComparisonDetail(reportId = activeReportDetailId) {
+  const id = reportId || getActiveReportDetail()?.id || null;
+  const result = window.MRAppState?.downloadReportComparison?.(id);
+  if (result?.message) {
+    showNotice(result.message);
+    return;
+  }
+  showNotice("还没有可导出的报告对比。");
 }
 
 function printReportDetail() {

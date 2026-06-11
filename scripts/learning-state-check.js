@@ -131,6 +131,13 @@ assert(
   reportComparison.metricDeltas.some((metric) => metric.key === "structure" && metric.delta === 12),
   "报告对比应计算字段级能力变化。"
 );
+const reportComparisonExport = window.MRAppState.getReportComparisonExport("report-2");
+assert(reportComparisonExport.ok, "报告对比应能生成离线导出页。");
+assert(reportComparisonExport.filename.includes("mr-calligraphy-report-comparison"), "报告对比导出页应返回可下载文件名。");
+assert(reportComparisonExport.html.includes("MR 书法报告对比"), "报告对比导出页 HTML 应包含标题。");
+assert(reportComparisonExport.html.includes("report-1") && reportComparisonExport.html.includes("report-2"), "报告对比导出页 HTML 应包含两份报告 ID。");
+assert(reportComparisonExport.html.includes("结构") && reportComparisonExport.html.includes("+12分"), "报告对比导出页 HTML 应包含字段差值。");
+assert(reportComparisonExport.html.includes("不是云端长期报告"), "报告对比导出页应明确本机导出边界。");
 assert(!window.MRAppState.getReportComparison("report-1").ok, "第一份报告不应伪造上一份对比。");
 
 const reportSeries = window.MRAppState.getReportSeries("report-3");
@@ -144,7 +151,7 @@ assert(
 );
 assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应伪造多报告趋势。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比和多报告趋势已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出和多报告趋势已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

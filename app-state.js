@@ -2144,6 +2144,145 @@
     };
   }
 
+  function getReportComparisonExport(reportId = null) {
+    const comparison = getReportComparison(reportId);
+    if (!comparison.ok) {
+      return {
+        ok: false,
+        comparison: clone(comparison),
+        message: comparison.message || "还没有可导出的报告对比。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const filename = `mr-calligraphy-report-comparison-${makeDownloadSlug(comparison.current.id)}.html`;
+    return {
+      ok: true,
+      comparison: clone(comparison),
+      exportedAt,
+      filename,
+      html: createReportComparisonHtml(comparison, exportedAt),
+      message: "已生成报告对比离线 HTML，可打开后打印或保存为 PDF。"
+    };
+  }
+
+  function createReportComparisonHtml(comparison, exportedAt = new Date().toISOString()) {
+    const statRows = [
+      ["平均分", comparison.previous.averageScore, comparison.current.averageScore, comparison.averageDelta, "分"],
+      ["练习次数", comparison.previous.sessionCount, comparison.current.sessionCount, comparison.sessionDelta, "次"],
+      ["作品数量", comparison.previous.artworkCount, comparison.current.artworkCount, comparison.artworkDelta, "幅"],
+      ["学习分钟", comparison.previous.learningMinutes, comparison.current.learningMinutes, comparison.learningMinutesDelta, "分钟"]
+    ].map(([label, previous, current, delta, unit]) => {
+      const tone = delta > 0 ? "up" : delta < 0 ? "down" : "same";
+      return `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(previous)}${escapeHtml(unit)}</td><td>${escapeHtml(current)}${escapeHtml(unit)}</td><td class="${tone}">${escapeHtml(formatReportComparisonDelta(delta, unit))}</td></tr>`;
+    }).join("");
+    const metricRows = (comparison.metricDeltas || []).map((metric) => {
+      const tone = metric.delta > 0 ? "up" : metric.delta < 0 ? "down" : "same";
+      const previousWidth = Math.max(0, Math.min(100, Number(metric.previous) || 0));
+      const currentWidth = Math.max(0, Math.min(100, Number(metric.current) || 0));
+      return `<li>
+        <div class="metric-head"><strong>${escapeHtml(metric.label)}</strong><span class="${tone}">${escapeHtml(formatReportComparisonDelta(metric.delta, "分"))}</span></div>
+        <div class="bars">
+          <span><b style="width:${previousWidth}%"></b><em>上份 ${escapeHtml(metric.previous)} 分</em></span>
+          <span><b style="width:${currentWidth}%"></b><em>本份 ${escapeHtml(metric.current)} 分</em></span>
+        </div>
+      </li>`;
+    }).join("");
+    const strongest = comparison.strongestMetric
+      ? `${comparison.strongestMetric.label} ${formatReportComparisonDelta(comparison.strongestMetric.delta, "分")}`
+      : "暂无";
+    const weakest = comparison.weakestMetric
+      ? `${comparison.weakestMetric.label} ${formatReportComparisonDelta(comparison.weakestMetric.delta, "分")}`
+      : "暂无";
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法报告对比</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; --wash:#eef8f3; --warm:#a45d2f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 34px 0 46px; }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(30px, 6vw, 54px); line-height: 1.08; letter-spacing: 0; }
+    h2 { margin-bottom: 12px; font-size: 18px; }
+    header { display: grid; gap: 12px; padding-bottom: 22px; border-bottom: 2px solid var(--ink); }
+    .muted { color: var(--muted); }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; margin-bottom: 14px; padding: 10px 0; background: var(--paper); }
+    .toolbar button { min-height: 38px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 8px; color: #ffffff; background: var(--ink); font: inherit; cursor: pointer; }
+    .toolbar button:hover { background: var(--jade); }
+    .summary { margin-top: 18px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; }
+    .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+    .report { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .report span { display: block; color: var(--muted); font-size: 12px; }
+    .report strong { display: block; margin-top: 5px; font-size: 24px; line-height: 1.15; }
+    section { margin-top: 26px; }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    th, td { padding: 11px 12px; border-bottom: 1px solid var(--line); text-align: left; }
+    tr:last-child th, tr:last-child td { border-bottom: 0; }
+    th { width: 24%; color: var(--muted); font-weight: 800; }
+    .up { color: var(--jade); font-weight: 900; }
+    .down { color: var(--warm); font-weight: 900; }
+    .same { color: var(--muted); font-weight: 900; }
+    .metrics { display: grid; gap: 10px; padding: 0; list-style: none; }
+    .metrics li { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .metric-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .bars { display: grid; gap: 8px; margin-top: 12px; }
+    .bars span { position: relative; display: block; min-height: 26px; overflow: hidden; border-radius: 8px; background: var(--wash); }
+    .bars b { position: absolute; inset: 0 auto 0 0; display: block; min-width: 4px; background: rgba(36, 122, 103, 0.28); }
+    .bars span:nth-child(2) b { background: rgba(164, 93, 47, 0.22); }
+    .bars em { position: relative; z-index: 1; display: block; padding: 3px 9px; color: var(--ink); font-style: normal; font-weight: 800; }
+    .notes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .note { padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) {
+      .pair, .notes { grid-template-columns: 1fr; }
+      table, tbody, tr, th, td { display: block; width: 100%; }
+      tr { border-bottom: 1px solid var(--line); }
+      tr:last-child { border-bottom: 0; }
+      th, td { border-bottom: 0; }
+    }
+    @media print {
+      body { background: #ffffff; }
+      main { width: 100%; padding: 0; }
+      .toolbar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="toolbar"><button type="button" onclick="window.print()">打印 / 保存 PDF</button></div>
+    <header>
+      <p class="muted">本机报告对比 · ${escapeHtml(comparison.previous.id)} → ${escapeHtml(comparison.current.id)}</p>
+      <h1>MR 书法报告对比</h1>
+      <p>${escapeHtml(comparison.summary || "已读取两份本机报告进行对比。")}</p>
+    </header>
+    <section class="pair" aria-label="对比报告">
+      <article class="report"><span>上份报告</span><strong>${escapeHtml(comparison.previous.title)}</strong><p class="muted">${escapeHtml(formatDateTime(comparison.previous.createdAt))} · ${escapeHtml(comparison.previous.averageScore)} 分</p></article>
+      <article class="report"><span>本份报告</span><strong>${escapeHtml(comparison.current.title)}</strong><p class="muted">${escapeHtml(formatDateTime(comparison.current.createdAt))} · ${escapeHtml(comparison.current.averageScore)} 分</p></article>
+    </section>
+    <p class="summary">这份离线页只汇总当前浏览器本机保存的相邻两份报告，不是云端长期报告，也不会上传任何学习数据。</p>
+    <section>
+      <h2>统计变化</h2>
+      <table><tbody>${statRows}</tbody></table>
+    </section>
+    <section>
+      <h2>能力字段变化</h2>
+      <ul class="metrics">${metricRows}</ul>
+    </section>
+    <section class="notes">
+      <div class="note"><strong>提升最明显</strong><p class="muted">${escapeHtml(strongest)}</p></div>
+      <div class="note"><strong>最需要复盘</strong><p class="muted">${escapeHtml(weakest)}</p></div>
+    </section>
+    <footer>数据来源：${escapeHtml(STORAGE_KEY)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。如需长期迁移，请在主后台导出项目档案。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getReportSeries(reportId = null) {
     const reports = getSortedReports();
     const total = reports.length;
@@ -2265,6 +2404,14 @@
     return "持平";
   }
 
+  function formatReportComparisonDelta(value, unit = "") {
+    const number = Number(value) || 0;
+    const suffix = String(unit || "");
+    if (number > 0) return `+${number}${suffix}`;
+    if (number < 0) return `${number}${suffix}`;
+    return `0${suffix}`;
+  }
+
   function downloadReport(reportId = null) {
     const report = reportId
       ? state.reports.find((item) => item.id === reportId)
@@ -2274,6 +2421,20 @@
     }
     downloadHtml(createReportHtml(report), `mr-calligraphy-report-${report.id}.html`);
     return { ok: true, message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印和打印样式。` };
+  }
+
+  function downloadReportComparison(reportId = null) {
+    const result = getReportComparisonExport(reportId);
+    if (!result.ok) {
+      return { ok: false, message: result.message };
+    }
+
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      message: "已下载报告对比离线 HTML，可打开后用浏览器打印保存为 PDF。"
+    };
   }
 
   function getHistory(options = {}) {
@@ -3220,6 +3381,7 @@
     getReportPreview,
     getReportDetail,
     getReportComparison,
+    getReportComparisonExport,
     getReportSeries,
     getArtworkSharePackage,
     getLatestReview,
@@ -3258,6 +3420,7 @@
     deletePlanItem,
     createReport,
     downloadReport,
+    downloadReportComparison,
     downloadArtworkSharePage,
     downloadArchive
   };
