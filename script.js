@@ -830,6 +830,11 @@ const els = {
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
   reviewDownloadShare: document.getElementById("reviewDownloadShare"),
+  shareServiceSummary: document.getElementById("shareServiceSummary"),
+  reviewCreateShareLink: document.getElementById("reviewCreateShareLink"),
+  reviewCopyShareLink: document.getElementById("reviewCopyShareLink"),
+  reviewRevokeShareLink: document.getElementById("reviewRevokeShareLink"),
+  shareServiceRecords: document.getElementById("shareServiceRecords"),
   reportPanel: document.getElementById("reportPanel"),
   reportTitle: document.getElementById("reportTitle"),
   reportStatus: document.getElementById("reportStatus"),
@@ -1023,6 +1028,7 @@ const MODEL_VIEW_QUERY_KEY = "modelView";
 const HISTORY_DETAIL_QUERY_KEY = "history";
 const REPORT_DETAIL_QUERY_KEY = "report";
 const ARTWORK_DETAIL_QUERY_KEY = "artwork";
+const SHARE_LINK_QUERY_KEY = "share";
 const REPORT_DETAIL_SCENE_INDEX = 8;
 const REPORT_METRIC_LABELS = [
   ["structure", "结构"],
@@ -1061,6 +1067,7 @@ const REPORT_METRIC_GUIDES = {
 };
 let activePlanId = null;
 let activePlanItemEditor = null;
+let activeArtworkShareId = null;
 let isReplayVideoExporting = false;
 let isLecturePlaybackActive = false;
 let lecturePlaybackTimer = null;
@@ -1583,12 +1590,15 @@ function init() {
   renderLearningStateSummary();
   renderTaskPanel();
 
+  const routedShareId = getArtworkShareRouteId();
   const routedReportId = getReportDetailRouteId();
   const routedArtworkId = getArtworkDetailRouteId();
   const routedHistoryId = getHistoryDetailRouteId();
   const routedStepIndex = getLearningStepRouteIndex();
   const routedPointIndex = getLearningPointRouteIndex(routedStepIndex ?? 0);
-  if (routedReportId) {
+  if (routedShareId) {
+    openArtworkShareRoute(routedShareId, { updateUrl: false, showMissing: true, routeMode: "replace" });
+  } else if (routedReportId) {
     openReportDetailRoute(routedReportId, { updateUrl: false, showMissing: true, routeMode: "replace" });
   } else if (routedArtworkId) {
     openArtworkDetailRoute(routedArtworkId, { updateUrl: false, showMissing: true, routeMode: "replace" });
@@ -3629,6 +3639,10 @@ function bindReviewControls() {
   els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
   els.reviewDownloadShare?.addEventListener("click", downloadLatestArtworkSharePage);
+  els.reviewCreateShareLink?.addEventListener("click", createLatestArtworkShareLink);
+  els.reviewCopyShareLink?.addEventListener("click", () => copyActiveArtworkShareLink());
+  els.reviewRevokeShareLink?.addEventListener("click", () => revokeActiveArtworkShareLink());
+  els.shareServiceRecords?.addEventListener("click", handleShareRecordAction);
 }
 
 function bindReportControls() {
@@ -4315,6 +4329,7 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   els.reviewDownloadImage.disabled = !hasImage;
   els.reviewDownloadReport.disabled = !report;
   if (els.reviewDownloadShare) els.reviewDownloadShare.disabled = !artwork;
+  renderShareServicePanel(artwork);
 }
 
 function replayLatestArtwork() {
@@ -4353,6 +4368,150 @@ function downloadLatestArtworkSharePage() {
     return;
   }
   showNotice("还没有可导出的作品分享页。请先保存作品。");
+}
+
+function renderShareServicePanel(artwork) {
+  const status = window.MRAppState?.getShareServiceStatus?.(artwork?.id) || null;
+  const currentRecord = status?.currentRecord || null;
+  if (currentRecord) {
+    activeArtworkShareId = currentRecord.id;
+  } else if (activeArtworkShareId && !status?.records?.some((record) => record.id === activeArtworkShareId)) {
+    activeArtworkShareId = null;
+  }
+
+  if (els.shareServiceSummary) {
+    els.shareServiceSummary.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "本机分享服务尚未初始化。";
+    els.shareServiceSummary.dataset.shareTone = status?.activeCount
+      ? "ready"
+      : status?.total
+        ? "warning"
+        : "idle";
+  }
+
+  const activeRecord = getShareRecordForAction();
+  if (els.reviewCreateShareLink) {
+    els.reviewCreateShareLink.disabled = !artwork;
+  }
+  if (els.reviewCopyShareLink) {
+    els.reviewCopyShareLink.disabled = !activeRecord?.isActive;
+  }
+  if (els.reviewRevokeShareLink) {
+    els.reviewRevokeShareLink.disabled = !activeRecord?.isActive;
+  }
+
+  if (!els.shareServiceRecords) return;
+  els.shareServiceRecords.innerHTML = "";
+  const records = (status?.records || []).slice(0, 4);
+  if (!records.length) {
+    const item = document.createElement("li");
+    const body = document.createElement("span");
+    body.textContent = "暂无分享记录。生成本机链接后会在这里显示访问、复制和撤销状态。";
+    item.appendChild(body);
+    els.shareServiceRecords.appendChild(item);
+    return;
+  }
+
+  records.forEach((record) => {
+    const item = document.createElement("li");
+    item.dataset.shareRecordStatus = record.status;
+    const body = document.createElement("span");
+    const title = document.createElement("strong");
+    title.textContent = record.artworkTitle || record.title;
+    const meta = document.createElement("span");
+    meta.textContent = `${record.statusLabel} / ${record.permissionLabel} / 浏览 ${record.viewCount || 0} / 复制 ${record.copyCount || 0}`;
+    body.append(title, meta);
+
+    const actions = document.createElement("div");
+    actions.className = "share-service-record-actions";
+    [
+      ["copy", "复制", !record.isActive],
+      ["revoke", "撤销", !record.isActive]
+    ].forEach(([action, label, disabled]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real-local";
+      button.dataset.shareRecordAction = action;
+      button.dataset.shareRecordId = record.id;
+      button.disabled = Boolean(disabled);
+      button.textContent = label;
+      actions.appendChild(button);
+    });
+    item.append(body, actions);
+    els.shareServiceRecords.appendChild(item);
+  });
+}
+
+function createLatestArtworkShareLink() {
+  const artwork = window.MRAppState?.getLatestReview?.()?.artwork;
+  if (!artwork) {
+    showNotice("请先保存作品，再生成本机分享链接。");
+    return;
+  }
+
+  const result = window.MRAppState?.createArtworkShareLink?.(artwork.id);
+  if (result?.record?.id) {
+    activeArtworkShareId = result.record.id;
+    setArtworkShareRoute(result.record.id);
+  }
+  showNotice(result?.message || "本机分享链接生成失败。");
+  renderLearningState();
+}
+
+function copyActiveArtworkShareLink(shareId = activeArtworkShareId) {
+  const record = getShareRecordForAction(shareId);
+  if (!record?.isActive) {
+    showNotice("没有可复制的有效本机分享链接。");
+    return;
+  }
+
+  activeArtworkShareId = record.id;
+  const url = getArtworkShareUrl(record.id);
+  setArtworkShareRoute(record.id);
+  copyText(url).then((ok) => {
+    const result = window.MRAppState?.markArtworkShareLinkCopied?.(record.id);
+    showNotice(ok
+      ? `已复制本机分享链接：${record.artworkTitle || record.title}`
+      : result?.message || "已把本机分享链接写入地址栏，可手动复制。");
+    renderLearningState();
+  });
+}
+
+function revokeActiveArtworkShareLink(shareId = activeArtworkShareId) {
+  const record = getShareRecordForAction(shareId);
+  if (!record) {
+    showNotice("没有可撤销的本机分享链接。");
+    return;
+  }
+
+  const result = window.MRAppState?.revokeArtworkShareLink?.(record.id);
+  if (activeArtworkShareId === record.id) {
+    activeArtworkShareId = null;
+  }
+  showNotice(result?.message || "本机分享链接撤销失败。");
+  renderLearningState();
+}
+
+function handleShareRecordAction(event) {
+  const button = event.target.closest("[data-share-record-action]");
+  if (!button) return;
+  const action = button.dataset.shareRecordAction;
+  const recordId = button.dataset.shareRecordId;
+  if (action === "copy") {
+    copyActiveArtworkShareLink(recordId);
+  } else if (action === "revoke") {
+    revokeActiveArtworkShareLink(recordId);
+  }
+}
+
+function getShareRecordForAction(shareId = activeArtworkShareId) {
+  const status = window.MRAppState?.getShareServiceStatus?.();
+  const id = String(shareId || "").trim();
+  if (id) {
+    return status?.records?.find((record) => record.id === id) || null;
+  }
+  return status?.currentRecord || status?.latestRecord || null;
 }
 
 function renderReportPanel(sceneIndex = currentIndex) {
@@ -7146,6 +7305,79 @@ function selectHistoryDetail(recordId, options = {}) {
   return true;
 }
 
+function getArtworkShareRouteId() {
+  try {
+    return new URLSearchParams(window.location.search).get(SHARE_LINK_QUERY_KEY) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function getArtworkShareUrl(shareId) {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
+  url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
+  url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
+  url.searchParams.delete(STEP_ROUTE_QUERY_KEY);
+  url.searchParams.delete(POINT_ROUTE_QUERY_KEY);
+  url.searchParams.set(SHARE_LINK_QUERY_KEY, String(shareId || "").trim());
+  return url.toString();
+}
+
+function setArtworkShareRoute(shareId) {
+  if (!window.history?.replaceState || !shareId) {
+    return;
+  }
+
+  const url = new URL(getArtworkShareUrl(shareId));
+  window.history.replaceState(
+    { ...(window.history.state || {}), shareId: String(shareId), historyDetailId: null, reportDetailId: null, artworkDetailId: null },
+    "",
+    url.toString()
+  );
+}
+
+function clearArtworkShareRoute() {
+  if (!window.history?.replaceState) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has(SHARE_LINK_QUERY_KEY)) {
+    return;
+  }
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
+  window.history.replaceState(
+    { ...(window.history.state || {}), shareId: null },
+    "",
+    url.toString()
+  );
+}
+
+function openArtworkShareRoute(shareId, options = {}) {
+  const result = window.MRAppState?.openArtworkShareLink?.(shareId);
+  const record = result?.record || null;
+  activeArtworkShareId = record?.id || null;
+  const shouldUpdateStepRoute = options.updateStepRoute === true;
+  if (record?.artworkId) {
+    openArtworkDetailRoute(record.artworkId, {
+      updateUrl: false,
+      updateStepRoute: shouldUpdateStepRoute,
+      routeMode: options.routeMode,
+      showMissing: true
+    });
+    showNotice(result?.message || "已打开本机分享链接。");
+    return Boolean(result?.ok);
+  }
+
+  clearArtworkShareRoute();
+  loadScene(6, { routeMode: options.routeMode, updateStepRoute: shouldUpdateStepRoute });
+  if (options.showMissing) {
+    showNotice(result?.message || "未找到这条本机分享链接。");
+  }
+  return false;
+}
+
 function getHistoryDetailRouteId() {
   try {
     return new URLSearchParams(window.location.search).get(HISTORY_DETAIL_QUERY_KEY) || "";
@@ -7190,6 +7422,7 @@ function setLearningStepRoute(index, options = {}) {
   }
 
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.set(STEP_ROUTE_QUERY_KEY, String(index + 1));
   const pointIndex = Number.isInteger(options.pointIndex)
     ? clampScenePointIndex(index, options.pointIndex)
@@ -7229,10 +7462,13 @@ function setModelViewRoute(active, options = {}) {
 }
 
 function handleRoutePopState() {
+  const routedShareId = getArtworkShareRouteId();
   const routedReportId = getReportDetailRouteId();
   const routedArtworkId = getArtworkDetailRouteId();
   const routedHistoryId = getHistoryDetailRouteId();
-  if (routedReportId) {
+  if (routedShareId) {
+    openArtworkShareRoute(routedShareId, { updateUrl: false, updateStepRoute: false, showMissing: true });
+  } else if (routedReportId) {
     openReportDetailRoute(routedReportId, { updateUrl: false, updateStepRoute: false, showMissing: true });
   } else if (routedArtworkId) {
     openArtworkDetailRoute(routedArtworkId, { updateUrl: false, updateStepRoute: false, showMissing: true });
@@ -7287,6 +7523,7 @@ function openHistoryDetailRoute(recordId, options = {}) {
 
 function getHistoryDetailUrl(recordId) {
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId || "").trim());
@@ -7299,6 +7536,7 @@ function setHistoryDetailRoute(recordId) {
   }
 
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(HISTORY_DETAIL_QUERY_KEY, String(recordId));
@@ -7370,6 +7608,7 @@ function openArtworkDetailRoute(artworkId, options = {}) {
 
 function getArtworkDetailUrl(artworkId) {
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.set(ARTWORK_DETAIL_QUERY_KEY, String(artworkId || "").trim());
@@ -7382,6 +7621,7 @@ function setArtworkDetailRoute(artworkId) {
   }
 
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.set(ARTWORK_DETAIL_QUERY_KEY, String(artworkId));
@@ -7495,6 +7735,7 @@ function openReportDetailRoute(reportId, options = {}) {
 
 function getReportDetailUrl(reportId) {
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
   url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(REPORT_DETAIL_QUERY_KEY, String(reportId || "").trim());
@@ -7507,6 +7748,7 @@ function setReportDetailRoute(reportId) {
   }
 
   const url = new URL(window.location.href);
+  url.searchParams.delete(SHARE_LINK_QUERY_KEY);
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
   url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
   url.searchParams.set(REPORT_DETAIL_QUERY_KEY, String(reportId));

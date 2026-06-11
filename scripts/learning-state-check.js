@@ -126,6 +126,39 @@ assert(sharePackage.html.includes("data:image/png"), "作品分享页 HTML 应�
 assert(sharePackage.html.includes("不是云端公开链接"), "作品分享页应明确本机导出边界。");
 assert(sharePackage.html.includes("结构"), "作品分享页应包含能力维度。");
 
+const emptyShareStatus = window.MRAppState.getShareServiceStatus("artwork-2");
+assert(emptyShareStatus.total === 0, "初始分享服务不应伪造已有链接。");
+assert(emptyShareStatus.boundary.includes("不是公网 URL"), "分享服务应说明本机链接边界。");
+
+const shareLink = window.MRAppState.createArtworkShareLink("artwork-2", { expiresInDays: 3 });
+assert(shareLink.ok, "作品应能生成本机分享链接记录。");
+assert(shareLink.record.artworkId === "artwork-2", "分享记录应关联作品 ID。");
+assert(shareLink.record.isActive, "新分享记录应处于有效状态。");
+assert(shareLink.record.expiresAt, "分享记录应包含过期时间。");
+
+const reusedShareLink = window.MRAppState.createArtworkShareLink("artwork-2");
+assert(reusedShareLink.reused, "同一作品已有有效链接时应复用记录。");
+assert(reusedShareLink.record.id === shareLink.record.id, "复用分享链接不应制造重复记录。");
+
+const copiedShare = window.MRAppState.markArtworkShareLinkCopied(shareLink.record.id);
+assert(copiedShare.ok && copiedShare.record.copyCount === 1, "复制分享链接应记录复制次数。");
+
+const openedShare = window.MRAppState.openArtworkShareLink(shareLink.record.id);
+assert(openedShare.ok, "有效本机分享链接应能打开。");
+assert(openedShare.record.viewCount === 1, "打开分享链接应记录访问次数。");
+assert(openedShare.share.artwork.id === "artwork-2", "分享链接应返回对应作品分享包。");
+
+let persistedShareState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+const persistedShare = persistedShareState.shareService.records.find((item) => item.id === shareLink.record.id);
+assert(persistedShare.copyCount === 1 && persistedShare.viewCount === 1, "分享复制和访问次数应持久化。");
+
+const revokedShare = window.MRAppState.revokeArtworkShareLink(shareLink.record.id);
+assert(revokedShare.ok && revokedShare.record.status === "revoked", "分享链接应可撤销。");
+const blockedShare = window.MRAppState.openArtworkShareLink(shareLink.record.id);
+assert(!blockedShare.ok && blockedShare.message.includes("撤销"), "已撤销分享链接不应继续打开。");
+const shareStatus = window.MRAppState.getShareServiceStatus("artwork-2");
+assert(shareStatus.activeCount === 0 && shareStatus.revokedCount === 1, "分享服务状态应统计撤销记录。");
+
 const reportComparison = window.MRAppState.getReportComparison("report-2");
 assert(reportComparison.ok, "两份报告应生成跨版本对比。");
 assert(reportComparison.previous.id === "report-1", "报告对比应选择上一份报告。");
@@ -637,7 +670,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {

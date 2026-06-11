@@ -5433,3 +5433,62 @@
 提交：
 
 - 中文 commit message：`新增学习档案字段级合并`
+
+### 2026-06-12：新增本机分享链接服务
+
+功能名：作品复盘本机分享链接服务。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 状态层新增 `shareService` 和 `ShareRecord`，记录作品 ID、权限类型、创建时间、过期时间、撤销时间、复制次数和访问次数。
+- 新增 `MRAppState.createArtworkShareLink()`、`openArtworkShareLink()`、`markArtworkShareLinkCopied()`、`revokeArtworkShareLink()` 和 `getShareServiceStatus()`。
+- 作品复盘区新增“生成本机链接”“复制链接”“撤销链接”和分享记录列表，标记为 `real-local`。
+- 前台新增 `?share=分享记录ID` 路由；有效链接会打开对应作品详情并记录访问次数，已撤销或过期链接不会伪装成功。
+- 保留原“导出分享页”离线 HTML 能力，继续标记为 `real-export`。
+- smoke test 新增分享服务控件标记，E2E 覆盖保存作品后生成、复制、打开和撤销本机分享链接。
+
+真实化说明：
+
+- 数据来源：本机作品集和本机学习状态。
+- 写入状态：分享记录写入 `mr-calligraphy-learning-state-v1.shareService.records`。
+- 成功反馈：生成、复制、打开、撤销都会写入 notice 和本机事件。
+- 失败反馈：无作品、无记录、过期、撤销或作品丢失时返回明确失败，不显示“已公开发布”。
+- 刷新后复现方式：同一浏览器内访问 `?share=分享记录ID`，可重新打开仍有效的作品分享记录。
+
+验收方式：
+
+- 手工验收：保存作品后点击“生成本机链接”，复制地址栏中的 `?share=...`，刷新或重新打开同一浏览器页面，应定位到对应作品详情；点击“撤销链接”后再次打开应提示链接已撤销。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖分享记录生成、复用、复制、访问、撤销和撤销后阻止打开；`npm run test:e2e -- --grep "front practice saves real strokes"` 覆盖前台真实按钮流程。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+
+已知限制：
+
+- 这是同一浏览器内的本机分享链接，不是公网 URL、微信分享、班级作品墙或跨设备发布。
+- 访问权限目前只有本机链接边界；后续接入生产后端后再补账号、权限、公开/私密范围和服务端撤销审计。
+
+提交：
+
+- 中文 commit message：`新增本机分享链接服务`

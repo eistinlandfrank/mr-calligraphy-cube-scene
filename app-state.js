@@ -4,9 +4,11 @@
   const MAX_EVENTS = 120;
   const MAX_HISTORY_TRASH = 12;
   const MAX_ARTWORK_TAGS = 8;
+  const MAX_SHARE_RECORDS = 24;
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
+  const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
@@ -334,6 +336,7 @@
       artworks: Array.isArray(source?.artworks) ? source.artworks.map(normalizeArtwork).filter(Boolean) : [],
       reports: Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [],
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
+      shareService: normalizeShareService(source?.shareService),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
       planRepository: normalizePlanRepository(source?.planRepository),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
@@ -439,6 +442,41 @@
       note,
       reviewedAt: normalizeIsoDate(source.reviewedAt || source.updatedAt || source.createdAt),
       source: String(source.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review"
+    };
+  }
+
+  function normalizeShareService(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    return {
+      records: Array.isArray(source.records)
+        ? source.records.map(normalizeShareRecord).filter(Boolean).slice(0, MAX_SHARE_RECORDS)
+        : [],
+      lastCreatedAt: normalizePlanDate(source.lastCreatedAt),
+      lastCopiedAt: normalizePlanDate(source.lastCopiedAt),
+      lastOpenedAt: normalizePlanDate(source.lastOpenedAt),
+      lastRevokedAt: normalizePlanDate(source.lastRevokedAt)
+    };
+  }
+
+  function normalizeShareRecord(record) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    const artworkId = String(record.artworkId || "").trim();
+    if (!id || !artworkId) return null;
+    return {
+      id,
+      artworkId,
+      title: String(record.title || "作品分享链接").slice(0, 120),
+      glyph: String(record.glyph || "").slice(0, 12),
+      score: normalizeScore(record.score, 0),
+      permission: record.permission === "local-browser" ? "local-browser" : "local-link",
+      createdAt: normalizePlanDate(record.createdAt) || new Date().toISOString(),
+      expiresAt: normalizePlanDate(record.expiresAt),
+      revokedAt: normalizePlanDate(record.revokedAt),
+      copiedAt: normalizePlanDate(record.copiedAt),
+      lastViewedAt: normalizePlanDate(record.lastViewedAt),
+      viewCount: normalizeInteger(record.viewCount, 0, 0, 999999),
+      copyCount: normalizeInteger(record.copyCount, 0, 0, 999999)
     };
   }
 
@@ -4106,6 +4144,240 @@
     return state.sessions.find((item) => item.id === artwork.sessionId) || null;
   }
 
+  function getShareServiceStatus(artworkId = null) {
+    const recordId = String(artworkId || "").trim();
+    const records = getDecoratedShareRecords();
+    const activeRecords = records.filter((record) => record.status === "active");
+    const revokedRecords = records.filter((record) => record.status === "revoked");
+    const expiredRecords = records.filter((record) => record.status === "expired");
+    const currentRecord = recordId
+      ? activeRecords.find((record) => record.artworkId === recordId)
+        || records.find((record) => record.artworkId === recordId)
+        || null
+      : activeRecords[0] || records[0] || null;
+
+    return {
+      ok: true,
+      boundary: SHARE_SERVICE_BOUNDARY,
+      total: records.length,
+      activeCount: activeRecords.length,
+      revokedCount: revokedRecords.length,
+      expiredCount: expiredRecords.length,
+      latestRecord: records[0] || null,
+      currentRecord,
+      records,
+      message: records.length
+        ? `本机分享服务有 ${activeRecords.length} 条有效链接、${revokedRecords.length} 条已撤销、${expiredRecords.length} 条已过期。`
+        : "本机分享服务尚未生成链接。保存作品后可生成当前浏览器内可访问的分享链接。"
+    };
+  }
+
+  function createArtworkShareLink(artworkId = null, options = {}) {
+    const artwork = findArtworkForShare(artworkId);
+    if (!artwork) {
+      return {
+        ok: false,
+        message: "还没有可分享的作品。请先完成书写并保存作品。"
+      };
+    }
+
+    const existing = getActiveShareRecordForArtwork(artwork.id);
+    if (existing) {
+      return {
+        ok: true,
+        reused: true,
+        record: decorateShareRecord(existing),
+        boundary: SHARE_SERVICE_BOUNDARY,
+        message: `“${artwork.title}”已有有效的本机分享链接，可直接复制或撤销。`
+      };
+    }
+
+    const now = new Date();
+    const expiresInDays = normalizeInteger(options.expiresInDays, 7, 1, 365);
+    const expiresAt = new Date(now.getTime() + expiresInDays * 24 * 60 * 60 * 1000).toISOString();
+    const record = normalizeShareRecord({
+      id: makeId("share"),
+      artworkId: artwork.id,
+      title: artwork.title || `${artwork.glyph || "作品"}分享`,
+      glyph: artwork.glyph || "",
+      score: artwork.score || 0,
+      permission: "local-link",
+      createdAt: now.toISOString(),
+      expiresAt,
+      viewCount: 0,
+      copyCount: 0
+    });
+
+    state.shareService.records = [record, ...state.shareService.records]
+      .filter(Boolean)
+      .slice(0, MAX_SHARE_RECORDS);
+    state.shareService.lastCreatedAt = now.toISOString();
+    addEvent("share-link", `生成本机分享链接：${artwork.title || artwork.id}`);
+    saveState();
+
+    return {
+      ok: true,
+      record: decorateShareRecord(record),
+      boundary: SHARE_SERVICE_BOUNDARY,
+      message: `已为“${artwork.title}”生成本机分享链接，有效期 ${expiresInDays} 天。`
+    };
+  }
+
+  function openArtworkShareLink(shareId) {
+    const record = findShareRecord(shareId);
+    if (!record) {
+      return {
+        ok: false,
+        message: "未找到这条本机分享链接，可能已被清理或来自其他浏览器。"
+      };
+    }
+
+    const decorated = decorateShareRecord(record);
+    if (decorated.status === "revoked") {
+      return {
+        ok: false,
+        record: decorated,
+        boundary: SHARE_SERVICE_BOUNDARY,
+        message: `这条本机分享链接已于 ${formatDateTime(record.revokedAt)} 撤销。`
+      };
+    }
+    if (decorated.status === "expired") {
+      return {
+        ok: false,
+        record: decorated,
+        boundary: SHARE_SERVICE_BOUNDARY,
+        message: `这条本机分享链接已于 ${formatDateTime(record.expiresAt)} 过期。`
+      };
+    }
+
+    const packageResult = getArtworkSharePackage(record.artworkId);
+    if (!packageResult.ok) {
+      return {
+        ok: false,
+        record: decorated,
+        boundary: SHARE_SERVICE_BOUNDARY,
+        message: "分享链接对应的作品已不存在，无法打开。"
+      };
+    }
+
+    const now = new Date().toISOString();
+    record.viewCount = normalizeInteger(record.viewCount, 0, 0, 999999) + 1;
+    record.lastViewedAt = now;
+    state.shareService.lastOpenedAt = now;
+    addEvent("share-open", `访问本机分享链接：${record.title || record.id}`);
+    saveState();
+
+    return {
+      ok: true,
+      record: decorateShareRecord(record),
+      share: packageResult.share,
+      boundary: SHARE_SERVICE_BOUNDARY,
+      message: `已打开“${record.title}”的本机分享链接。`
+    };
+  }
+
+  function markArtworkShareLinkCopied(shareId) {
+    const record = findShareRecord(shareId);
+    if (!record) {
+      return { ok: false, message: "未找到可复制的本机分享链接。" };
+    }
+    if (getShareRecordStatus(record) !== "active") {
+      return {
+        ok: false,
+        record: decorateShareRecord(record),
+        message: "这条本机分享链接已失效，不能继续复制。"
+      };
+    }
+
+    const now = new Date().toISOString();
+    record.copyCount = normalizeInteger(record.copyCount, 0, 0, 999999) + 1;
+    record.copiedAt = now;
+    state.shareService.lastCopiedAt = now;
+    addEvent("share-copy", `复制本机分享链接：${record.title || record.id}`);
+    saveState();
+    return {
+      ok: true,
+      record: decorateShareRecord(record),
+      message: "已记录本机分享链接复制动作。"
+    };
+  }
+
+  function revokeArtworkShareLink(shareId) {
+    const record = findShareRecord(shareId);
+    if (!record) {
+      return { ok: false, message: "未找到可撤销的本机分享链接。" };
+    }
+    if (record.revokedAt) {
+      return {
+        ok: true,
+        record: decorateShareRecord(record),
+        message: "这条本机分享链接此前已撤销。"
+      };
+    }
+
+    const now = new Date().toISOString();
+    record.revokedAt = now;
+    state.shareService.lastRevokedAt = now;
+    addEvent("share-revoke", `撤销本机分享链接：${record.title || record.id}`);
+    saveState();
+    return {
+      ok: true,
+      record: decorateShareRecord(record),
+      message: `已撤销“${record.title || record.id}”的本机分享链接。`
+    };
+  }
+
+  function getDecoratedShareRecords() {
+    return state.shareService.records
+      .map(decorateShareRecord)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+  }
+
+  function getActiveShareRecordForArtwork(artworkId) {
+    return state.shareService.records.find((record) => (
+      record.artworkId === artworkId && getShareRecordStatus(record) === "active"
+    )) || null;
+  }
+
+  function findShareRecord(shareId) {
+    const id = String(shareId || "").trim();
+    if (!id) return null;
+    return state.shareService.records.find((record) => record.id === id) || null;
+  }
+
+  function decorateShareRecord(record) {
+    if (!record) return null;
+    const artwork = state.artworks.find((item) => item.id === record.artworkId) || null;
+    const status = getShareRecordStatus(record);
+    return {
+      ...clone(record),
+      title: record.title || artwork?.title || "作品分享链接",
+      artworkTitle: artwork?.title || record.title || record.artworkId,
+      glyph: record.glyph || artwork?.glyph || "",
+      score: record.score || artwork?.score || 0,
+      status,
+      statusLabel: getShareRecordStatusLabel(status),
+      isActive: status === "active",
+      isRevoked: status === "revoked",
+      isExpired: status === "expired",
+      permissionLabel: record.permission === "local-browser" ? "仅本机浏览器" : "本机链接",
+      boundary: SHARE_SERVICE_BOUNDARY
+    };
+  }
+
+  function getShareRecordStatus(record) {
+    if (record.revokedAt) return "revoked";
+    if (record.expiresAt && Date.parse(record.expiresAt) <= Date.now()) return "expired";
+    return "active";
+  }
+
+  function getShareRecordStatusLabel(status) {
+    if (status === "revoked") return "已撤销";
+    if (status === "expired") return "已过期";
+    return "有效";
+  }
+
   function downloadArtworkSharePage(artworkId = null) {
     const result = getArtworkSharePackage(artworkId);
     if (!result.ok) {
@@ -7729,6 +8001,7 @@
     getReportComparisonExport,
     getReportSeries,
     getArtworkSharePackage,
+    getShareServiceStatus,
     getLatestReview,
     getHistory,
     getHistoryDetail,
@@ -7788,6 +8061,10 @@
     createReport,
     updateReportTeacherReview,
     clearReportTeacherReview,
+    createArtworkShareLink,
+    openArtworkShareLink,
+    markArtworkShareLinkCopied,
+    revokeArtworkShareLink,
     downloadPlan,
     downloadPlanRepository,
     downloadReport,

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法 360° 全景交互演示</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=step-route-20260611">
+  <link rel="stylesheet" href="style.css?v=share-service-20260612">
 </head>
 <body>
   <main class="app-shell">
@@ -174,6 +174,13 @@
             <button data-feature-state="real-export" id="reviewDownloadReport" type="button">下载报告</button>
             <button data-feature-state="real-export" id="reviewDownloadShare" type="button">导出分享页</button>
           </div>
+          <div id="shareServiceSummary" class="share-service-summary">本机分享链接尚未生成。</div>
+          <div class="share-service-actions">
+            <button data-feature-state="real-local" id="reviewCreateShareLink" type="button">生成本机链接</button>
+            <button data-feature-state="real-local" id="reviewCopyShareLink" type="button">复制链接</button>
+            <button data-feature-state="real-local" id="reviewRevokeShareLink" type="button">撤销链接</button>
+          </div>
+          <ul id="shareServiceRecords" class="share-service-records" aria-label="本机分享记录"></ul>
         </section>
 
         <section id="reportPanel" class="report-panel" aria-label="站内学习报告" hidden>
@@ -542,8 +549,8 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
-  <script src="app-state.js?v=teacher-review-20260612"></script>
+  <script src="app-state.js?v=share-service-20260612"></script>
   <script src="practice-canvas.js?v=practice-canvas-20260611"></script>
-  <script src="script.js?v=teacher-review-20260612"></script>
+  <script src="script.js?v=share-service-20260612"></script>
 </body>
 </html>

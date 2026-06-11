@@ -93,6 +93,29 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.artworks[0].strokeCount).toBeGreaterThan(0);
   expect(learningState.sessions.some((session) => session.status === "saved" && session.strokeCount > 0)).toBe(true);
 
+  await page.locator("#reviewCreateShareLink").click();
+  await expect(page.locator("#shareServiceSummary")).toContainText("1 条有效链接");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.records).toHaveLength(1);
+  expect(learningState.shareService.records[0].artworkId).toBe(learningState.artworks[0].id);
+
+  await page.locator("#reviewCopyShareLink").click();
+  await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const shareRecordId = learningState.shareService.records[0].id;
+  expect(learningState.shareService.records[0].copyCount).toBe(1);
+
+  await page.goto(`/?share=${shareRecordId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#historyDetail")).toBeVisible();
+  await expect(page.locator("#historyDetailType")).toContainText("作品详情");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.records[0].viewCount).toBe(1);
+
+  await page.locator("#reviewRevokeShareLink").click();
+  await expect(page.locator("#shareServiceSummary")).toContainText("已撤销");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.records[0].revokedAt).toBeTruthy();
+
   await page.getByRole("button", { name: /切换到步骤 9/ }).click();
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出报告" }).click();
