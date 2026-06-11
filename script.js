@@ -946,6 +946,7 @@ let activeReportMetricKey = "structure";
 let activeReportSeriesMetricKeys = new Set(["structure"]);
 let activeReportSeriesTooltipTarget = null;
 let activeReportSeriesWindowSize = null;
+let activeReportSeriesPointId = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
@@ -3576,6 +3577,14 @@ function bindReportControls() {
       return;
     }
 
+    const pointDetail = event.target.closest("[data-report-series-point-detail]");
+    if (pointDetail) {
+      activeReportSeriesPointId = pointDetail.dataset.reportSeriesPointDetail || null;
+      hideReportSeriesTooltip({ force: true });
+      renderReportPanel(currentIndex);
+      return;
+    }
+
     const metricButton = event.target.closest("[data-report-series-metric]");
     if (metricButton) {
       toggleReportSeriesMetric(metricButton.dataset.reportSeriesMetric);
@@ -3621,6 +3630,17 @@ function bindReportControls() {
     hideReportSeriesTooltip();
   });
   els.reportSeries?.addEventListener("keydown", (event) => {
+    if ((event.key === "Enter" || event.key === " ") && event.target.closest("[data-report-series-point-detail]")) {
+      const target = event.target.closest("[data-report-series-point-detail]");
+      if (target?.tagName?.toLowerCase() !== "button") {
+        event.preventDefault();
+        activeReportSeriesPointId = target.dataset.reportSeriesPointDetail || null;
+        hideReportSeriesTooltip({ force: true });
+        renderReportPanel(currentIndex);
+        return;
+      }
+    }
+
     if (event.key !== "Escape") return;
     const tooltip = getReportSeriesTooltip();
     if (!tooltip || tooltip.hidden) return;
@@ -4292,36 +4312,52 @@ function renderReportSeries(series, metricKey = activeReportMetricKey) {
   const metricText = selectedMetrics.length
     ? selectedMetrics.map((metric) => `${metric.label}${formatSignedDelta(metric.delta)}`).join(" / ")
     : "未选择字段";
+  const pointSelection = getReportSeriesPointSelection(visibleSeries);
   const summary = document.createElement("p");
   summary.className = "report-series-summary";
   summary.textContent = `${visibleSeries.summary || series.summary || "已读取本机报告序列。"} 字段对比：${metricText}。`;
 
   const zoomControls = createReportSeriesZoomControls(series, visibleSeries);
   const controls = createReportSeriesMetricControls(selectedKeys, visibleSeries.metricSeries || []);
-  const chart = createReportSeriesChart(visibleSeries, selectedMetrics);
+  const chart = createReportSeriesChart(visibleSeries, selectedMetrics, pointSelection.point?.id);
   const points = document.createElement("div");
   points.className = "report-series-points";
   (visibleSeries.points || []).forEach((point) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.dataset.featureState = "real-local";
-    button.dataset.reportJump = point.id;
-    button.dataset.reportSeriesTooltip = "";
-    button.dataset.tooltipTitle = point.title || `第${point.sequence}份报告`;
-    button.dataset.tooltipBody = `平均 ${point.averageScore || 0} 分 / 练习 ${point.sessionCount || 0} 次 / 作品 ${point.artworkCount || 0} 幅 / ${formatHistoryTime(point.createdAt)}`;
-    button.setAttribute("aria-pressed", String(point.current));
-    button.title = `${point.title} / 平均 ${point.averageScore || 0} 分 / ${formatHistoryTime(point.createdAt)}`;
+    const card = document.createElement("div");
+    card.className = "report-series-point-card";
+    card.classList.toggle("is-selected", point.id === pointSelection.point?.id);
+    card.dataset.reportSeriesTooltip = "";
+    card.dataset.tooltipTitle = point.title || `第${point.sequence}份报告`;
+    card.dataset.tooltipBody = `平均 ${point.averageScore || 0} 分 / 练习 ${point.sessionCount || 0} 次 / 作品 ${point.artworkCount || 0} 幅 / ${formatHistoryTime(point.createdAt)}`;
     const label = document.createElement("span");
     label.textContent = `第${point.sequence}份`;
     const score = document.createElement("strong");
     score.textContent = `${point.averageScore || 0}`;
     const meta = document.createElement("small");
     meta.textContent = formatHistoryTime(point.createdAt);
-    button.append(label, score, meta);
-    points.appendChild(button);
+    const actions = document.createElement("div");
+    actions.className = "report-series-point-actions";
+    const detailButton = document.createElement("button");
+    detailButton.type = "button";
+    detailButton.dataset.featureState = "real-local";
+    detailButton.dataset.reportSeriesPointDetail = point.id;
+    detailButton.setAttribute("aria-pressed", String(point.id === pointSelection.point?.id));
+    if (point.id === pointSelection.point?.id) {
+      detailButton.id = "reportSeriesPointDetail";
+    }
+    detailButton.textContent = "明细";
+    const reportButton = document.createElement("button");
+    reportButton.type = "button";
+    reportButton.dataset.featureState = "real-local";
+    reportButton.dataset.reportJump = point.id;
+    reportButton.textContent = "报告";
+    actions.append(detailButton, reportButton);
+    card.append(label, score, meta, actions);
+    points.appendChild(card);
   });
+  const pointDetail = createReportSeriesPointDetail(pointSelection, visibleSeries);
 
-  els.reportSeries.append(summary, zoomControls, controls, chart, points, createReportSeriesTooltip());
+  els.reportSeries.append(summary, zoomControls, controls, chart, points, pointDetail, createReportSeriesTooltip());
 }
 
 function createReportSeriesZoomControls(series, visibleSeries) {
@@ -4402,6 +4438,90 @@ function getVisibleReportSeries(series) {
   };
 }
 
+function getReportSeriesPointSelection(series) {
+  const points = series?.points || [];
+  if (!points.length) {
+    activeReportSeriesPointId = null;
+    return { point: null, previous: null, index: -1 };
+  }
+
+  const fallback = points.find((point) => point.current) || points[points.length - 1];
+  if (!points.some((point) => point.id === activeReportSeriesPointId)) {
+    activeReportSeriesPointId = fallback.id;
+  }
+  const index = points.findIndex((point) => point.id === activeReportSeriesPointId);
+  return {
+    point: points[index] || fallback,
+    previous: index > 0 ? points[index - 1] : null,
+    index
+  };
+}
+
+function createReportSeriesPointDetail(selection, series) {
+  const panel = document.createElement("div");
+  panel.className = "report-series-point-detail";
+  panel.setAttribute("aria-live", "polite");
+  const point = selection.point;
+  if (!point) {
+    panel.textContent = "选择一份报告后显示逐点明细。";
+    return panel;
+  }
+
+  const previous = selection.previous;
+  const head = document.createElement("div");
+  head.className = "report-series-point-detail-head";
+  const title = document.createElement("strong");
+  title.textContent = point.title || `第${point.sequence}份报告`;
+  const meta = document.createElement("span");
+  meta.textContent = `${formatHistoryTime(point.createdAt)} / 第 ${point.sequence} 份 / 当前视图 ${selection.index + 1} / ${(series.points || []).length}`;
+  head.append(title, meta);
+
+  const stats = document.createElement("div");
+  stats.className = "report-series-point-detail-stats";
+  [
+    ["平均分", point.averageScore || 0, previous ? point.averageScore - previous.averageScore : null, "分"],
+    ["练习", point.sessionCount || 0, previous ? point.sessionCount - previous.sessionCount : null, "次"],
+    ["作品", point.artworkCount || 0, previous ? point.artworkCount - previous.artworkCount : null, "幅"],
+    ["分钟", point.learningMinutes || 0, previous ? point.learningMinutes - previous.learningMinutes : null, ""]
+  ].forEach(([label, value, delta, unit]) => {
+    const item = document.createElement("span");
+    const name = document.createElement("small");
+    name.textContent = label;
+    const data = document.createElement("em");
+    data.textContent = `${value}${unit}`;
+    const trend = document.createElement("b");
+    trend.dataset.tone = delta > 0 ? "up" : delta < 0 ? "down" : "same";
+    trend.textContent = delta === null ? "首份" : formatSignedDelta(delta, unit);
+    item.append(name, data, trend);
+    stats.appendChild(item);
+  });
+
+  const metrics = document.createElement("div");
+  metrics.className = "report-series-point-detail-metrics";
+  REPORT_METRIC_LABELS.forEach(([key, label]) => {
+    const value = clamp(Number(point.scoreBreakdown?.[key]) || 0, 0, 100);
+    const prevValue = previous ? clamp(Number(previous.scoreBreakdown?.[key]) || 0, 0, 100) : null;
+    const row = document.createElement("span");
+    row.dataset.tone = prevValue === null ? "same" : value > prevValue ? "up" : value < prevValue ? "down" : "same";
+    row.textContent = prevValue === null
+      ? `${label} ${value}分`
+      : `${label} ${prevValue} → ${value} (${formatSignedDelta(value - prevValue)})`;
+    metrics.appendChild(row);
+  });
+
+  const actions = document.createElement("div");
+  actions.className = "report-series-point-detail-actions";
+  const open = document.createElement("button");
+  open.type = "button";
+  open.dataset.featureState = "real-local";
+  open.dataset.reportJump = point.id;
+  open.textContent = "打开这份报告";
+  actions.appendChild(open);
+
+  panel.append(head, stats, metrics, actions);
+  return panel;
+}
+
 function createReportSeriesMetricControls(selectedKeys, metricSeries = []) {
   const controls = document.createElement("div");
   controls.className = "report-series-metric-controls";
@@ -4428,7 +4548,7 @@ function createReportSeriesMetricControls(selectedKeys, metricSeries = []) {
   return controls;
 }
 
-function createReportSeriesChart(series, selectedMetrics = []) {
+function createReportSeriesChart(series, selectedMetrics = [], selectedPointId = "") {
   const points = series.points || [];
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("class", "report-series-chart");
@@ -4461,12 +4581,17 @@ function createReportSeriesChart(series, selectedMetrics = []) {
   points.forEach((point, index) => {
     const average = averageCoords[index];
     const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    circle.setAttribute("class", point.current ? "report-series-dot is-current" : "report-series-dot");
+    const classNames = ["report-series-dot"];
+    if (point.current) classNames.push("is-current");
+    if (point.id === selectedPointId) classNames.push("is-selected");
+    circle.setAttribute("class", classNames.join(" "));
     circle.setAttribute("cx", average.x);
     circle.setAttribute("cy", average.y);
     circle.setAttribute("r", point.current ? "4.6" : "3.4");
     circle.setAttribute("aria-label", `${point.title} 平均 ${point.averageScore || 0} 分`);
     circle.setAttribute("tabindex", "0");
+    circle.setAttribute("role", "button");
+    circle.dataset.reportSeriesPointDetail = point.id;
     circle.dataset.reportSeriesTooltip = "";
     circle.dataset.tooltipTitle = point.title || `第${point.sequence}份报告`;
     circle.dataset.tooltipBody = `平均 ${point.averageScore || 0} 分 / 练习 ${point.sessionCount || 0} 次 / 作品 ${point.artworkCount || 0} 幅 / ${formatHistoryTime(point.createdAt)}`;

@@ -4334,12 +4334,18 @@ body.is-model-view .notice-panel {
   fill: #74ffdb;
   stroke: rgba(20, 38, 34, 0.9);
   stroke-width: 1.5;
+  cursor: pointer;
 }
 
 .report-series-dot.is-current {
   fill: #f7d78b;
   stroke: #fffaf1;
   stroke-width: 2;
+}
+
+.report-series-dot.is-selected {
+  stroke: #fffaf1;
+  stroke-width: 3;
 }
 
 .report-series-label,
@@ -4355,41 +4361,160 @@ body.is-model-view .notice-panel {
   gap: 6px;
 }
 
-.report-series-points button {
+.report-series-point-card {
   display: grid;
   gap: 2px;
-  min-height: 52px;
+  min-height: 74px;
   padding: 6px 7px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 7px;
   color: rgba(255, 250, 241, 0.72);
   background: rgba(255, 255, 255, 0.08);
-  cursor: pointer;
   font: inherit;
   text-align: left;
 }
 
-.report-series-points button:hover,
-.report-series-points button:focus-visible,
-.report-series-points button[aria-pressed="true"] {
+.report-series-point-card:hover,
+.report-series-point-card.is-selected {
   border-color: rgba(116, 255, 219, 0.42);
-  outline: none;
   color: #fffaf1;
   background: rgba(47, 111, 104, 0.48);
 }
 
-.report-series-points span,
-.report-series-points small {
+.report-series-point-card span,
+.report-series-point-card small {
   overflow: hidden;
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.report-series-points strong {
+.report-series-point-card strong {
   color: #ffffff;
   font-size: 15px;
   line-height: 1.1;
+}
+
+.report-series-point-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 3px;
+}
+
+.report-series-point-actions button,
+.report-series-point-detail-actions button {
+  min-width: 0;
+  min-height: 26px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: rgba(255, 250, 241, 0.76);
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.report-series-point-actions button:hover,
+.report-series-point-actions button:focus-visible,
+.report-series-point-actions button[aria-pressed="true"],
+.report-series-point-detail-actions button:hover,
+.report-series-point-detail-actions button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.42);
+  outline: none;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.58);
+}
+
+.report-series-point-detail {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgba(116, 255, 219, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.report-series-point-detail-head {
+  display: grid;
+  gap: 3px;
+}
+
+.report-series-point-detail-head strong {
+  overflow: hidden;
+  color: #fffaf1;
+  font-size: 12px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-series-point-detail-head span {
+  color: rgba(255, 250, 241, 0.56);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.report-series-point-detail-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.report-series-point-detail-stats span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.report-series-point-detail-stats small,
+.report-series-point-detail-stats b {
+  overflow: hidden;
+  color: rgba(255, 250, 241, 0.56);
+  font-size: 9px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-series-point-detail-stats em {
+  color: #ffffff;
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.report-series-point-detail-stats b[data-tone="up"],
+.report-series-point-detail-metrics span[data-tone="up"] {
+  color: #74ffdb;
+}
+
+.report-series-point-detail-stats b[data-tone="down"],
+.report-series-point-detail-metrics span[data-tone="down"] {
+  color: #f7b1a3;
+}
+
+.report-series-point-detail-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.report-series-point-detail-metrics span {
+  padding: 5px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  color: rgba(255, 250, 241, 0.7);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.report-series-point-detail-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .report-latest-grid {
@@ -4527,7 +4652,9 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-metric-detail span,
   body.is-report-printing .report-comparison-stats em,
   body.is-report-printing .report-series-metric-controls em,
-  body.is-report-printing .report-series-points strong,
+  body.is-report-printing .report-series-point-card strong,
+  body.is-report-printing .report-series-point-detail-head strong,
+  body.is-report-printing .report-series-point-detail-stats em,
   body.is-report-printing .report-latest-text span {
     color: #17221f;
   }
@@ -4543,7 +4670,10 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-comparison-stats span,
   body.is-report-printing .report-series-metric-controls button,
   body.is-report-printing .report-series-zoom-controls button,
-  body.is-report-printing .report-series-points button,
+  body.is-report-printing .report-series-point-card,
+  body.is-report-printing .report-series-point-actions button,
+  body.is-report-printing .report-series-point-detail,
+  body.is-report-printing .report-series-point-detail-actions button,
   body.is-report-printing .report-metric-detail {
     border: 1px solid #dbe8e2;
     color: #17221f;
@@ -4562,8 +4692,12 @@ body.is-model-view .notice-panel {
   body.is-report-printing .report-series-summary,
   body.is-report-printing .report-series-zoom-controls span,
   body.is-report-printing .report-series-metric-controls span,
-  body.is-report-printing .report-series-points span,
-  body.is-report-printing .report-series-points small,
+  body.is-report-printing .report-series-point-card span,
+  body.is-report-printing .report-series-point-card small,
+  body.is-report-printing .report-series-point-detail-head span,
+  body.is-report-printing .report-series-point-detail-stats small,
+  body.is-report-printing .report-series-point-detail-stats b,
+  body.is-report-printing .report-series-point-detail-metrics span,
   body.is-report-printing .report-latest-text small,
   body.is-report-printing .report-recommendations li {
     color: #61706a;
