@@ -957,7 +957,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const projectRepositoryEndpointPath = "/e2e-project-repository";
   const remoteRequests = [];
   const projectRepositoryRequests = [];
-  let remoteProjectRepositoryPackage = null;
+  const remoteProjectRepositoryVersions = [];
 
   await page.route(`**${remoteEndpointPath}`, async (route) => {
     const request = route.request();
@@ -1001,32 +1001,54 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
     });
   });
 
-  await page.route(`**${projectRepositoryEndpointPath}`, async (route) => {
+  await page.route(`**${projectRepositoryEndpointPath}**`, async (route) => {
     const request = route.request();
     const method = request.method();
+    const requestUrl = new URL(request.url());
+    const requestedPackageId = requestUrl.searchParams.get("packageId") || "";
     const body = method === "PUT" ? request.postDataJSON() : null;
     projectRepositoryRequests.push({
       method,
+      url: request.url(),
+      packageId: requestedPackageId,
       authorization: request.headers().authorization || "",
       body
     });
     if (method === "PUT") {
       const validation = validateProjectRepositoryPackage(body);
       expect(validation.ok, validation.message).toBe(true);
-      remoteProjectRepositoryPackage = JSON.parse(JSON.stringify(body));
+      const packageIndex = remoteProjectRepositoryVersions.length + 1;
+      const packageId = `e2e-project-repository-${packageIndex}`;
+      const remoteVersion = {
+        id: packageId,
+        packageId,
+        sourcePackageId: body.packageId,
+        packageDigest: body.packageDigest,
+        repositoryDigest: body.packageDigest,
+        remoteVersion: "e2e-project-repository-v1",
+        acceptedAt: new Date(Date.UTC(2026, 5, 12, 8, packageIndex, 0)).toISOString(),
+        sceneCount: body.summary.sceneCount,
+        modelCount: body.summary.importedModels,
+        summary: body.summary,
+        package: JSON.parse(JSON.stringify(body))
+      };
+      remoteProjectRepositoryVersions.unshift(remoteVersion);
       await route.fulfill({
         status: 201,
         contentType: "application/json",
         body: JSON.stringify({
           ok: true,
           message: "项目仓库远端 E2E 已接收。",
-          packageId: "e2e-project-repository",
+          packageId,
           packageDigest: body.packageDigest,
           repositoryDigest: body.packageDigest,
           remoteVersion: "e2e-project-repository-v1",
+          selectedVersion: toProjectRepositoryVersionSummary(remoteVersion),
+          versionCount: remoteProjectRepositoryVersions.length,
+          versions: remoteProjectRepositoryVersions.map(toProjectRepositoryVersionSummary),
           receipt: {
             receiptKind: "mr-calligraphy-project-repository-receipt-v1",
-            packageId: "e2e-project-repository",
+            packageId,
             sourcePackageId: body.packageId,
             packageDigest: body.packageDigest,
             repositoryDigest: body.packageDigest,
@@ -1039,16 +1061,40 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       });
       return;
     }
+    const selectedVersion = requestedPackageId
+      ? remoteProjectRepositoryVersions.find((version) => [
+          version.packageId,
+          version.sourcePackageId,
+          version.packageDigest,
+          version.repositoryDigest
+        ].includes(requestedPackageId))
+      : remoteProjectRepositoryVersions[0];
+    if (requestedPackageId && !selectedVersion) {
+      await route.fulfill({
+        status: 404,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: false,
+          message: `项目仓库远端 E2E 未找到版本：${requestedPackageId}。`,
+          remoteVersion: "e2e-project-check-v1",
+          versions: remoteProjectRepositoryVersions.map(toProjectRepositoryVersionSummary)
+        })
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        message: remoteProjectRepositoryPackage ? "项目仓库远端 E2E 可拉取。" : "项目仓库远端 E2E 可访问。",
+        message: selectedVersion ? `项目仓库远端 E2E 可拉取版本 ${selectedVersion.packageId}。` : "项目仓库远端 E2E 可访问。",
         remoteVersion: "e2e-project-check-v1",
-        packageId: remoteProjectRepositoryPackage ? "e2e-project-repository" : "",
-        repositoryDigest: remoteProjectRepositoryPackage?.packageDigest || "",
-        package: remoteProjectRepositoryPackage
+        packageId: selectedVersion?.packageId || "",
+        repositoryDigest: selectedVersion?.repositoryDigest || "",
+        package: selectedVersion?.package || null,
+        selectedVersion: selectedVersion ? toProjectRepositoryVersionSummary(selectedVersion) : null,
+        versionCount: remoteProjectRepositoryVersions.length,
+        versions: remoteProjectRepositoryVersions.map(toProjectRepositoryVersionSummary)
       })
     });
   });
@@ -1101,31 +1147,63 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
 
   await page.locator("#projectRepositoryPushRemote").click();
   await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("项目仓库远端 E2E 已接收");
-  await expect(page.locator("#projectRepositoryReceiptList")).toContainText("e2e-project-repository");
+  await expect(page.locator("#projectRepositoryReceiptList")).toContainText("e2e-project-repository-1");
 
   expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.authorization === "Bearer project-e2e-token")).toBe(true);
-  const projectRepositoryPut = projectRepositoryRequests.find((item) => item.method === "PUT");
-  expect(projectRepositoryPut.authorization).toBe("Bearer project-e2e-token");
-  expect(projectRepositoryPut.body.kind).toBe("mr-calligraphy-project-repository-package-v1");
-  expect(projectRepositoryPut.body.repository.kind).toBe("mr-calligraphy-project-repository-v1");
-  expect(projectRepositoryPut.body.projectSchema.kind).toBe("mr-calligraphy-project-schema");
-  expect(projectRepositoryPut.body.archive.kind).toBe("mr-calligraphy-project-archive");
-  expect(projectRepositoryPut.body.summary.sceneCount).toBe(2);
-  expect(projectRepositoryPut.body.summary.publishedSceneCount).toBeGreaterThan(0);
-  expect(projectRepositoryPut.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  const firstProjectRepositoryPut = projectRepositoryRequests.find((item) => item.method === "PUT");
+  expect(firstProjectRepositoryPut.authorization).toBe("Bearer project-e2e-token");
+  expect(firstProjectRepositoryPut.body.kind).toBe("mr-calligraphy-project-repository-package-v1");
+  expect(firstProjectRepositoryPut.body.repository.kind).toBe("mr-calligraphy-project-repository-v1");
+  expect(firstProjectRepositoryPut.body.projectSchema.kind).toBe("mr-calligraphy-project-schema");
+  expect(firstProjectRepositoryPut.body.archive.kind).toBe("mr-calligraphy-project-archive");
+  expect(firstProjectRepositoryPut.body.summary.sceneCount).toBe(2);
+  expect(firstProjectRepositoryPut.body.summary.publishedSceneCount).toBeGreaterThan(0);
+  expect(firstProjectRepositoryPut.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
 
+  const firstRemoteProjectVersion = remoteProjectRepositoryVersions[0];
+  expect(firstRemoteProjectVersion.packageId).toBe("e2e-project-repository-1");
   const projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
-  expect(projectRepositoryState.lastPackageId).toBe("e2e-project-repository");
+  expect(projectRepositoryState.lastPackageId).toBe("e2e-project-repository-1");
   expect(projectRepositoryState.lastRemoteVersion).toBe("e2e-project-repository-v1");
-  expect(projectRepositoryState.lastPackageDigest).toBe(projectRepositoryPut.body.packageDigest);
-  expect(projectRepositoryState.receipts[0].sourcePackageId).toBe(projectRepositoryPut.body.packageId);
+  expect(projectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
+  expect(projectRepositoryState.receipts[0].sourcePackageId).toBe(firstProjectRepositoryPut.body.packageId);
+  expect(projectRepositoryState.versions[0].packageId).toBe("e2e-project-repository-1");
 
+  const secondObjectLabel = `${objectLabel} 版本二`;
+  await page.locator("#mainNewObjectName").fill(secondObjectLabel);
+  await page.locator("#mainNewObjectType").selectOption("box");
+  await page.locator("#mainNewObjectAdd").click();
+  await expect(page.locator("#mainCustomStatus")).toContainText(`已新增：${secondObjectLabel}`);
+  await page.locator("#mainPublishLayout").click();
+  await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
+
+  await page.locator("#projectRepositoryPushRemote").click();
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("项目仓库远端 E2E 已接收");
+  await expect(page.locator("#projectRepositoryReceiptList")).toContainText("e2e-project-repository-2");
+  await expect(page.locator("#projectRepositoryVersionSelect")).toContainText("e2e-project-repository-1");
+  await expect(page.locator("#projectRepositoryVersionSelect")).toContainText("e2e-project-repository-2");
+
+  const projectRepositoryPuts = projectRepositoryRequests.filter((item) => item.method === "PUT");
+  expect(projectRepositoryPuts).toHaveLength(2);
+  const secondProjectRepositoryPut = projectRepositoryPuts[1];
+  expect(secondProjectRepositoryPut.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(secondProjectRepositoryPut.body.packageDigest).not.toBe(firstProjectRepositoryPut.body.packageDigest);
+  const latestProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(latestProjectRepositoryState.lastPackageId).toBe("e2e-project-repository-2");
+  expect(latestProjectRepositoryState.versions.map((version) => version.packageId)).toEqual([
+    "e2e-project-repository-2",
+    "e2e-project-repository-1"
+  ]);
+
+  await page.locator("#projectRepositoryVersionSelect").selectOption(firstRemoteProjectVersion.packageId);
   await page.locator("#projectRepositoryPullRemote").click();
-  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库远端 E2E 可拉取");
+  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库远端 E2E 可拉取版本 e2e-project-repository-1");
   await expect(page.locator("#projectImportPreview")).toBeVisible();
   await expect(page.locator("#projectImportPreviewList")).toContainText("主场景布局");
   const pulledProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
-  expect(pulledProjectRepositoryState.lastPackageDigest).toBe(projectRepositoryPut.body.packageDigest);
+  expect(pulledProjectRepositoryState.lastPackageId).toBe(firstRemoteProjectVersion.packageId);
+  expect(pulledProjectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
+  expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.packageId === firstRemoteProjectVersion.packageId)).toBe(true);
 
   await page.locator(".main-publish-panel .remote-publish-panel summary").click();
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();
@@ -1485,6 +1563,21 @@ function createPagedHistoryConflictPackages(basePackage, sessionId) {
   };
   pageTwo.history = [];
   return { pageOne, pageTwo };
+}
+
+function toProjectRepositoryVersionSummary(version) {
+  return {
+    id: version.id,
+    packageId: version.packageId,
+    sourcePackageId: version.sourcePackageId,
+    packageDigest: version.packageDigest,
+    repositoryDigest: version.repositoryDigest,
+    remoteVersion: version.remoteVersion,
+    acceptedAt: version.acceptedAt,
+    sceneCount: version.sceneCount,
+    modelCount: version.modelCount,
+    summary: version.summary
+  };
 }
 
 function cloneJson(value) {

@@ -7,6 +7,7 @@
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
   const PROJECT_REPOSITORY_REMOTE_VERSION = 1;
   const PROJECT_REPOSITORY_MAX_RECEIPTS = 12;
+  const PROJECT_REPOSITORY_MAX_VERSIONS = 20;
   const PROJECT_REPOSITORY_REMOTE_BOUNDARY = "项目仓库远端 API adapter 会真实发送当前本机项目档案包；它不是账号权限、多人协作 CMS、CDN 资产库或生产服务端本身。";
   const STORAGE_ITEMS = [
     { key: "mr-calligraphy-learning-state-v1", label: "学习状态" },
@@ -138,6 +139,9 @@
       lastPackageDigest: normalizeSha256(source.lastPackageDigest),
       lastRepositoryDigest: normalizeSha256(source.lastRepositoryDigest),
       lastError: source.lastError ? String(source.lastError).slice(0, 220) : "",
+      versions: Array.isArray(source.versions)
+        ? mergeProjectRepositoryVersions(source.versions)
+        : [],
       receipts: Array.isArray(source.receipts)
         ? source.receipts.map((receipt) => normalizeProjectRepositoryReceipt(receipt)).filter(Boolean).slice(0, PROJECT_REPOSITORY_MAX_RECEIPTS)
         : []
@@ -175,6 +179,90 @@
       receiptKind: String(source.receiptKind || receipt.receiptKind || "").slice(0, 120),
       receipt: cloneJsonValue(receipt)
     };
+  }
+
+  function normalizeProjectRepositoryVersion(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const receipt = source.receipt && typeof source.receipt === "object" ? source.receipt : {};
+    const packageId = String(source.packageId || receipt.packageId || "").slice(0, 160);
+    const sourcePackageId = String(source.sourcePackageId || receipt.sourcePackageId || "").slice(0, 160);
+    const packageDigest = normalizeSha256(source.packageDigest || receipt.packageDigest);
+    const repositoryDigest = normalizeSha256(source.repositoryDigest || receipt.repositoryDigest);
+    const acceptedAt = normalizeIsoDate(source.acceptedAt || receipt.acceptedAt);
+    const id = String(source.id || packageId || sourcePackageId || packageDigest || repositoryDigest || acceptedAt || "").slice(0, 180);
+    if (!id && !packageId && !sourcePackageId && !packageDigest && !repositoryDigest) {
+      return null;
+    }
+
+    return {
+      id,
+      packageId,
+      sourcePackageId,
+      packageDigest,
+      repositoryDigest,
+      remoteVersion: String(source.remoteVersion || receipt.remoteVersion || "").slice(0, 120),
+      acceptedAt,
+      message: String(source.message || receipt.message || "").slice(0, 220),
+      sceneCount: Math.max(0, Math.round(Number(source.sceneCount ?? source.summary?.sceneCount ?? receipt.sceneCount ?? 0))),
+      modelCount: Math.max(0, Math.round(Number(source.modelCount ?? source.summary?.importedModels ?? receipt.modelCount ?? 0))),
+      summary: source.summary && typeof source.summary === "object" ? cloneJsonValue(source.summary) : null
+    };
+  }
+
+  function createProjectRepositoryVersionFromPackage(repositoryPackage, payload = {}) {
+    if (!repositoryPackage || typeof repositoryPackage !== "object") {
+      return null;
+    }
+    return normalizeProjectRepositoryVersion({
+      id: payload.selectedVersion?.id || payload.packageId || repositoryPackage.remotePackageId || repositoryPackage.packageId || repositoryPackage.packageDigest,
+      packageId: payload.selectedVersion?.packageId || payload.packageId || repositoryPackage.remotePackageId || "",
+      sourcePackageId: payload.selectedVersion?.sourcePackageId || repositoryPackage.packageId || "",
+      packageDigest: payload.packageDigest || repositoryPackage.packageDigest,
+      repositoryDigest: payload.repositoryDigest || repositoryPackage.repositoryDigest,
+      remoteVersion: payload.remoteVersion || repositoryPackage.remoteVersion || "",
+      acceptedAt: payload.acceptedAt || payload.selectedVersion?.acceptedAt || repositoryPackage.exportedAt || "",
+      sceneCount: repositoryPackage.summary?.sceneCount,
+      modelCount: repositoryPackage.summary?.importedModels,
+      summary: repositoryPackage.summary || {}
+    });
+  }
+
+  function getProjectRepositoryVersionsFromPayload(payload, fallbackVersion = null) {
+    const versions = [];
+    if (Array.isArray(payload?.versions)) {
+      versions.push(...payload.versions);
+    }
+    if (payload?.selectedVersion) {
+      versions.unshift(payload.selectedVersion);
+    }
+    if (payload?.latestVersion) {
+      versions.unshift(payload.latestVersion);
+    }
+    if (fallbackVersion) {
+      versions.unshift(fallbackVersion);
+    }
+    if (payload?.package) {
+      versions.unshift(createProjectRepositoryVersionFromPackage(payload.package, payload));
+    }
+    return mergeProjectRepositoryVersions(versions);
+  }
+
+  function mergeProjectRepositoryVersions(primary = [], secondary = []) {
+    const merged = [];
+    const seen = new Set();
+    [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])].forEach((item) => {
+      const version = normalizeProjectRepositoryVersion(item);
+      if (!version) {
+        return;
+      }
+      const key = version.packageId || version.sourcePackageId || version.packageDigest || version.repositoryDigest || version.id;
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      merged.push(version);
+    });
+    return merged.slice(0, PROJECT_REPOSITORY_MAX_VERSIONS);
   }
 
   function getProjectRepositoryRemoteConfig() {
@@ -231,7 +319,9 @@
       lastError: state.lastError,
       latestReceipt: state.receipts[0] || null,
       receiptCount: state.receipts.length,
-      receipts: state.receipts
+      receipts: state.receipts,
+      versionCount: state.versions.length,
+      versions: state.versions
     };
   }
 
@@ -307,12 +397,14 @@
       });
       const payload = await parseProjectRepositoryResponse(response, "远端项目仓库 API 检查失败。");
       const message = String(payload.message || "远端项目仓库 API 可访问。").slice(0, 220);
+      const remoteVersions = mergeProjectRepositoryVersions(getProjectRepositoryVersionsFromPayload(payload), state.versions);
       writeProjectRepositoryRemoteState({
         ...state,
         lastCheckedAt: new Date().toISOString(),
         lastRemoteVersion: String(payload.remoteVersion || payload.contract?.kind || "").slice(0, 120),
         lastRemoteStatus: message,
-        lastError: ""
+        lastError: "",
+        versions: remoteVersions
       });
       return {
         ok: true,
@@ -359,6 +451,20 @@
         sceneCount: repositoryPackage.summary.sceneCount,
         modelCount: repositoryPackage.summary.importedModels
       });
+      const pushedVersion = normalizeProjectRepositoryVersion({
+        ...(payload.selectedVersion && typeof payload.selectedVersion === "object" ? payload.selectedVersion : {}),
+        packageId: payload.packageId || receipt?.packageId || "",
+        sourcePackageId: repositoryPackage.packageId,
+        packageDigest: repositoryPackage.packageDigest,
+        repositoryDigest: payload.repositoryDigest || receipt?.repositoryDigest || repositoryPackage.packageDigest,
+        remoteVersion: payload.remoteVersion || receipt?.remoteVersion || "",
+        acceptedAt: payload.acceptedAt || receipt?.acceptedAt || pushedAt,
+        message,
+        sceneCount: repositoryPackage.summary.sceneCount,
+        modelCount: repositoryPackage.summary.importedModels,
+        summary: repositoryPackage.summary
+      });
+      const remoteVersions = mergeProjectRepositoryVersions(getProjectRepositoryVersionsFromPayload(payload, pushedVersion), state.versions);
       writeProjectRepositoryRemoteState({
         ...state,
         lastCheckedAt: pushedAt,
@@ -369,6 +475,7 @@
         lastPackageDigest: repositoryPackage.packageDigest,
         lastRepositoryDigest: receipt?.repositoryDigest || repositoryPackage.packageDigest,
         lastError: "",
+        versions: remoteVersions,
         receipts: receipt ? [receipt, ...state.receipts] : state.receipts
       });
       return {
@@ -384,7 +491,7 @@
     }
   }
 
-  async function pullProjectRepositoryFromRemote() {
+  async function pullProjectRepositoryFromRemote(options = {}) {
     const state = readProjectRepositoryRemoteState();
     if (!state.endpoint) {
       return persistProjectRepositoryRemoteError("尚未配置远端项目仓库 API。");
@@ -394,7 +501,8 @@
     }
 
     try {
-      const response = await fetch(state.endpoint, {
+      const requestedPackageId = String(options.packageId || options.versionPackageId || "").trim();
+      const response = await fetch(createProjectRepositoryRemoteRequestUrl(state.endpoint, requestedPackageId ? { packageId: requestedPackageId } : {}), {
         method: "GET",
         headers: createProjectRepositoryRemoteHeaders(state)
       });
@@ -406,6 +514,8 @@
       const preview = await createArchivePreview(archive);
       const checkedAt = new Date().toISOString();
       const message = String(payload.message || `远端项目仓库包已拉取：${repositoryPackage.packageId || "未命名包"}。`).slice(0, 220);
+      const pulledVersion = createProjectRepositoryVersionFromPackage(repositoryPackage, payload);
+      const remoteVersions = mergeProjectRepositoryVersions(getProjectRepositoryVersionsFromPayload(payload, pulledVersion), state.versions);
       writeProjectRepositoryRemoteState({
         ...state,
         lastCheckedAt: checkedAt,
@@ -414,7 +524,8 @@
         lastRemoteStatus: message,
         lastPackageDigest: normalizeSha256(repositoryPackage.packageDigest) || state.lastPackageDigest,
         lastRepositoryDigest: normalizeSha256(payload.repositoryDigest || repositoryPackage.repositoryDigest) || state.lastRepositoryDigest,
-        lastError: ""
+        lastError: "",
+        versions: remoteVersions
       });
       return {
         ok: true,
@@ -469,6 +580,18 @@
       headers.Authorization = `Bearer ${state.token}`;
     }
     return headers;
+  }
+
+  function createProjectRepositoryRemoteRequestUrl(endpoint, params = {}) {
+    const base = typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
+    const url = new URL(endpoint, base);
+    Object.entries(params || {}).forEach(([key, value]) => {
+      const text = String(value || "").trim();
+      if (text) {
+        url.searchParams.set(key, text);
+      }
+    });
+    return url.href;
   }
 
   async function parseProjectRepositoryResponse(response, fallbackMessage) {
@@ -2694,6 +2817,7 @@
     const repositoryRemoteCheckButton = document.getElementById("projectRepositoryCheckRemote");
     const repositoryRemotePushButton = document.getElementById("projectRepositoryPushRemote");
     const repositoryRemotePullButton = document.getElementById("projectRepositoryPullRemote");
+    const repositoryVersionSelect = document.getElementById("projectRepositoryVersionSelect");
     const repositoryReceiptList = document.getElementById("projectRepositoryReceiptList");
 
     if (!exportButton && !importFile) return;
@@ -2719,6 +2843,7 @@
       if (repositoryRemoteCheckButton) repositoryRemoteCheckButton.disabled = isBusy;
       if (repositoryRemotePushButton) repositoryRemotePushButton.disabled = isBusy;
       if (repositoryRemotePullButton) repositoryRemotePullButton.disabled = isBusy;
+      if (repositoryVersionSelect) repositoryVersionSelect.disabled = isBusy || !repositoryVersionSelect.options.length || !repositoryVersionSelect.value;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
       updateRestoreSelectionState();
     };
@@ -2988,6 +3113,31 @@
       if (repositoryRemoteStatus) {
         repositoryRemoteStatus.textContent = `${remote.message} 边界：${remote.boundary}`;
         repositoryRemoteStatus.dataset.remoteTone = remote.tone === "ready" ? "ready" : remote.tone === "warning" ? "warning" : "idle";
+      }
+      if (repositoryVersionSelect) {
+        const currentValue = repositoryVersionSelect.value;
+        const preferredValue = currentValue || remote.lastPackageId || remote.versions[0]?.packageId || "";
+        repositoryVersionSelect.innerHTML = "";
+        if (!remote.versions.length) {
+          const option = document.createElement("option");
+          option.value = "";
+          option.textContent = remote.remoteConfigured ? "远端尚未返回版本历史" : "保存远端后读取版本历史";
+          repositoryVersionSelect.appendChild(option);
+          repositoryVersionSelect.disabled = true;
+        } else {
+          remote.versions.forEach((version, index) => {
+            const option = document.createElement("option");
+            const value = version.packageId || version.sourcePackageId || version.packageDigest || version.id;
+            option.value = value;
+            const digest = version.repositoryDigest || version.packageDigest;
+            const countText = `${version.sceneCount || 0} 场景 / ${version.modelCount || 0} 模型`;
+            option.textContent = `${index === 0 ? "最新 · " : ""}${version.packageId || version.sourcePackageId || "未命名版本"} · ${version.acceptedAt ? formatArchiveDate(version.acceptedAt) : "时间未知"} · ${countText}${digest ? ` · ${digest.slice(0, 10)}` : ""}`;
+            repositoryVersionSelect.appendChild(option);
+          });
+          const hasPreferred = Array.from(repositoryVersionSelect.options).some((option) => option.value === preferredValue);
+          repositoryVersionSelect.value = hasPreferred ? preferredValue : repositoryVersionSelect.options[0]?.value || "";
+          repositoryVersionSelect.disabled = isBusy || !repositoryVersionSelect.value;
+        }
       }
       if (!repositoryReceiptList) {
         return;
@@ -3404,7 +3554,9 @@
       setBusy(true);
       setStatus("正在拉取远端项目仓库包并生成恢复预览。", "loading");
       try {
-        const result = await pullProjectRepositoryFromRemote();
+        const result = await pullProjectRepositoryFromRemote({
+          packageId: repositoryVersionSelect?.value || ""
+        });
         if (!result.ok) {
           setStatus(result.message || "远端项目仓库拉取失败。", "error");
           return;

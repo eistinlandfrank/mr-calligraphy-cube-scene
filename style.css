@@ -1073,6 +1073,32 @@ button {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.project-repository-version-field {
+  display: grid;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.project-repository-version-field span {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 11px;
+}
+
+.project-repository-version-field select {
+  min-height: 34px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+}
+
+.project-repository-version-field select:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 @media (max-width: 760px) {
   .project-repository-actions {
     grid-template-columns: repeat(2, minmax(0, 1fr));

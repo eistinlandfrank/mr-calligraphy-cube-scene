@@ -16,6 +16,7 @@
 | 方法 | 用途 | 请求体 |
 | --- | --- | --- |
 | `GET` | 检查服务可访问性，并读取最近项目仓库包摘要；“拉取预览”会从该响应读取 `package.archive` | 无 |
+| `GET ?packageId=<remote-package-id>` | 拉取指定远端历史版本，进入同一项目档案恢复预览 | 无 |
 | `PUT` | 推送当前本机项目仓库包 | `mr-calligraphy-project-repository-package-v1` |
 | `OPTIONS` | 浏览器跨端口预检 | 无 |
 
@@ -65,6 +66,18 @@ Authorization: Bearer <token>
   "packageDigest": "64位sha256",
   "repositoryDigest": "64位sha256",
   "remoteVersion": "remote-project-v1",
+  "versionCount": 2,
+  "versions": [
+    {
+      "packageId": "remote-project-package-id",
+      "sourcePackageId": "local-project-package-id",
+      "packageDigest": "64位sha256",
+      "repositoryDigest": "64位sha256",
+      "acceptedAt": "2026-06-12T00:00:00.000Z",
+      "sceneCount": 2,
+      "modelCount": 3
+    }
+  ],
   "receipt": {
     "receiptKind": "mr-calligraphy-project-repository-receipt-v1",
     "packageId": "remote-project-package-id",
@@ -79,9 +92,9 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`packageId`、`remoteVersion`、`packageDigest`、`repositoryDigest` 和 `receipt`，并把最近检查、最近推送、服务端 packageId、摘要和回执列表写回 `mr-calligraphy-project-repository-remote-v1`。
+前端 adapter 当前会读取 `message`、`packageId`、`remoteVersion`、`packageDigest`、`repositoryDigest`、`receipt`、`selectedVersion` 和 `versions`，并把最近检查、最近推送、服务端 packageId、摘要、回执列表和远端版本列表写回 `mr-calligraphy-project-repository-remote-v1`。
 
-如果 `GET` 响应包含 `package`，主后台“拉取预览”会校验 `package.kind`、`version`、`archive` 和 `packageDigest`，再把 `package.archive` 送入现有项目档案导入差异预览。该操作不会直接覆盖本机数据，用户仍需在预览中勾选恢复范围并点击“恢复所选”。
+如果 `GET` 响应包含 `package`，主后台“拉取预览”会校验 `package.kind`、`version`、`archive` 和 `packageDigest`，再把 `package.archive` 送入现有项目档案导入差异预览。主后台会用远端返回的 `versions` 渲染“远端版本”选择框；用户选择旧版本后，拉取请求会带上 `?packageId=<remote-package-id>`。该操作不会直接覆盖本机数据，用户仍需在预览中勾选恢复范围并点击“恢复所选”。
 
 ## 5. 失败响应
 
@@ -129,10 +142,11 @@ http://127.0.0.1:8790/api/project-repository
 mock 服务会：
 
 - `GET` 返回合同、远端版本和最近一次保存的项目仓库包。
+- `GET ?packageId=<remote-package-id>` 返回对应历史项目仓库包；未找到版本时返回 `404`。
 - `PUT` 校验 `mr-calligraphy-project-repository-package-v1`、项目档案、schema、统一仓库状态和 `packageDigest`。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
-- 返回 `mr-calligraphy-project-repository-receipt-v1` 回执和 `repositoryDigest`。
+- 返回 `mr-calligraphy-project-repository-receipt-v1` 回执、`repositoryDigest` 和最近 20 个远端版本摘要。
 
 ## 7. 验收
 
@@ -151,6 +165,7 @@ npm run test:e2e -- --grep "main admin publishes"
 3. 填入 mock server endpoint 和可选 token。
 4. 点击“检查远端”，应看到真实 GET 结果。
 5. 点击“推送仓库包”，应看到服务端回执和最近 packageId。
-6. 点击“拉取预览”，应看到远端包进入项目档案导入预览，仍需用户确认恢复范围。
+6. 连续推送两次仓库包后，“远端版本”应出现两个版本。
+7. 选择旧版本并点击“拉取预览”，应看到旧版本远端包进入项目档案导入预览，仍需用户确认恢复范围。
 
-当前 E2E 会断言 PUT body 是 `mr-calligraphy-project-repository-package-v1`，包含 `archive`、`projectSchema`、`repository` 和 64 位 `packageDigest`，并确认 Bearer token、远端回执和 GET 拉取预览会写入本机状态。
+当前 E2E 会断言 PUT body 是 `mr-calligraphy-project-repository-package-v1`，包含 `archive`、`projectSchema`、`repository` 和 64 位 `packageDigest`，并确认 Bearer token、远端回执、版本列表和带 `packageId` 的 GET 历史版本拉取预览会写入本机状态。

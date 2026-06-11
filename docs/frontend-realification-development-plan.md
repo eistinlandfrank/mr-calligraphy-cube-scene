@@ -813,3 +813,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案字段级合并`
+
+## 28. 2026-06-12 远端项目仓库版本历史拉取
+
+本次把主后台远端项目仓库从“只能拉最新包”推进到“可查看远端版本历史并选择指定版本进入恢复预览”。
+
+完成内容：
+
+- 项目仓库 mock server 保留最近 20 个版本，并在 `GET` 响应中返回 `versions`。
+- 支持 `GET /api/project-repository?packageId=<remote-package-id>` 拉取指定历史包。
+- `MRProjectArchive` 持久化 `mr-calligraphy-project-repository-remote-v1.versions`。
+- 主后台远端项目仓库面板新增“远端版本”选择框。
+- “拉取预览”会使用选中的版本 ID 发起真实 GET，并继续走现有项目档案差异预览。
+- E2E 会推送两个项目仓库包，选择旧版本拉取，并断言请求带上 `packageId`。
+
+真实化说明：
+
+- 数据来源：远端 API 返回的版本列表、远端历史包和本机项目档案摘要。
+- 写入状态：版本历史、最近拉取版本和摘要持久化到本机远端项目仓库状态。
+- 成功反馈：版本选择框显示远端版本；拉取成功后打开项目档案恢复预览。
+- 失败反馈：找不到版本、远端包摘要不匹配或结构错误时不进入恢复预览。
+- 刷新后复现方式：版本列表保存在 localStorage，刷新主后台后仍能读取。
+
+仍待补：
+
+- 账号空间隔离、服务端版本权限、三方合并、服务端审计签名和长期版本保留。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/project-repository-mock-server.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端项目仓库版本历史`

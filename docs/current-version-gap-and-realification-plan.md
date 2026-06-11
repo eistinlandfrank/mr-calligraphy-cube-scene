@@ -65,10 +65,10 @@ node scripts/control-inventory.js
 
 | 模块 | 当前可用内容 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
-| 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局；项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 执行真实 GET/PUT，支持拉取远端包进入恢复预览 | 保存主体仍在 localStorage / IndexedDB，远端 adapter 不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
+| 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局；项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 执行真实 GET/PUT，支持远端版本历史和指定版本拉取预览 | 保存主体仍在 localStorage / IndexedDB，远端 adapter 不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 能编辑写实样张对象、导入模型、保存快照和发布到演示；已纳入 `project-scene-repository-v1` 统一视图 | 与主后台对象模型仍有字段差异 | 继续做字段迁移、资产引用规则和完整 diff |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包，远端推送前已有本机审核流、本机发布锁、服务端锁 / 最近回执预检和远端回执审计 | 远端发布 adapter 已完成第一版，但还不是服务端账号权限、CDN 部署或服务器托管 | 继续增加服务端审批合同、账号权限、远端资产签名和不可篡改审计 |
-| 项目档案 | 可导出/导入 JSON，含 schema、迁移、模型哈希、选择恢复、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、拉取预览、API 合同和本机 mock 服务 | 三方合并、完整 JSON 树、账号权限和远端资产服务仍弱 | 增加账号化服务端 repository、多人合并策略和远端资产完整性校验 |
+| 项目档案 | 可导出/导入 JSON，含 schema、迁移、模型哈希、选择恢复、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、版本历史拉取预览、API 合同和本机 mock 服务 | 三方合并、完整 JSON 树、账号权限和远端资产服务仍弱 | 增加账号化服务端 repository、多人合并策略和远端资产完整性校验 |
 | 后台权限 | 当前无需登录即可编辑，主后台和写实后台已增加本机无权限保护提示与确认状态 | 任何人打开后台仍能改本机内容 | 后端版加入账号、角色、审计和发布权限 |
 
 ## 4. 最像“假的”的界面来源
@@ -227,7 +227,7 @@ node scripts/control-inventory.js
 | P1 | 评分解释层 | 评分是核心信任点 | 第一版已完成：基础评分证据、缺数据状态、本机 `ScoreService` adapter 和模型替换接口 |
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
-| P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
+| P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF 第一版、本机教师批注和导出批注标记已完成，但仍缺图表/作品嵌入、云端长期报告和账号教师端 | PDF 图表/截图增强、服务端接口草案、教师端身份与审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、服务端资产签名和不可篡改审计 | 服务端审批合同强化、服务端资产签名、账号权限和审计签名 |
@@ -1476,3 +1476,37 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增远端发布服务端锁预检`
+
+### 2026-06-12：新增远端项目仓库版本历史
+
+完成内容：
+
+- 远端项目仓库 mock server 保留最近 20 个项目仓库包版本。
+- `GET /api/project-repository` 返回 `versions`、`selectedVersion`、最新包和回执摘要。
+- `GET /api/project-repository?packageId=<remote-package-id>` 支持拉取指定历史版本。
+- 主后台远端项目仓库面板新增“远端版本”选择框。
+- `MRProjectArchive` 持久化 `versions` 到 `mr-calligraphy-project-repository-remote-v1`。
+- “拉取预览”会使用选中版本发起真实 GET，校验包摘要后进入项目档案恢复预览。
+- E2E 覆盖连续两次推送、版本列表持久化、选择旧版本和带 `packageId` 拉取。
+
+真实化说明：
+
+- 数据来源：远端 API 返回的版本列表、远端历史包和本机推送回执。
+- 写入状态：版本列表、最近拉取版本、摘要和远端状态写入 `mr-calligraphy-project-repository-remote-v1`。
+- 成功反馈：版本选择框显示远端版本；拉取后显示现有项目档案差异预览。
+- 失败反馈：远端找不到版本、结构不匹配或摘要不匹配时明确失败，不覆盖本机状态。
+- 刷新后复现方式：版本历史保存在本机 localStorage，刷新主后台后仍可显示。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/project-repository-mock-server.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端项目仓库版本历史`

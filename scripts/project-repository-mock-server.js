@@ -5,13 +5,15 @@ const http = require("http");
 
 const PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
 const VERSION = 1;
+const MAX_VERSION_RECORDS = 20;
 
 function createProjectRepositoryMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.PROJECT_REPOSITORY_MOCK_TOKEN || "").trim();
   const state = {
     startedAt: new Date().toISOString(),
     package: null,
-    receipts: []
+    receipts: [],
+    versions: []
   };
 
   const server = http.createServer(async (request, response) => {
@@ -37,18 +39,33 @@ function createProjectRepositoryMockServer(options = {}) {
       }
 
       if (request.method === "GET") {
+        const requestedPackageId = getRequestedPackageId(request.url);
+        const selectedVersion = selectProjectRepositoryVersion(state, requestedPackageId);
+        if (requestedPackageId && !selectedVersion) {
+          return sendJson(response, 404, {
+            ok: false,
+            message: `远端项目仓库 mock 未找到版本：${requestedPackageId}。`,
+            remoteVersion: "mr-calligraphy-project-repository-mock-v1",
+            versions: state.versions.map(serializeProjectRepositoryVersion)
+          });
+        }
+        const selectedPackage = selectedVersion?.package || state.package;
+        const latestReceipt = selectedVersion?.receipt || state.receipts[0] || null;
         return sendJson(response, 200, {
           ok: true,
-          message: state.package
-            ? `远端项目仓库 mock 可读，当前包含 ${state.package.summary?.sceneCount || 0} 个场景。`
+          message: selectedPackage
+            ? `远端项目仓库 mock 可读，当前版本包含 ${selectedPackage.summary?.sceneCount || 0} 个场景。`
             : "远端项目仓库 mock 服务可访问，当前尚未接收项目仓库包。",
           remoteVersion: "mr-calligraphy-project-repository-mock-v1",
           contract: createContract(),
-          package: state.package,
-          packageId: state.receipts[0]?.packageId || "",
-          repositoryDigest: state.receipts[0]?.repositoryDigest || "",
+          package: selectedPackage,
+          packageId: latestReceipt?.packageId || "",
+          repositoryDigest: latestReceipt?.repositoryDigest || "",
           receiptCount: state.receipts.length,
-          latestReceipt: state.receipts[0] || null
+          latestReceipt,
+          selectedVersion: selectedVersion ? serializeProjectRepositoryVersion(selectedVersion) : null,
+          versionCount: state.versions.length,
+          versions: state.versions.map(serializeProjectRepositoryVersion)
         });
       }
 
@@ -65,9 +82,12 @@ function createProjectRepositoryMockServer(options = {}) {
           });
         }
 
-        const receipt = createReceipt(payload, validation);
+        const receipt = createReceipt(payload, validation, state.receipts.length + 1);
+        const versionRecord = createProjectRepositoryVersionRecord(payload, receipt);
         state.package = clone(payload);
         state.receipts.unshift(receipt);
+        state.versions.unshift(versionRecord);
+        state.versions = state.versions.slice(0, MAX_VERSION_RECORDS);
 
         return sendJson(response, 201, {
           ok: true,
@@ -77,6 +97,9 @@ function createProjectRepositoryMockServer(options = {}) {
           repositoryDigest: receipt.repositoryDigest,
           package: state.package,
           receipt,
+          selectedVersion: serializeProjectRepositoryVersion(versionRecord),
+          versionCount: state.versions.length,
+          versions: state.versions.map(serializeProjectRepositoryVersion),
           warnings: validation.warnings
         });
       }
@@ -150,6 +173,15 @@ function isProjectRepositoryPath(url) {
   }
 }
 
+function getRequestedPackageId(url) {
+  try {
+    const parsed = new URL(url || "/", "http://localhost");
+    return String(parsed.searchParams.get("packageId") || "").trim();
+  } catch (error) {
+    return "";
+  }
+}
+
 function validateAuth(request, requiredToken) {
   if (!requiredToken) {
     return { ok: true };
@@ -206,13 +238,15 @@ function createContract() {
     kind: "mr-calligraphy-project-repository-contract-v1",
     accepts: {
       check: "GET /api/project-repository",
+      pullVersion: "GET /api/project-repository?packageId=<remote-package-id>",
       push: "PUT /api/project-repository",
       authorization: "optional Bearer token",
       cors: "GET, PUT, OPTIONS"
     },
     packageKind: PACKAGE_KIND,
     requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "summary", "repository", "projectSchema", "archive", "packageDigest"],
-    receiptFields: ["ok", "message", "packageId", "repositoryDigest", "remoteVersion", "receipt"]
+    receiptFields: ["ok", "message", "packageId", "repositoryDigest", "remoteVersion", "receipt"],
+    versionFields: ["packageId", "sourcePackageId", "packageDigest", "repositoryDigest", "acceptedAt", "sceneCount", "modelCount"]
   };
 }
 
@@ -272,7 +306,7 @@ function createPackageDigest(payload) {
   return sha256StableJson(copy);
 }
 
-function createReceipt(payload, validation) {
+function createReceipt(payload, validation, sequence = 1) {
   const repositoryDigest = sha256StableJson({
     kind: payload.kind,
     version: payload.version,
@@ -284,7 +318,7 @@ function createReceipt(payload, validation) {
   return {
     receiptKind: "mr-calligraphy-project-repository-receipt-v1",
     remoteVersion: "mr-calligraphy-project-repository-mock-v1",
-    packageId: `mock-project-repository-${repositoryDigest.slice(0, 12)}`,
+    packageId: `mock-project-repository-${String(sequence).padStart(3, "0")}-${repositoryDigest.slice(0, 12)}`,
     sourcePackageId: String(payload.packageId || ""),
     packageDigest: payload.packageDigest,
     repositoryDigest,
@@ -299,6 +333,51 @@ function createReceipt(payload, validation) {
       acceptedAt
     })
   };
+}
+
+function createProjectRepositoryVersionRecord(payload, receipt) {
+  return {
+    id: receipt.packageId || receipt.sourcePackageId || receipt.packageDigest,
+    packageId: receipt.packageId,
+    sourcePackageId: receipt.sourcePackageId,
+    packageDigest: receipt.packageDigest,
+    repositoryDigest: receipt.repositoryDigest,
+    remoteVersion: receipt.remoteVersion,
+    acceptedAt: receipt.acceptedAt,
+    sceneCount: receipt.sceneCount,
+    modelCount: receipt.modelCount,
+    summary: clone(payload.summary || {}),
+    package: clone(payload),
+    receipt: clone(receipt)
+  };
+}
+
+function serializeProjectRepositoryVersion(version) {
+  return {
+    id: String(version.id || version.packageId || version.sourcePackageId || version.packageDigest || ""),
+    packageId: String(version.packageId || ""),
+    sourcePackageId: String(version.sourcePackageId || ""),
+    packageDigest: String(version.packageDigest || ""),
+    repositoryDigest: String(version.repositoryDigest || ""),
+    remoteVersion: String(version.remoteVersion || ""),
+    acceptedAt: String(version.acceptedAt || ""),
+    sceneCount: Number(version.sceneCount || 0),
+    modelCount: Number(version.modelCount || 0),
+    summary: clone(version.summary || {})
+  };
+}
+
+function selectProjectRepositoryVersion(state, requestedPackageId) {
+  if (!requestedPackageId) {
+    return state.versions[0] || null;
+  }
+  return state.versions.find((version) => [
+    version.id,
+    version.packageId,
+    version.sourcePackageId,
+    version.packageDigest,
+    version.repositoryDigest
+  ].some((value) => value && String(value) === requestedPackageId)) || null;
 }
 
 function sha256StableJson(value) {

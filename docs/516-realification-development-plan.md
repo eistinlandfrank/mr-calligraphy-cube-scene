@@ -5809,6 +5809,11 @@
 - `node --check tests/e2e/real-flows.spec.js`
 - `node --check scripts/smoke-test.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- 本机 mock server 版本历史检查：连续 PUT 两个仓库包后，`GET ?packageId=` 可取回旧版本。
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+- `git diff --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 - `npm run test:e2e -- --grep "main admin publishes"`
 - `npm run test:e2e`
 
@@ -5936,3 +5941,63 @@
 提交：
 
 - 中文 commit message：`新增远端发布服务端锁预检`
+
+### 2026-06-12：新增远端项目仓库版本历史拉取
+
+功能名：远端 `ProjectRepository` 版本历史、版本选择和指定版本恢复预览。
+
+涉及文件：
+
+- `project-archive.js`
+- `main-admin.html`
+- `style.css`
+- `scripts/project-repository-mock-server.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/project-repository-api-contract.md`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 远端项目仓库 mock server 从“只保存最近包”升级为保留最近 20 个版本。
+- `GET /api/project-repository` 返回 `versions`、`selectedVersion`、`versionCount` 和最新包。
+- `GET /api/project-repository?packageId=<remote-package-id>` 可拉取指定历史版本；未找到版本时返回 `404`。
+- `MRProjectArchive` 的远端状态新增 `versions`，会持久化远端版本列表到 `mr-calligraphy-project-repository-remote-v1`。
+- `checkProjectRepositoryRemote()`、`pushProjectRepositoryToRemote()` 和 `pullProjectRepositoryFromRemote()` 都会归一化并保存远端版本列表。
+- `pullProjectRepositoryFromRemote({ packageId })` 会在请求 URL 中带上 `packageId`，再校验远端包 `kind/version/archive/packageDigest` 后进入现有项目档案恢复预览。
+- 主后台“远端项目仓库 API”新增“远端版本”选择框，用户可选择历史版本后点击“拉取预览”。
+- Playwright 主后台用例会推送两个不同项目仓库包，确认版本列表持久化，再选择旧版本并验证浏览器真实发起带 `packageId` 的 GET 拉取。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 API 返回的 `versions`、`selectedVersion`、`package` 和本机推送回执。
+- 写入状态：版本列表写入 `mr-calligraphy-project-repository-remote-v1.versions`，最近拉取包摘要写入 `lastPackageId`、`lastPackageDigest` 和 `lastRemoteStatus`。
+- 成功反馈：主后台版本下拉框显示远端版本 ID、接收时间、场景数、模型数和摘要前缀；拉取后项目档案恢复预览出现。
+- 失败反馈：未配置 endpoint、fetch 不支持、远端找不到指定版本、包结构错误或摘要不匹配时都会返回明确错误，不进入恢复预览。
+- 刷新后复现方式：版本列表和最近拉取状态保存在本机 localStorage；刷新主后台后仍可看到远端版本选择。
+
+已知限制：
+
+- 当前版本历史仍来自用户配置的远端 API / mock server，不是账号化项目仓库。
+- 版本选择只负责拉取历史包进入恢复预览，不自动做多人三方合并。
+- 服务端账号空间隔离、权限、不可篡改审计、资产签名和长期版本保留仍待继续。
+
+验收方式：
+
+- 手工验收：运行 `node scripts/project-repository-mock-server.js`，在主后台配置 endpoint，连续推送两次仓库包后，“远端版本”应出现两个版本；选择旧版本点击“拉取预览”，应进入项目档案恢复预览。
+- 脚本验收：`npm run test:e2e -- --grep "main admin publishes"` 覆盖两次推送、版本列表持久化、旧版本选择和带 `packageId` GET 拉取。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/project-repository-mock-server.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+
+提交：
+
+- 中文 commit message：`新增远端项目仓库版本历史`
