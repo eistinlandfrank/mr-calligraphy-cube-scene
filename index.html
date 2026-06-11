@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法 360° 全景交互演示</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=report-field-20260611">
+  <link rel="stylesheet" href="style.css?v=step-route-20260611">
 </head>
 <body>
   <main class="app-shell">
@@ -354,11 +354,11 @@
       <div id="noticeState" class="notice-panel" hidden></div>
     </section>
 
-    <div class="quick-controls" aria-label="快速切换">
-      <button data-feature-state="demo-content" id="quickPrev" type="button" aria-label="上一步">‹</button>
+    <div class="quick-controls" aria-label="快速切换" data-step-route="learningStepRoute">
+      <button data-feature-state="real-local" id="quickPrev" type="button" aria-label="上一步">‹</button>
       <button data-feature-state="real-local" id="quickHome" type="button" aria-label="返回首页">⌂</button>
-      <button data-feature-state="demo-content" id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型">模型</button>
-      <button data-feature-state="demo-content" id="quickNext" type="button" aria-label="下一步">›</button>
+      <button data-feature-state="real-local" id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型" data-model-view-route="modelViewRoute">模型</button>
+      <button data-feature-state="real-local" id="quickNext" type="button" aria-label="下一步">›</button>
     </div>
 
     <nav id="stepNav" class="step-nav" aria-label="步骤导航"></nav>
@@ -368,6 +368,6 @@
   <script src="room-config.js?v=main-editor-20260514"></script>
   <script src="app-state.js?v=report-field-20260611"></script>
   <script src="practice-canvas.js?v=practice-canvas-20260611"></script>
-  <script src="script.js?v=report-field-20260611"></script>
+  <script src="script.js?v=step-route-20260611"></script>
 </body>
 </html>

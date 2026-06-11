@@ -26,7 +26,7 @@
 | 页面 | 功能 | 当前实现 | 评价 |
 | --- | --- | --- | --- |
 | `index.html` | 3D 房间浏览 | 拖拽旋转、滚轮缩放、快捷切换步骤 | 可用 |
-| `index.html` | 10 步学习路径 | 底部导航、左右键、快捷按钮、热点切换 | 可用，但内容是静态配置 |
+| `index.html` | 10 步学习路径 | 底部导航、左右键、快捷按钮、热点切换、`?step=1-10` 直达和浏览器返回恢复 | 可用，可刷新复现当前步骤；部分内容仍来自静态配置 |
 | `index.html` | 场景编辑面板 | 六面贴图路径、角色新增/编辑/删除、保存到 localStorage | 可用，但不是项目级配置文件 |
 | `main-admin.html` | 主场景物体选择 | 下拉选择、画布点选模型、对象图层面板搜索/分组/选择/批量选择 | 可用 |
 | `main-admin.html` | 主场景坐标编辑 | TransformControls、数值输入、移动/旋转、聚焦、复位、保存 | 可用 |
@@ -1592,7 +1592,7 @@
 - 四个入口 HTML 静态按钮从粗粒度 `real` 迁移为更明确的状态。
 - 前台下载图片、下载报告、导出档案、导出所选、生成视频和导出报告等能力标记为 `real-export`。
 - 主后台“发布到前台”标记为 `real-published-local`，明确这是本机发布快照，不是线上部署。
-- 写实样张和静态步骤导航等内容标记为 `demo-content`，避免把演示内容伪装成完整生产能力。
+- 写实样张等纯展示入口仍标记为 `demo-content`；前台步骤导航后续已升级为 `real-local`，并支持 URL 路由复现。
 - 前台动态生成的学习动作、热点、任务、历史、计划按钮，以及主后台动态图层/快照按钮同步使用细分状态。
 - MutationObserver 对未显式标注的动态控件不再默认补成 `real`，而是标记为 `disabled` 并留下缺失状态，避免新增控件伪装成功。
 - 样式增加本机真实、文件导出、本机发布、演示内容和禁用态的轻量区分。
@@ -3361,6 +3361,8 @@
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 - `curl -I --max-time 5 http://localhost:41496/`
+- `curl -I --max-time 5 'http://localhost:41496/?step=3'`
+- `curl -I --max-time 5 'http://localhost:41496/?step=3&modelView=1'`
 - `curl -I --max-time 5 http://localhost:41496/main-admin.html`
 - `git diff --check`
 
@@ -3745,3 +3747,66 @@
 - Web Speech 声音由浏览器和系统提供，不是云端 AI 生成音频，也不是项目自带真人录音。
 - 讲解文本仍来自本机模板和当前任务，不会按实时笔迹动态生成。
 - 暂无暂停、上一段、倍速、语音选择和字幕导出。
+
+### 2026-06-11：新增前台学习步骤路由
+
+功能名：前台 10 步学习路径支持 URL 直达、刷新复现和浏览器返回。
+
+涉及文件：
+
+- `index.html`
+- `script.js`
+- `scripts/smoke-test.js`
+- `docs/frontend-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 新增 `step` 路由参数，支持 `?step=1` 到 `?step=10` 直接打开对应学习步骤。
+- `loadScene()` 统一写入当前步骤到 URL，快速上一步、下一步、底部步骤导航、学习路径按钮和键盘数字切换都会同步 `step`。
+- 监听 `popstate`，浏览器后退/前进时会恢复对应步骤；若 URL 同时带有 `history`、`artwork` 或 `report`，仍优先打开对应详情页。
+- 快速上一步、下一步、底部步骤导航和学习路径按钮从 `demo-content` 调整为 `real-local`。
+- 模型展示入口新增 `modelView` 路由参数，访问带 `modelView=1` 的链接会恢复模型展示视角；展示自动结束时会清理该参数。
+- smoke test 前台页面标记新增 `learningStepRoute` 和 `modelViewRoute`，避免路由入口被误删。
+
+验收方式：
+
+- 打开 `http://localhost:41496/?step=3`，页面应直接进入第 3 步。
+- 点击快速下一步，URL 应从 `step=3` 变为 `step=4`，刷新后仍停留在第 4 步。
+- 点击快速上一步或底部步骤编号，URL 中的 `step` 应同步变化。
+- 使用浏览器后退/前进，应恢复上一个/下一个学习步骤。
+- 点击“模型”，URL 应出现 `modelView=1`，刷新带该参数的页面后应恢复模型展示视角。
+- 打开 `?report=报告ID`、`?history=记录ID` 或 `?artwork=作品ID` 时，详情路由仍应优先于普通步骤路由。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node scripts/archive-migration-check.js`
+- `node --check project-schema-utils.js`
+- `node --check scripts/project-schema-check.js`
+- `node scripts/project-schema-check.js`
+- `node --check scripts/archive-asset-hash-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `curl -I --max-time 5 http://localhost:41496/`
+- `curl -I --max-time 5 'http://localhost:41496/?step=3'`
+- `curl -I --max-time 5 'http://localhost:41496/?step=3&modelView=1'`
+- `curl -I --max-time 5 http://localhost:41496/main-admin.html`
+- `git diff --check`
+
+已知限制：
+
+- 步骤内容仍有一部分来自 `SCENES` 静态配置；路由解决的是直达和复现，不等于课程内容完全项目化。
+- `modelView` 仍是前台本机展示模式，不是独立三维模型管理页。
+- 浏览器级路由交互仍需在 Playwright 依赖可用的环境里补自动化点击与后退断言。

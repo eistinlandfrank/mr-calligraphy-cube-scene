@@ -951,6 +951,8 @@ let activeReportSeriesPointId = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
+const STEP_ROUTE_QUERY_KEY = "step";
+const MODEL_VIEW_QUERY_KEY = "modelView";
 const HISTORY_DETAIL_QUERY_KEY = "history";
 const REPORT_DETAIL_QUERY_KEY = "report";
 const ARTWORK_DETAIL_QUERY_KEY = "artwork";
@@ -1516,19 +1518,24 @@ function init() {
   const routedReportId = getReportDetailRouteId();
   const routedArtworkId = getArtworkDetailRouteId();
   const routedHistoryId = getHistoryDetailRouteId();
+  const routedStepIndex = getLearningStepRouteIndex();
   if (routedReportId) {
-    openReportDetailRoute(routedReportId, { updateUrl: false, showMissing: true });
+    openReportDetailRoute(routedReportId, { updateUrl: false, showMissing: true, routeMode: "replace" });
   } else if (routedArtworkId) {
-    openArtworkDetailRoute(routedArtworkId, { updateUrl: false, showMissing: true });
+    openArtworkDetailRoute(routedArtworkId, { updateUrl: false, showMissing: true, routeMode: "replace" });
   } else if (routedHistoryId) {
-    openHistoryDetailRoute(routedHistoryId, { updateUrl: false, showMissing: true });
+    openHistoryDetailRoute(routedHistoryId, { updateUrl: false, showMissing: true, routeMode: "replace" });
   } else {
-    loadScene(0);
+    loadScene(routedStepIndex ?? 0, {
+      routeMode: "replace",
+      updateStepRoute: routedStepIndex !== null
+    });
   }
-  if (new URLSearchParams(window.location.search).has("modelView")) {
-    window.setTimeout(focusModelView, 900);
+  if (new URLSearchParams(window.location.search).has(MODEL_VIEW_QUERY_KEY)) {
+    window.setTimeout(() => focusModelView({ updateRoute: false }), 900);
   }
   window.addEventListener("keydown", handleKeyboardSceneChange, true);
+  window.addEventListener("popstate", handleRoutePopState);
   window.addEventListener("storage", handleMainSceneStorageChange);
   window.addEventListener("mr-learning-state-change", renderLearningState);
 }
@@ -3484,7 +3491,7 @@ function buildStepNavigation() {
   SCENES.forEach((scene, index) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.dataset.featureState = "demo-content";
+    button.dataset.featureState = "real-local";
     button.textContent = String(index + 1);
     button.setAttribute("aria-label", `切换到步骤 ${index + 1}: ${scene.title}`);
     button.addEventListener("click", () => loadScene(index));
@@ -6045,6 +6052,75 @@ function getHistoryDetailRouteId() {
   }
 }
 
+function getLearningStepRouteIndex() {
+  try {
+    const raw = new URLSearchParams(window.location.search).get(STEP_ROUTE_QUERY_KEY);
+    if (!raw) return null;
+    const value = Number.parseInt(raw, 10);
+    if (!Number.isFinite(value)) return null;
+    return clamp(value - 1, 0, SCENES.length - 1);
+  } catch (error) {
+    return null;
+  }
+}
+
+function setLearningStepRoute(index, options = {}) {
+  if (!window.history?.pushState || index < 0 || index >= SCENES.length) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.searchParams.set(STEP_ROUTE_QUERY_KEY, String(index + 1));
+  const nextUrl = url.toString();
+  const state = { ...(window.history.state || {}), stepIndex: index };
+  if (nextUrl === window.location.href || options.routeMode === "replace") {
+    window.history.replaceState(state, "", nextUrl);
+    return;
+  }
+  window.history.pushState(state, "", nextUrl);
+}
+
+function setModelViewRoute(active, options = {}) {
+  if (!window.history?.replaceState) {
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  if (active) {
+    url.searchParams.set(MODEL_VIEW_QUERY_KEY, "1");
+  } else if (!url.searchParams.has(MODEL_VIEW_QUERY_KEY)) {
+    return;
+  } else {
+    url.searchParams.delete(MODEL_VIEW_QUERY_KEY);
+  }
+  window.history.replaceState(
+    { ...(window.history.state || {}), modelView: Boolean(active) },
+    "",
+    url.toString()
+  );
+}
+
+function handleRoutePopState() {
+  const routedReportId = getReportDetailRouteId();
+  const routedArtworkId = getArtworkDetailRouteId();
+  const routedHistoryId = getHistoryDetailRouteId();
+  if (routedReportId) {
+    openReportDetailRoute(routedReportId, { updateUrl: false, updateStepRoute: false, showMissing: true });
+  } else if (routedArtworkId) {
+    openArtworkDetailRoute(routedArtworkId, { updateUrl: false, updateStepRoute: false, showMissing: true });
+  } else if (routedHistoryId) {
+    openHistoryDetailRoute(routedHistoryId, { updateUrl: false, updateStepRoute: false, showMissing: true });
+  } else {
+    loadScene(getLearningStepRouteIndex() ?? 0, { updateStepRoute: false });
+  }
+
+  if (new URLSearchParams(window.location.search).has(MODEL_VIEW_QUERY_KEY)) {
+    focusModelView({ updateRoute: false });
+  } else {
+    clearModelView({ updateRoute: false });
+  }
+}
+
 function openHistoryDetailRoute(recordId, options = {}) {
   const detailId = String(recordId || "").trim();
   if (!detailId) {
@@ -6063,7 +6139,7 @@ function openHistoryDetailRoute(recordId, options = {}) {
   }
   clearReportDetailRoute();
   clearArtworkDetailRoute();
-  loadScene(6);
+  loadScene(6, { routeMode: options.routeMode, updateStepRoute: options.updateStepRoute !== false });
 
   if (detail) {
     showNotice(`已打开学习档案详情：${detail.title}`);
@@ -6145,7 +6221,7 @@ function openArtworkDetailRoute(artworkId, options = {}) {
     }
     clearHistoryDetailRoute();
     clearReportDetailRoute();
-    loadScene(6);
+    loadScene(6, { routeMode: options.routeMode, updateStepRoute: options.updateStepRoute !== false });
     showNotice(`已打开作品集详情：${detail.title}`);
     return true;
   }
@@ -6153,7 +6229,7 @@ function openArtworkDetailRoute(artworkId, options = {}) {
   clearArtworkDetailRoute();
   clearHistoryDetailRoute();
   clearReportDetailRoute();
-  loadScene(6);
+  loadScene(6, { routeMode: options.routeMode, updateStepRoute: options.updateStepRoute !== false });
   if (options.showMissing) {
     showNotice("未找到这幅作品，已打开作品集列表。");
   }
@@ -6270,7 +6346,7 @@ function openReportDetailRoute(reportId, options = {}) {
     }
     clearHistoryDetailRoute();
     clearArtworkDetailRoute();
-    loadScene(REPORT_DETAIL_SCENE_INDEX);
+    loadScene(REPORT_DETAIL_SCENE_INDEX, { routeMode: options.routeMode, updateStepRoute: options.updateStepRoute !== false });
     showNotice(`已打开站内学习报告：${detail.title}`);
     return true;
   }
@@ -6278,7 +6354,7 @@ function openReportDetailRoute(reportId, options = {}) {
   clearReportDetailRoute();
   clearHistoryDetailRoute();
   clearArtworkDetailRoute();
-  loadScene(REPORT_DETAIL_SCENE_INDEX);
+  loadScene(REPORT_DETAIL_SCENE_INDEX, { routeMode: options.routeMode, updateStepRoute: options.updateStepRoute !== false });
   if (options.showMissing) {
     showNotice("未找到这份学习报告，已打开报告页空状态。");
   }
@@ -6859,17 +6935,28 @@ function formatHistoryTime(value) {
   return `${month}-${day} ${hour}:${minute}`;
 }
 
-function focusModelView() {
+function focusModelView(options = {}) {
   cubeYaw = 0;
   cubePitch = 2;
   cubeScale = 0.78;
   updateCubeTransform();
   document.body.classList.add("is-model-view");
+  if (options.updateRoute !== false) {
+    setModelViewRoute(true);
+  }
   window.clearTimeout(focusModelView.hideTimer);
   focusModelView.hideTimer = window.setTimeout(() => {
-    document.body.classList.remove("is-model-view");
+    clearModelView();
   }, 60000);
   showNotice("模型展示模式：已临时淡出教学面板，前方可查看木墙、门窗、书架、桌椅、盆栽、灯具和书法装饰。");
+}
+
+function clearModelView(options = {}) {
+  window.clearTimeout(focusModelView.hideTimer);
+  document.body.classList.remove("is-model-view");
+  if (options.updateRoute !== false) {
+    setModelViewRoute(false);
+  }
 }
 
 function buildPathList() {
@@ -6879,7 +6966,7 @@ function buildPathList() {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "path-item";
-    button.dataset.featureState = "demo-content";
+    button.dataset.featureState = "real-local";
     button.setAttribute("aria-label", `跳转到步骤 ${index + 1}: ${scene.title}`);
     button.innerHTML = `
       <span class="path-item-index">${index + 1}</span>
@@ -6893,7 +6980,7 @@ function buildPathList() {
   els.pathList.appendChild(fragment);
 }
 
-function loadScene(index) {
+function loadScene(index, options = {}) {
   if (index < 0 || index >= SCENES.length) {
     return;
   }
@@ -6911,6 +6998,9 @@ function loadScene(index) {
   if (index !== REPORT_DETAIL_SCENE_INDEX && getReportDetailRouteId()) {
     activeReportDetailId = null;
     clearReportDetailRoute();
+  }
+  if (options.updateStepRoute !== false) {
+    setLearningStepRoute(index, { routeMode: options.routeMode });
   }
 
   updateSceneText(index);
