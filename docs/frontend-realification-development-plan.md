@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互和本机教师批注已有第一版 | 仍是本机报告，没有云端长期报告、账号教师端、签名验真和服务端生成 | 增加报告 schema、服务端保存、账号化教师批注、验真签名和 PDF 资源嵌入验收 |
+| 报告导出 | HTML 报告、原生 PDF、报告对比、多报告趋势、字段交互、本机教师批注和本机验真摘要已有第一版 | 仍是本机报告，没有云端长期报告、账号教师端、服务端签名证书和服务端生成 | 增加报告 schema、服务端保存、账号化教师批注、服务端验真签名和 PDF 资源嵌入验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -144,7 +144,7 @@ node scripts/control-inventory.js --check
 目标：评分不再像固定模板，报告能被复盘和验证。
 
 - 评分结果显示证据点、覆盖范围、重心、停顿、压感和维度理由；本机 `ScoreService` 已记录并展示最近评分证据摘要。
-- 原生 PDF 继续增强图表、作品截图和报告 ID。
+- 原生 PDF 继续增强图表、作品截图、报告 ID 和服务端验真回执；本机验真摘要第一版已完成。
 - 报告 schema 固定版本，支持服务端保存和教师批注。
 - 分享页和报告页必须带本机/云端来源说明。
 
@@ -217,7 +217,7 @@ node scripts/control-inventory.js --check
 
 仍然不是生产能力的部分：
 
-- 这是本机教师批注，不是账号化教师端，也没有服务端审计、签名验真或课堂权限。
+- 这是本机教师批注，不是账号化教师端，也没有服务端审计、服务端签名验真或课堂权限。
 - 后续需要把报告仓库、教师身份、批注审计和云端长期报告接到服务端。
 
 ## 11. 验收命令
@@ -852,3 +852,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增远端项目仓库版本历史`
+
+## 29. 2026-06-12 报告本机验真摘要
+
+本次把报告导出从“能下载”继续推进到“能在本机复算摘要并对照导出内容”。
+
+完成内容：
+
+- `MRAppState.getReportVerification(reportId)` 新增无副作用验真摘要接口。
+- 验真 payload 使用稳定 JSON，覆盖报告核心字段、教师批注、关联练习摘要和最近作品截图 SHA-256 摘要。
+- HTML 报告新增“本机验真摘要”区块，显示算法、摘要、来源和能力边界。
+- 原生 PDF 正文和 PDF 注释新增 `ReportVerification`、`ReportVerificationAlgorithm` 和 `ReportDigest` 标记。
+- 前台站内报告面板新增本机验真摘要展示，刷新后可重新计算。
+- `learning-state-check.js` 验证摘要是 64 位 SHA-256、PDF/HTML 摘要一致，并验证教师批注变更后摘要同步变化。
+
+真实化说明：
+
+- 数据来源：当前浏览器里的 `ReportRecord`、关联 `PracticeSession` 和最近 `ArtworkRecord`。
+- 写入状态：本功能不新增持久字段，摘要每次从本机状态重新计算。
+- 成功反馈：页面、HTML 导出和 PDF 导出都展示同一份摘要。
+- 失败反馈：没有报告时返回明确失败，不生成空摘要。
+- 刷新后复现方式：刷新后从 `mr-calligraphy-learning-state-v1` 重新计算同一份报告摘要。
+
+仍待补：
+
+- 这是本机 SHA-256 摘要，不是服务端证书、教师签名、账号化审计或不可篡改签章。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告本机验真摘要`

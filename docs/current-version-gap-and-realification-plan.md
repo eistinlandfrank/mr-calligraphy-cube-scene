@@ -57,7 +57,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
-| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势和本机教师批注 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、账号教师端和签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口、账号化教师批注和导出验收 |
+| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、报告对比、多报告趋势、本机教师批注和本机验真摘要 | 原生 PDF 第一版以文本摘要为主，还没有云端长期报告、账号教师端和服务端签名验真 | 继续增加 PDF 图表/截图嵌入、报告 schema、服务端保存接口、账号化教师批注和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
 
@@ -1442,7 +1442,7 @@ node scripts/control-inventory.js
 已知限制：
 
 - 当前是本机教师批注，不是账号化教师端。
-- 还没有服务端审计、教师身份、课堂权限、签名验真或云端长期报告仓库。
+- 还没有服务端审计、教师身份、课堂权限、服务端签名验真或云端长期报告仓库。
 
 提交：
 
@@ -1510,3 +1510,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增远端项目仓库版本历史`
+
+### 2026-06-12：新增报告本机验真摘要
+
+完成内容：
+
+- `MRAppState.getReportVerification(reportId)` 可按稳定 JSON 重新计算本机报告 SHA-256 摘要。
+- 摘要 payload 覆盖报告核心字段、教师批注、关联练习和最近作品截图摘要。
+- 前台报告详情显示摘要、算法和本机边界。
+- HTML 报告和原生 PDF 都写入同一份摘要；PDF 额外包含 `ReportDigest` 可测注释。
+- 学习状态检查验证摘要格式、PDF/HTML 一致性和教师批注变更后的摘要变化。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机学习状态。
+- 写入状态：不写新持久字段，摘要每次从报告内容复算。
+- 成功反馈：页面、HTML 和 PDF 均展示同一份摘要。
+- 失败反馈：没有报告时返回明确失败。
+- 刷新后复现方式：从 `mr-calligraphy-learning-state-v1` 重新计算。
+
+仍待补：
+
+- 当前是本机验真摘要，不是账号化 `ReportRepository`、服务端签名、教师身份签章或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告本机验真摘要`

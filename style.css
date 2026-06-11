@@ -4680,6 +4680,38 @@ body.is-model-view .notice-panel {
   white-space: nowrap;
 }
 
+.report-verification {
+  display: grid;
+  gap: 7px;
+  padding: 9px;
+  border: 1px solid rgba(130, 205, 183, 0.24);
+  border-radius: 8px;
+  background: rgba(49, 91, 80, 0.18);
+}
+
+.report-verification strong {
+  color: #ffffff;
+  font-size: 12px;
+}
+
+.report-verification small,
+.report-verification p {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.report-verification code {
+  display: block;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #e5fff7;
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .report-metrics,
 .report-trend,
 .report-comparison,

@@ -266,10 +266,19 @@ assert(reportPdfExport.features.metricCount === 5, "PDF 报告应包含五项能
 assert(reportPdfExport.features.artworkCard, "PDF 报告应声明包含最近作品卡片。");
 assert(reportPdfExport.features.artworkAvailable, "PDF 报告应识别最近作品记录。");
 assert(reportPdfExport.features.artworkImageAvailable, "PDF 报告应识别最近作品截图来源。");
+assert(reportPdfExport.features.verification, "PDF 报告应声明包含本机验真摘要。");
+assert(/^[a-f0-9]{64}$/.test(reportPdfExport.verification.digest), "PDF 报告验真摘要应为 64 位 SHA-256。");
+assert(reportPdfExport.features.verificationDigest === reportPdfExport.verification.digest, "PDF feature 应暴露同一个验真摘要。");
 assert(!reportPdfExport.features.teacherReview, "未批注报告不应伪造教师批注。");
 assert(reportPdfExport.pdf.includes("MetricBars: 5"), "PDF 内容应包含能力条形图标记。");
 assert(reportPdfExport.pdf.includes("ArtworkCard: yes"), "PDF 内容应包含作品卡片标记。");
+assert(reportPdfExport.pdf.includes("ReportVerification: yes"), "PDF 内容应包含报告验真标记。");
+assert(reportPdfExport.pdf.includes(`ReportDigest: ${reportPdfExport.verification.digest}`), "PDF 内容应包含报告验真摘要。");
 assert(reportPdfExport.byteLength > 1000, "PDF 报告不应是空壳文件。");
+
+const directReportVerification = window.MRAppState.getReportVerification("report-2");
+assert(directReportVerification.ok, "报告验真摘要应可通过无副作用 API 重新计算。");
+assert(directReportVerification.digest === reportPdfExport.verification.digest, "重新计算的报告摘要应与 PDF 导出一致。");
 
 const emptyTeacherReview = window.MRAppState.updateReportTeacherReview("report-2", {
   reviewer: "王老师",
@@ -291,11 +300,17 @@ assert(reviewedDetail.teacherReview.note.includes("结构更稳"), "报告详情
 const reviewedHtml = window.MRAppState.getReportHtmlExport("report-2");
 assert(reviewedHtml.ok, "报告 HTML 应可通过无副作用 API 生成。");
 assert(reviewedHtml.features.teacherReview, "HTML 报告导出应声明包含教师批注。");
+assert(reviewedHtml.features.verification, "HTML 报告导出应声明包含本机验真摘要。");
 assert(reviewedHtml.html.includes("教师批注") && reviewedHtml.html.includes("结构更稳"), "HTML 报告应包含教师批注内容。");
+assert(reviewedHtml.html.includes("本机验真摘要"), "HTML 报告应显示本机验真摘要。");
+assert(reviewedHtml.html.includes(reviewedHtml.verification.digest), "HTML 报告应包含验真摘要文本。");
+assert(reviewedHtml.verification.digest !== reportPdfExport.verification.digest, "教师批注变更后报告摘要应随内容变化。");
 
 const reviewedPdf = window.MRAppState.getReportPdfExport("report-2");
 assert(reviewedPdf.features.teacherReview, "PDF 报告应声明包含教师批注。");
+assert(reviewedPdf.features.verification, "批注后的 PDF 报告应继续包含本机验真摘要。");
 assert(reviewedPdf.pdf.includes("TeacherReview: yes"), "PDF 内容应包含教师批注标记。");
+assert(reviewedPdf.pdf.includes(`ReportDigest: ${reviewedHtml.verification.digest}`), "批注后的 PDF 摘要应与 HTML 导出一致。");
 
 const persistedReviewedState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 const persistedReviewedReport = persistedReviewedState.reports.find((item) => item.id === "report-2");

@@ -19,6 +19,9 @@
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包并按 nextPageUrl 追取分页，但仍不包含账号权限、教师批注审计或公开作品墙。";
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
+  const REPORT_VERIFICATION_KIND = "mr-calligraphy-report-verification-v1";
+  const REPORT_VERIFICATION_ALGORITHM = "sha256-stable-json";
+  const REPORT_VERIFICATION_BOUNDARY = "本机报告验真摘要由当前浏览器用报告核心字段、关联练习和最近作品截图摘要计算 SHA-256；它不是服务端证书、教师签名或不可篡改审计。";
   const HISTORY_REPOSITORY_CONFLICT_FIELDS = {
     session: ["title", "glyph", "copybook", "score", "feedback", "metrics", "endedAt", "status"],
     artwork: ["title", "glyph", "style", "score", "feedback", "tags", "createdAt"],
@@ -1307,6 +1310,120 @@
 
   function clone(value) {
     return JSON.parse(JSON.stringify(value));
+  }
+
+  function sha256StableJson(value) {
+    return sha256Hex(stablePlanStringify(value));
+  }
+
+  function sha256Hex(text) {
+    const bytes = utf8Bytes(String(text || ""));
+    const words = [
+      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    ];
+    const constants = [
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    const message = bytes.slice();
+    const bitLength = message.length * 8;
+    message.push(0x80);
+    while ((message.length % 64) !== 56) message.push(0);
+    const highLength = Math.floor(bitLength / 0x100000000);
+    const lowLength = bitLength >>> 0;
+    [highLength, lowLength].forEach((part) => {
+      message.push((part >>> 24) & 0xff, (part >>> 16) & 0xff, (part >>> 8) & 0xff, part & 0xff);
+    });
+
+    const schedule = new Array(64);
+    for (let offset = 0; offset < message.length; offset += 64) {
+      for (let index = 0; index < 16; index += 1) {
+        const cursor = offset + index * 4;
+        schedule[index] = (
+          (message[cursor] << 24)
+          | (message[cursor + 1] << 16)
+          | (message[cursor + 2] << 8)
+          | message[cursor + 3]
+        ) >>> 0;
+      }
+      for (let index = 16; index < 64; index += 1) {
+        const sigma0 = rotateRight(schedule[index - 15], 7) ^ rotateRight(schedule[index - 15], 18) ^ (schedule[index - 15] >>> 3);
+        const sigma1 = rotateRight(schedule[index - 2], 17) ^ rotateRight(schedule[index - 2], 19) ^ (schedule[index - 2] >>> 10);
+        schedule[index] = (schedule[index - 16] + sigma0 + schedule[index - 7] + sigma1) >>> 0;
+      }
+
+      let [a, b, c, d, e, f, g, h] = words;
+      for (let index = 0; index < 64; index += 1) {
+        const sigma1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+        const choice = (e & f) ^ (~e & g);
+        const temp1 = (h + sigma1 + choice + constants[index] + schedule[index]) >>> 0;
+        const sigma0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+        const majority = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (sigma0 + majority) >>> 0;
+        h = g;
+        g = f;
+        f = e;
+        e = (d + temp1) >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = (temp1 + temp2) >>> 0;
+      }
+
+      words[0] = (words[0] + a) >>> 0;
+      words[1] = (words[1] + b) >>> 0;
+      words[2] = (words[2] + c) >>> 0;
+      words[3] = (words[3] + d) >>> 0;
+      words[4] = (words[4] + e) >>> 0;
+      words[5] = (words[5] + f) >>> 0;
+      words[6] = (words[6] + g) >>> 0;
+      words[7] = (words[7] + h) >>> 0;
+    }
+
+    return words.map((word) => word.toString(16).padStart(8, "0")).join("");
+  }
+
+  function rotateRight(value, bits) {
+    return (value >>> bits) | (value << (32 - bits));
+  }
+
+  function utf8Bytes(text) {
+    if (typeof TextEncoder !== "undefined") {
+      return Array.from(new TextEncoder().encode(text));
+    }
+    const bytes = [];
+    for (let index = 0; index < text.length; index += 1) {
+      let codePoint = text.charCodeAt(index);
+      if (codePoint >= 0xd800 && codePoint <= 0xdbff && index + 1 < text.length) {
+        const next = text.charCodeAt(index + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
+          index += 1;
+        }
+      }
+      if (codePoint <= 0x7f) {
+        bytes.push(codePoint);
+      } else if (codePoint <= 0x7ff) {
+        bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
+      } else if (codePoint <= 0xffff) {
+        bytes.push(0xe0 | (codePoint >> 12), 0x80 | ((codePoint >> 6) & 0x3f), 0x80 | (codePoint & 0x3f));
+      } else {
+        bytes.push(
+          0xf0 | (codePoint >> 18),
+          0x80 | ((codePoint >> 12) & 0x3f),
+          0x80 | ((codePoint >> 6) & 0x3f),
+          0x80 | (codePoint & 0x3f)
+        );
+      }
+    }
+    return bytes;
   }
 
   function getModeConfig(mode = state.activeMode) {
@@ -4058,8 +4175,111 @@
       .slice(-12);
   }
 
-  function createReportHtml(report) {
+  function createReportVerification(report) {
     const normalizedReport = normalizeReport(report);
+    if (!normalizedReport) return null;
+    const payload = createReportVerificationPayload(normalizedReport);
+    const canonical = stablePlanStringify(payload);
+    const digest = sha256Hex(canonical);
+    return {
+      kind: REPORT_VERIFICATION_KIND,
+      version: 1,
+      algorithm: REPORT_VERIFICATION_ALGORITHM,
+      digest,
+      reportId: normalizedReport.id,
+      reportCreatedAt: normalizedReport.createdAt,
+      storageKey: STORAGE_KEY,
+      payloadBytes: utf8Bytes(canonical).length,
+      boundary: REPORT_VERIFICATION_BOUNDARY
+    };
+  }
+
+  function createReportVerificationPayload(report) {
+    const normalizedReport = normalizeReport(report);
+    const latestSession = findReportSession(normalizedReport);
+    const latestArtwork = findReportArtwork(normalizedReport);
+    return {
+      kind: REPORT_VERIFICATION_KIND,
+      version: 1,
+      storageKey: STORAGE_KEY,
+      boundary: REPORT_VERIFICATION_BOUNDARY,
+      report: {
+        id: normalizedReport.id,
+        taskId: normalizedReport.taskId,
+        title: normalizedReport.title,
+        createdAt: normalizedReport.createdAt,
+        range: normalizedReport.range,
+        format: normalizedReport.format,
+        summary: normalizedReport.summary,
+        sessionCount: normalizedReport.sessionCount,
+        artworkCount: normalizedReport.artworkCount,
+        averageScore: normalizedReport.averageScore,
+        learningMinutes: normalizedReport.learningMinutes,
+        latestSessionId: normalizedReport.latestSessionId,
+        latestArtworkId: normalizedReport.latestArtworkId,
+        latestStrokeCount: normalizedReport.latestStrokeCount,
+        latestPointCount: normalizedReport.latestPointCount,
+        scoreBreakdown: normalizedReport.scoreBreakdown,
+        trend: normalizedReport.trend,
+        recommendations: normalizedReport.recommendations,
+        teacherReview: normalizedReport.teacherReview
+      },
+      evidence: {
+        latestSession: latestSession ? {
+          id: latestSession.id || "",
+          taskId: latestSession.taskId || getSessionTaskId(latestSession),
+          title: latestSession.title || "",
+          glyph: latestSession.glyph || "",
+          mode: latestSession.mode || "",
+          copybook: latestSession.copybook || "",
+          trainingMode: latestSession.trainingMode || "",
+          score: normalizeScore(latestSession.score, 0),
+          strokeCount: normalizeInteger(latestSession.strokeCount, 0, 0, 999),
+          pointCount: normalizeInteger(latestSession.pointCount, 0, 0, 99999),
+          metrics: normalizeMetrics(latestSession.metrics),
+          createdAt: latestSession.createdAt || "",
+          endedAt: latestSession.endedAt || ""
+        } : null,
+        latestArtwork: latestArtwork ? {
+          id: latestArtwork.id || "",
+          title: latestArtwork.title || "",
+          glyph: latestArtwork.glyph || "",
+          mode: latestArtwork.mode || "",
+          copybook: latestArtwork.copybook || "",
+          style: latestArtwork.style || "",
+          score: normalizeScore(latestArtwork.score, 0),
+          strokeCount: normalizeInteger(latestArtwork.strokeCount, 0, 0, 999),
+          pointCount: normalizeInteger(latestArtwork.pointCount, 0, 0, 99999),
+          tags: Array.isArray(latestArtwork.tags) ? normalizeArtworkTags(latestArtwork.tags) : [],
+          imageSha256: latestArtwork.imageData ? sha256Hex(latestArtwork.imageData) : "",
+          createdAt: latestArtwork.createdAt || ""
+        } : null
+      }
+    };
+  }
+
+  function getReportVerification(reportId = null) {
+    const report = reportId
+      ? state.reports.find((item) => item.id === String(reportId))
+      : state.reports[state.reports.length - 1];
+    if (!report) {
+      return { ok: false, message: "还没有可验真的学习报告。" };
+    }
+    const normalizedReport = normalizeReport(report);
+    const verification = createReportVerification(normalizedReport);
+    return {
+      ok: true,
+      reportId: normalizedReport.id,
+      report: clone(normalizedReport),
+      verification: clone(verification),
+      digest: verification.digest,
+      message: "已根据本机报告核心字段重新计算验真摘要。"
+    };
+  }
+
+  function createReportHtml(report, verification = null) {
+    const normalizedReport = normalizeReport(report);
+    const verificationInfo = verification || createReportVerification(normalizedReport);
     const metrics = normalizedReport.scoreBreakdown;
     const trend = normalizedReport.trend.length ? normalizedReport.trend : getReportTrend();
     const latestArtwork = findReportArtwork(normalizedReport);
@@ -4086,6 +4306,9 @@
     const teacherReviewBlock = normalizedReport.teacherReview
       ? `<section class="teacher-review"><h2>教师批注</h2><p>${escapeHtml(normalizedReport.teacherReview.note)}</p><small>${escapeHtml(normalizedReport.teacherReview.reviewer)} · ${escapeHtml(formatDateTime(normalizedReport.teacherReview.reviewedAt))} · 本机批注记录</small></section>`
       : `<section class="teacher-review is-empty"><h2>教师批注</h2><p>暂无本机教师批注。</p><small>批注会保存在当前浏览器报告记录中，不代表云端教师端。</small></section>`;
+    const verificationBlock = verificationInfo
+      ? `<section class="report-verification" aria-label="报告本机验真摘要"><h2>本机验真摘要</h2><dl><div><dt>算法</dt><dd>${escapeHtml(verificationInfo.algorithm)}</dd></div><div><dt>摘要</dt><dd><code>${escapeHtml(verificationInfo.digest)}</code></dd></div><div><dt>来源</dt><dd>${escapeHtml(verificationInfo.storageKey)} · ${escapeHtml(verificationInfo.kind)}</dd></div></dl><p class="muted">${escapeHtml(verificationInfo.boundary)}</p></section>`
+      : "";
 
     return `<!doctype html>
 <html lang="zh-CN">
@@ -4139,6 +4362,12 @@
     .teacher-review p { margin-top: 8px; }
     .teacher-review small { display: block; margin-top: 10px; color: var(--muted); }
     .teacher-review.is-empty { color: var(--muted); background: #ffffff; }
+    .report-verification { margin-top: 26px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .report-verification dl { display: grid; gap: 8px; margin: 10px 0 0; }
+    .report-verification div { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 10px; align-items: start; }
+    .report-verification dt { color: var(--muted); font-size: 12px; }
+    .report-verification dd { margin: 0; }
+    .report-verification code { word-break: break-all; font-family: "SFMono-Regular", Consolas, monospace; font-size: 12px; }
     footer { margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     @media print {
       @page { size: A4; margin: 14mm; }
@@ -4212,8 +4441,9 @@
     </section>
 
     ${teacherReviewBlock}
+    ${verificationBlock}
 
-    <footer>报告数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。报告水印：${escapeHtml(watermarkText)}。如需迁移项目，请在主后台导出项目档案。</footer>
+    <footer>报告数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。报告水印：${escapeHtml(watermarkText)}。验真摘要：${escapeHtml(verificationInfo?.digest || "未生成")}。如需迁移项目，请在主后台导出项目档案。</footer>
   </main>
 </body>
 </html>`;
@@ -4228,11 +4458,13 @@
     }
 
     const normalizedReport = normalizeReport(report);
-    const pdf = createReportPdf(normalizedReport);
+    const verification = createReportVerification(normalizedReport);
+    const pdf = createReportPdf(normalizedReport, verification);
     const latestArtwork = findReportArtwork(normalizedReport);
     return {
       ok: true,
       report: clone(normalizedReport),
+      verification: clone(verification),
       filename: `mr-calligraphy-report-${normalizedReport.id}.pdf`,
       mimeType: "application/pdf",
       pdf,
@@ -4243,9 +4475,11 @@
         artworkCard: true,
         artworkAvailable: Boolean(latestArtwork),
         artworkImageAvailable: Boolean(latestArtwork?.imageData),
-        teacherReview: Boolean(normalizedReport.teacherReview)
+        teacherReview: Boolean(normalizedReport.teacherReview),
+        verification: Boolean(verification),
+        verificationDigest: verification?.digest || ""
       },
-      message: "已生成包含能力条形图、最近作品卡片和教师批注状态的原生 PDF 学习报告。"
+      message: "已生成包含能力条形图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
     };
   }
 
@@ -4257,21 +4491,26 @@
       return { ok: false, message: "还没有可导出的 HTML 学习报告。" };
     }
     const normalizedReport = normalizeReport(report);
+    const verification = createReportVerification(normalizedReport);
     return {
       ok: true,
       report: clone(normalizedReport),
+      verification: clone(verification),
       filename: `mr-calligraphy-report-${normalizedReport.id}.html`,
       mimeType: "text/html;charset=utf-8",
-      html: createReportHtml(normalizedReport),
+      html: createReportHtml(normalizedReport, verification),
       features: {
-        teacherReview: Boolean(normalizedReport.teacherReview)
+        teacherReview: Boolean(normalizedReport.teacherReview),
+        verification: Boolean(verification),
+        verificationDigest: verification?.digest || ""
       },
-      message: "已生成包含本机教师批注状态的 HTML 学习报告。"
+      message: "已生成包含本机教师批注状态和验真摘要的 HTML 学习报告。"
     };
   }
 
-  function createReportPdf(report) {
+  function createReportPdf(report, verification = null) {
     const normalizedReport = normalizeReport(report);
+    const verificationInfo = verification || createReportVerification(normalizedReport);
     const latestSession = findReportSession(normalizedReport);
     const latestArtwork = findReportArtwork(normalizedReport);
     const metricLabels = [
@@ -4327,6 +4566,11 @@
         size: 10
       },
       { text: "", size: 6 },
+      { text: "本机验真摘要", size: 16 },
+      { text: `算法：${verificationInfo.algorithm}    类型：${verificationInfo.kind}`, size: 10 },
+      { text: `摘要：${verificationInfo.digest}`, size: 10 },
+      { text: `边界：${verificationInfo.boundary}`, size: 9 },
+      { text: "", size: 6 },
       { text: "练习建议", size: 16 },
       ...(normalizedReport.recommendations.length ? normalizedReport.recommendations : ["完成一次书写并保存作品后，会生成更具体的复盘建议。"])
         .slice(0, 6)
@@ -4341,7 +4585,10 @@
       artworkCard: true,
       artworkAvailable: Boolean(latestArtwork),
       artworkImageAvailable: Boolean(latestArtwork?.imageData),
-      teacherReview: Boolean(normalizedReport.teacherReview)
+      teacherReview: Boolean(normalizedReport.teacherReview),
+      verificationKind: verificationInfo.kind,
+      verificationAlgorithm: verificationInfo.algorithm,
+      verificationDigest: verificationInfo.digest
     });
   }
 
@@ -4457,13 +4704,20 @@
     const title = sanitizePdfInfo(metadata.title || "MR Calligraphy Report");
     const subject = sanitizePdfInfo(metadata.subject || "");
     const source = sanitizePdfInfo(metadata.source || "");
+    const verificationKind = sanitizePdfComment(metadata.verificationKind || "");
+    const verificationAlgorithm = sanitizePdfComment(metadata.verificationAlgorithm || "");
+    const verificationDigest = sanitizePdfComment(metadata.verificationDigest || "");
     const pdfComments = [
       `% Source: ${source}`,
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
       `% ArtworkCard: ${metadata.artworkCard ? "yes" : "no"}`,
       `% ArtworkAvailable: ${metadata.artworkAvailable ? "yes" : "no"}`,
       `% ArtworkImageAvailable: ${metadata.artworkImageAvailable ? "yes" : "no"}`,
-      `% TeacherReview: ${metadata.teacherReview ? "yes" : "no"}`
+      `% TeacherReview: ${metadata.teacherReview ? "yes" : "no"}`,
+      `% ReportVerification: ${verificationDigest ? "yes" : "no"}`,
+      `% ReportVerificationKind: ${verificationKind}`,
+      `% ReportVerificationAlgorithm: ${verificationAlgorithm}`,
+      `% ReportDigest: ${verificationDigest}`
     ].join("\n");
     const objects = [
       "<< /Type /Catalog /Pages 2 0 R >>",
@@ -4520,6 +4774,12 @@
       .replace(/\(/g, "\\(")
       .replace(/\)/g, "\\)")
       .slice(0, 120);
+  }
+
+  function sanitizePdfComment(value) {
+    return String(value || "")
+      .replace(/[\r\n%]/g, "")
+      .slice(0, 180);
   }
 
   function createReportRadarSvg(metricLabels, metrics) {
@@ -8509,6 +8769,7 @@
     getPlanExport,
     getReportPreview,
     getReportDetail,
+    getReportVerification,
     getReportHtmlExport,
     getReportPdfExport,
     getReportComparison,

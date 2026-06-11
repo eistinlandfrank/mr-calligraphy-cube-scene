@@ -840,6 +840,7 @@ const els = {
   reportTitle: document.getElementById("reportTitle"),
   reportStatus: document.getElementById("reportStatus"),
   reportSummary: document.getElementById("reportSummary"),
+  reportVerification: document.getElementById("reportVerification"),
   reportStats: document.getElementById("reportStats"),
   reportMetrics: document.getElementById("reportMetrics"),
   reportTrend: document.getElementById("reportTrend"),
@@ -4621,6 +4622,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   els.reportTitle.textContent = detail.title || "学习报告";
   els.reportStatus.textContent = detail.status || "站内报告";
   els.reportSummary.textContent = `${formatHistoryTime(detail.createdAt)} / ${detail.summary || "本报告基于本机练习、作品和评分记录生成。"}`;
+  renderReportVerification(detail);
   renderReportStats(detail);
   activeReportMetricKey = normalizeReportMetricKey(activeReportMetricKey);
   renderReportMetrics(detail, activeReportMetricKey);
@@ -4639,6 +4641,7 @@ function renderReportEmptyState() {
   els.reportSummary.textContent = "点击“导出报告”后，会生成可下载的 HTML 文件，并在这里展示同一份本机报告。";
   [
     els.reportStats,
+    els.reportVerification,
     els.reportMetrics,
     els.reportTrend,
     els.reportComparison,
@@ -4656,6 +4659,31 @@ function renderReportEmptyState() {
     els.reportStats.appendChild(empty);
   }
   renderReportTeacherReview(null);
+}
+
+function renderReportVerification(detail) {
+  if (!els.reportVerification) return;
+  els.reportVerification.innerHTML = "";
+  const result = detail?.id ? window.MRAppState?.getReportVerification?.(detail.id) : null;
+  const verification = result?.ok ? result.verification : null;
+
+  const heading = document.createElement("strong");
+  heading.textContent = "本机验真摘要";
+  const status = document.createElement("small");
+  status.textContent = verification
+    ? `${verification.algorithm} / ${verification.kind}`
+    : "暂无可验真的报告记录。";
+  els.reportVerification.append(heading, status);
+
+  if (!verification) {
+    return;
+  }
+
+  const digest = document.createElement("code");
+  digest.textContent = verification.digest;
+  const boundary = document.createElement("p");
+  boundary.textContent = verification.boundary;
+  els.reportVerification.append(digest, boundary);
 }
 
 function renderReportStats(detail) {

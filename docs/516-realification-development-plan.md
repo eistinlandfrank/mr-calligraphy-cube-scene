@@ -47,7 +47,7 @@
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
-| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要和本机教师批注 | 还没有云端长期报告、账号化教师端、签名验真和服务端报告仓库 |
+| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、第一版 PDF 图表摘要、本机教师批注和本机验真摘要 | 还没有云端长期报告、账号化教师端、服务端签名验真和服务端报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
@@ -4979,7 +4979,7 @@
 已知限制：
 
 - 第一版原生 PDF 是文本摘要型 PDF，尚未把雷达图、趋势图和作品截图嵌入 PDF 页面。
-- 云端长期报告、教师批注、签名验真和服务端 PDF 渲染仍未接入。
+- 云端长期报告、教师批注、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 ### 2026-06-11：增强学习报告 PDF 图表
 
@@ -5024,7 +5024,7 @@
 已知限制：
 
 - HTML 报告继续真实嵌入作品截图；当前原生 PDF 为轻量实现，先展示作品卡片和截图来源状态，不直接嵌入 PNG 位图。
-- 雷达图、趋势图、教师批注、签名验真和服务端 PDF 渲染仍未接入。
+- 雷达图、趋势图、教师批注、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 提交：
 
@@ -5255,7 +5255,7 @@
 已知限制：
 
 - 这仍是本机教师批注，不是账号化教师端或课堂批改系统。
-- 服务端报告仓库、教师身份、批注审计、签名验真和云端长期报告仍待实现。
+- 服务端报告仓库、教师身份、批注审计、服务端签名验真和云端长期报告仍待实现。
 
 提交：
 
@@ -6001,3 +6001,66 @@
 提交：
 
 - 中文 commit message：`新增远端项目仓库版本历史`
+
+### 2026-06-12：新增报告本机验真摘要
+
+功能名：学习报告本机 SHA-256 验真摘要。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `MRAppState` 新增同步 SHA-256 和稳定 JSON 摘要能力，浏览器和 Node 检查脚本共用同一逻辑。
+- `MRAppState.getReportVerification(reportId)` 新增无副作用 API，可重新计算指定报告摘要。
+- 摘要 payload 覆盖 `ReportRecord` 核心字段、教师批注、关联练习摘要和最近作品截图 SHA-256 摘要。
+- HTML 报告新增“本机验真摘要”区块，展示算法、摘要、来源和能力边界。
+- 原生 PDF 正文新增本机验真摘要，PDF 注释新增 `ReportVerification`、`ReportVerificationAlgorithm` 和 `ReportDigest`。
+- 前台站内报告详情新增摘要展示，用户无需下载也能看到当前报告摘要。
+- 学习状态检查新增摘要格式、HTML/PDF 一致性、无副作用复算和教师批注变更后摘要变化断言。
+- smoke test 新增前台 `reportVerification` DOM 标记检查。
+
+真实化说明：
+
+- 数据来源：当前浏览器里的 `ReportRecord`、关联 `PracticeSession` 和最近 `ArtworkRecord`。
+- 写入状态：本功能不新增持久字段；摘要每次由当前本机状态重新计算。
+- 成功反馈：前台报告详情、HTML 导出和原生 PDF 都展示同一份摘要。
+- 失败反馈：没有报告时 `getReportVerification()` 返回明确失败，不生成空摘要。
+- 刷新后复现方式：刷新后从 `mr-calligraphy-learning-state-v1` 重新读取报告并复算摘要。
+
+已知限制：
+
+- 当前摘要是本机完整性提示，不是服务端证书、教师身份签名、不可篡改审计或账号化长期报告仓库。
+- PDF 仍是轻量原生 PDF，作品截图继续以来源状态和截图摘要参与验真，尚未直接嵌入 PNG 位图。
+
+验收方式：
+
+- 手工验收：打开前台生成报告，报告详情应显示“本机验真摘要”；下载 HTML/PDF 后应能看到同一串摘要；保存教师批注后摘要应变化。
+- 脚本验收：`node scripts/learning-state-check.js` 验证摘要格式、PDF/HTML 一致、教师批注变化后摘要变化；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 验证页面入口存在。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- SHA-256 一次性对照：临时暴露 `sha256Hex("abc")`，结果与 Node `crypto` 一致。
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告本机验真摘要`
