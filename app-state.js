@@ -5159,6 +5159,13 @@
     };
   }
 
+  function formatPlanRepositoryNetworkError(action, error) {
+    const detail = String(error?.message || "").trim();
+    return detail
+      ? `远端计划 API ${action}失败：网络请求异常（${detail}）。`
+      : `远端计划 API ${action}失败：网络请求异常。`;
+  }
+
   function checkRemotePlanRepository() {
     const repository = normalizePlanRepository(state.planRepository);
     const now = new Date().toISOString();
@@ -5227,7 +5234,7 @@
         message: `${parsed.message} ${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
-      const message = `远端计划 API 检查失败：${error?.message || "网络请求异常"}。`;
+      const message = formatPlanRepositoryNetworkError("检查", error);
       recordPlanRepositoryError(message);
       return { ok: false, status: getPlanRepositoryStatus(), message };
     }
@@ -5309,7 +5316,7 @@
         message: `已推送 ${planCount} 份计划到远端 API。${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
-      const message = `远端计划 API 推送失败：${error?.message || "网络请求异常"}。`;
+      const message = formatPlanRepositoryNetworkError("推送", error);
       recordPlanRepositoryError(message);
       return { ok: false, status: getPlanRepositoryStatus(), message };
     }
@@ -5416,7 +5423,7 @@
         message: `已从远端 API 拉取计划：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
-      const message = `远端计划 API 拉取失败：${error?.message || "网络请求异常"}。`;
+      const message = formatPlanRepositoryNetworkError("拉取", error);
       recordPlanRepositoryError(message);
       return { ok: false, status: getPlanRepositoryStatus(), message };
     }

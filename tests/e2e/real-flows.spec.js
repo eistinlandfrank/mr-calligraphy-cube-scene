@@ -646,6 +646,86 @@ test("front plan repository shows real remote failure feedback", async ({ page }
   expect(requests.some((item) => item.path === "/e2e-plan-repository-empty-package" && item.authorization === "Bearer empty-package-token")).toBe(true);
 });
 
+test("front plan repository keeps pending queue on push failures", async ({ page }) => {
+  const rejectedPath = "/e2e-plan-repository-rejected-push";
+  const networkPath = "/e2e-plan-repository-network-push";
+  const requests = [];
+
+  await page.route(`**${rejectedPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: rejectedPath,
+      method: request.method(),
+      authorization: request.headers().authorization || "",
+      body: request.method() === "PUT" ? request.postDataJSON() : null
+    });
+    await route.fulfill({
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "计划仓库包结构被 E2E 服务端拒绝。"
+      })
+    });
+  });
+
+  await page.route(`**${networkPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: networkPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.abort("failed");
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const seedPlan = await page.evaluate(() => {
+    const created = window.MRAppState.createPlan();
+    return {
+      id: created.plan.id,
+      title: created.plan.title
+    };
+  });
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#planPanel")).toBeVisible();
+  await expect(page.locator("#planTitle")).toContainText(seedPlan.title);
+  await page.locator(".plan-repository-remote summary").click();
+
+  const rejectedEndpoint = await getSameOriginEndpoint(page, rejectedPath);
+  await configurePlanRepositoryRemoteInUi(page, rejectedEndpoint, "plan-rejected-push-token");
+  await page.locator("#planRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 422");
+  await expect(page.locator("#planRepositorySummary")).toContainText("HTTP 422");
+
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toContain("HTTP 422");
+  expect(learningState.planRepository.pendingAutoSync).toBe(true);
+  expect(learningState.plans).toHaveLength(1);
+  expect(learningState.plans[0].id).toBe(seedPlan.id);
+
+  const rejectedPut = requests.find((item) => item.path === rejectedPath && item.method === "PUT");
+  expect(rejectedPut.authorization).toBe("Bearer plan-rejected-push-token");
+  expect(rejectedPut.body.kind).toBe("mr-calligraphy-plan-repository-v1");
+  expect(rejectedPut.body.summary.planCount).toBe(1);
+  expect(rejectedPut.body.plans[0].id).toBe(seedPlan.id);
+
+  const networkEndpoint = await getSameOriginEndpoint(page, networkPath);
+  await configurePlanRepositoryRemoteInUi(page, networkEndpoint, "plan-network-push-token");
+  await page.locator("#planRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("网络请求异常");
+  await expect(page.locator("#planRepositorySummary")).toContainText("网络请求异常");
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toContain("网络请求异常");
+  expect(learningState.planRepository.pendingAutoSync).toBe(true);
+  expect(learningState.plans).toHaveLength(1);
+  expect(learningState.plans[0].id).toBe(seedPlan.id);
+  expect(requests.some((item) => item.path === networkPath && item.method === "PUT" && item.authorization === "Bearer plan-network-push-token")).toBe(true);
+});
+
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
   const remoteEndpointPath = "/e2e-remote-publish";
