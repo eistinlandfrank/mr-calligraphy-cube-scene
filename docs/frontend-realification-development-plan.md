@@ -394,7 +394,6 @@ git diff --check
 
 仍待补：
 
-- 远端失败、非法 JSON、无计划包和 token 过期等失败路径验收。
 - 字段级冲突合并 UI，目前仍是计划级处理。
 
 验收：
@@ -429,9 +428,8 @@ git diff --check
 
 仍待补：
 
-- “保留本机”和“采用远端”的浏览器级按钮验收。
 - 字段级冲突合并 UI。
-- 远端 401、非法 JSON、无计划包等失败路径的浏览器级提示验收。
+- 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支的浏览器级提示验收。
 
 验收：
 
@@ -475,7 +473,7 @@ git diff --check
 
 仍待补：
 
-- 远端失败、非法 JSON、无计划包和 token 过期等失败路径的浏览器级提示验收。
+- 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支的浏览器级提示验收。
 - 字段级冲突合并 UI，目前仍是计划级处理。
 
 验收：
@@ -484,9 +482,48 @@ git diff --check
 - `npm run test:e2e -- --grep "front plan repository"`
 - `node --check scripts/learning-state-check.js && node scripts/learning-state-check.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `npm run test:e2e`，当前 6 条 Playwright 用例全部通过。
+- `npm run test:e2e`，当前 7 条 Playwright 用例全部通过。
 - `git diff --check`
 
 提交：
 
 - 中文 commit message：`新增计划冲突三策略浏览器验收`
+
+## 20. 2026-06-12 计划仓库远端失败浏览器验收
+
+本次补齐计划同步仓库的失败路径浏览器级验收，重点验证页面不会把远端错误包装成成功，也不会静默覆盖本机计划。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 新增 `front plan repository shows real remote failure feedback`。
+- E2E 通过 `page.route()` 模拟四类远端异常：token 过期 / 401、服务端故障 / 500、200 但返回非法 JSON、200 但没有返回计划包。
+- 每一类异常都会真实配置 endpoint/token，点击前台“检查远端”或“拉取计划”，并同时检查 `#noticeState`、`#planRepositorySummary` 和 `mr-calligraphy-learning-state-v1.planRepository`。
+- token 过期路径会断言浏览器请求带上 `Bearer expired-token`，确认不是只在本机假造错误。
+- 空计划包路径会先验证“检查远端”可成功保存远端状态，再验证“拉取计划”明确失败为“没有返回可导入的计划包”。
+
+真实化说明：
+
+- 数据来源：真实前台计划同步面板、真实 localStorage 计划仓库状态、同源模拟远端响应和实际 Authorization header。
+- 写入状态：失败会写入 `planRepository.lastError`，成功检查空仓库会写入 `lastRemoteStatus` 且保持 `lastError` 为空。
+- 成功反馈：只有服务可访问才显示远端可访问；没有计划包时不能假装拉取成功。
+- 失败反馈：401、500、非法 JSON、无计划包都会在页面通知和计划仓库摘要中出现明确错误。
+- 刷新后复现方式：错误状态保存在 `mr-calligraphy-learning-state-v1.planRepository`，后续刷新仍由同一状态区读取。
+
+仍待补：
+
+- 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支。
+- 学习档案远端失败路径的浏览器级提示验收。
+- 字段级冲突合并 UI，目前仍是计划级处理。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "remote failure feedback"`
+- `npm run test:e2e -- --grep "front plan repository"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库失败路径验收`

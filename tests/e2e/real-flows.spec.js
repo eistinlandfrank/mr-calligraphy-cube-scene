@@ -365,6 +365,108 @@ test("front plan repository applies remote changes when resolving a conflict", a
   expect(conflict.planRequests.some((item) => item.method === "GET" && item.authorization === "Bearer use-remote-token")).toBe(true);
 });
 
+test("front plan repository shows real remote failure feedback", async ({ page }) => {
+  const requests = [];
+  const routes = [
+    {
+      path: "/e2e-plan-repository-expired-token",
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "计划仓库 token 已过期，请重新登录。"
+      })
+    },
+    {
+      path: "/e2e-plan-repository-server-error",
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "计划仓库服务端 E2E 故障。"
+      })
+    },
+    {
+      path: "/e2e-plan-repository-invalid-json",
+      status: 200,
+      contentType: "application/json",
+      body: "{not-json"
+    },
+    {
+      path: "/e2e-plan-repository-empty-package",
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "远端空计划仓库 E2E 可访问，但没有返回计划包。"
+      })
+    }
+  ];
+
+  for (const routeConfig of routes) {
+    await page.route(`**${routeConfig.path}`, async (route) => {
+      const request = route.request();
+      requests.push({
+        path: routeConfig.path,
+        method: request.method(),
+        authorization: request.headers().authorization || ""
+      });
+      await route.fulfill({
+        status: routeConfig.status,
+        contentType: routeConfig.contentType,
+        body: routeConfig.body
+      });
+    });
+  }
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  await page.evaluate(() => window.MRAppState.createPlan());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#planPanel")).toBeVisible();
+  await page.locator(".plan-repository-remote summary").click();
+
+  const expiredEndpoint = await getSameOriginEndpoint(page, "/e2e-plan-repository-expired-token");
+  await configurePlanRepositoryRemoteInUi(page, expiredEndpoint, "expired-token");
+  await page.locator("#planRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 401");
+  await expect(page.locator("#planRepositorySummary")).toContainText("HTTP 401");
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toContain("HTTP 401");
+  expect(requests.some((item) => item.path === "/e2e-plan-repository-expired-token" && item.authorization === "Bearer expired-token")).toBe(true);
+
+  const serverErrorEndpoint = await getSameOriginEndpoint(page, "/e2e-plan-repository-server-error");
+  await configurePlanRepositoryRemoteInUi(page, serverErrorEndpoint, "server-error-token");
+  await page.locator("#planRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 500");
+  await expect(page.locator("#planRepositorySummary")).toContainText("HTTP 500");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toContain("HTTP 500");
+
+  const invalidJsonEndpoint = await getSameOriginEndpoint(page, "/e2e-plan-repository-invalid-json");
+  await configurePlanRepositoryRemoteInUi(page, invalidJsonEndpoint, "invalid-json-token");
+  await page.locator("#planRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("不是可解析 JSON");
+  await expect(page.locator("#planRepositorySummary")).toContainText("不是可解析 JSON");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toContain("不是可解析 JSON");
+
+  const emptyPackageEndpoint = await getSameOriginEndpoint(page, "/e2e-plan-repository-empty-package");
+  await configurePlanRepositoryRemoteInUi(page, emptyPackageEndpoint, "empty-package-token");
+  await page.locator("#planRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("远端空计划仓库 E2E 可访问");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toBe("");
+  expect(learningState.planRepository.lastRemoteStatus).toContain("远端空计划仓库 E2E 可访问");
+
+  await page.locator("#planRepositoryPullButton").click();
+  await expect(page.locator("#noticeState")).toContainText("没有返回可导入的计划包");
+  await expect(page.locator("#planRepositorySummary")).toContainText("没有返回可导入的计划包");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.lastError).toContain("没有返回可导入的计划包");
+  expect(requests.some((item) => item.path === "/e2e-plan-repository-empty-package" && item.authorization === "Bearer empty-package-token")).toBe(true);
+});
+
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
   const remoteEndpointPath = "/e2e-remote-publish";
@@ -552,6 +654,13 @@ async function readJsonLocalStorage(page, key) {
 
 async function getSameOriginEndpoint(page, path) {
   return page.evaluate((endpointPath) => new URL(endpointPath, window.location.href).toString(), path);
+}
+
+async function configurePlanRepositoryRemoteInUi(page, endpoint, token = "") {
+  await page.locator("#planRepositoryEndpointInput").fill(endpoint);
+  await page.locator("#planRepositoryTokenInput").fill(token);
+  await page.locator("#planRepositorySaveRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
 }
 
 async function setupPlanRepositoryConflict(page, options = {}) {
