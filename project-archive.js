@@ -1,6 +1,8 @@
 (function () {
   const ARCHIVE_KIND = "mr-calligraphy-project-archive";
   const ARCHIVE_VERSION = 1;
+  const RESTORE_AUDIT_KEY = "mr-calligraphy-project-archive-audit-v1";
+  const MAX_RESTORE_AUDIT_RECORDS = 50;
   const STORAGE_ITEMS = [
     { key: "mr-calligraphy-learning-state-v1", label: "学习状态" },
     { key: "mr-calligraphy-room-config-v3-wood", label: "房间与角色配置" },
@@ -68,7 +70,7 @@
       throw new Error("请至少选择一项要恢复的项目档案内容。");
     }
 
-    await validateArchiveAssetHashes(migratedArchive, restoreOptions.dbIds, restoreOptions.dbRecords);
+    const hashValidation = await validateArchiveAssetHashes(migratedArchive, restoreOptions.dbIds, restoreOptions.dbRecords);
     importLocalStorage(migratedArchive.storage || {}, restoreOptions.storageKeys, restoreOptions.storageFields);
 
     for (const item of DB_ITEMS) {
@@ -77,6 +79,10 @@
       }
     }
 
+    const auditRecord = appendRestoreAuditRecord(migratedArchive, restoreOptions, hashValidation);
+    if (auditRecord) {
+      migratedArchive.restoreAuditRecord = auditRecord;
+    }
     return migratedArchive;
   }
 
@@ -1687,6 +1693,193 @@
     };
   }
 
+  function appendRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
+    try {
+      const audit = readRestoreAuditState();
+      const record = createRestoreAuditRecord(archive, restoreOptions, hashValidation);
+      audit.records = [record, ...audit.records]
+        .slice(0, MAX_RESTORE_AUDIT_RECORDS);
+      window.localStorage.setItem(RESTORE_AUDIT_KEY, JSON.stringify({
+        version: 1,
+        updatedAt: record.createdAt,
+        records: audit.records
+      }));
+      return record;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function createRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
+    const createdAt = new Date().toISOString();
+    const normalizedOptions = normalizeRestoreOptions(restoreOptions, archive);
+    const storageFieldCount = Object.values(normalizedOptions.storageFields)
+      .reduce((sum, fields) => sum + fields.length, 0);
+    const dbModelCount = Object.values(normalizedOptions.dbRecords)
+      .reduce((sum, models) => sum + models.length, 0);
+    const summary = summarizeArchive(archive, "项目档案恢复审计", normalizedOptions);
+    return {
+      id: `archive-restore-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`,
+      type: "project-archive-restore",
+      createdAt,
+      archiveExportedAt: archive.exportedAt || "",
+      archiveSource: archive.source || "",
+      storageKeys: normalizedOptions.storageKeys,
+      dbIds: normalizedOptions.dbIds,
+      storageFields: normalizedOptions.storageFields,
+      dbRecords: normalizedOptions.dbRecords,
+      storageCount: summary.storageCount,
+      modelCount: summary.modelCount,
+      modelHashCount: Number(hashValidation.checkedCount || summary.modelHashCount || 0),
+      missingHashCount: Number(hashValidation.missingHashCount || 0),
+      migrationCount: Array.isArray(archive.migrations) ? archive.migrations.length : 0,
+      storageFieldCount,
+      dbModelCount,
+      message: summary.message
+    };
+  }
+
+  function getRestoreAuditLog(limit = MAX_RESTORE_AUDIT_RECORDS) {
+    const audit = readRestoreAuditState();
+    const safeLimit = Math.max(1, Math.min(MAX_RESTORE_AUDIT_RECORDS, Number(limit) || MAX_RESTORE_AUDIT_RECORDS));
+    return {
+      ok: true,
+      storageKey: RESTORE_AUDIT_KEY,
+      total: audit.records.length,
+      records: audit.records.slice(0, safeLimit),
+      message: audit.records.length
+        ? `已读取 ${audit.records.length} 条项目档案恢复审计记录。`
+        : "还没有项目档案恢复审计记录。"
+    };
+  }
+
+  function readRestoreAuditState() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(RESTORE_AUDIT_KEY) || "{}");
+      const records = Array.isArray(parsed.records)
+        ? parsed.records.map(normalizeRestoreAuditRecord).filter(Boolean)
+        : [];
+      return {
+        version: 1,
+        updatedAt: parsed.updatedAt || "",
+        records
+      };
+    } catch (error) {
+      return { version: 1, updatedAt: "", records: [] };
+    }
+  }
+
+  function normalizeRestoreAuditRecord(record) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+    const createdAt = record.createdAt || "";
+    return {
+      id: String(record.id || `archive-restore-${createdAt || "unknown"}`),
+      type: "project-archive-restore",
+      createdAt,
+      archiveExportedAt: record.archiveExportedAt || "",
+      archiveSource: record.archiveSource || "",
+      storageKeys: Array.isArray(record.storageKeys) ? record.storageKeys.map(String) : [],
+      dbIds: Array.isArray(record.dbIds) ? record.dbIds.map(String) : [],
+      storageFields: record.storageFields && typeof record.storageFields === "object" ? record.storageFields : {},
+      dbRecords: record.dbRecords && typeof record.dbRecords === "object" ? record.dbRecords : {},
+      storageCount: Number(record.storageCount || 0),
+      modelCount: Number(record.modelCount || 0),
+      modelHashCount: Number(record.modelHashCount || 0),
+      missingHashCount: Number(record.missingHashCount || 0),
+      migrationCount: Number(record.migrationCount || 0),
+      storageFieldCount: Number(record.storageFieldCount || 0),
+      dbModelCount: Number(record.dbModelCount || 0),
+      message: String(record.message || "")
+    };
+  }
+
+  function getRestoreAuditExport(options = {}) {
+    const audit = getRestoreAuditLog();
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-archive-audit-${formatTimestamp(new Date(exportedAt))}.html`;
+    const html = createRestoreAuditHtml(audit.records, exportedAt);
+    return {
+      ok: true,
+      filename,
+      mimeType: "text/html;charset=utf-8",
+      html,
+      byteLength: html.length,
+      recordCount: audit.records.length,
+      message: audit.records.length
+        ? `已生成 ${audit.records.length} 条项目档案恢复审计报告：${filename}。`
+        : "已生成空的项目档案恢复审计报告。"
+    };
+  }
+
+  function downloadRestoreAuditLog(options = {}) {
+    const result = getRestoreAuditExport(options);
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      recordCount: result.recordCount,
+      message: `已下载项目档案恢复审计报告：${result.filename}。`
+    };
+  }
+
+  function createRestoreAuditHtml(records, exportedAt) {
+    const rows = records.length
+      ? records.map((record) => `<article class="card">
+        <div class="item-head"><h2>${escapeHtml(formatArchiveDate(record.createdAt))}</h2><span>${escapeHtml(record.storageCount)} 配置 / ${escapeHtml(record.modelCount)} 模型</span></div>
+        <p>${escapeHtml(record.message || "项目档案恢复完成。")}</p>
+        <ul>
+          <li>档案时间：${escapeHtml(formatArchiveDate(record.archiveExportedAt))}</li>
+          <li>档案来源：${escapeHtml(record.archiveSource || "未知")}</li>
+          <li>恢复配置：${escapeHtml(record.storageKeys.join("、") || "无")}</li>
+          <li>恢复模型库：${escapeHtml(record.dbIds.join("、") || "无")}</li>
+          <li>字段级选择：${escapeHtml(record.storageFieldCount)}；模型级选择：${escapeHtml(record.dbModelCount)}</li>
+          <li>模型哈希：${escapeHtml(record.modelHashCount)}；缺哈希：${escapeHtml(record.missingHashCount)}；迁移记录：${escapeHtml(record.migrationCount)}</li>
+        </ul>
+      </article>`).join("")
+      : `<article class="card"><p class="muted">暂无项目档案恢复审计记录。</p></article>`;
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法项目档案恢复审计</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(960px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 44px; }
+    header { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(28px, 5vw, 48px); line-height: 1.08; }
+    h2 { font-size: 16px; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 12px; margin-top: 22px; }
+    .card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+    .item-head span { color: var(--jade); font-weight: 800; }
+    ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted); }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">MR Calligraphy Project Archive Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
+      <h1>项目档案恢复审计</h1>
+      <p class="muted">本报告来自当前浏览器本机审计记录，只记录恢复成功后的项目档案恢复范围。</p>
+    </header>
+    <section class="stack">${rows}</section>
+    <footer>审计数据来源：${escapeHtml(RESTORE_AUDIT_KEY)}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getImportImpactReport(preview, options = {}) {
     if (!preview || typeof preview !== "object" || !preview.summary || !Array.isArray(preview.storage)) {
       return {
@@ -2014,6 +2207,9 @@
     const confirmButton = document.getElementById("projectImportConfirm");
     const impactButton = document.getElementById("projectImportExportImpact");
     const cancelButton = document.getElementById("projectImportCancel");
+    const auditStatus = document.getElementById("projectAuditStatus");
+    const auditList = document.getElementById("projectAuditList");
+    const auditExportButton = document.getElementById("projectAuditExport");
 
     if (!exportButton && !importFile) return;
 
@@ -2032,6 +2228,7 @@
       if (exportButton) exportButton.disabled = isBusy;
       if (importFile) importFile.disabled = isBusy;
       if (impactButton) impactButton.disabled = isBusy || !pendingPreview;
+      if (auditExportButton) auditExportButton.disabled = isBusy || !getRestoreAuditLog(1).records.length;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
       updateRestoreSelectionState();
     };
@@ -2200,6 +2397,33 @@
         previewGrid.appendChild(previewBlock);
       });
       return previewGrid;
+    };
+
+    const renderRestoreAudit = () => {
+      const audit = getRestoreAuditLog(5);
+      if (auditStatus) {
+        auditStatus.textContent = audit.records.length
+          ? `最近 ${audit.records.length}/${audit.total} 条恢复记录保存在本机。`
+          : "尚无项目档案恢复记录。";
+      }
+      if (auditExportButton) {
+        auditExportButton.disabled = isBusy || audit.total === 0;
+      }
+      if (!auditList) {
+        return;
+      }
+      auditList.innerHTML = "";
+      audit.records.forEach((record) => {
+        const item = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = formatArchiveDate(record.createdAt);
+        const detail = document.createElement("span");
+        detail.textContent = `${record.storageCount} 组配置 / ${record.modelCount} 个模型 / ${record.modelHashCount} 个哈希`;
+        const source = document.createElement("span");
+        source.textContent = record.archiveSource || "本机项目档案";
+        item.append(title, detail, source);
+        auditList.appendChild(item);
+      });
     };
 
     const clearPendingImport = () => {
@@ -2530,6 +2754,12 @@
       setStatus(result.message || "项目档案差异报告导出失败。", result.ok ? "success" : "error");
     });
 
+    auditExportButton?.addEventListener("click", () => {
+      const result = downloadRestoreAuditLog();
+      setStatus(result.message || "项目档案恢复审计导出失败。", result.ok ? "success" : "error");
+      renderRestoreAudit();
+    });
+
     confirmButton?.addEventListener("click", async () => {
       if (!pendingArchive) {
         setStatus("请先选择项目档案。", "error");
@@ -2546,6 +2776,7 @@
       setStatus("正在恢复所选项目档案，未勾选的本机内容会保持不变。", "loading");
       try {
         await restoreProjectArchive(pendingArchive, restoreOptions);
+        renderRestoreAudit();
         const result = summarizeArchive(pendingArchive, "已恢复所选项目档案，刷新页面后生效。", restoreOptions);
         setStatus(`${result.message} 页面即将刷新。`, "success");
         window.setTimeout(() => window.location.reload(), 900);
@@ -2578,6 +2809,8 @@
       });
       updateRestoreSelectionState();
     });
+
+    renderRestoreAudit();
   }
 
   window.MRProjectArchive = {
@@ -2588,6 +2821,9 @@
     prepareImportProject,
     getImportImpactReport,
     downloadImportImpactReport,
+    getRestoreAuditLog,
+    getRestoreAuditExport,
+    downloadRestoreAuditLog,
     restoreProjectArchive,
     migrateProjectArchive,
     validateArchiveAssetHashes,

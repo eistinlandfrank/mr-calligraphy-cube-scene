@@ -31,7 +31,7 @@ node scripts/control-inventory.js
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `index.html` | 48 | 12 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 28 | 2 | 1 | 0 | 0 | 0 |
+| `main-admin.html` | 28 | 3 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 18 | 0 | 1 | 0 | 0 | 0 |
 
@@ -348,12 +348,44 @@ node scripts/control-inventory.js
 
 已知限制：
 
-- 差异报告是导入前审阅产物，不等同于多人协作审计日志；恢复动作完成后尚未生成独立的永久审计历史。
+- 差异报告是导入前审阅产物；恢复动作完成后的本机审计历史由后续“项目档案恢复审计”功能记录，多人协作审计仍待补充。
 - 当前报告复用本机预览结果，不会连接远端项目仓库或资产服务。
 
 提交：
 
 - 中文 commit message：`新增项目档案差异报告`
+
+### 2026-06-11：新增项目档案恢复审计
+
+完成内容：
+
+- 新增 `mr-calligraphy-project-archive-audit-v1` 本机审计日志，项目档案恢复成功后会记录恢复时间、档案来源、恢复配置、恢复模型库、字段级选择、模型级选择、哈希数量和迁移数量。
+- 主后台项目档案面板新增“恢复审计”区域，显示最近恢复记录。
+- 主后台新增“导出审计”按钮，标记为 `real-export`，可下载 `mr-calligraphy-archive-audit-*.html`。
+- `MRProjectArchive` 新增 `getRestoreAuditLog()`、`getRestoreAuditExport()` 和 `downloadRestoreAuditLog()`。
+- `scripts/archive-migration-check.js` 新增恢复审计写入和 HTML 导出断言；`scripts/smoke-test.js` 新增 `projectAuditExport`、`projectAuditList` 页面标记。
+
+真实化说明：
+
+- 数据来源：恢复成功后的 `restoreProjectArchive()` 参数、迁移后的档案、选择恢复范围和模型哈希校验结果。
+- 写入状态：只在 storage 和 IndexedDB 恢复成功后写入 `mr-calligraphy-project-archive-audit-v1`；哈希失败或恢复失败不会写成功审计。
+- 成功反馈：主后台会显示最近恢复记录，点击“导出审计”会生成离线 HTML。
+- 失败反馈：没有审计记录时导出按钮禁用，API 导出空报告时会明确显示暂无恢复审计记录。
+- 刷新后复现方式：审计日志保存在 localStorage，刷新主后台后仍会显示最近恢复记录。
+
+验收：
+
+- 手工验收：在主后台恢复任意项目档案后刷新页面，恢复审计区域应显示最近恢复记录；点击“导出审计”应得到 HTML 审计报告。
+- 脚本验收：`node scripts/archive-migration-check.js` 验证恢复成功后写入审计、审计记录包含恢复 key 和字段级选择数量，并可导出 HTML。
+
+已知限制：
+
+- 当前审计是本机浏览器日志，不是账号级、团队级或服务端不可篡改审计。
+- 审计日志不会随项目档案自动导入导出，需要单独导出审计报告。
+
+提交：
+
+- 中文 commit message：`新增项目档案恢复审计`
 
 ### 2026-06-11：后台远端发布 API adapter
 

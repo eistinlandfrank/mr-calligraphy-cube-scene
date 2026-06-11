@@ -4620,12 +4620,67 @@
 - `node scripts/archive-migration-check.js`
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 
 已知限制：
 
-- 该报告是导入前影响审阅，不是多人协作审计日志；恢复后的长期审计历史仍待补充。
+- 该报告是导入前影响审阅；恢复后的本机审计历史由后续“项目档案恢复审计”功能记录，多人协作级审计仍待补充。
 - 差异报告不连接远端项目仓库，也不拉取远端资产签名。
 
 提交：
 
 - 中文 commit message：`新增项目档案差异报告`
+
+### 2026-06-11：新增项目档案恢复审计
+
+功能名：项目档案恢复本机审计日志与导出。
+
+涉及文件：
+
+- `main-admin.html`
+- `project-archive.js`
+- `style.css`
+- `scripts/archive-migration-check.js`
+- `scripts/smoke-test.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- 新增 `mr-calligraphy-project-archive-audit-v1` 本机审计日志。
+- `restoreProjectArchive()` 在项目档案恢复成功后记录恢复时间、档案来源、恢复配置、模型库、字段级选择、模型级选择、模型哈希和迁移数量。
+- 主后台项目档案面板新增“恢复审计”区域，显示最近本机恢复记录。
+- 主后台新增“导出审计”按钮，可下载 `mr-calligraphy-archive-audit-*.html`。
+- `MRProjectArchive` 新增 `getRestoreAuditLog()`、`getRestoreAuditExport()` 和 `downloadRestoreAuditLog()`。
+- 迁移检查脚本新增恢复审计写入和导出断言；smoke test 新增主后台审计入口标记。
+
+真实化说明：
+
+- 数据来源：恢复成功后的项目档案、恢复选项、字段级选择、模型级选择和哈希校验结果。
+- 写入状态：恢复成功后写入 `mr-calligraphy-project-archive-audit-v1`；哈希失败、档案无效或恢复过程失败时不会写成功审计。
+- 成功反馈：主后台显示最近恢复记录；点击“导出审计”会下载 HTML 审计报告。
+- 失败反馈：没有审计记录时导出按钮禁用；API 仍可导出空报告并明确写明暂无记录。
+- 刷新后复现方式：审计日志保存在本机 localStorage，刷新主后台后仍可读取和导出。
+
+验收方式：
+
+- 手工验收：打开 `http://localhost:41496/main-admin.html`，导入并恢复任意项目档案后刷新页面，恢复审计区域应显示最近记录；点击“导出审计”应下载 HTML。
+- 脚本验收：`node scripts/archive-migration-check.js` 验证恢复成功后写审计、审计记录包含恢复 key 和字段级选择数量，并能导出 HTML。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/archive-migration-check.js`
+- `node scripts/control-inventory.js --check`
+
+已知限制：
+
+- 当前审计是本机浏览器日志，不是服务端不可篡改审计，也没有账号、角色和 IP 信息。
+- 审计日志不会混入项目档案自动迁移，需要单独导出审计报告。
+
+提交：
+
+- 中文 commit message：`新增项目档案恢复审计`

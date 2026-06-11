@@ -302,6 +302,23 @@ async function main() {
     !partiallyRestored.artworks,
     "字段级恢复不应写入未勾选的 artworks 字段。"
   );
+  const auditLog = window.MRProjectArchive.getRestoreAuditLog();
+  assert(auditLog.ok && auditLog.records.length >= 1, "项目档案恢复成功后应写入本机审计记录。");
+  assert(
+    auditLog.records[0].storageKeys.includes("mr-calligraphy-learning-state-v1") &&
+      auditLog.records[0].storageFieldCount === 1,
+    "项目档案恢复审计应记录恢复的 storage key 和字段级选择数量。"
+  );
+  const auditExport = window.MRProjectArchive.getRestoreAuditExport({
+    exportedAt: "2026-06-11T11:00:00.000Z"
+  });
+  assert(auditExport.ok, "项目档案恢复审计应能导出 HTML。");
+  assert(
+    auditExport.html.includes("项目档案恢复审计") &&
+      auditExport.html.includes("mr-calligraphy-project-archive-audit-v1") &&
+      auditExport.html.includes("mr-calligraphy-learning-state-v1"),
+    "项目档案恢复审计导出应包含标题、本机审计 key 和恢复范围。"
+  );
   writtenStorageKeys.length = 0;
 
   await window.MRProjectArchive.restoreProjectArchive(legacyArchive, {
