@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法主场景管理页</title>
-  <link rel="stylesheet" href="style.css?v=archive-audit-20260611">
+  <link rel="stylesheet" href="style.css?v=project-repository-20260612">
 </head>
 <body class="main-admin-page main-three-admin-page">
   <main class="app-shell">
@@ -162,6 +162,14 @@
             </label>
           </div>
           <p id="projectArchiveStatus" class="main-project-status">可导出学习记录、房间配置、场景布局、发布版本、保存历史和本机导入模型；导入时可选择恢复范围。</p>
+          <div class="main-project-repository" aria-label="统一项目仓库状态">
+            <div class="main-project-repository-head">
+              <strong>项目仓库状态</strong>
+              <button data-feature-state="real-local" id="projectRepositoryRefresh" type="button">刷新</button>
+            </div>
+            <p id="projectRepositoryStatus" class="main-project-status">正在读取本机项目仓库状态。</p>
+            <ul id="projectRepositoryList" class="main-project-repository-list" aria-live="polite"></ul>
+          </div>
           <div class="main-project-audit" aria-label="项目档案恢复审计">
             <div class="main-project-audit-head">
               <strong>恢复审计</strong>
@@ -300,8 +308,8 @@
       }
     }
   </script>
-  <script src="project-schema-utils.js?v=archive-asset-hash-20260611"></script>
-  <script src="project-archive.js?v=archive-audit-20260611"></script>
+  <script src="project-schema-utils.js?v=project-repository-20260612"></script>
+  <script src="project-archive.js?v=project-repository-20260612"></script>
   <script src="project-remote-publish.js?v=remote-publish-workflow-20260611"></script>
   <script type="module" src="main-admin-scene.js?v=remote-workflow-20260611"></script>
 </body>

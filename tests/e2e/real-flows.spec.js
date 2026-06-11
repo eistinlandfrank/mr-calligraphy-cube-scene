@@ -1018,6 +1018,16 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(published.layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);
   expect(published.stats.customCount).toBeGreaterThan(0);
 
+  await page.locator("#projectRepositoryRefresh").click();
+  await expect(page.locator("#projectRepositoryStatus")).toContainText("本机项目仓库 adapter");
+  await expect(page.locator("#projectRepositoryList")).toContainText("主场景");
+  const projectRepositoryStatus = await page.evaluate(async () => window.MRProjectArchive.getCurrentProjectRepositoryStatus());
+  expect(projectRepositoryStatus.kind).toBe("mr-calligraphy-project-repository-v1");
+  const mainRepositoryScene = projectRepositoryStatus.scenes.find((scene) => scene.sceneId === "main");
+  expect(mainRepositoryScene.draft.objectCount).toBeGreaterThan(0);
+  expect(mainRepositoryScene.published.releaseCount).toBeGreaterThan(0);
+  expect(mainRepositoryScene.unifiedSchema).toBe("project-scene-repository-v1");
+
   await page.locator(".main-publish-panel .remote-publish-panel summary").click();
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();
   await page.locator("#mainRemotePublishEndpoint").fill(remoteEndpoint);

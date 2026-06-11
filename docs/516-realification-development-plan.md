@@ -5687,3 +5687,68 @@
 提交：
 
 - 中文 commit message：`新增任务驱动学习路径服务`
+
+### 2026-06-12：新增统一项目仓库状态
+
+功能名：主后台和写实后台统一 `ProjectRepository` 状态视图。
+
+涉及文件：
+
+- `project-schema-utils.js`
+- `project-archive.js`
+- `main-admin.html`
+- `style.css`
+- `scripts/project-schema-check.js`
+- `scripts/smoke-test.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- `projectSchema` 新增 `repository` 字段，返回 `mr-calligraphy-project-repository-v1`。
+- 新增 `MRProjectSchema.createProjectRepositoryStatus()` 和 `createProjectRepositoryStatusFromBrowser()`，统一输出本机项目仓库状态。
+- 主场景和写实样张被归一为 `project-scene-repository-v1`，共同包含草稿对象数、快照数、发布版本数、导入模型、资产缺文件/缺哈希风险、状态标签和下一步动作。
+- `project-archive.js` 新增 `getCurrentProjectRepositoryStatus()`，会读取当前 `localStorage` 和 IndexedDB 模型仓库，不需要先下载项目档案。
+- 主后台“项目备份”面板新增“项目仓库状态”区域，显示两个后台的草稿、快照、发布和资产状态，并提供真实刷新按钮。
+- 项目 Schema 检查脚本新增仓库 kind、ready 场景数、统一 schema、快照数、资产风险和 summary 字段断言。
+- smoke test 新增主后台项目仓库状态 DOM 标记。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机 `localStorage` 中的主场景/写实场景草稿、历史、发布版本，以及 IndexedDB 中的主后台/写实后台导入模型仓库。
+- 写入状态：本功能是状态聚合和 UI 展示，不新增持久字段；项目档案导出时会把该聚合结果写进 `projectSchema.repository`。
+- 成功反馈：主后台项目档案区会显示两个后台是否有草稿、是否已本机发布、导入模型数量和下一步动作。
+- 失败反馈：缺草稿、缺发布、缺模型二进制或缺 SHA-256 时会在仓库状态中标为 warning / blocked，不显示假 ready。
+- 刷新后复现方式：刷新主后台后，仓库状态会重新从当前本机状态和 IndexedDB 模型仓库推导。
+
+验收方式：
+
+- 手工验收：打开 `http://localhost:41496/main-admin.html`，项目备份区应显示“项目仓库状态”，点击“刷新”后仍能读取两个后台的统一状态。
+- 脚本验收：`node scripts/project-schema-check.js` 覆盖统一仓库状态；`node scripts/smoke-test.js --base-url=http://localhost:41496/` 覆盖主后台 DOM 标记。
+
+当前验证结果：
+
+- `node --check project-schema-utils.js`
+- `node --check project-archive.js`
+- `node --check scripts/project-schema-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/project-schema-check.js`
+- `node scripts/archive-migration-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `npm run test:e2e`
+- `git diff --check`
+
+已知限制：
+
+- 当前是本机项目仓库 adapter，不是账号化协作后台、服务端项目仓库或 CDN 资产库。
+- 统一视图已经能减少主后台和写实后台分叉，但深层对象字段迁移、完整 diff、服务端保存、多人冲突解决和资产签名仍待继续。
+
+提交：
+
+- 中文 commit message：`新增统一项目仓库状态`

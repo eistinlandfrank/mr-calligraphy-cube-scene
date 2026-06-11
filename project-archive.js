@@ -22,6 +22,15 @@
   const MODEL_PREVIEW_STRING_LIMIT = 1200;
 
   async function exportProject() {
+    const archive = await createCurrentProjectArchiveSnapshot();
+    archive.migrations = [];
+    archive.projectSchema = createProjectSchema(archive);
+
+    downloadJson(archive, `mr-calligraphy-project-${formatTimestamp(new Date())}.json`);
+    return summarizeArchive(archive, "已导出项目档案。");
+  }
+
+  async function createCurrentProjectArchiveSnapshot() {
     const archive = {
       kind: ARCHIVE_KIND,
       version: ARCHIVE_VERSION,
@@ -38,11 +47,13 @@
     for (const item of DB_ITEMS) {
       archive.indexedDb[item.id] = await exportDbStore(item);
     }
-    archive.migrations = [];
-    archive.projectSchema = createProjectSchema(archive);
+    return archive;
+  }
 
-    downloadJson(archive, `mr-calligraphy-project-${formatTimestamp(new Date())}.json`);
-    return summarizeArchive(archive, "已导出项目档案。");
+  async function getCurrentProjectRepositoryStatus() {
+    const archive = await createCurrentProjectArchiveSnapshot();
+    archive.projectSchema = createProjectSchema(archive);
+    return archive.projectSchema.repository || window.MRProjectSchema?.createProjectRepositoryStatus?.(archive);
   }
 
   async function importProject(fileOrArchive) {
@@ -954,7 +965,10 @@
       realisticReleases: Number(summary.realisticReleases) || 0,
       importedModels: Number(summary.importedModels) || 0,
       missingModelBinaries: Number(summary.missingModelBinaries) || 0,
+      unknownModelBinaries: Number(summary.unknownModelBinaries) || 0,
       missingModelHashes: Number(summary.missingModelHashes) || 0,
+      repositoryStatus: String(summary.repositoryStatus || schema?.repository?.status || ""),
+      repositoryReadyScenes: Number(summary.repositoryReadyScenes || schema?.repository?.summary?.readySceneCount) || 0,
       migrationCount: Array.isArray(schema?.migrations) ? schema.migrations.length : 0
     };
   }
@@ -2210,6 +2224,9 @@
     const auditStatus = document.getElementById("projectAuditStatus");
     const auditList = document.getElementById("projectAuditList");
     const auditExportButton = document.getElementById("projectAuditExport");
+    const repositoryStatus = document.getElementById("projectRepositoryStatus");
+    const repositoryList = document.getElementById("projectRepositoryList");
+    const repositoryRefreshButton = document.getElementById("projectRepositoryRefresh");
 
     if (!exportButton && !importFile) return;
 
@@ -2229,6 +2246,7 @@
       if (importFile) importFile.disabled = isBusy;
       if (impactButton) impactButton.disabled = isBusy || !pendingPreview;
       if (auditExportButton) auditExportButton.disabled = isBusy || !getRestoreAuditLog(1).records.length;
+      if (repositoryRefreshButton) repositoryRefreshButton.disabled = isBusy;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
       updateRestoreSelectionState();
     };
@@ -2424,6 +2442,60 @@
         item.append(title, detail, source);
         auditList.appendChild(item);
       });
+    };
+
+    const renderProjectRepositoryStatus = async () => {
+      if (!repositoryStatus && !repositoryList) {
+        return;
+      }
+      if (repositoryStatus) {
+        repositoryStatus.textContent = "正在读取本机项目仓库状态。";
+        repositoryStatus.dataset.tone = "loading";
+      }
+      if (repositoryRefreshButton) {
+        repositoryRefreshButton.disabled = true;
+      }
+
+      try {
+        const repository = await getCurrentProjectRepositoryStatus();
+        if (repositoryStatus) {
+          const summary = repository.summary || {};
+          repositoryStatus.textContent = `${repository.statusLabel}：${summary.draftSceneCount}/${summary.sceneCount} 个后台有草稿，${summary.publishedSceneCount}/${summary.sceneCount} 个后台已本机发布，${summary.importedModelCount} 个导入模型。边界：本机项目仓库 adapter，尚未接账号后端。`;
+          repositoryStatus.dataset.tone = repository.status === "blocked" ? "error" : repository.status === "ready" ? "success" : "normal";
+        }
+        if (repositoryList) {
+          repositoryList.innerHTML = "";
+          (repository.scenes || []).forEach((scene) => {
+            const item = document.createElement("li");
+            item.dataset.repositoryStatus = scene.status;
+            const title = document.createElement("strong");
+            title.textContent = `${scene.label} · ${scene.statusLabel}`;
+            const detail = document.createElement("span");
+            detail.textContent = `${scene.draft.objectCount} 个草稿对象 / ${scene.history.snapshotCount} 个快照 / ${scene.published.releaseCount} 个发布版本`;
+            const assets = document.createElement("span");
+            const assetWarnings = [];
+            if (scene.assets.missingBinaryCount) assetWarnings.push(`${scene.assets.missingBinaryCount} 个缺文件`);
+            if (scene.assets.unknownBinaryCount) assetWarnings.push(`${scene.assets.unknownBinaryCount} 个待校验`);
+            if (scene.assets.missingHashCount) assetWarnings.push(`${scene.assets.missingHashCount} 个缺哈希`);
+            assets.textContent = scene.assets.importedModelCount
+              ? `导入模型 ${scene.assets.importedModelCount} 个${assetWarnings.length ? `，${assetWarnings.join("，")}` : "，资产可校验"}`
+              : "未使用导入模型";
+            const next = document.createElement("span");
+            next.textContent = `下一步：${scene.nextActionLabel}`;
+            item.append(title, detail, assets, next);
+            repositoryList.appendChild(item);
+          });
+        }
+      } catch (error) {
+        if (repositoryStatus) {
+          repositoryStatus.textContent = error?.message || "项目仓库状态读取失败。";
+          repositoryStatus.dataset.tone = "error";
+        }
+      } finally {
+        if (repositoryRefreshButton) {
+          repositoryRefreshButton.disabled = isBusy;
+        }
+      }
     };
 
     const clearPendingImport = () => {
@@ -2708,6 +2780,7 @@
         try {
           const result = await exportProject();
           setStatus(result.message, "success");
+          renderProjectRepositoryStatus();
         } catch (error) {
           setStatus(error?.message || "项目档案导出失败。", "error");
         } finally {
@@ -2758,6 +2831,10 @@
       const result = downloadRestoreAuditLog();
       setStatus(result.message || "项目档案恢复审计导出失败。", result.ok ? "success" : "error");
       renderRestoreAudit();
+    });
+
+    repositoryRefreshButton?.addEventListener("click", () => {
+      renderProjectRepositoryStatus();
     });
 
     confirmButton?.addEventListener("click", async () => {
@@ -2811,6 +2888,7 @@
     });
 
     renderRestoreAudit();
+    renderProjectRepositoryStatus();
   }
 
   window.MRProjectArchive = {
@@ -2819,6 +2897,7 @@
     exportProject,
     importProject,
     prepareImportProject,
+    getCurrentProjectRepositoryStatus,
     getImportImpactReport,
     downloadImportImpactReport,
     getRestoreAuditLog,

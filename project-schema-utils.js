@@ -1,6 +1,8 @@
 (function () {
   const PROJECT_SCHEMA_KIND = "mr-calligraphy-project-schema";
   const PROJECT_SCHEMA_VERSION = 1;
+  const PROJECT_REPOSITORY_KIND = "mr-calligraphy-project-repository-v1";
+  const PROJECT_REPOSITORY_VERSION = 1;
   const STORAGE_KEYS = {
     learning: "mr-calligraphy-learning-state-v1",
     room: "mr-calligraphy-room-config-v3-wood",
@@ -32,6 +34,10 @@
       mainScene,
       realisticScene
     };
+    const repository = createProjectRepositoryStatusFromParts(sections, assetManifest, {
+      createdAt: normalizeDate(source.exportedAt) || new Date().toISOString(),
+      source: String(source.source || "")
+    });
 
     return {
       kind: PROJECT_SCHEMA_KIND,
@@ -40,9 +46,30 @@
       source: String(source.source || ""),
       sections,
       assetManifest,
-      summary: createSummary(sections, assetManifest),
+      repository,
+      summary: createSummary(sections, assetManifest, repository),
       migrations: normalizeMigrationRecords(source.migrations || source.projectSchema?.migrations)
     };
+  }
+
+  function createProjectRepositoryStatus(source = {}) {
+    const schema = source?.kind === PROJECT_SCHEMA_KIND ? source : createProjectSchema(source);
+    return createProjectRepositoryStatusFromSchema(schema);
+  }
+
+  function createProjectRepositoryStatusFromSchema(schema) {
+    return createProjectRepositoryStatusFromParts(schema?.sections || {}, schema?.assetManifest || {}, {
+      createdAt: normalizeDate(schema?.createdAt) || new Date().toISOString(),
+      source: String(schema?.source || "")
+    });
+  }
+
+  function createProjectRepositoryStatusFromBrowser() {
+    return createProjectRepositoryStatus({
+      exportedAt: new Date().toISOString(),
+      source: typeof window !== "undefined" ? String(window.location?.href || "browser-local-storage") : "browser-local-storage",
+      storage: readBrowserStorageSnapshot()
+    });
   }
 
   function validateProjectSchema(schema) {
@@ -322,6 +349,7 @@
   }
 
   function createAssetManifest(mainScene, realisticScene, indexedDb) {
+    const hasIndexedDbSnapshot = Boolean(indexedDb?.mainModels || indexedDb?.realisticModels);
     const mainDbKeys = new Set(getDbRecords(indexedDb?.mainModels).map((record) => String(record?.data?.key || record?.data?.id || "")));
     const realisticDbKeys = new Set(getDbRecords(indexedDb?.realisticModels).map((record) => String(record?.data?.id || record?.data?.dbKey || "")));
     const mainLayoutIds = uniqueStrings([
@@ -336,13 +364,21 @@
     ]);
     const mainAssets = collectImportedAssets("main", mainLayoutIds, getStorageImportedRecords(indexedDb, "mainModels"), mainDbKeys);
     const realisticAssets = collectImportedAssets("realistic", realisticLayoutIds, getStorageImportedRecords(indexedDb, "realisticModels"), realisticDbKeys);
-    const assets = [...mainAssets, ...realisticAssets];
+    const assets = hasIndexedDbSnapshot
+      ? [...mainAssets, ...realisticAssets]
+      : [...mainAssets, ...realisticAssets].map((asset) => ({
+        ...asset,
+        stored: null,
+        hashStatus: "unknown"
+      }));
 
     return {
       version: 1,
+      assetCoverage: hasIndexedDbSnapshot ? "indexed-db-snapshot" : "storage-only",
       importedModelCount: assets.length,
-      missingBinaryCount: assets.filter((asset) => !asset.stored).length,
-      missingHashCount: assets.filter((asset) => asset.stored && !asset.sha256).length,
+      missingBinaryCount: hasIndexedDbSnapshot ? assets.filter((asset) => !asset.stored).length : 0,
+      unknownBinaryCount: hasIndexedDbSnapshot ? 0 : assets.length,
+      missingHashCount: hasIndexedDbSnapshot ? assets.filter((asset) => asset.stored && !asset.sha256).length : 0,
       assets
     };
   }
@@ -395,7 +431,254 @@
     return [...new Set(values.map((value) => String(value || "")).filter(Boolean))];
   }
 
-  function createSummary(sections, assetManifest) {
+  function createProjectRepositoryStatusFromParts(sections, assetManifest, meta = {}) {
+    const scenes = [
+      createSceneRepositoryEntry("main", "主场景", sections.mainScene, assetManifest),
+      createSceneRepositoryEntry("realistic", "写实样张", sections.realisticScene, assetManifest)
+    ];
+    const risks = scenes.flatMap((scene) => scene.risks.map((risk) => ({
+      ...risk,
+      sceneId: scene.sceneId,
+      sceneLabel: scene.label
+    })));
+    const blockingRisks = risks.filter((risk) => risk.level === "error");
+    const warnings = risks.filter((risk) => risk.level === "warning");
+    const draftSceneCount = scenes.filter((scene) => scene.draft.available).length;
+    const publishedSceneCount = scenes.filter((scene) => scene.published.available).length;
+    const readySceneCount = scenes.filter((scene) => scene.status === "ready").length;
+    const status = blockingRisks.length ? "blocked" : warnings.length ? "warning" : readySceneCount === scenes.length ? "ready" : "empty";
+
+    return {
+      kind: PROJECT_REPOSITORY_KIND,
+      version: PROJECT_REPOSITORY_VERSION,
+      createdAt: normalizeDate(meta.createdAt) || new Date().toISOString(),
+      source: String(meta.source || ""),
+      boundary: "local-browser-project-repository",
+      backendStatus: "not-configured",
+      status,
+      statusLabel: getRepositoryStatusLabel(status),
+      summary: {
+        sceneCount: scenes.length,
+        draftSceneCount,
+        publishedSceneCount,
+        readySceneCount,
+        draftObjectCount: scenes.reduce((sum, scene) => sum + scene.draft.objectCount, 0),
+        publishedReleaseCount: scenes.reduce((sum, scene) => sum + scene.published.releaseCount, 0),
+        snapshotCount: scenes.reduce((sum, scene) => sum + scene.history.snapshotCount, 0),
+        importedModelCount: scenes.reduce((sum, scene) => sum + scene.assets.importedModelCount, 0),
+        missingBinaryCount: scenes.reduce((sum, scene) => sum + scene.assets.missingBinaryCount, 0),
+        unknownBinaryCount: scenes.reduce((sum, scene) => sum + scene.assets.unknownBinaryCount, 0),
+        missingHashCount: scenes.reduce((sum, scene) => sum + scene.assets.missingHashCount, 0)
+      },
+      parity: {
+        unifiedSceneSchema: "project-scene-repository-v1",
+        sharedFields: [
+          "sceneId",
+          "label",
+          "draft.objectCount",
+          "history.snapshotCount",
+          "published.releaseCount",
+          "assets.importedModelCount",
+          "assets.missingBinaryCount",
+          "status",
+          "nextActionLabel"
+        ],
+        mainOnlyFields: ["draft.customCount", "draft.lockedCount", "draft.hasLighting"],
+        realisticOnlyFields: ["draft.deletedCount"]
+      },
+      risks,
+      scenes
+    };
+  }
+
+  function createSceneRepositoryEntry(sceneId, label, scene, assetManifest) {
+    const draft = scene?.draft || {};
+    const history = scene?.history || {};
+    const published = scene?.published || {};
+    const publishedLayout = published.layout || {};
+    const draftObjectCount = getSceneObjectCount(sceneId, draft);
+    const publishedObjectCount = getSceneObjectCount(sceneId, publishedLayout);
+    const releaseCount = normalizeCount(published.releaseCount);
+    const importedIds = uniqueStrings([
+      ...(draft.importedIds || []),
+      ...(publishedLayout.importedIds || []),
+      ...flattenImportedIds(published.releases)
+    ]);
+    const assets = (Array.isArray(assetManifest?.assets) ? assetManifest.assets : [])
+      .filter((asset) => asset.scene === sceneId && (!importedIds.length || importedIds.includes(asset.id)));
+    const missingBinaryCount = assets.filter((asset) => asset.hashStatus === "missing-binary").length;
+    const unknownBinaryCount = assets.filter((asset) => asset.hashStatus === "unknown").length;
+    const missingHashCount = assets.filter((asset) => asset.hashStatus === "missing-hash").length;
+    const risks = createSceneRepositoryRisks({
+      draftAvailable: Boolean(scene?.available),
+      releaseCount,
+      missingBinaryCount,
+      unknownBinaryCount,
+      missingHashCount
+    });
+    const status = getSceneRepositoryStatus(risks, scene?.available, releaseCount);
+
+    return {
+      sceneId,
+      label,
+      schema: String(scene?.schema || ""),
+      unifiedSchema: "project-scene-repository-v1",
+      storageKeys: scene?.storageKeys || {},
+      boundary: "local-browser-project-repository",
+      draft: {
+        available: Boolean(scene?.available),
+        objectCount: draftObjectCount,
+        objectStateCount: normalizeCount(draft.objectStateCount),
+        customCount: normalizeCount(draft.customCount),
+        importedCount: normalizeCount(draft.importedCount),
+        hiddenCount: normalizeCount(draft.hiddenCount),
+        lockedCount: normalizeCount(draft.lockedCount),
+        deletedCount: normalizeCount(draft.deletedCount),
+        hasLighting: Boolean(draft.hasLighting)
+      },
+      history: {
+        snapshotCount: normalizeCount(history.snapshotCount),
+        latestSnapshotAt: normalizeDate(history.latestSnapshotAt)
+      },
+      published: {
+        available: releaseCount > 0 && published.status === "published-local",
+        status: String(published.status || "not-published"),
+        releaseCount,
+        releaseNumber: normalizeCount(published.releaseNumber),
+        currentReleaseId: String(published.currentReleaseId || ""),
+        publishedAt: normalizeDate(published.publishedAt),
+        latestNote: String(published.latestNote || ""),
+        latestAction: String(published.latestAction || ""),
+        objectCount: publishedObjectCount
+      },
+      assets: {
+        importedIds,
+        importedModelCount: importedIds.length,
+        manifestCount: assets.length,
+        missingBinaryCount,
+        unknownBinaryCount,
+        missingHashCount
+      },
+      risks,
+      status,
+      statusLabel: getSceneRepositoryStatusLabel(status),
+      nextActionLabel: getSceneRepositoryNextAction(status, missingBinaryCount, unknownBinaryCount, missingHashCount)
+    };
+  }
+
+  function getSceneObjectCount(sceneId, layout) {
+    if (sceneId === "main") {
+      return normalizeCount(layout.objectStateCount) + normalizeCount(layout.customCount) + normalizeCount(layout.importedCount);
+    }
+    return normalizeCount(layout.objectStateCount) + normalizeCount(layout.importedCount);
+  }
+
+  function createSceneRepositoryRisks({ draftAvailable, releaseCount, missingBinaryCount, unknownBinaryCount, missingHashCount }) {
+    const risks = [];
+    if (!draftAvailable) {
+      risks.push({
+        level: "warning",
+        code: "draft-missing",
+        message: "还没有本机场景草稿，仓库只能显示发布或空状态。"
+      });
+    }
+    if (!releaseCount) {
+      risks.push({
+        level: "warning",
+        code: "publish-missing",
+        message: "还没有本机发布版本，前台或演示页不会读取最新草稿。"
+      });
+    }
+    if (missingBinaryCount) {
+      risks.push({
+        level: "error",
+        code: "asset-binary-missing",
+        message: `${missingBinaryCount} 个导入模型缺少本机二进制，导出或远端发布前需要补齐。`
+      });
+    }
+    if (unknownBinaryCount) {
+      risks.push({
+        level: "warning",
+        code: "asset-binary-unknown",
+        message: `${unknownBinaryCount} 个导入模型尚未随 IndexedDB 快照校验，导出项目档案后可确认文件完整性。`
+      });
+    }
+    if (missingHashCount) {
+      risks.push({
+        level: "warning",
+        code: "asset-hash-missing",
+        message: `${missingHashCount} 个导入模型缺少 SHA-256 哈希，恢复和远端发布校验会变弱。`
+      });
+    }
+    return risks;
+  }
+
+  function getSceneRepositoryStatus(risks, draftAvailable, releaseCount) {
+    if (risks.some((risk) => risk.level === "error")) {
+      return "blocked";
+    }
+    if (!draftAvailable) {
+      return "empty";
+    }
+    if (!releaseCount) {
+      return "draft-only";
+    }
+    if (risks.some((risk) => risk.level === "warning")) {
+      return "warning";
+    }
+    return "ready";
+  }
+
+  function getSceneRepositoryStatusLabel(status) {
+    const labels = {
+      ready: "草稿、发布和资产已归档",
+      warning: "可用但有仓库提醒",
+      blocked: "资产不完整",
+      empty: "缺少草稿",
+      "draft-only": "只有草稿"
+    };
+    return labels[status] || "待检查";
+  }
+
+  function getSceneRepositoryNextAction(status, missingBinaryCount, unknownBinaryCount, missingHashCount) {
+    if (missingBinaryCount) return "补齐导入模型文件";
+    if (unknownBinaryCount) return "导出项目档案校验模型资产";
+    if (missingHashCount) return "重新导入或校验模型哈希";
+    if (status === "empty") return "先保存本机场景草稿";
+    if (status === "draft-only") return "发布本机版本";
+    if (status === "warning") return "查看仓库提醒后再导出";
+    return "可导出项目档案";
+  }
+
+  function getRepositoryStatusLabel(status) {
+    const labels = {
+      ready: "两个后台已进入统一项目仓库视图",
+      warning: "项目仓库可用，但仍有本机提醒",
+      blocked: "项目仓库资产不完整",
+      empty: "项目仓库缺少草稿"
+    };
+    return labels[status] || "项目仓库待检查";
+  }
+
+  function readBrowserStorageSnapshot() {
+    const storage = {};
+    if (typeof window === "undefined" || !window.localStorage) {
+      return storage;
+    }
+    Object.values(STORAGE_KEYS).forEach((key) => {
+      try {
+        const value = window.localStorage.getItem(key);
+        if (value != null) {
+          storage[key] = { value };
+        }
+      } catch (error) {
+        // 忽略单个 storage 读取失败，仓库状态仍会显示缺项提醒。
+      }
+    });
+    return storage;
+  }
+
+  function createSummary(sections, assetManifest, repository) {
     return {
       learningRecords: (sections.learning.sessionCount || 0) + (sections.learning.artworkCount || 0) + (sections.learning.reportCount || 0),
       mainDraftObjects: (sections.mainScene.draft.objectStateCount || 0) + (sections.mainScene.draft.customCount || 0) + (sections.mainScene.draft.importedCount || 0),
@@ -407,7 +690,10 @@
       roomRoles: sections.room.roleCount || 0,
       importedModels: assetManifest.importedModelCount || 0,
       missingModelBinaries: assetManifest.missingBinaryCount || 0,
-      missingModelHashes: assetManifest.missingHashCount || 0
+      unknownModelBinaries: assetManifest.unknownBinaryCount || 0,
+      missingModelHashes: assetManifest.missingHashCount || 0,
+      repositoryStatus: String(repository?.status || ""),
+      repositoryReadyScenes: normalizeCount(repository?.summary?.readySceneCount)
     };
   }
 
@@ -466,7 +752,11 @@
   window.MRProjectSchema = {
     kind: PROJECT_SCHEMA_KIND,
     version: PROJECT_SCHEMA_VERSION,
+    repositoryKind: PROJECT_REPOSITORY_KIND,
+    repositoryVersion: PROJECT_REPOSITORY_VERSION,
     createProjectSchema,
+    createProjectRepositoryStatus,
+    createProjectRepositoryStatusFromBrowser,
     validateProjectSchema
   };
 })();
