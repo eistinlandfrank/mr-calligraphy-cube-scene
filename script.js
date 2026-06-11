@@ -884,9 +884,11 @@ const els = {
   planProgressFill: document.getElementById("planProgressFill"),
   planSummary: document.getElementById("planSummary"),
   planReminderSummary: document.getElementById("planReminderSummary"),
+  planCycleSummary: document.getElementById("planCycleSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
   planExportButton: document.getElementById("planExportButton"),
+  planNextCycleButton: document.getElementById("planNextCycleButton"),
   planDependencyGraph: document.getElementById("planDependencyGraph"),
   planItemList: document.getElementById("planItemList"),
   stepLabel: document.getElementById("stepLabel"),
@@ -3748,6 +3750,7 @@ function bindPlanControls() {
 
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
+  els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
   els.planDependencyGraph?.addEventListener("click", handlePlanDependencyClick);
 
   els.planItemList?.addEventListener("change", (event) => {
@@ -5467,11 +5470,21 @@ function renderPlanPanel(sceneIndex = currentIndex) {
           ? "snoozed"
           : "idle";
   }
+  if (els.planCycleSummary) {
+    const cycleStatus = plan?.cycleStatus || null;
+    els.planCycleSummary.textContent = cycleStatus
+      ? `${cycleStatus.label} / ${cycleStatus.message}`
+      : "暂无周期规则";
+    els.planCycleSummary.dataset.cycleTone = cycleStatus?.tone || "idle";
+  }
   if (els.planAddItem) {
     els.planAddItem.disabled = !plan;
   }
   if (els.planExportButton) {
     els.planExportButton.disabled = !plan;
+  }
+  if (els.planNextCycleButton) {
+    els.planNextCycleButton.disabled = !plan?.cycleStatus?.canCreateNext;
   }
   renderPlanDependencyGraph(plan);
   els.planItemList.innerHTML = "";
@@ -5784,6 +5797,21 @@ function downloadActivePlan() {
   const planId = activePlanId || els.planHistorySelect?.value || "";
   const result = window.MRAppState?.downloadPlan?.(planId);
   showNotice(result?.message || "暂无可导出的学习计划。");
+}
+
+function createNextPlanCycle() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  const result = window.MRAppState?.createNextPlanCycle?.(planId);
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  if (result?.ok) {
+    activePlanId = result.plan?.id || null;
+    renderPlanPanel(currentIndex);
+    updateSceneText(currentIndex);
+    updatePathPanel(currentIndex);
+    renderLearningStateSummary();
+  }
 }
 
 function followPlanReviewAction(nextAction = {}) {

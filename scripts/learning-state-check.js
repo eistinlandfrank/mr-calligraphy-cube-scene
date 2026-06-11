@@ -216,6 +216,8 @@ assert(latestPlan.items.length === 5, "自动学习计划应生成 5 个任务�
 assert(latestPlan.reminderSummary.total === 5, "学习计划应返回提醒汇总。");
 assert(latestPlan.dependencyGraph.nodes.length === 5, "学习计划应生成任务依赖图节点。");
 assert(latestPlan.dependencyGraph.edges.length === 4, "自动学习计划应生成连续依赖边。");
+assert(latestPlan.cycleStatus.cycleIndex === 1, "自动学习计划应从第 1 轮开始。");
+assert(!latestPlan.cycleStatus.canCreateNext, "计划未完成时不应允许生成下周期。");
 const focusDependencyNode = latestPlan.dependencyGraph.nodes.find((item) => item.id === "plan-task-focus");
 assert(focusDependencyNode.dependsOn.includes("plan-practice"), "任务重点计划项应依赖首次临摹。");
 assert(focusDependencyNode.status === "blocked", "前置临摹未完成时后续计划项应被依赖阻塞。");
@@ -267,6 +269,25 @@ assert(addPlanResult.ok && addPlanResult.plan.items.length === 6, "学习计划�
 assert(addPlanResult.item.dependsOn.includes("plan-report"), "自定义计划项应默认接到依赖链末端。");
 assert(addPlanResult.plan.dependencyGraph.nodes.at(-1).dependsOn.includes("plan-report"), "新增计划项应出现在依赖图中。");
 
+const deniedNextCycle = window.MRAppState.createNextPlanCycle(latestPlan.id);
+assert(!deniedNextCycle.ok, "计划未完成时不应生成下周期。");
+window.MRAppState.getPlan(latestPlan.id).items.forEach((item) => {
+  if (!item.done) {
+    const doneResult = window.MRAppState.togglePlanItem(latestPlan.id, item.id, true);
+    assert(doneResult.ok, `计划项 ${item.id} 应可完成以推进周期。`);
+  }
+});
+const cycleReady = window.MRAppState.getPlanCycleStatus(latestPlan.id);
+assert(cycleReady.ok && cycleReady.canCreateNext, "全部计划项完成后应允许生成下周期。");
+const nextCycleResult = window.MRAppState.createNextPlanCycle(latestPlan.id);
+assert(nextCycleResult.ok, "完成本周期后应能生成下一周期计划。");
+assert(nextCycleResult.plan.cycleStatus.cycleIndex === 2, "下一周期应递增轮次。");
+assert(nextCycleResult.plan.cycleStatus.previousPlanId === latestPlan.id, "下一周期应记录上一周期计划 ID。");
+assert(nextCycleResult.plan.items.every((item) => !item.done && !item.reviewDoneAt), "下一周期计划项应重置完成和复盘状态。");
+assert(nextCycleResult.plan.dependencyGraph.edges.length >= 4, "下一周期应保留计划依赖链。");
+const sourceAfterCycle = window.MRAppState.getPlanCycleStatus(latestPlan.id);
+assert(sourceAfterCycle.generatedNext && !sourceAfterCycle.canCreateNext, "源计划生成下一周期后不应重复生成。");
+
 const planExport = window.MRAppState.getPlanExport(latestPlan.id);
 assert(planExport.ok, "学习计划应能生成离线导出页。");
 assert(planExport.filename.includes("mr-calligraphy-plan"), "学习计划导出页应返回可下载文件名。");
@@ -276,7 +297,9 @@ assert(planExport.html.includes("本机导出的学习计划"), "学习计划导
 assert(planExport.html.includes("复盘任务重点"), "学习计划导出页应包含更新后的计划项标题。");
 assert(planExport.html.includes("到期"), "学习计划导出页应包含到期信息。");
 assert(planExport.html.includes("依赖图摘要") && planExport.html.includes("依赖："), "学习计划导出页应包含依赖图摘要和任务依赖。");
+assert(planExport.html.includes("周期摘要"), "学习计划导出页应包含周期摘要。");
 assert(!window.MRAppState.getPlanDependencyGraph("missing-plan").ok, "不存在的计划不应伪造依赖图。");
+assert(!window.MRAppState.getPlanCycleStatus("missing-plan").ok, "不存在的计划不应伪造周期状态。");
 assert(!window.MRAppState.getPlanExport("missing-plan").ok, "不存在的计划不应伪造导出成功。");
 
 const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
@@ -284,8 +307,10 @@ assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习�
 assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
+assert(persistedPlanState.plans[0].cycleRule.generatedNextPlanId === nextCycleResult.plan.id, "源计划应持久化下一周期 ID。");
+assert(persistedPlanState.plans[1].cycleRule.previousPlanId === latestPlan.id, "下一周期应持久化上一周期 ID。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划依赖图和计划离线导出已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划依赖图、计划周期循环和计划离线导出已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

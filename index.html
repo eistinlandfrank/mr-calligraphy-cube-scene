@@ -277,6 +277,7 @@
           </div>
           <p id="planSummary">点击“制定计划”后会生成可勾选任务。</p>
           <div id="planReminderSummary" class="plan-reminder-summary" data-plan-reminders="planReminderSummary">暂无计划提醒</div>
+          <div id="planCycleSummary" class="plan-cycle-summary" data-plan-cycle-summary="planCycleSummary">暂无周期规则</div>
           <label class="plan-history-select">
             <span>计划历史</span>
             <select id="planHistorySelect"></select>
@@ -284,6 +285,7 @@
           <div class="plan-tools">
             <button data-feature-state="real-local" id="planAddItem" type="button">新增计划项</button>
             <button data-feature-state="real-export" id="planExportButton" type="button">导出计划</button>
+            <button data-feature-state="real-local" id="planNextCycleButton" type="button">生成下周期</button>
           </div>
           <div id="planDependencyGraph" class="plan-dependency-graph" data-plan-dependency-graph="planDependencyGraph" aria-label="计划依赖图"></div>
           <div id="planItemList" class="plan-item-list"></div>

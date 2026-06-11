@@ -5,6 +5,7 @@
   const MAX_HISTORY_TRASH = 12;
   const MAX_ARTWORK_TAGS = 8;
   const MAX_PLAN_ITEMS = 12;
+  const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
 
   const PLAN_REVIEW_ACTIONS = {
@@ -407,6 +408,7 @@
       copybook: String(record.copybook || "永字八法"),
       summary: String(record.summary || ""),
       items,
+      cycleRule: normalizePlanCycleRule(record.cycleRule, items, record.createdAt),
       completedAt: record.completedAt ? String(record.completedAt) : null
     };
   }
@@ -464,6 +466,23 @@
     });
   }
 
+  function normalizePlanCycleRule(rule = {}, items = [], createdAt = null) {
+    const source = rule && typeof rule === "object" ? rule : {};
+    const intervalDays = normalizeInteger(source.intervalDays, DEFAULT_PLAN_CYCLE_DAYS, 1, 60);
+    const cycleIndex = normalizeInteger(source.cycleIndex, 1, 1, 999);
+    const nextCycleAt = normalizePlanDate(source.nextCycleAt) || makePlanCycleNextAt(createdAt, intervalDays);
+    return {
+      enabled: source.enabled !== false,
+      intervalDays,
+      cycleIndex,
+      nextCycleAt,
+      previousPlanId: source.previousPlanId ? String(source.previousPlanId) : null,
+      generatedAt: normalizePlanDate(source.generatedAt),
+      generatedNextPlanId: source.generatedNextPlanId ? String(source.generatedNextPlanId) : null,
+      itemCount: Array.isArray(items) ? items.length : 0
+    };
+  }
+
   function normalizePlanDate(value) {
     if (!value) return null;
     const time = Date.parse(value);
@@ -515,6 +534,16 @@
   function makePlanSnoozedUntil(days = 1) {
     const date = new Date();
     date.setDate(date.getDate() + normalizeInteger(days, 1, 1, 14));
+    date.setHours(9, 0, 0, 0);
+    return date.toISOString();
+  }
+
+  function makePlanCycleNextAt(baseValue = new Date(), intervalDays = DEFAULT_PLAN_CYCLE_DAYS) {
+    const date = new Date(baseValue || new Date());
+    if (Number.isNaN(date.getTime())) {
+      date.setTime(Date.now());
+    }
+    date.setDate(date.getDate() + normalizeInteger(intervalDays, DEFAULT_PLAN_CYCLE_DAYS, 1, 60));
     date.setHours(9, 0, 0, 0);
     return date.toISOString();
   }
@@ -1394,12 +1423,17 @@
         reminder: getPlanItemReminder(item)
       }))
       : [];
+    const progress = getPlanProgress({ items });
+    const dependencyGraph = buildPlanDependencyGraph(items);
+    const cycleRule = normalizePlanCycleRule(plan?.cycleRule, items, plan?.createdAt);
     return {
       ...clone(plan),
       items,
-      progress: getPlanProgress({ items }),
+      cycleRule,
+      progress,
       reminderSummary: getPlanReminderSummary(items),
-      dependencyGraph: buildPlanDependencyGraph(items)
+      dependencyGraph,
+      cycleStatus: buildPlanCycleStatus({ ...clone(plan), items, cycleRule }, progress)
     };
   }
 
@@ -1515,6 +1549,76 @@
       planId: plan.id,
       title: plan.title,
       ...clone(plan.dependencyGraph || buildPlanDependencyGraph(plan.items || []))
+    };
+  }
+
+  function getPlanCycleStatus(planId = null) {
+    const plan = getPlan(planId);
+    if (!plan) {
+      return {
+        ok: false,
+        message: "还没有可循环推进的学习计划。"
+      };
+    }
+
+    return {
+      ok: true,
+      planId: plan.id,
+      title: plan.title,
+      ...clone(plan.cycleStatus || buildPlanCycleStatus(plan, plan.progress))
+    };
+  }
+
+  function buildPlanCycleStatus(plan, progress = getPlanProgress(plan)) {
+    const cycleRule = normalizePlanCycleRule(plan?.cycleRule, plan?.items || [], plan?.createdAt);
+    const total = progress?.total || 0;
+    const done = progress?.done || 0;
+    const complete = total > 0 && done === total;
+    const nextTime = Date.parse(cycleRule.nextCycleAt || "");
+    const daysUntilNext = Number.isFinite(nextTime)
+      ? Math.ceil((nextTime - Date.now()) / 86400000)
+      : null;
+    const generatedNext = Boolean(cycleRule.generatedNextPlanId);
+    const nextCycleIndex = cycleRule.cycleIndex + 1;
+    const canCreateNext = cycleRule.enabled && complete && !generatedNext;
+    let tone = "idle";
+    let label = `第 ${cycleRule.cycleIndex} 轮 · ${done}/${total}`;
+    let message = Number.isFinite(daysUntilNext)
+      ? `下周期建议 ${formatPlanDate(cycleRule.nextCycleAt)}`
+      : "下周期时间待定";
+
+    if (generatedNext) {
+      tone = "done";
+      message = `已生成第 ${nextCycleIndex} 轮`;
+    } else if (canCreateNext) {
+      tone = "ready";
+      message = `本周期已完成，可生成第 ${nextCycleIndex} 轮`;
+    } else if (complete) {
+      tone = "ready";
+      message = "本周期已完成";
+    } else if (Number.isFinite(daysUntilNext) && daysUntilNext <= 0) {
+      tone = "warning";
+      message = `已到第 ${nextCycleIndex} 轮建议时间，完成本周期后可生成`;
+    }
+
+    return {
+      enabled: cycleRule.enabled,
+      cycleIndex: cycleRule.cycleIndex,
+      nextCycleIndex,
+      intervalDays: cycleRule.intervalDays,
+      nextCycleAt: cycleRule.nextCycleAt,
+      nextCycleLabel: formatPlanDate(cycleRule.nextCycleAt),
+      previousPlanId: cycleRule.previousPlanId,
+      generatedNextPlanId: cycleRule.generatedNextPlanId,
+      generatedNext,
+      daysUntilNext,
+      complete,
+      canCreateNext,
+      done,
+      total,
+      tone,
+      label,
+      message
     };
   }
 
@@ -2118,6 +2222,15 @@
       copybook: state.selectedCopybook,
       summary: `围绕“${currentTask.taskTitle}”和“${state.selectedCopybook}”安排可勾选任务，重点是${currentTask.focus}。`,
       items: planItems,
+      cycleRule: {
+        enabled: true,
+        intervalDays: DEFAULT_PLAN_CYCLE_DAYS,
+        cycleIndex: 1,
+        nextCycleAt: makePlanCycleNextAt(new Date(), DEFAULT_PLAN_CYCLE_DAYS),
+        previousPlanId: null,
+        generatedAt: new Date().toISOString(),
+        generatedNextPlanId: null
+      },
       completedAt: null
     };
     state.plans.push(plan);
@@ -2336,6 +2449,81 @@
     return { ok: true, plan: decoratePlan(plan), message: `已删除计划项：${item.title}。` };
   }
 
+  function createNextPlanCycle(planId = null) {
+    const sourcePlan = planId
+      ? state.plans.find((item) => item.id === String(planId))
+      : state.plans[state.plans.length - 1] || null;
+    if (!sourcePlan) {
+      return { ok: false, message: "还没有可循环推进的学习计划。" };
+    }
+
+    const decoratedSource = decoratePlan(sourcePlan);
+    const cycleStatus = decoratedSource.cycleStatus || buildPlanCycleStatus(decoratedSource, decoratedSource.progress);
+    if (!cycleStatus.canCreateNext) {
+      return {
+        ok: false,
+        message: cycleStatus.generatedNext
+          ? "这份计划已经生成过下一周期。"
+          : "请先完成本周期全部计划项，再生成下周期。"
+      };
+    }
+
+    const createdAt = new Date().toISOString();
+    const intervalDays = normalizeInteger(decoratedSource.cycleRule?.intervalDays, DEFAULT_PLAN_CYCLE_DAYS, 1, 60);
+    const nextCycleIndex = normalizeInteger(decoratedSource.cycleRule?.cycleIndex, 1, 1, 999) + 1;
+    const idSet = new Set(decoratedSource.items.map((item) => item.id));
+    const items = decoratedSource.items.map((item, index) => ({
+      id: item.id,
+      title: item.title,
+      detail: item.detail || "",
+      done: false,
+      completedAt: null,
+      dueAt: makePlanDueAt(index + 1, 18, createdAt),
+      remindAt: makePlanReminderAt(makePlanDueAt(index + 1, 18, createdAt)),
+      snoozedUntil: null,
+      reviewAction: normalizePlanReviewAction(item.reviewAction),
+      reviewDoneAt: null,
+      dependsOn: Array.isArray(item.dependsOn)
+        ? item.dependsOn.filter((id) => idSet.has(id) && id !== item.id)
+        : []
+    }));
+    const titleBase = String(decoratedSource.title || "下一阶段练习计划").replace(/（第\d+轮）$/, "");
+    const nextPlan = {
+      id: makeId("plan"),
+      createdAt,
+      title: `${titleBase}（第${nextCycleIndex}轮）`,
+      mode: decoratedSource.mode,
+      taskId: decoratedSource.taskId,
+      glyph: decoratedSource.glyph,
+      copybook: decoratedSource.copybook,
+      summary: `${decoratedSource.summary || "本机学习计划"} 第 ${nextCycleIndex} 轮。`,
+      items,
+      cycleRule: {
+        enabled: true,
+        intervalDays,
+        cycleIndex: nextCycleIndex,
+        nextCycleAt: makePlanCycleNextAt(createdAt, intervalDays),
+        previousPlanId: decoratedSource.id,
+        generatedAt: createdAt,
+        generatedNextPlanId: null
+      },
+      completedAt: null
+    };
+    sourcePlan.cycleRule = {
+      ...normalizePlanCycleRule(sourcePlan.cycleRule, sourcePlan.items, sourcePlan.createdAt),
+      generatedNextPlanId: nextPlan.id
+    };
+    state.plans.push(nextPlan);
+    addEvent("plan-cycle", `生成学习计划第 ${nextCycleIndex} 轮`);
+    saveState();
+    return {
+      ok: true,
+      plan: decoratePlan(nextPlan),
+      sourcePlan: decoratePlan(sourcePlan),
+      message: `已生成第 ${nextCycleIndex} 轮学习计划，并保留原依赖链。`
+    };
+  }
+
   function snoozePlanItem(planId, itemId, days = 1) {
     const plan = state.plans.find((item) => item.id === String(planId || ""));
     if (!plan) {
@@ -2439,6 +2627,7 @@
     const progress = plan.progress || getPlanProgress(plan);
     const reminderSummary = plan.reminderSummary || getPlanReminderSummary(plan.items || []);
     const dependencyGraph = plan.dependencyGraph || buildPlanDependencyGraph(plan.items || []);
+    const cycleStatus = plan.cycleStatus || buildPlanCycleStatus(plan, progress);
     const dependencyMap = new Map((dependencyGraph.nodes || []).map((node) => [node.id, node]));
     const items = Array.isArray(plan.items) ? plan.items : [];
     const itemRows = items.length
@@ -2523,6 +2712,7 @@
     </section>
     <section class="content" aria-label="计划任务">
       <p class="notice">这是一份本机导出的学习计划，包含任务、到期、提醒、顺延和复盘状态；不是云端同步、消息推送或教师端排课服务。</p>
+      <p class="notice">周期摘要：${escapeHtml(cycleStatus.label || "暂无周期")}，${escapeHtml(cycleStatus.message || "暂无下周期建议")}。</p>
       <p class="notice">依赖图摘要：${escapeHtml(dependencyGraph.summary || "暂无依赖摘要")}。</p>
       ${itemRows}
     </section>
@@ -4526,6 +4716,7 @@
     getPlanHistory,
     getLatestPlan,
     getPlanDependencyGraph,
+    getPlanCycleStatus,
     getPlanExport,
     getReportPreview,
     getReportDetail,
@@ -4566,6 +4757,7 @@
     togglePlanItem,
     updatePlanItem,
     addPlanItem,
+    createNextPlanCycle,
     snoozePlanItem,
     completePlanItemReview,
     movePlanItem,
