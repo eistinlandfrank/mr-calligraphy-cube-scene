@@ -5487,6 +5487,10 @@
 - `node --check scripts/smoke-test.js`
 - `node --check tests/e2e/real-flows.spec.js`
 - `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `npm run test:e2e`
+- `git diff --check`
 
 已知限制：
 
@@ -5607,6 +5611,10 @@
 - `node --check scripts/smoke-test.js`
 - `node --check tests/e2e/real-flows.spec.js`
 - `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `npm run test:e2e`
+- `git diff --check`
 
 已知限制：
 
@@ -5616,3 +5624,66 @@
 提交：
 
 - 中文 commit message：`新增基础评分服务适配器`
+
+### 2026-06-12：新增任务驱动学习路径服务
+
+功能名：任务驱动学习路径服务。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/smoke-test.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+
+已完成：
+
+- 状态层新增 `MRAppState.getLearningPathStatus()`，返回 `mr-calligraphy-learning-path-v1`，用当前 `LearningTask`、`PracticeSession`、`ArtworkRecord`、`ReportRecord`、阶段记录和 `PlanRecord` 推导 10 步学习路径。
+- 每个路径步骤会返回标题、短标题、说明、焦点、完成状态、状态标签、下一步动作、证据列表和本机服务边界。
+- 前台步骤标题、说明、焦点、路径列表名称、路径完成数和前 6 个场景热点正文优先读取路径服务，不再只依赖 `SCENES` 静态导览文案。
+- 路径面板新增 `learningPathServiceSummary`，显示真实完成步数和下一步，数据来自本机任务、练习、作品、报告和计划。
+- `SCENES` 继续作为 360 场景视觉配置和兜底内容，后续接课程包或教师端时可继续替换。
+- smoke test 新增路径服务摘要标记，状态层脚本和 E2E 覆盖 10 步路径、状态变化和页面运行时接口。
+
+真实化说明：
+
+- 数据来源：当前任务、任务完成规则、练习会话、作品记录、报告记录、阶段记录、分享服务状态和学习计划。
+- 写入状态：本功能本身是派生服务，不新增持久字段；练习、作品、报告、阶段和计划仍写入 `mr-calligraphy-learning-state-v1`。
+- 成功反馈：页面路径完成数、步骤标题、热点正文和下一步动作会随真实记录变化。
+- 失败反馈：没有真实记录时显示待练习、待拆解、待报告或待计划，不伪造完成状态。
+- 刷新后复现方式：刷新同一浏览器页面后，路径服务会重新从本机学习状态推导 10 步完成情况。
+
+验收方式：
+
+- 手工验收：打开前台首页，应看到路径面板显示 `2/10` 左右的本机完成数；完成讲解、书写、保存作品和导出报告后，路径完成数与对应步骤状态会变化。
+- 脚本验收：`node scripts/learning-state-check.js` 覆盖路径服务 10 步、状态边界、练习/报告/阶段证据和完成数变化；`npm run test:e2e -- --grep "front practice saves real strokes"` 覆盖前台路径摘要和运行时接口。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `npm run test:e2e`
+- `git diff --check`
+
+已知限制：
+
+- 当前是浏览器本机学习路径服务，不是云端课程编排、教师下发任务、班级进度或跨设备学习状态。
+- 视觉场景素材和少量标签仍保留静态兜底；后续需要把课程包、教师端排课、账号化进度和服务端完成条件接入同一 adapter。
+
+提交：
+
+- 中文 commit message：`新增任务驱动学习路径服务`

@@ -2321,6 +2321,16 @@ button {
   transform: scale(1.08);
 }
 
+.path-item.is-locked {
+  opacity: 0.64;
+}
+
+.path-item.is-locked .path-item-index {
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.08) 30%, transparent 35%),
+    linear-gradient(145deg, rgba(105, 112, 117, 0.92), rgba(52, 56, 58, 0.96));
+}
+
 .path-item-name {
   min-width: 0;
   overflow: hidden;
@@ -2334,6 +2344,30 @@ button {
   color: rgba(255, 255, 255, 0.68);
   font-size: 12px;
   white-space: nowrap;
+}
+
+.learning-path-service-summary {
+  margin: 10px 0 0;
+  padding: 8px 9px;
+  border: 1px solid rgba(116, 255, 219, 0.2);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.76);
+  background: rgba(33, 71, 62, 0.24);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.learning-path-service-summary[data-service-tone="done"] {
+  color: #e8fff9;
+  border-color: rgba(116, 255, 219, 0.36);
+  background: rgba(42, 104, 86, 0.28);
+}
+
+.learning-path-service-summary[data-service-tone="active"] {
+  color: #fff0bd;
+  border-color: rgba(247, 215, 139, 0.38);
+  background: rgba(122, 91, 35, 0.22);
 }
 
 .scene-copy {

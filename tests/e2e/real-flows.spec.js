@@ -111,6 +111,9 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
+  await expect(page.locator("#learningPathServiceSummary")).toContainText("2/10 步完成");
+  await expect(page.locator("#learningPathServiceSummary")).toContainText("数据来自本机任务");
+  await expect(page.locator("#sceneTitle")).toContainText("今日单字：永");
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);
 
@@ -174,6 +177,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reports).toHaveLength(1);
   expect(learningState.reports[0].artworkCount).toBe(1);
   expect(learningState.reports[0].latestStrokeCount).toBeGreaterThan(0);
+  const pathAfterReport = await page.evaluate(() => window.MRAppState.getLearningPathStatus());
+  expect(pathAfterReport.steps).toHaveLength(10);
+  expect(pathAfterReport.steps[3].done).toBe(true);
+  expect(pathAfterReport.steps[5].done).toBe(true);
+  expect(pathAfterReport.steps[8].done).toBe(true);
+  expect(pathAfterReport.steps[8].title).toContain("学习报告");
 
   await page.goto(`/?report=${learningState.reports[0].id}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();

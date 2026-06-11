@@ -978,6 +978,7 @@ const els = {
   pathProgress: document.getElementById("pathProgress"),
   pathProgressBar: document.getElementById("pathProgressBar"),
   pathList: document.getElementById("pathList"),
+  learningPathServiceSummary: document.getElementById("learningPathServiceSummary"),
   quickPrev: document.getElementById("quickPrev"),
   quickHome: document.getElementById("quickHome"),
   quickModels: document.getElementById("quickModels"),
@@ -3570,12 +3571,13 @@ function keepInfoPanelInView() {
 function buildStepNavigation() {
   const fragment = document.createDocumentFragment();
 
-  SCENES.forEach((scene, index) => {
+  SCENES.forEach((_, index) => {
+    const sceneView = getLearningSceneView(index);
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.featureState = "real-local";
     button.textContent = String(index + 1);
-    button.setAttribute("aria-label", `切换到步骤 ${index + 1}: ${scene.title}`);
+    button.setAttribute("aria-label", `切换到步骤 ${index + 1}: ${sceneView.title}`);
     button.addEventListener("click", () => loadScene(index));
     fragment.appendChild(button);
   });
@@ -8515,15 +8517,16 @@ function clearModelView(options = {}) {
 function buildPathList() {
   const fragment = document.createDocumentFragment();
 
-  SCENES.forEach((scene, index) => {
+  SCENES.forEach((_, index) => {
+    const sceneView = getLearningSceneView(index);
     const button = document.createElement("button");
     button.type = "button";
     button.className = "path-item";
     button.dataset.featureState = "real-local";
-    button.setAttribute("aria-label", `跳转到步骤 ${index + 1}: ${scene.title}`);
+    button.setAttribute("aria-label", `跳转到步骤 ${index + 1}: ${sceneView.title}`);
     button.innerHTML = `
       <span class="path-item-index">${index + 1}</span>
-      <span class="path-item-name">${getShortSceneName(scene.title)}</span>
+      <span class="path-item-name">${sceneView.shortName}</span>
       <span class="path-item-state">待学习</span>
     `;
     button.addEventListener("click", () => loadScene(index));
@@ -8818,14 +8821,58 @@ function getLearningSceneMetrics(index) {
   }
 }
 
+function getLearningPathStatus() {
+  return window.MRAppState?.getLearningPathStatus?.() || null;
+}
+
+function getLearningSceneView(index) {
+  const scene = SCENES[index] || SCENES[0];
+  const step = getLearningPathStatus()?.steps?.[index];
+  if (!step) {
+    return {
+      title: scene.title,
+      shortName: getShortSceneName(scene.title),
+      description: scene.description,
+      focus: scene.focus,
+      actionHint: null,
+      evidence: []
+    };
+  }
+
+  return {
+    title: step.title || scene.title,
+    shortName: step.shortName || getShortSceneName(step.title || scene.title),
+    description: step.description || scene.description,
+    focus: step.focus || scene.focus,
+    actionHint: step.actionHint || null,
+    statusLabel: step.statusLabel,
+    evidence: step.evidence || [],
+    step
+  };
+}
+
+function renderLearningPathServiceSummary(pathStatus = getLearningPathStatus()) {
+  if (!els.learningPathServiceSummary) return;
+  if (!pathStatus) {
+    els.learningPathServiceSummary.textContent = "学习路径服务尚未初始化。";
+    els.learningPathServiceSummary.dataset.serviceTone = "active";
+    return;
+  }
+
+  const next = pathStatus.nextStep?.shortName || "继续学习";
+  els.learningPathServiceSummary.textContent = `${pathStatus.doneCount}/${pathStatus.total} 步完成，下一步：${next}。数据来自本机任务、练习、作品、报告和计划。`;
+  els.learningPathServiceSummary.dataset.serviceTone = pathStatus.doneCount >= pathStatus.total ? "done" : "active";
+}
+
 function updateSceneText(index) {
-  const scene = SCENES[index];
+  const sceneView = getLearningSceneView(index);
   const metrics = getLearningSceneMetrics(index);
   els.stepLabel.textContent = `步骤 ${String(index + 1).padStart(2, "0")}`;
-  els.sceneTitle.textContent = scene.title;
-  els.sceneDescription.textContent = scene.description;
+  els.sceneTitle.textContent = sceneView.title;
+  els.sceneDescription.textContent = sceneView.description;
   els.coachScore.textContent = metrics[0][1];
   els.insightScore.textContent = getMetricInsightValue(metrics[0][1]);
+  renderLearningPathServiceSummary();
   renderScoreServiceSummary();
 }
 
@@ -8850,11 +8897,12 @@ function renderScoreServiceSummary() {
 
 function updateInteractionPanel(sceneIndex, pointIndex) {
   const scene = SCENES[sceneIndex];
+  const sceneView = getLearningSceneView(sceneIndex);
   const point = scene.points[pointIndex];
   const pointView = getLearningPointView(sceneIndex, pointIndex, point);
   const metrics = getLearningSceneMetrics(sceneIndex);
 
-  els.sceneFocus.textContent = scene.focus;
+  els.sceneFocus.textContent = sceneView.focus;
   els.contentTitle.textContent = pointView.label;
   els.contentBody.textContent = pointView.body;
   els.contentTags.innerHTML = "";
@@ -8908,6 +8956,32 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   });
 }
 
+function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {
+  const sceneView = getLearningSceneView(sceneIndex);
+  const step = sceneView.step;
+  if (!step) return point;
+
+  const evidence = sceneView.evidence?.length ? sceneView.evidence : ["暂无本机证据"];
+  const averageScore = formatAverageScore(stats);
+  const bodies = [
+    sceneView.description,
+    sceneView.focus,
+    `${step.statusLabel || "待完成"}。${step.actionHint || `下一步：${step.nextActionLabel || "继续学习"}。`}`
+  ];
+  const tags = [
+    step.statusLabel || "路径状态",
+    stats.glyph,
+    evidence[pointIndex] || evidence[0],
+    averageScore
+  ].filter(Boolean).slice(0, 4);
+
+  return {
+    ...point,
+    body: bodies[pointIndex] || sceneView.description,
+    tags
+  };
+}
+
 function getLearningPointView(sceneIndex, pointIndex, point) {
   const stats = window.MRAppState?.getStats?.();
   if (!stats) {
@@ -8921,14 +8995,8 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
   const planProgress = stats.latestPlan?.progress;
   const planLabel = planProgress ? `${planProgress.done}/${planProgress.total}` : "未制定";
 
-  if (sceneIndex === 0 && pointIndex === 0) {
-    return {
-      ...point,
-      body: stats.scoreCount
-        ? `中心面板显示本机真实评分平均 ${stats.averageScore} 分，并结合当前任务“${stats.taskTitle}”展示练习入口。`
-        : `中心面板等待真实书写评分。当前任务是“${stats.taskTitle}”，先完成一次练习后才会显示平均分。`,
-      tags: ["本机评分", stats.scoreCount ? `${stats.scoreCount}条评分` : "未评分", stats.glyph]
-    };
+  if (sceneIndex >= 0 && sceneIndex <= 5) {
+    return getLearningPathPointView(sceneIndex, pointIndex, point, stats);
   }
 
   if (sceneIndex === 6) {
@@ -9360,8 +9428,14 @@ function getLearningActionHint(sceneIndex) {
     return "点击场景热点或下方按钮，可查看该模块的交互反馈。";
   }
 
+  const sceneView = getLearningSceneView(sceneIndex);
   if (sceneIndex === 6 || sceneIndex === 8 || sceneIndex === 9) {
-    return window.MRAppState.getReportPreview();
+    const preview = window.MRAppState.getReportPreview();
+    return sceneView.actionHint ? `${sceneView.actionHint} ${preview}` : preview;
+  }
+
+  if (sceneView.actionHint) {
+    return sceneView.actionHint;
   }
 
   return "点击按钮会写入本机学习记录；未接入的能力会明确禁用。";
@@ -9513,31 +9587,62 @@ function updateQuickControls(index) {
 }
 
 function updatePathPanel(index) {
-  const progress = Math.round(((index + 1) / SCENES.length) * 100);
   const pathItems = els.pathList.querySelectorAll(".path-item");
+  const pathStatus = getLearningPathStatus();
   const stats = window.MRAppState?.getStats?.();
+  const progress = pathStatus?.total
+    ? pathStatus.progressPercent
+    : Math.round(((index + 1) / SCENES.length) * 100);
 
-  els.pathProgress.textContent = `${index + 1} / ${SCENES.length}`;
+  els.pathProgress.textContent = pathStatus?.total
+    ? `${pathStatus.doneCount} / ${pathStatus.total}`
+    : `${index + 1} / ${SCENES.length}`;
   els.pathProgressBar.style.width = `${progress}%`;
+  renderLearningPathServiceSummary(pathStatus);
 
   pathItems.forEach((button, buttonIndex) => {
     const state = button.querySelector(".path-item-state");
-    const realState = getLearningPathState(buttonIndex, stats);
+    const name = button.querySelector(".path-item-name");
+    const sceneView = getLearningSceneView(buttonIndex);
+    const realState = getLearningPathState(buttonIndex, stats, pathStatus);
     const isDone = realState.done;
-    const isVisited = buttonIndex < index;
     const isActive = buttonIndex === index;
 
     button.classList.toggle("is-done", isDone);
     button.classList.toggle("is-active", isActive);
+    button.classList.toggle("is-locked", Boolean(realState.locked));
     button.setAttribute("aria-current", isActive ? "step" : "false");
+    button.setAttribute("aria-label", `跳转到步骤 ${buttonIndex + 1}: ${sceneView.title}`);
+
+    if (name) {
+      name.textContent = sceneView.shortName;
+    }
 
     if (state) {
-      state.textContent = isActive ? realState.activeLabel : isDone ? realState.doneLabel : isVisited ? "已浏览" : realState.pendingLabel;
+      state.textContent = isActive
+        ? realState.activeLabel
+        : isDone
+          ? realState.doneLabel
+          : realState.locked
+            ? realState.lockedLabel || "未解锁"
+            : realState.pendingLabel;
     }
   });
 }
 
-function getLearningPathState(index, stats) {
+function getLearningPathState(index, stats, pathStatus = getLearningPathStatus()) {
+  const step = pathStatus?.steps?.[index];
+  if (step) {
+    return {
+      done: Boolean(step.done),
+      locked: Boolean(step.locked),
+      activeLabel: step.activeLabel || step.statusLabel || "进行中",
+      doneLabel: step.doneLabel || "已完成",
+      pendingLabel: step.pendingLabel || "待完成",
+      lockedLabel: step.lockedLabel || "未解锁"
+    };
+  }
+
   if (!stats) {
     return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
   }

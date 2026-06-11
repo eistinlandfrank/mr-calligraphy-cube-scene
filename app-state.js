@@ -8,6 +8,7 @@
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
+  const LEARNING_PATH_BOUNDARY = "学习路径服务由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是云端课程编排、教师下发任务或跨设备学习进度。";
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
@@ -2617,6 +2618,282 @@
       latestStageRecord,
       latestFeedback
     };
+  }
+
+  function getLearningPathStatus() {
+    const stats = getStats();
+    const task = getCurrentTask();
+    const taskProgress = stats.taskProgress || getTaskProgress(task?.id);
+    const stageProgress = stats.stageProgress || getStageProgress(task?.id);
+    const latestPlan = stats.latestPlan || getLatestPlan();
+    const shareStatus = getShareServiceStatus(stats.latestArtwork?.id);
+    const steps = buildLearningPathSteps({
+      stats,
+      task,
+      taskProgress,
+      stageProgress,
+      latestPlan,
+      shareStatus
+    });
+    const doneCount = steps.filter((step) => step.done).length;
+    const nextStep = steps.find((step) => !step.done && !step.locked) || steps[steps.length - 1] || null;
+    const progressPercent = steps.length ? Math.round((doneCount / steps.length) * 100) : 0;
+
+    return {
+      kind: "mr-calligraphy-learning-path-v1",
+      source: ["LearningTask", "PracticeSession", "ArtworkRecord", "ReportRecord", "PlanRecord"],
+      boundary: LEARNING_PATH_BOUNDARY,
+      task: task ? clone(task) : null,
+      taskProgress: clone(taskProgress),
+      doneCount,
+      total: steps.length,
+      progressPercent,
+      nextStep: nextStep ? clone(nextStep) : null,
+      steps: clone(steps),
+      message: `${stats.taskTitle}：学习路径已完成 ${doneCount}/${steps.length} 步，下一步 ${nextStep?.shortName || "继续学习"}。${LEARNING_PATH_BOUNDARY}`
+    };
+  }
+
+  function buildLearningPathSteps(context) {
+    const { stats, task, taskProgress, stageProgress, latestPlan, shareStatus } = context;
+    const stageMap = new Map((stageProgress?.stages || []).map((stage) => [stage.stage, stage]));
+    const hasStage = (stage) => Boolean(stageMap.get(stage)?.done);
+    const getStageCount = (stage) => normalizeInteger(stageMap.get(stage)?.count, 0, 0, 999);
+    const lectureProgress = stats.lectureProgress || getLectureProgress();
+    const planProgress = latestPlan?.progress || (latestPlan ? getPlanProgress(latestPlan) : null);
+    const hasPlan = Boolean(planProgress?.total);
+    const planDone = Boolean(hasPlan && planProgress.done === planProgress.total);
+    const hasTaskRecord = (taskProgress.practicedSessionCount || 0) > 0
+      || (taskProgress.artworkCount || 0) > 0
+      || (taskProgress.reportCount || 0) > 0
+      || (taskProgress.stageCount || 0) > 0;
+    const latestTime = stats.latestRecordAt ? formatDateTime(stats.latestRecordAt) : "暂无记录";
+    const taskTitle = stats.taskTitle || task?.taskTitle || "当前任务";
+    const glyph = stats.glyph || task?.glyph || "永";
+    const copybook = stats.copybook || task?.copybook || "当前碑帖";
+    const taskFocus = stats.taskFocus || task?.focus || "基础笔势";
+    const taskPercent = normalizeInteger(taskProgress.percent, 0, 0, 100);
+    const practicedCount = normalizeInteger(taskProgress.practicedSessionCount, 0, 0, 9999);
+    const activePracticeCount = normalizeInteger(taskProgress.activeSessionCount, 0, 0, 9999);
+    const artworkCount = normalizeInteger(taskProgress.artworkCount, 0, 0, 9999);
+    const reportCount = normalizeInteger(taskProgress.reportCount, 0, 0, 9999);
+    const averageScore = normalizeScore(taskProgress.averageScore, 0);
+    const latestArtworkTitle = stats.latestArtwork?.title || "暂无作品";
+    const planLabel = hasPlan ? `${planProgress.done}/${planProgress.total}` : "未制定";
+
+    return [
+      makeLearningPathStep({
+        index: 0,
+        id: "entry",
+        shortName: "准备",
+        title: `${taskTitle} / 沉浸准备`,
+        description: `当前学习任务是“${taskTitle}”，练习字为“${glyph}”，碑帖为“${copybook}”。`,
+        focus: `先确认任务重点：${taskFocus}。路径状态由本机任务和学习记录推导。`,
+        done: Boolean(task),
+        active: !task,
+        nextActionLabel: "选择日课字",
+        evidence: [`任务状态：${taskProgress.statusLabel || "待开始"}`, `完成条件：${taskProgress.ruleSummary || "阶段 / 练习 / 作品 / 报告"}`],
+        activeLabel: "准备中",
+        doneLabel: "已准备",
+        pendingLabel: "待准备"
+      }),
+      makeLearningPathStep({
+        index: 1,
+        id: "task",
+        shortName: "任务",
+        title: `${taskTitle} / 任务确认`,
+        description: `当前任务进度 ${taskPercent}%，级别为${stats.taskLevel || task?.level || "基础"}，重点练习“${taskFocus}”。`,
+        focus: taskProgress.locked
+          ? taskProgress.dependencyStatus?.reason || "请先完成前置任务。"
+          : `本轮需要完成：${taskProgress.ruleSummary || "阶段、练习、作品和报告"}`,
+        done: Boolean(task && !taskProgress.locked),
+        locked: Boolean(taskProgress.locked),
+        nextActionLabel: "选择日课字",
+        evidence: [`练习字：${glyph}`, `碑帖：${copybook}`, `依赖：${taskProgress.dependencyStatus?.label || "无前置"}`],
+        activeLabel: "确认中",
+        doneLabel: "已选字",
+        pendingLabel: "待选字",
+        lockedLabel: "未解锁"
+      }),
+      makeLearningPathStep({
+        index: 2,
+        id: "lecture",
+        shortName: "讲解",
+        title: `${taskTitle} / 本机讲解`,
+        description: `讲解进度 ${lectureProgress.progressPercent || 0}%，当前段落：${lectureProgress.currentStep?.title || "待开始"}。`,
+        focus: "本机讲解会记录浏览器语音或文本计时进度，不伪装成云端 AI 音频。",
+        done: stats.lectureStatus === "complete",
+        active: stats.lectureStatus === "playing",
+        nextActionLabel: stats.lectureStatus === "complete" ? "开始临摹" : "播放讲解",
+        evidence: [`段落：${lectureProgress.completedSteps || 0}/${lectureProgress.totalSteps || 0}`, `状态：${stats.lectureStatus || "idle"}`],
+        activeLabel: "讲解中",
+        doneLabel: "已讲解",
+        pendingLabel: "待讲解"
+      }),
+      makeLearningPathStep({
+        index: 3,
+        id: "practice",
+        shortName: "临摹",
+        title: `${taskTitle} / 真实临摹`,
+        description: practicedCount
+          ? `当前任务已有 ${practicedCount} 次真实笔迹练习，均分 ${averageScore || 0}。`
+          : "当前任务还没有真实笔迹练习，请在米字格中书写后保存采样。",
+        focus: `练习模式为${stats.trainingMode === "compare" ? "对比" : "示范"}，评分会读取真实笔迹点位和本机基础评分证据。`,
+        done: practicedCount > 0,
+        active: activePracticeCount > 0,
+        nextActionLabel: practicedCount > 0 ? "查看笔画分析" : "进入临摹训练",
+        evidence: [`真实练习：${practicedCount}次`, `活动会话：${activePracticeCount}次`, `均分：${averageScore || "未评分"}`],
+        activeLabel: activePracticeCount > 0 ? "练习中" : "待创建",
+        doneLabel: "已练习",
+        pendingLabel: "待练习"
+      }),
+      makeLearningPathStep({
+        index: 4,
+        id: "stroke-breakdown",
+        shortName: "拆解",
+        title: `${taskTitle} / 笔画拆解`,
+        description: hasStage("strokeBreakdown")
+          ? `已记录 ${getStageCount("strokeBreakdown")} 次笔画拆解，当前笔画为“${state.activeStrokeIndex + 1}/${STROKES.length} ${STROKES[state.activeStrokeIndex]}”。`
+          : `围绕“${glyph}”的${taskFocus}拆解笔画，阶段记录会写入本机学习档案。`,
+        focus: "笔画拆解阶段会影响当前任务完成度，不再只是静态热点说明。",
+        done: hasStage("strokeBreakdown"),
+        active: practicedCount > 0 && !hasStage("strokeBreakdown"),
+        nextActionLabel: "进入笔画拆解",
+        evidence: [`阶段记录：${getStageCount("strokeBreakdown")}次`, `当前笔画：${STROKES[state.activeStrokeIndex]}`],
+        activeLabel: "拆解中",
+        doneLabel: "已拆解",
+        pendingLabel: "待拆解"
+      }),
+      makeLearningPathStep({
+        index: 5,
+        id: "creation",
+        shortName: "创作",
+        title: `${taskTitle} / 作品创作`,
+        description: artworkCount
+          ? `当前任务已保存 ${artworkCount} 幅作品，最近作品为“${latestArtworkTitle}”。`
+          : `用“${glyph}”完成一幅作品，保存时会关联当前任务和真实笔迹。`,
+        focus: hasStage("creation")
+          ? `创作阶段已记录 ${getStageCount("creation")} 次，下一步应保存作品或进入复盘。`
+          : "创作实践阶段和作品保存都会进入任务完成条件。",
+        done: artworkCount > 0,
+        active: hasStage("creation") || taskProgress.savedSessionCount > 0,
+        nextActionLabel: artworkCount > 0 ? "查看作品" : "保存作品",
+        evidence: [`作品：${artworkCount}幅`, `创作阶段：${getStageCount("creation")}次`, `风格：${state.artworkStyle}`],
+        activeLabel: "创作中",
+        doneLabel: "已保存",
+        pendingLabel: "待创作"
+      }),
+      makeLearningPathStep({
+        index: 6,
+        id: "history",
+        shortName: "档案",
+        title: `${taskTitle} / 本机学习档案`,
+        description: hasTaskRecord
+          ? `当前任务已有练习、作品、报告或阶段记录，最近更新时间：${latestTime}。`
+          : "当前任务还没有可复盘记录，完成练习或保存作品后会进入学习档案。",
+        focus: "学习档案读取本机浏览器记录，不再显示固定学习时长或静态优秀样本。",
+        done: hasTaskRecord,
+        active: hasTaskRecord,
+        nextActionLabel: hasTaskRecord ? "打开历史记录" : "进入临摹训练",
+        evidence: [`练习：${practicedCount}次`, `作品：${artworkCount}幅`, `报告：${reportCount}份`],
+        activeLabel: "记录中",
+        doneLabel: "有记录",
+        pendingLabel: "无记录"
+      }),
+      makeLearningPathStep({
+        index: 7,
+        id: "review-share",
+        shortName: "复盘",
+        title: `${taskTitle} / 作品复盘与分享`,
+        description: artworkCount
+          ? `可复盘最近作品“${latestArtworkTitle}”；本机分享服务有 ${shareStatus.activeCount || 0} 条有效链接。`
+          : "还没有作品可复盘或分享，先完成一次真实书写并保存作品。",
+        focus: "分享页是本机 HTML 和浏览器内链接，不伪装成公网作品墙。",
+        done: artworkCount > 0,
+        active: artworkCount > 0 && !shareStatus.activeCount,
+        nextActionLabel: artworkCount > 0 ? "导出分享页" : "保存作品",
+        evidence: [`有效分享：${shareStatus.activeCount || 0}条`, `已撤销：${shareStatus.revokedCount || 0}条`, `作品：${artworkCount}幅`],
+        activeLabel: "复盘中",
+        doneLabel: "可复盘",
+        pendingLabel: "待作品"
+      }),
+      makeLearningPathStep({
+        index: 8,
+        id: "report",
+        shortName: "报告",
+        title: `${taskTitle} / 学习报告`,
+        description: reportCount
+          ? `当前任务已有 ${reportCount} 份报告，最近报告会读取本机练习和作品记录。`
+          : "报告尚未导出。完成练习或保存作品后，可生成本机 HTML/PDF 报告。",
+        focus: "报告分数来自本机练习、作品和评分证据，不读取静态高分。",
+        done: reportCount > 0,
+        active: artworkCount > 0 && reportCount === 0,
+        nextActionLabel: reportCount > 0 ? "查看详情" : "导出报告",
+        evidence: [`报告：${reportCount}份`, `平均分：${averageScore || "未评分"}`, `最近记录：${latestTime}`],
+        activeLabel: "报告中",
+        doneLabel: "已导出",
+        pendingLabel: "待报告"
+      }),
+      makeLearningPathStep({
+        index: 9,
+        id: "review-plan",
+        shortName: "巩固",
+        title: `${taskTitle} / 复习巩固`,
+        description: taskProgress.complete
+          ? "当前任务已满足阶段、练习、作品和报告条件，可进入下一任务或制定下一周期计划。"
+          : `当前任务完成度 ${taskPercent}%，计划进度 ${planLabel}。`,
+        focus: hasPlan
+          ? `计划“${latestPlan.title}”正在跟踪 ${planProgress.done}/${planProgress.total} 个任务项。`
+          : "复习巩固会读取阶段记录和学习计划，不再使用固定总结文案。",
+        done: Boolean(taskProgress.complete || planDone),
+        active: hasPlan || hasStage("review"),
+        nextActionLabel: taskProgress.complete ? "选择日课字" : "制定计划",
+        evidence: [`任务完成：${taskProgress.complete ? "是" : "否"}`, `复习阶段：${getStageCount("review")}次`, `计划：${planLabel}`],
+        activeLabel: hasPlan ? `计划 ${planLabel}` : "总结中",
+        doneLabel: taskProgress.complete ? "任务完成" : "计划完成",
+        pendingLabel: "待计划"
+      })
+    ];
+  }
+
+  function makeLearningPathStep(step) {
+    const locked = Boolean(step.locked);
+    const done = Boolean(step.done) && !locked;
+    const active = !done && !locked && Boolean(step.active);
+    const status = locked ? "locked" : done ? "done" : active ? "active" : "todo";
+    const statusLabel = step.statusLabel || getLearningPathStatusLabel(status);
+    const evidence = Array.isArray(step.evidence)
+      ? step.evidence.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 5)
+      : [];
+    const nextActionLabel = String(step.nextActionLabel || "继续学习").slice(0, 40);
+
+    return {
+      index: step.index,
+      id: step.id,
+      shortName: step.shortName,
+      title: step.title,
+      description: step.description,
+      focus: step.focus,
+      status,
+      statusLabel,
+      done,
+      active,
+      locked,
+      activeLabel: step.activeLabel || statusLabel,
+      doneLabel: step.doneLabel || "已完成",
+      pendingLabel: step.pendingLabel || "待完成",
+      lockedLabel: step.lockedLabel || "未解锁",
+      nextActionLabel,
+      actionHint: `${statusLabel}：${step.description} 下一步：${nextActionLabel}。`,
+      evidence
+    };
+  }
+
+  function getLearningPathStatusLabel(status) {
+    if (status === "done") return "已完成";
+    if (status === "active") return "进行中";
+    if (status === "locked") return "未解锁";
+    return "待完成";
   }
 
   function addEvent(type, label) {
@@ -8213,6 +8490,7 @@
     getTaskProgress,
     getStageProgress,
     getLectureProgress,
+    getLearningPathStatus,
     getScoreServiceStatus,
     getLectureServiceStatus,
     getPlan,

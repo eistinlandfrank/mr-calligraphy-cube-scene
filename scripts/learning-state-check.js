@@ -88,6 +88,18 @@ assert(migratedScoreService.totalPointCount === 280, "评分服务应统计已�
 assert(migratedScoreService.lastScore === 80, "评分服务应读取最近一次已有练习分数。");
 assert(migratedScoreService.message.includes("本机基础评分"), "评分服务摘要应标明本机基础评分。");
 
+const initialLearningPath = window.MRAppState.getLearningPathStatus();
+assert(initialLearningPath.kind === "mr-calligraphy-learning-path-v1", "学习路径服务应返回稳定 kind。");
+assert(initialLearningPath.steps.length === 10, "学习路径服务应返回 10 个步骤。");
+assert(initialLearningPath.source.includes("LearningTask"), "学习路径服务应声明 LearningTask 数据来源。");
+assert(initialLearningPath.boundary.includes("不是云端课程编排"), "学习路径服务应说明本机路径边界。");
+assert(initialLearningPath.steps[0].title.includes("今日单字：永"), "学习路径标题应读取当前任务标题。");
+assert(initialLearningPath.steps[3].done, "已有真实练习记录时，临摹步骤应标记完成。");
+assert(initialLearningPath.steps[3].evidence.some((item) => item.includes("真实练习")), "临摹步骤应返回练习证据。");
+assert(initialLearningPath.steps[4].status !== "done", "尚未记录笔画拆解阶段时，不应伪造拆解完成。");
+assert(initialLearningPath.steps[8].done, "已有报告记录时，报告步骤应标记完成。");
+assert(initialLearningPath.message.includes("学习路径已完成"), "学习路径服务应返回可读摘要。");
+
 const initialLectureService = window.MRAppState.getLectureServiceStatus();
 assert(initialLectureService.status === "idle", "初始讲解服务应为待检查状态。");
 assert(initialLectureService.boundary.includes("不是云端 AI 音频"), "讲解服务应说明本机服务边界。");
@@ -350,6 +362,13 @@ assert(taskProgress.milestones.some((item) => item.id === "strokeBreakdown" && i
 assert(taskProgress.milestones.some((item) => item.id === "creation" && item.done), "任务里程碑应包含创作实践。");
 assert(taskProgress.milestones.some((item) => item.id === "review" && item.done), "任务里程碑应包含复习巩固。");
 assert(taskProgress.complete, "满足阶段、练习、作品和报告条件后，当前任务应标记完成。");
+
+const learningPathAfterStages = window.MRAppState.getLearningPathStatus();
+assert(learningPathAfterStages.steps[4].done, "记录笔画拆解后，路径拆解步骤应完成。");
+assert(learningPathAfterStages.steps[5].done, "已有作品后，路径创作步骤应完成。");
+assert(learningPathAfterStages.steps[9].done, "当前任务完成后，路径复习巩固步骤应完成。");
+assert(learningPathAfterStages.doneCount > initialLearningPath.doneCount, "阶段记录写入后，路径完成数应增加。");
+assert(learningPathAfterStages.steps[9].nextActionLabel === "选择日课字", "当前任务完成后，复习巩固步骤应指向下一个日课任务。");
 
 const unlockedRenAfterStages = window.MRAppState.getTaskProgress("single-ren-structure");
 assert(!unlockedRenAfterStages.locked, "前置任务完成后，下一单字任务应解锁。");
@@ -745,7 +764,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {
