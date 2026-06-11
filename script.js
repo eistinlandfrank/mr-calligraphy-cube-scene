@@ -931,6 +931,7 @@ const els = {
   planRepositoryKeepLocalButton: document.getElementById("planRepositoryKeepLocalButton"),
   planRepositoryUseRemoteButton: document.getElementById("planRepositoryUseRemoteButton"),
   planRepositoryCopyRemoteButton: document.getElementById("planRepositoryCopyRemoteButton"),
+  planRepositoryMergeFieldsButton: document.getElementById("planRepositoryMergeFieldsButton"),
   planRepositoryImportInput: document.getElementById("planRepositoryImportInput"),
   planExportButton: document.getElementById("planExportButton"),
   planNextCycleButton: document.getElementById("planNextCycleButton"),
@@ -3847,6 +3848,7 @@ function bindPlanControls() {
   els.planRepositoryKeepLocalButton?.addEventListener("click", () => resolvePlanRepositoryConflict("keep-local"));
   els.planRepositoryUseRemoteButton?.addEventListener("click", () => resolvePlanRepositoryConflict("use-remote"));
   els.planRepositoryCopyRemoteButton?.addEventListener("click", () => resolvePlanRepositoryConflict("copy-remote"));
+  els.planRepositoryMergeFieldsButton?.addEventListener("click", () => resolvePlanRepositoryConflict("merge-fields"));
   els.planRepositoryImportInput?.addEventListener("change", importPlanRepositoryFile);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
@@ -5975,16 +5977,76 @@ function renderPlanRepositoryConflictPanel(status) {
   }
   if (els.planRepositoryConflictList) {
     els.planRepositoryConflictList.innerHTML = "";
-    conflicts.forEach((conflict) => {
+    conflicts.forEach((conflict, conflictIndex) => {
       const item = document.createElement("li");
       const title = document.createElement("strong");
       title.textContent = conflict.title || conflict.id;
       const detail = document.createElement("span");
       detail.textContent = `本机：${conflict.localTitle || conflict.id} / ${formatHistoryTime(conflict.localUpdatedAt)}；远端：${conflict.remoteTitle || conflict.id} / ${formatHistoryTime(conflict.remoteUpdatedAt)}`;
       item.append(title, detail);
+      const fieldDiffs = conflict.fieldDiffs || {};
+      const planFields = Array.isArray(fieldDiffs.plan) ? fieldDiffs.plan : [];
+      const itemFields = Array.isArray(fieldDiffs.items) ? fieldDiffs.items : [];
+      if (planFields.length || itemFields.length) {
+        const mergeGrid = document.createElement("div");
+        mergeGrid.className = "plan-repository-merge-fields";
+        planFields.forEach((fieldDiff, fieldIndex) => {
+          mergeGrid.appendChild(createPlanRepositoryMergeChoice({
+            planId: conflict.id,
+            itemId: "",
+            fieldDiff,
+            label: `计划${fieldDiff.label || fieldDiff.field}`,
+            groupKey: `${conflictIndex}-plan-${fieldIndex}`
+          }));
+        });
+        itemFields.forEach((itemDiff, itemIndex) => {
+          const fields = Array.isArray(itemDiff.fields) ? itemDiff.fields : [];
+          fields.forEach((fieldDiff, fieldIndex) => {
+            mergeGrid.appendChild(createPlanRepositoryMergeChoice({
+              planId: conflict.id,
+              itemId: itemDiff.itemId || "",
+              fieldDiff,
+              label: `${itemDiff.localTitle || itemDiff.remoteTitle || "任务"} / ${fieldDiff.label || fieldDiff.field}`,
+              groupKey: `${conflictIndex}-item-${itemIndex}-${fieldIndex}`
+            }));
+          });
+        });
+        item.appendChild(mergeGrid);
+      }
       els.planRepositoryConflictList.appendChild(item);
     });
   }
+}
+
+function createPlanRepositoryMergeChoice({ planId, itemId = "", fieldDiff = {}, label = "", groupKey = "" }) {
+  const wrapper = document.createElement("fieldset");
+  wrapper.className = "plan-repository-merge-choice";
+  const legend = document.createElement("legend");
+  legend.textContent = label || fieldDiff.label || fieldDiff.field || "字段";
+  const options = document.createElement("div");
+  options.className = "plan-repository-merge-options";
+  [
+    { value: "local", label: "本机", detail: fieldDiff.localValue || "空", checked: true },
+    { value: "remote", label: "远端", detail: fieldDiff.remoteValue || "空", checked: false }
+  ].forEach((choice) => {
+    const choiceLabel = document.createElement("label");
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = `plan-merge-${groupKey}`;
+    input.value = choice.value;
+    input.checked = choice.checked;
+    input.dataset.planMergePlanId = planId;
+    input.dataset.planMergeItemId = itemId;
+    input.dataset.planMergeField = fieldDiff.field || "";
+    const title = document.createElement("strong");
+    title.textContent = choice.label;
+    const detail = document.createElement("span");
+    detail.textContent = choice.detail;
+    choiceLabel.append(input, title, detail);
+    options.appendChild(choiceLabel);
+  });
+  wrapper.append(legend, options);
+  return wrapper;
 }
 
 function renderPlanDependencyGraph(plan) {
@@ -6381,11 +6443,15 @@ async function resolvePlanRepositoryConflict(strategy) {
   const labels = {
     "keep-local": "保留本机计划",
     "use-remote": "采用远端计划",
-    "copy-remote": "另存远端副本"
+    "copy-remote": "另存远端副本",
+    "merge-fields": "字段级合并"
   };
   setPlanRepositoryRemoteBusy(true);
   try {
-    const result = await Promise.resolve(window.MRAppState?.resolvePlanRepositoryConflict?.(strategy));
+    const options = strategy === "merge-fields"
+      ? { selections: collectPlanRepositoryMergeSelections() }
+      : {};
+    const result = await Promise.resolve(window.MRAppState?.resolvePlanRepositoryConflict?.(strategy, options));
     if (result?.ok) {
       activePlanId = result.plans?.[0]?.id || window.MRAppState?.getLatestPlan?.()?.id || activePlanId;
       updateSceneText(currentIndex);
@@ -6401,6 +6467,30 @@ async function resolvePlanRepositoryConflict(strategy) {
   }
 }
 
+function collectPlanRepositoryMergeSelections() {
+  const selections = {};
+  const panel = els.planRepositoryConflictPanel;
+  if (!panel) return selections;
+  panel.querySelectorAll("input[data-plan-merge-field]:checked").forEach((input) => {
+    const planId = input.dataset.planMergePlanId || "";
+    const itemId = input.dataset.planMergeItemId || "";
+    const field = input.dataset.planMergeField || "";
+    if (!planId || !field) return;
+    if (!selections[planId]) {
+      selections[planId] = { plan: {}, items: {} };
+    }
+    if (itemId) {
+      if (!selections[planId].items[itemId]) {
+        selections[planId].items[itemId] = {};
+      }
+      selections[planId].items[itemId][field] = input.value === "remote" ? "remote" : "local";
+    } else {
+      selections[planId].plan[field] = input.value === "remote" ? "remote" : "local";
+    }
+  });
+  return selections;
+}
+
 function setPlanRepositoryRemoteBusy(isBusy) {
   [
     els.planRepositorySaveRemoteButton,
@@ -6409,7 +6499,8 @@ function setPlanRepositoryRemoteBusy(isBusy) {
     els.planRepositoryPullButton,
     els.planRepositoryKeepLocalButton,
     els.planRepositoryUseRemoteButton,
-    els.planRepositoryCopyRemoteButton
+    els.planRepositoryCopyRemoteButton,
+    els.planRepositoryMergeFieldsButton
   ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);

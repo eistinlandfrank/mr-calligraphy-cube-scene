@@ -566,6 +566,49 @@ async function runRemoteRepositoryChecks() {
   assert(usedRemotePlan.items[0].title === "采用远端策略任务", "采用远端应覆盖本机冲突计划项。");
   assert(usedRemote.status.lastRemoteDirection === "pull", "采用远端应记录最近同步方向为拉取。");
 
+  const fieldMergeBaselinePush = await window.MRAppState.pushPlanRepositoryToRemote();
+  assert(fieldMergeBaselinePush.ok, "字段合并前应能推送当前计划作为远端基线。");
+  remotePackage = createRemoteConflictPackageFromPush(capturedPushPackage, {
+    packageId: "remote-field-merge-conflict-package",
+    planId: "plan-remote-pulled",
+    title: "字段合并远端计划标题",
+    itemTitle: "字段合并远端任务标题",
+    itemDetail: "字段合并时采用的远端任务说明。"
+  });
+  await delay(5);
+  const fieldMergePlan = window.MRAppState.getPlan("plan-remote-pulled");
+  const fieldMergeItemId = fieldMergePlan.items[0].id;
+  const fieldMergeUpdate = window.MRAppState.updatePlanItem("plan-remote-pulled", fieldMergeItemId, {
+    title: "字段合并保留本机任务标题",
+    detail: "字段合并时本机说明应被远端说明替换。"
+  });
+  assert(fieldMergeUpdate.ok, "字段合并前应能制造本机计划修改。");
+  const fieldMergeConflict = await window.MRAppState.pullPlanRepositoryFromRemote();
+  assert(!fieldMergeConflict.ok && fieldMergeConflict.conflict, "字段合并前应检测到远端冲突。");
+  assert(fieldMergeConflict.status.lastSyncConflicts[0].fieldDiffs.plan.some((field) => field.field === "title"), "冲突详情应包含计划标题字段差异。");
+  assert(fieldMergeConflict.status.lastSyncConflicts[0].fieldDiffs.items[0].fields.some((field) => field.field === "detail"), "冲突详情应包含任务说明字段差异。");
+  const mergedFields = window.MRAppState.resolvePlanRepositoryConflict("merge-fields", {
+    selections: {
+      "plan-remote-pulled": {
+        plan: { title: "remote" },
+        items: {
+          [fieldMergeItemId]: {
+            title: "local",
+            detail: "remote"
+          }
+        }
+      }
+    }
+  });
+  assert(mergedFields.ok && mergedFields.mergedCount === 1, "字段级合并应能处理计划冲突。");
+  assert(!mergedFields.status.lastSyncConflictCount, "字段级合并后应清理冲突状态。");
+  assert(mergedFields.status.pendingAutoSync, "字段级合并后的本机结果应进入待同步队列。");
+  assert(mergedFields.remoteFieldCount >= 2, "字段级合并应记录采用远端字段数量。");
+  const mergedPlan = window.MRAppState.getPlan("plan-remote-pulled");
+  assert(mergedPlan.title === "字段合并远端计划标题", "字段级合并应采用远端计划标题。");
+  assert(mergedPlan.items[0].title === "字段合并保留本机任务标题", "字段级合并应保留本机任务标题。");
+  assert(mergedPlan.items[0].detail === "字段合并时采用的远端任务说明。", "字段级合并应采用远端任务说明。");
+
   const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
   assert(persistedPlanState.sessions.at(-1).scoreEvidence.label === "基础练习评分", "评分证据应持久化到 localStorage。");
   assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
@@ -579,20 +622,22 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.mode === "remote-api", "计划 repository 应持久化远端 API 模式。");
   assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
   assert(persistedPlanState.planRepository.lastImportedPlanCount === remotePackage.plans.length, "计划 repository 导入状态应持久化到 localStorage。");
-  assert(persistedPlanState.planRepository.lastPackageId === "remote-use-remote-conflict-package", "计划 repository 应持久化最近采用的远端 packageId。");
-  assert(persistedPlanState.planRepository.lastRemoteDirection === "pull", "计划 repository 应记录最近远端同步方向。");
+  assert(persistedPlanState.planRepository.lastPackageId === "remote-accepted-package", "字段合并前的远端基线推送 packageId 应持久化。");
+  assert(persistedPlanState.planRepository.lastRemoteDirection === "push", "字段级合并后最近远端方向应保留为基线推送。");
   assert(persistedPlanState.planRepository.lastRemotePlanCount === remotePackage.plans.length, "计划 repository 应记录最近远端计划数量。");
-  assert(!persistedPlanState.planRepository.pendingAutoSync, "计划 repository 冲突解决后不应继续显示待同步。");
+  assert(persistedPlanState.planRepository.pendingAutoSync, "字段级合并后的混合版本应继续显示待同步。");
+  assert(persistedPlanState.planRepository.pendingReason.includes("字段级合并"), "字段级合并待同步原因应持久化。");
   assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
-  assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "自动同步成功后应清理冲突计数。");
+  assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "字段级合并后应清理冲突计数。");
   const persistedRemotePlan = persistedPlanState.plans.find((plan) => plan.id === "plan-remote-pulled");
-  assert(persistedRemotePlan.title === "采用远端策略计划", "采用远端后的计划标题应持久化到 localStorage。");
-  assert(persistedRemotePlan.items[0].title === "采用远端策略任务", "采用远端后的计划项应持久化到 localStorage。");
+  assert(persistedRemotePlan.title === "字段合并远端计划标题", "字段级合并后的计划标题应持久化到 localStorage。");
+  assert(persistedRemotePlan.items[0].title === "字段合并保留本机任务标题", "字段级合并后的本机任务标题应持久化到 localStorage。");
+  assert(persistedRemotePlan.items[0].detail === "字段合并时采用的远端任务说明。", "字段级合并后的远端任务说明应持久化到 localStorage。");
 
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：同字作品对比、作品集检索、学习档案同步仓库、分享页、报告原生 PDF、报告教师批注、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runHistoryRepositoryMockServerChecks(fetchApi) {

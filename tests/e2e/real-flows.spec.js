@@ -512,6 +512,38 @@ test("front plan repository applies remote changes when resolving a conflict", a
   expect(conflict.planRequests.some((item) => item.method === "GET" && item.authorization === "Bearer use-remote-token")).toBe(true);
 });
 
+test("front plan repository merges selected conflict fields", async ({ page }) => {
+  const conflict = await setupPlanRepositoryConflict(page, {
+    endpointPath: "/e2e-plan-repository-field-merge",
+    token: "field-merge-token",
+    remoteTitle: "浏览器字段合并远端计划",
+    remoteItemTitle: "浏览器字段合并远端任务",
+    remoteItemDetail: "浏览器字段合并应采用这条远端任务说明。",
+    localItemTitle: "浏览器字段合并保留本机任务",
+    localItemDetail: "浏览器字段合并时这条本机说明应被替换。"
+  });
+
+  const conflictPanel = page.locator("#planRepositoryConflictPanel");
+  await expect(conflictPanel).toContainText("计划标题");
+  await expect(conflictPanel).toContainText("浏览器字段合并保留本机任务");
+  await expect(conflictPanel).toContainText("浏览器字段合并远端任务");
+
+  await conflictPanel.locator('input[data-plan-merge-item-id=""][data-plan-merge-field="title"][value="remote"]').check();
+  await conflictPanel.locator('input[data-plan-merge-field="detail"][value="remote"]').check();
+  await page.locator("#planRepositoryMergeFieldsButton").click();
+
+  await expect(conflictPanel).toBeHidden();
+  await expect(page.locator("#planRepositorySummary")).toContainText("字段级合并");
+
+  const learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const plan = learningState.plans.find((item) => item.id === conflict.seedPlan.id);
+  expect(plan.title).toBe("浏览器字段合并远端计划");
+  expect(plan.items[0].title).toBe("浏览器字段合并保留本机任务");
+  expect(plan.items[0].detail).toBe("浏览器字段合并应采用这条远端任务说明。");
+  expect(learningState.planRepository.lastSyncConflictCount).toBe(0);
+  expect(learningState.planRepository.pendingAutoSync).toBe(true);
+});
+
 test("front plan repository shows real remote failure feedback", async ({ page }) => {
   const requests = [];
   const routes = [

@@ -6846,9 +6846,71 @@ body.is-model-view .notice-panel {
   line-height: 1.35;
 }
 
+.plan-repository-merge-fields {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.plan-repository-merge-choice {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 6px;
+  border: 1px solid rgba(247, 215, 139, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 250, 241, 0.04);
+}
+
+.plan-repository-merge-choice legend {
+  padding: 0 3px;
+  color: rgba(255, 244, 203, 0.9);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.plan-repository-merge-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.plan-repository-merge-options label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 5px;
+  align-items: center;
+  min-width: 0;
+  padding: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.12);
+  cursor: pointer;
+}
+
+.plan-repository-merge-options input {
+  grid-row: span 2;
+  margin: 0;
+}
+
+.plan-repository-merge-options strong {
+  min-width: 0;
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.plan-repository-merge-options span {
+  display: block;
+  min-width: 0;
+  color: rgba(255, 250, 241, 0.68);
+  font-size: 9px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
 .plan-repository-conflict-actions {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px;
 }
 

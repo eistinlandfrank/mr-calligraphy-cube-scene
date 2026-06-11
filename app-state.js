@@ -12,6 +12,16 @@
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包，但仍不包含账号权限、服务端分页、教师批注或公开作品墙。";
+  const PLAN_REPOSITORY_MERGE_PLAN_FIELDS = ["title", "summary"];
+  const PLAN_REPOSITORY_MERGE_ITEM_FIELDS = ["title", "detail", "dueAt", "remindAt", "reviewAction"];
+  const PLAN_REPOSITORY_MERGE_LABELS = {
+    title: "标题",
+    summary: "摘要",
+    detail: "说明",
+    dueAt: "到期",
+    remindAt: "提醒",
+    reviewAction: "复盘动作"
+  };
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -584,7 +594,48 @@
       localTitle: String(record.localTitle || record.title || id).slice(0, 120),
       remoteTitle: String(record.remoteTitle || record.title || id).slice(0, 120),
       localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
-      remoteUpdatedAt: normalizePlanDate(record.remoteUpdatedAt)
+      remoteUpdatedAt: normalizePlanDate(record.remoteUpdatedAt),
+      fieldDiffs: normalizePlanRepositoryFieldDiffs(record.fieldDiffs)
+    };
+  }
+
+  function normalizePlanRepositoryFieldDiffs(fieldDiffs = {}) {
+    const source = fieldDiffs && typeof fieldDiffs === "object" ? fieldDiffs : {};
+    return {
+      plan: Array.isArray(source.plan)
+        ? source.plan.map(normalizePlanRepositoryFieldDiff).filter(Boolean).slice(0, PLAN_REPOSITORY_MERGE_PLAN_FIELDS.length)
+        : [],
+      items: Array.isArray(source.items)
+        ? source.items.map(normalizePlanRepositoryItemDiff).filter(Boolean).slice(0, MAX_PLAN_ITEMS)
+        : []
+    };
+  }
+
+  function normalizePlanRepositoryFieldDiff(record) {
+    if (!record || typeof record !== "object") return null;
+    const field = String(record.field || "").trim();
+    if (!field) return null;
+    return {
+      field,
+      label: String(record.label || PLAN_REPOSITORY_MERGE_LABELS[field] || field).slice(0, 32),
+      localValue: formatPlanRepositoryMergeValue(record.localValue),
+      remoteValue: formatPlanRepositoryMergeValue(record.remoteValue)
+    };
+  }
+
+  function normalizePlanRepositoryItemDiff(record) {
+    if (!record || typeof record !== "object") return null;
+    const itemId = String(record.itemId || record.id || "").trim();
+    if (!itemId) return null;
+    const fields = Array.isArray(record.fields)
+      ? record.fields.map(normalizePlanRepositoryFieldDiff).filter(Boolean).slice(0, PLAN_REPOSITORY_MERGE_ITEM_FIELDS.length)
+      : [];
+    if (!fields.length) return null;
+    return {
+      itemId,
+      localTitle: String(record.localTitle || itemId).slice(0, 80),
+      remoteTitle: String(record.remoteTitle || itemId).slice(0, 80),
+      fields
     };
   }
 
@@ -4864,11 +4915,63 @@
               remoteTitle: incoming.title || incoming.id,
               localUpdatedAt: local.updatedAt,
               remoteUpdatedAt: incoming.updatedAt,
+              fieldDiffs: getPlanRepositoryFieldDiffs(local, incoming),
               remotePlan: incoming
             }
           : null;
       })
       .filter(Boolean);
+  }
+
+  function getPlanRepositoryFieldDiffs(localPlan, remotePlan) {
+    const local = normalizePlan(localPlan);
+    const remote = normalizePlan(remotePlan);
+    if (!local || !remote) {
+      return { plan: [], items: [] };
+    }
+    const plan = PLAN_REPOSITORY_MERGE_PLAN_FIELDS
+      .filter((field) => stablePlanStringify(local[field] || "") !== stablePlanStringify(remote[field] || ""))
+      .map((field) => createPlanRepositoryFieldDiff(field, local[field], remote[field]));
+    const localItems = new Map(local.items.map((item) => [item.id, item]));
+    const items = remote.items
+      .map((remoteItem) => {
+        const localItem = localItems.get(remoteItem.id);
+        if (!localItem) return null;
+        const fields = PLAN_REPOSITORY_MERGE_ITEM_FIELDS
+          .filter((field) => stablePlanStringify(localItem[field] || "") !== stablePlanStringify(remoteItem[field] || ""))
+          .map((field) => createPlanRepositoryFieldDiff(field, localItem[field], remoteItem[field]));
+        if (!fields.length) return null;
+        return {
+          itemId: remoteItem.id,
+          localTitle: localItem.title,
+          remoteTitle: remoteItem.title,
+          fields
+        };
+      })
+      .filter(Boolean);
+    return { plan, items };
+  }
+
+  function createPlanRepositoryFieldDiff(field, localValue, remoteValue) {
+    return {
+      field,
+      label: PLAN_REPOSITORY_MERGE_LABELS[field] || field,
+      localValue: formatPlanRepositoryMergeValue(localValue),
+      remoteValue: formatPlanRepositoryMergeValue(remoteValue)
+    };
+  }
+
+  function formatPlanRepositoryMergeValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return "空";
+    }
+    if (Array.isArray(value)) {
+      return value.length ? value.map(formatPlanRepositoryMergeValue).join("、").slice(0, 160) : "空";
+    }
+    if (value && typeof value === "object") {
+      return stablePlanStringify(value).slice(0, 160);
+    }
+    return String(value).slice(0, 160);
   }
 
   function getPlanRepositoryConflictRecords(conflicts = []) {
@@ -5319,7 +5422,7 @@
     }
   }
 
-  function resolvePlanRepositoryConflict(strategy = "keep-local") {
+  function resolvePlanRepositoryConflict(strategy = "keep-local", options = {}) {
     const repository = normalizePlanRepository(state.planRepository);
     if (!repository.lastSyncConflictCount) {
       return {
@@ -5338,12 +5441,144 @@
     if (strategy === "copy-remote") {
       return copyRemotePlanRepositoryConflicts(repository);
     }
+    if (strategy === "merge-fields") {
+      return mergePlanRepositoryConflictFields(repository, options);
+    }
 
     return {
       ok: false,
       status: getPlanRepositoryStatus(),
       message: "未知的计划冲突处理方式。"
     };
+  }
+
+  function mergePlanRepositoryConflictFields(repository, options = {}) {
+    const remotePlans = repository.lastSyncConflictPlans
+      .map(normalizePlan)
+      .filter(Boolean);
+    if (!remotePlans.length) {
+      return {
+        ok: false,
+        status: getPlanRepositoryStatus(),
+        message: "没有可用于字段合并的远端冲突计划，请重新拉取远端计划。"
+      };
+    }
+
+    const selections = normalizePlanRepositoryMergeSelections(options.selections || options);
+    const remoteById = new Map(remotePlans.map((plan) => [plan.id, plan]));
+    const now = new Date().toISOString();
+    let mergedPlanCount = 0;
+    let remoteFieldCount = 0;
+    let localFieldCount = 0;
+
+    repository.lastSyncConflictPlanIds.forEach((planId) => {
+      const localIndex = state.plans.findIndex((plan) => plan.id === planId);
+      const remotePlan = remoteById.get(planId);
+      if (localIndex < 0 || !remotePlan) return;
+
+      const localPlan = normalizePlan(state.plans[localIndex]);
+      if (!localPlan) return;
+      const nextPlan = clone(localPlan);
+      const planSelection = selections[planId] || {};
+      const planFields = planSelection.plan || {};
+
+      PLAN_REPOSITORY_MERGE_PLAN_FIELDS.forEach((field) => {
+        if (stablePlanStringify(localPlan[field] || "") === stablePlanStringify(remotePlan[field] || "")) {
+          return;
+        }
+        const choice = planFields[field] === "remote" ? "remote" : "local";
+        if (choice === "remote") {
+          nextPlan[field] = remotePlan[field];
+          remoteFieldCount += 1;
+        } else {
+          localFieldCount += 1;
+        }
+      });
+
+      const remoteItems = new Map(remotePlan.items.map((item) => [item.id, item]));
+      const itemSelections = planSelection.items || {};
+      nextPlan.items = nextPlan.items.map((item) => {
+        const remoteItem = remoteItems.get(item.id);
+        if (!remoteItem) return item;
+        const itemChoice = itemSelections[item.id] || {};
+        const nextItem = { ...item };
+        PLAN_REPOSITORY_MERGE_ITEM_FIELDS.forEach((field) => {
+          if (stablePlanStringify(item[field] || "") === stablePlanStringify(remoteItem[field] || "")) {
+            return;
+          }
+          const choice = itemChoice[field] === "remote" ? "remote" : "local";
+          if (choice === "remote") {
+            nextItem[field] = remoteItem[field];
+            remoteFieldCount += 1;
+          } else {
+            localFieldCount += 1;
+          }
+        });
+        return nextItem;
+      });
+
+      nextPlan.updatedAt = now;
+      state.plans[localIndex] = normalizePlan(nextPlan);
+      mergedPlanCount += 1;
+    });
+
+    if (!mergedPlanCount) {
+      return {
+        ok: false,
+        status: getPlanRepositoryStatus(),
+        message: "没有找到可合并的本机冲突计划。"
+      };
+    }
+
+    state.planRepository = normalizePlanRepository({
+      ...clearPlanRepositoryConflictFields(repository),
+      pendingAutoSync: true,
+      pendingSince: repository.pendingSince || now,
+      pendingReason: `字段级合并 ${mergedPlanCount} 份计划冲突`,
+      pendingPlanCount: state.plans.length,
+      lastCheckedAt: now,
+      lastRemoteStatus: `已按字段合并 ${mergedPlanCount} 份计划冲突，远端字段 ${remoteFieldCount} 项，本机字段 ${localFieldCount} 项。`,
+      lastError: ""
+    });
+    addEvent("plan-repository-conflict-merge", `字段级合并计划冲突：${mergedPlanCount} 份`);
+    saveState();
+    return {
+      ok: true,
+      mergedCount: mergedPlanCount,
+      remoteFieldCount,
+      localFieldCount,
+      plans: state.plans.filter((plan) => repository.lastSyncConflictPlanIds.includes(plan.id)).map(decoratePlan),
+      status: getPlanRepositoryStatus(),
+      message: `已按字段合并 ${mergedPlanCount} 份计划冲突，远端字段 ${remoteFieldCount} 项、本机字段 ${localFieldCount} 项已保留，结果已加入待同步队列。`
+    };
+  }
+
+  function normalizePlanRepositoryMergeSelections(input = {}) {
+    const source = input && typeof input === "object" ? input : {};
+    return Object.entries(source).reduce((result, [planId, planChoice]) => {
+      if (!planChoice || typeof planChoice !== "object") return result;
+      const normalizedPlanId = String(planId || "").trim();
+      if (!normalizedPlanId) return result;
+      const planFields = planChoice.plan && typeof planChoice.plan === "object" ? planChoice.plan : {};
+      const items = planChoice.items && typeof planChoice.items === "object" ? planChoice.items : {};
+      result[normalizedPlanId] = {
+        plan: normalizePlanRepositoryMergeFieldChoices(planFields, PLAN_REPOSITORY_MERGE_PLAN_FIELDS),
+        items: Object.entries(items).reduce((itemResult, [itemId, itemChoice]) => {
+          const normalizedItemId = String(itemId || "").trim();
+          if (!normalizedItemId || !itemChoice || typeof itemChoice !== "object") return itemResult;
+          itemResult[normalizedItemId] = normalizePlanRepositoryMergeFieldChoices(itemChoice, PLAN_REPOSITORY_MERGE_ITEM_FIELDS);
+          return itemResult;
+        }, {})
+      };
+      return result;
+    }, {});
+  }
+
+  function normalizePlanRepositoryMergeFieldChoices(source = {}, allowedFields = []) {
+    return allowedFields.reduce((result, field) => {
+      result[field] = source[field] === "remote" ? "remote" : "local";
+      return result;
+    }, {});
   }
 
   function copyRemotePlanRepositoryConflicts(repository) {

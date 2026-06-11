@@ -163,7 +163,7 @@ node scripts/control-inventory.js --check
 2. 统一主后台和写实后台对象 schema，减少两套编辑器分叉。
 3. 补 Playwright 可运行环境并扩展端到端用例。
 4. 开始账号化 repository 设计，把计划、档案、作品、报告从本机状态抽象成可替换数据源。
-5. 将学习计划冲突解决从计划级继续细化到计划项字段级合并。
+5. 学习计划冲突解决已补字段级合并第一版，后续继续补计划项增删、依赖链和服务端合并审计。
 
 ## 9. 2026-06-12 远端发布回执真实化
 
@@ -394,7 +394,7 @@ git diff --check
 
 仍待补：
 
-- 字段级冲突合并 UI，目前仍是计划级处理。
+- 字段级冲突合并 UI 第一版已完成，后续还需要更复杂的计划项增删、依赖调整和服务端合并审计。
 
 验收：
 
@@ -428,7 +428,7 @@ git diff --check
 
 仍待补：
 
-- 字段级冲突合并 UI。
+- 字段级冲突合并 UI 第一版已完成，后续还需要覆盖计划项增删、依赖调整和服务端合并审计。
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支的浏览器级提示验收。
 
 验收：
@@ -474,7 +474,7 @@ git diff --check
 仍待补：
 
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支的浏览器级提示验收。
-- 字段级冲突合并 UI，目前仍是计划级处理。
+- 字段级冲突合并 UI 第一版已完成，后续还需要覆盖计划项增删、依赖调整和服务端合并审计。
 
 验收：
 
@@ -482,7 +482,7 @@ git diff --check
 - `npm run test:e2e -- --grep "front plan repository"`
 - `node --check scripts/learning-state-check.js && node scripts/learning-state-check.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `npm run test:e2e`，当前 8 条 Playwright 用例全部通过。
+- `npm run test:e2e`，当前 9 条 Playwright 用例全部通过。
 - `git diff --check`
 
 提交：
@@ -512,7 +512,7 @@ git diff --check
 仍待补：
 
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支。
-- 字段级冲突合并 UI，目前仍是计划级处理。
+- 字段级冲突合并 UI 第一版已完成，后续还需要覆盖计划项增删、依赖调整和服务端合并审计。
 
 验收：
 
@@ -551,7 +551,7 @@ git diff --check
 
 - 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收。
 - 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支。
-- 字段级冲突合并 UI，目前仍是计划级处理。
+- 字段级冲突合并 UI 第一版已完成，后续还需要覆盖计划项增删、依赖调整和服务端合并审计。
 
 验收：
 
@@ -564,3 +564,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案失败路径验收`
+
+## 22. 2026-06-12 计划仓库字段级冲突合并
+
+本次把计划同步冲突从“整份计划三选一”推进到字段级合并第一版，用户可以在同一个冲突面板里逐项选择本机或远端字段。
+
+完成内容：
+
+- `app-state.js` 在计划冲突检测时生成 `fieldDiffs`，记录计划标题/摘要和计划项标题、说明、到期、提醒、复盘动作等字段差异。
+- `MRAppState.resolvePlanRepositoryConflict("merge-fields", { selections })` 新增字段级合并策略，会按选择把远端字段写入本机计划，同时保留被选择的本机字段。
+- 前台冲突面板新增本机/远端字段单选控件和“应用字段合并”按钮。
+- 字段合并完成后会清理冲突状态，但把混合后的本机计划加入待同步队列，避免假装远端已经更新。
+- `scripts/smoke-test.js` 已检查 `planRepositoryMergeFieldsButton`，防止入口回归。
+
+真实化说明：
+
+- 数据来源：真实本机计划、真实远端冲突计划包、冲突字段摘要和前台用户选择。
+- 写入状态：合并结果写入 `mr-calligraphy-learning-state-v1.plans`，并更新 `planRepository.pendingAutoSync`、`pendingReason`、`lastRemoteStatus` 和冲突清理字段。
+- 成功反馈：页面冲突面板关闭，计划仓库摘要显示字段级合并进入待同步队列。
+- 失败反馈：没有冲突或没有远端冲突计划时返回明确错误，不会清空本机计划。
+- 刷新后复现方式：字段合并后的计划和待同步状态都保存在 `mr-calligraphy-learning-state-v1`。
+
+仍待补：
+
+- 计划项新增/删除、依赖链调整、周期规则和服务端版本的字段级合并审计。
+- 计划仓库推送包被服务端 422 结构拒绝、网络中断等更多失败分支。
+- 学习档案远端网络中断、分页返回和同 ID 差异冲突的浏览器级提示验收。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "merges selected conflict fields"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划字段级冲突合并`
