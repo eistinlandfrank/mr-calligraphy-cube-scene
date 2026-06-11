@@ -5,6 +5,7 @@
   const MAX_HISTORY_TRASH = 12;
   const MAX_ARTWORK_TAGS = 8;
   const MAX_PLAN_ITEMS = 12;
+  const MAX_STAGE_RECORDS = 80;
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -13,6 +14,24 @@
     artwork: { label: "复盘作品", targetStep: 5 },
     report: { label: "查看报告", targetStep: 8 },
     custom: { label: "自定义复盘", targetStep: 3 }
+  };
+
+  const LEARNING_STAGE_CONFIG = {
+    strokeBreakdown: {
+      label: "笔画拆解",
+      targetStep: 4,
+      summary: "已把当前任务推进到笔画拆解阶段，后续复盘会保留这个本机阶段记录。"
+    },
+    creation: {
+      label: "创作实践",
+      targetStep: 5,
+      summary: "已把当前任务推进到创作实践阶段，保存作品时会继续关联当前任务。"
+    },
+    review: {
+      label: "复习巩固",
+      targetStep: 4,
+      summary: "已记录一次复习巩固，建议围绕最近薄弱维度回到笔画拆解。"
+    }
   };
 
   const MODE_CONFIG = {
@@ -205,6 +224,7 @@
       artworks: Array.isArray(source?.artworks) ? source.artworks.map(normalizeArtwork).filter(Boolean) : [],
       reports: Array.isArray(source?.reports) ? source.reports.map(normalizeReport).filter(Boolean) : [],
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
+      stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
       updatedAt: typeof source?.updatedAt === "string" ? source.updatedAt : new Date().toISOString()
@@ -472,6 +492,36 @@
     };
   }
 
+  function normalizeStageRecord(record) {
+    if (!record || typeof record !== "object") return null;
+    const stage = LEARNING_STAGE_CONFIG[record.stage] ? record.stage : "";
+    if (!stage) return null;
+    const mode = MODE_CONFIG[record.mode] ? record.mode : "single";
+    const glyph = String(record.glyph || MODE_CONFIG[mode].glyph);
+    const copybook = String(record.copybook || MODE_CONFIG[mode].copybook);
+    const task = getTaskById(record.taskId) || findTaskForState(mode, glyph, copybook);
+    const targetStep = normalizeInteger(record.targetStep ?? record.sceneIndex, LEARNING_STAGE_CONFIG[stage].targetStep, 0, 9);
+    const createdAt = Number.isFinite(Date.parse(record.createdAt))
+      ? String(record.createdAt)
+      : new Date().toISOString();
+    const completedAt = Number.isFinite(Date.parse(record.completedAt))
+      ? String(record.completedAt)
+      : createdAt;
+    return {
+      id: String(record.id || makeId("stage")),
+      stage,
+      label: String(record.label || LEARNING_STAGE_CONFIG[stage].label),
+      taskId: task?.id || null,
+      mode,
+      glyph,
+      copybook,
+      targetStep,
+      createdAt,
+      completedAt,
+      note: String(record.note || LEARNING_STAGE_CONFIG[stage].summary).slice(0, 160)
+    };
+  }
+
   function normalizeLecture(record, context = {}) {
     const status = ["idle", "playing", "complete"].includes(record?.status)
       ? record.status
@@ -717,11 +767,14 @@
     const activeSessions = sessions.filter((session) => session.status === "active" && !session.endedAt);
     const artworks = state.artworks.filter((artwork) => getArtworkTaskId(artwork) === task.id);
     const reports = state.reports.filter((report) => getReportTaskId(report) === task.id);
+    const stageProgress = getStageProgress(task.id);
+    const hasStage = (stage) => stageProgress.stages.some((item) => item.stage === stage && item.done);
     const scores = [
       ...practicedSessions.map((session) => session.score),
       ...artworks.map((artwork) => artwork.score)
     ].filter((score) => Number.isFinite(score) && score > 0);
     const latestAt = [
+      ...stageProgress.records.map((record) => record.completedAt || record.createdAt),
       ...sessions.map((session) => session.endedAt || session.snapshotAt || session.startedAt),
       ...artworks.map((artwork) => artwork.createdAt),
       ...reports.map((report) => report.createdAt)
@@ -731,19 +784,27 @@
       .sort((a, b) => Date.parse(b) - Date.parse(a))[0] || null;
 
     const milestones = [
+      { id: "strokeBreakdown", label: "笔画拆解", done: hasStage("strokeBreakdown") },
       { id: "practice", label: "完成练习", done: practicedSessions.length > 0 },
-      { id: "artwork", label: "保存作品", done: savedSessions.length > 0 || artworks.length > 0 },
-      { id: "report", label: "导出报告", done: reports.length > 0 }
+      { id: "creation", label: "进入创作", done: hasStage("creation") || artworks.length > 0 },
+      { id: "report", label: "导出报告", done: reports.length > 0 },
+      { id: "review", label: "复习巩固", done: hasStage("review") }
     ];
     const doneCount = milestones.filter((item) => item.done).length;
     const status = reports.length > 0
       ? "reported"
+      : hasStage("review")
+        ? "reviewed"
       : artworks.length > 0 || savedSessions.length > 0
         ? "artwork"
+        : hasStage("creation")
+          ? "creating"
         : activeSessions.length > 0
           ? "active"
-          : practicedSessions.length > 0
-            ? "practiced"
+        : practicedSessions.length > 0
+          ? "practiced"
+          : hasStage("strokeBreakdown")
+            ? "breakdown"
             : "todo";
 
     return {
@@ -752,6 +813,8 @@
       statusLabel: getTaskProgressLabel(status),
       percent: Math.round((doneCount / milestones.length) * 100),
       milestones: clone(milestones),
+      stageCount: stageProgress.records.length,
+      latestStage: stageProgress.latestRecord,
       sessionCount: sessions.length,
       practicedSessionCount: practicedSessions.length,
       savedSessionCount: savedSessions.length,
@@ -766,13 +829,44 @@
   function getTaskProgressLabel(status) {
     const labels = {
       reported: "已报告",
+      reviewed: "已复习",
       artwork: "已保存",
+      creating: "创作中",
       active: "练习中",
       practiced: "已练习",
+      breakdown: "拆解中",
       todo: "待开始",
       unknown: "未知任务"
     };
     return labels[status] || labels.unknown;
+  }
+
+  function getStageProgress(taskId = getCurrentTask()?.id) {
+    const task = getTaskById(String(taskId || "")) || getCurrentTask();
+    const records = state.stageRecords
+      .filter((record) => !task?.id || record.taskId === task.id)
+      .sort((a, b) => Date.parse(a.completedAt || a.createdAt) - Date.parse(b.completedAt || b.createdAt));
+    const stages = Object.entries(LEARNING_STAGE_CONFIG).map(([stage, config]) => {
+      const stageRecords = records.filter((record) => record.stage === stage);
+      const latestRecord = stageRecords[stageRecords.length - 1] || null;
+      return {
+        stage,
+        label: config.label,
+        done: stageRecords.length > 0,
+        count: stageRecords.length,
+        latestAt: latestRecord?.completedAt || latestRecord?.createdAt || null
+      };
+    });
+    const done = stages.filter((stage) => stage.done).length;
+    return {
+      taskId: task?.id || null,
+      total: stages.length,
+      done,
+      percent: Math.round((done / Math.max(1, stages.length)) * 100),
+      stages,
+      records: clone(records),
+      latestRecord: clone(records[records.length - 1] || null)
+    };
   }
 
   function getSessionTaskId(session) {
@@ -1042,7 +1136,9 @@
     const latestArtwork = state.artworks[state.artworks.length - 1] || null;
     const latestReport = state.reports[state.reports.length - 1] || null;
     const latestPlan = getLatestPlan();
-    const recordCount = sessions.length + state.artworks.length + state.reports.length;
+    const stageProgress = getStageProgress(currentTask?.id);
+    const latestStageRecord = state.stageRecords[state.stageRecords.length - 1] || null;
+    const recordCount = sessions.length + state.artworks.length + state.reports.length + state.stageRecords.length;
     const practicedGlyphs = new Set([
       ...practicedSessions.map((session) => session.glyph),
       ...state.artworks.map((artwork) => artwork.glyph)
@@ -1059,7 +1155,8 @@
     const latestRecordAt = [
       ...sessions.map((session) => session.endedAt || session.snapshotAt || session.startedAt),
       ...state.artworks.map((artwork) => artwork.createdAt),
-      ...state.reports.map((report) => report.createdAt)
+      ...state.reports.map((report) => report.createdAt),
+      ...state.stageRecords.map((record) => record.completedAt || record.createdAt)
     ]
       .filter(Boolean)
       .filter((date) => Number.isFinite(Date.parse(date)))
@@ -1087,12 +1184,14 @@
       trainingMode: state.trainingMode,
       lectureStatus: state.lectureStatus,
       lectureProgress,
+      stageProgress,
       sessionCount: sessions.length,
       practicedSessionCount: practicedSessions.length,
       savedSessionCount: savedSessions.length,
       artworkCount: state.artworks.length,
       reportCount: state.reports.length,
       planCount: state.plans.length,
+      stageRecordCount: state.stageRecords.length,
       recordCount,
       scoreCount: scores.length,
       practicedGlyphCount: practicedGlyphs.size,
@@ -1104,6 +1203,7 @@
       latestArtwork,
       latestReport,
       latestPlan,
+      latestStageRecord,
       latestFeedback
     };
   }
@@ -1189,6 +1289,67 @@
 
   function playLecture() {
     return advanceLecture();
+  }
+
+  function recordLearningStage(stage, options = {}) {
+    const config = LEARNING_STAGE_CONFIG[stage];
+    if (!config) {
+      return { ok: false, message: "未知学习阶段。" };
+    }
+
+    const task = getCurrentTask();
+    const now = new Date().toISOString();
+    const targetStep = normalizeInteger(options.targetStep ?? options.target, config.targetStep, 0, 9);
+    const record = {
+      id: makeId("stage"),
+      stage,
+      label: config.label,
+      taskId: task?.id || null,
+      mode: state.activeMode,
+      glyph: state.selectedGlyph,
+      copybook: state.selectedCopybook,
+      targetStep,
+      createdAt: now,
+      completedAt: now,
+      note: String(options.note || config.summary).slice(0, 160)
+    };
+
+    state.stageRecords.push(record);
+    if (state.stageRecords.length > MAX_STAGE_RECORDS) {
+      state.stageRecords = state.stageRecords.slice(-MAX_STAGE_RECORDS);
+    }
+    if (stage === "strokeBreakdown" || stage === "review") {
+      state.activeStrokeIndex = normalizeInteger(options.strokeIndex, state.activeStrokeIndex, 0, STROKES.length - 1);
+    }
+    addEvent("stage", `${config.label}：${task?.taskTitle || state.selectedGlyph}`);
+    saveState();
+
+    const stageProgress = getStageProgress(task?.id);
+    return {
+      ok: true,
+      stageRecord: clone(record),
+      stageProgress,
+      detail: getStageActionDetail(record, stageProgress, task),
+      target: targetStep,
+      message: `${config.label}已写入本机学习阶段记录：${stageProgress.done}/${stageProgress.total} 个阶段已完成。`
+    };
+  }
+
+  function getStageActionDetail(record, stageProgress, task = getCurrentTask()) {
+    const config = LEARNING_STAGE_CONFIG[record.stage] || LEARNING_STAGE_CONFIG.strokeBreakdown;
+    return {
+      type: "stage",
+      eyebrow: "本机阶段记录",
+      title: config.label,
+      status: `阶段 ${stageProgress.done}/${stageProgress.total}`,
+      summary: record.note || config.summary,
+      metrics: [
+        { label: "任务", value: task?.taskTitle || `${record.glyph}字学习` },
+        { label: "字帖", value: record.copybook },
+        { label: "阶段进度", value: `${stageProgress.percent}%` }
+      ],
+      items: stageProgress.stages.map((stage) => `${stage.done ? "已完成" : "待完成"}：${stage.label}`)
+    };
   }
 
   function startLecture() {
@@ -3693,6 +3854,7 @@
     getModeConfig,
     getTaskLibrary,
     getTaskProgress,
+    getStageProgress,
     getLectureProgress,
     getPlan,
     getPlanHistory,
@@ -3721,6 +3883,7 @@
     selectDailyGlyph,
     rotateCopybook,
     selectTask,
+    recordLearningStage,
     startLecture,
     advanceLecture,
     playLecture,

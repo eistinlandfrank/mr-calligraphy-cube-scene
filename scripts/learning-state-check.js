@@ -61,6 +61,7 @@ const storage = new Map([
         })
       ],
       plans: [],
+      stageRecords: [],
       historyTrash: [],
       events: []
     })
@@ -151,6 +152,31 @@ assert(
 );
 assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应伪造多报告趋势。");
 
+const breakdownStage = window.MRAppState.recordLearningStage("strokeBreakdown", { target: 4 });
+assert(breakdownStage.ok, "进入笔画拆解应写入本机阶段记录。");
+assert(breakdownStage.stageRecord.stage === "strokeBreakdown", "笔画拆解阶段记录应保留阶段类型。");
+assert(breakdownStage.detail?.type === "stage", "阶段动作应返回可渲染的真实详情。");
+
+const creationStage = window.MRAppState.recordLearningStage("creation", { target: 5 });
+assert(creationStage.ok, "进入创作应写入本机阶段记录。");
+
+const reviewStage = window.MRAppState.recordLearningStage("review", { target: 4 });
+assert(reviewStage.ok, "复习巩固应写入本机阶段记录。");
+
+const stageProgress = window.MRAppState.getStageProgress();
+assert(stageProgress.done === 3 && stageProgress.total === 3, "三类学习阶段应全部计入阶段进度。");
+assert(stageProgress.records.length === 3, "阶段进度应返回本机阶段记录。");
+
+const taskProgress = window.MRAppState.getTaskProgress();
+assert(taskProgress.stageCount === 3, "任务进度应统计阶段记录数量。");
+assert(taskProgress.milestones.some((item) => item.id === "strokeBreakdown" && item.done), "任务里程碑应包含笔画拆解。");
+assert(taskProgress.milestones.some((item) => item.id === "creation" && item.done), "任务里程碑应包含创作实践。");
+assert(taskProgress.milestones.some((item) => item.id === "review" && item.done), "任务里程碑应包含复习巩固。");
+
+const statsWithStages = window.MRAppState.getStats();
+assert(statsWithStages.stageRecordCount === 3, "学习统计应返回阶段记录数量。");
+assert(statsWithStages.stageProgress.done === 3, "学习统计应返回当前任务阶段进度。");
+
 const planResult = window.MRAppState.createPlan();
 assert(planResult.ok, "学习计划应能基于本机状态生成。");
 const latestPlan = window.MRAppState.getLatestPlan();
@@ -200,10 +226,11 @@ const addPlanResult = window.MRAppState.addPlanItem(latestPlan.id, {
 assert(addPlanResult.ok && addPlanResult.plan.items.length === 6, "学习计划应可新增带排期的自定义任务。");
 
 const persistedPlanState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+assert(persistedPlanState.stageRecords.length === 3, "阶段记录应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[0].reviewDoneAt, "计划复盘状态应持久化到 localStorage。");
 assert(persistedPlanState.plans[0].items[1].snoozedUntil, "计划顺延状态应持久化到 localStorage。");
 
-console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势和学习计划提醒复盘已生成。");
+console.log("学习状态检查通过：同字作品对比、作品集检索、分享页、报告对比导出、多报告趋势、学习阶段记录和学习计划提醒复盘已生成。");
 
 function createSession(id, glyph, score, time, metrics = {}) {
   return {

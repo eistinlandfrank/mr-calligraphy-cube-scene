@@ -423,10 +423,10 @@ const LEARNING_ACTION_FEATURES = {
   开始临摹: ["real-local", "创建或继续本机 PracticeSession。"],
   示范模式: ["real-local", "切换当前练习会话的训练模式。"],
   对比模式: ["real-local", "切换当前练习会话的训练模式。"],
-  进入笔画拆解: ["demo-content", "进入静态笔画拆解场景，并保留当前本机学习状态。"],
+  进入笔画拆解: ["real-local", "写入本机笔画拆解阶段记录，并跳转到拆解步骤。"],
   上一个笔画: ["real-local", "切换本机当前笔画索引。"],
   下一个笔画: ["real-local", "切换本机当前笔画索引。"],
-  进入创作: ["demo-content", "进入预置创作场景；保存作品时仍会写入本机记录。"],
+  进入创作: ["real-local", "写入本机创作实践阶段记录，并跳转到创作步骤。"],
   切换行书: ["real-local", "切换作品风格，保存作品时会写入本机记录。"],
   保存作品: ["real-local", "保存真实书写轨迹和截图到本机作品记录。"],
   查看学习记录: ["real-local", "打开本机学习档案面板。"],
@@ -440,7 +440,7 @@ const LEARNING_ACTION_FEATURES = {
   制定计划: ["real-local", "按当前任务和本机评分生成可勾选计划。"],
   导出报告: ["real-export", "用本机练习和作品记录生成 HTML 报告文件。"],
   查看详情: ["real-local", "读取本机记录摘要。"],
-  复习巩固: ["demo-content", "进入预置笔画拆解场景进行复习。"],
+  复习巩固: ["real-local", "写入本机复习巩固阶段记录，并跳转到薄弱笔画复习。"],
   返回首页: ["real-local", "回到 MR 书法教练首页。"]
 };
 const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v3-wood";
@@ -3795,7 +3795,10 @@ function renderLearningStateSummary() {
 
   if (els.learningStateSummary) {
     const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
-    els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.taskTitle} / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${trainingLabel}模式`;
+    const stageLabel = stats.stageProgress?.done
+      ? `阶段${stats.stageProgress.done}/${stats.stageProgress.total}`
+      : "阶段待开始";
+    els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.taskTitle} / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${stageLabel} / ${trainingLabel}模式`;
   }
 }
 
@@ -3889,7 +3892,7 @@ function renderTaskProgress(progress = {}) {
   rail.appendChild(fill);
 
   const detail = document.createElement("p");
-  detail.textContent = `${progress.sessionCount || 0} 次练习 / ${progress.artworkCount || 0} 幅作品 / ${progress.reportCount || 0} 份报告`;
+  detail.textContent = `${progress.stageCount || 0} 条阶段记录 / ${progress.sessionCount || 0} 次练习 / ${progress.artworkCount || 0} 幅作品 / ${progress.reportCount || 0} 份报告`;
 
   const milestones = document.createElement("div");
   milestones.className = "task-milestones";
@@ -7899,11 +7902,20 @@ function runLearningAction(action) {
     case "下一个笔画":
       return appState.moveStroke(1);
     case "进入笔画拆解":
-      return { message: "已进入笔画拆解，当前任务状态会继续保留。", target: action.target };
+      return appState.recordLearningStage("strokeBreakdown", {
+        target: action.target,
+        note: "已进入笔画拆解，当前任务状态和拆解阶段会保存到本机。"
+      });
     case "复习巩固":
-      return { message: "已进入笔画拆解复习，继续围绕当前任务补强薄弱笔画。", target: action.target };
+      return appState.recordLearningStage("review", {
+        target: action.target,
+        note: "已进入复习巩固，继续围绕当前任务补强薄弱笔画。"
+      });
     case "进入创作":
-      return { message: "已完成笔画拆解，进入创作实践。", target: action.target };
+      return appState.recordLearningStage("creation", {
+        target: action.target,
+        note: "已完成笔画拆解并进入创作实践，后续保存作品会继续关联本机任务。"
+      });
     case "切换行书":
       return appState.setArtworkStyle("行书");
     case "保存作品":
