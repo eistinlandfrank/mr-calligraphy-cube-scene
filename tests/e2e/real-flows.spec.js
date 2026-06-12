@@ -1344,7 +1344,8 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
             remoteVersion: "e2e-project-repository-v1",
             message: "项目仓库远端 E2E 回执。",
             sceneCount: body.summary.sceneCount,
-            modelCount: body.summary.importedModels
+            modelCount: body.summary.importedModels,
+            receiptDigest: `${String(packageIndex).repeat(64)}`.slice(0, 64)
           }
         })
       });
@@ -1436,6 +1437,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
 
   await page.locator("#projectRepositoryPushRemote").click();
   await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("项目仓库远端 E2E 已接收");
+  await expect(page.locator("#projectRepositoryReceiptStatus")).toContainText("已保存 1 条项目仓库回执");
   await expect(page.locator("#projectRepositoryReceiptList")).toContainText("e2e-project-repository-1");
 
   expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.authorization === "Bearer project-e2e-token")).toBe(true);
@@ -1456,7 +1458,25 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectRepositoryState.lastRemoteVersion).toBe("e2e-project-repository-v1");
   expect(projectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
   expect(projectRepositoryState.receipts[0].sourcePackageId).toBe(firstProjectRepositoryPut.body.packageId);
+  expect(projectRepositoryState.receipts[0].direction).toBe("push");
+  expect(projectRepositoryState.receipts[0].receiptDigest).toBe("1".repeat(64));
   expect(projectRepositoryState.versions[0].packageId).toBe("e2e-project-repository-1");
+
+  const projectRepositoryReceiptAudit = await page.evaluate(() => window.MRProjectArchive.getProjectRepositoryReceiptAuditExport());
+  expect(projectRepositoryReceiptAudit.ok).toBe(true);
+  expect(projectRepositoryReceiptAudit.html).toContain("MR 书法项目仓库回执审计");
+  expect(projectRepositoryReceiptAudit.html).toContain("e2e-project-repository-1");
+  expect(projectRepositoryReceiptAudit.html).toContain("1".repeat(64));
+
+  const projectRepositoryReceiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectRepositoryReceiptExport").click();
+  const projectRepositoryReceiptDownload = await projectRepositoryReceiptDownloadPromise;
+  expect(projectRepositoryReceiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-repository-receipts-.*\.html$/);
+  const projectRepositoryReceiptPath = await projectRepositoryReceiptDownload.path();
+  const projectRepositoryReceiptHtml = fs.readFileSync(projectRepositoryReceiptPath, "utf8");
+  expect(projectRepositoryReceiptHtml).toContain("MR 书法项目仓库回执审计");
+  expect(projectRepositoryReceiptHtml).toContain("e2e-project-repository-1");
+  expect(projectRepositoryReceiptHtml).toContain("1".repeat(64));
 
   const secondObjectLabel = `${objectLabel} 版本二`;
   await page.locator("#mainNewObjectName").fill(secondObjectLabel);

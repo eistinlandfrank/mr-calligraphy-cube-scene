@@ -194,7 +194,14 @@
                   <option value="">尚无远端版本</option>
                 </select>
               </label>
-              <ul id="projectRepositoryReceiptList" class="main-project-repository-list project-repository-receipt-list" aria-live="polite"></ul>
+              <div id="projectRepositoryReceiptAudit" class="project-repository-receipt" aria-label="项目仓库回执审计">
+                <div class="project-repository-receipt-head">
+                  <strong>项目仓库回执审计</strong>
+                  <button data-feature-state="real-export" id="projectRepositoryReceiptExport" type="button">导出回执</button>
+                </div>
+                <p id="projectRepositoryReceiptStatus" class="project-repository-receipt-status">暂无远端项目仓库回执。</p>
+                <ul id="projectRepositoryReceiptList" class="main-project-repository-list project-repository-receipt-list" aria-live="polite"></ul>
+              </div>
             </details>
           </div>
           <div class="main-project-audit" aria-label="项目档案恢复审计">

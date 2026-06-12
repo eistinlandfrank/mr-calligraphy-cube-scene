@@ -1253,3 +1253,38 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划仓库回执审计`
+
+## 40. 2026-06-12 新增项目仓库回执审计导出
+
+本次把主后台项目仓库远端 receipt 从“只在列表里显示最近回执”推进为“可导出的本机审计证据”。
+
+完成内容：
+
+- `MRProjectArchive` 新增 `getProjectRepositoryReceiptAudit()`、`getProjectRepositoryReceiptAuditExport()` 和 `downloadProjectRepositoryReceiptAudit()`。
+- 远端项目仓库检查、推送、拉取会读取 `receipt/latestReceipt`，并记录方向、endpoint 和本机收到时间。
+- 主后台远端项目仓库面板新增“项目仓库回执审计”状态区和“导出回执”按钮。
+- “导出回执”会下载 `mr-calligraphy-project-repository-receipts-*.html`。
+- smoke test 和 E2E 都覆盖回执保存、摘要展示、导出 API 和下载文件内容。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 API 返回的 `mr-calligraphy-project-repository-receipt-v1`。
+- 写入状态：`mr-calligraphy-project-repository-remote-v1.receipts`。
+- 成功反馈：页面显示回执数量、远端 packageId 和摘要短码。
+- 失败反馈：暂无回执时按钮禁用，导出 API 返回明确失败。
+- 刷新后复现方式：审计列表随本机项目仓库远端状态持久化。
+
+仍待补：
+
+- 当前是本机审计导出，不是账号化项目空间、生产签名证书链或服务端不可篡改审计。
+
+验收：
+
+- `node --check project-archive.js && node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库回执审计导出`

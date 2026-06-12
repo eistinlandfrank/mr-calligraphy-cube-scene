@@ -108,7 +108,7 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 前台生成学习计划后点击“导出日历”，确认下载 `.ics` 文件，并读取内容确认包含 `VCALENDAR`、`VEVENT`、`VALARM` 和计划任务标题。
 - 前台计划仓库配置远端 endpoint/token 后，用浏览器路由模拟计划仓库 API，覆盖推送计划包、Bearer token、远端 packageId、回执持久化、回执审计 HTML 导出和冲突拉取不覆盖本机计划。
 - 主后台新增基础物体后检查发布差异，点击“发布到前台”，确认草稿、发布快照、差异归零和前台读取来源都是真实本机状态。
-- 主后台项目仓库配置远端 endpoint/token 后，用浏览器路由模拟项目仓库 API，覆盖检查远端、推送项目仓库包、拉取远端包进入导入预览、Bearer token、`archive` / `projectSchema` / `repository` / `packageDigest` 和回执持久化。
+- 主后台项目仓库配置远端 endpoint/token 后，用浏览器路由模拟项目仓库 API，覆盖检查远端、推送项目仓库包、拉取远端包进入导入预览、Bearer token、`archive` / `projectSchema` / `repository` / `packageDigest`、回执持久化和回执审计 HTML 下载。
 - 主后台配置远端发布 endpoint/token 后，用浏览器路由模拟远端 API，覆盖检查远端、提交审核、通过审核、推送发布包、显示回执、写入 `mr-calligraphy-remote-publish-v1` 和导出回执审计 HTML。
 - 写实后台连续发布、修改坐标、检查发布差异并回滚旧版本，确认 `mr-calligraphy-realistic-published-v1` 会记录发布版本列表和回滚动作。
 

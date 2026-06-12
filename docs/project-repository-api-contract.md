@@ -92,7 +92,7 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`packageId`、`remoteVersion`、`packageDigest`、`repositoryDigest`、`receipt`、`selectedVersion` 和 `versions`，并把最近检查、最近推送、服务端 packageId、摘要、回执列表和远端版本列表写回 `mr-calligraphy-project-repository-remote-v1`。
+前端 adapter 当前会读取 `message`、`packageId`、`remoteVersion`、`packageDigest`、`repositoryDigest`、`receipt/latestReceipt`、`selectedVersion` 和 `versions`，并把最近检查、最近推送、服务端 packageId、摘要、回执列表和远端版本列表写回 `mr-calligraphy-project-repository-remote-v1`。写入的最近 12 条回执会补充同步方向、endpoint 和本机收到时间，主后台可导出 `mr-calligraphy-project-repository-receipts-*.html` 审计页。
 
 如果 `GET` 响应包含 `package`，主后台“拉取预览”会校验 `package.kind`、`version`、`archive` 和 `packageDigest`，再把 `package.archive` 送入现有项目档案导入差异预览。主后台会用远端返回的 `versions` 渲染“远端版本”选择框；用户选择旧版本后，拉取请求会带上 `?packageId=<remote-package-id>`。该操作不会直接覆盖本机数据，用户仍需在预览中勾选恢复范围并点击“恢复所选”。
 
@@ -165,7 +165,8 @@ npm run test:e2e -- --grep "main admin publishes"
 3. 填入 mock server endpoint 和可选 token。
 4. 点击“检查远端”，应看到真实 GET 结果。
 5. 点击“推送仓库包”，应看到服务端回执和最近 packageId。
-6. 连续推送两次仓库包后，“远端版本”应出现两个版本。
-7. 选择旧版本并点击“拉取预览”，应看到旧版本远端包进入项目档案导入预览，仍需用户确认恢复范围。
+6. “项目仓库回执审计”应显示已保存回执数量；点击“导出回执”应下载 HTML 审计页，包含 packageId、摘要和 receiptDigest。
+7. 连续推送两次仓库包后，“远端版本”应出现两个版本。
+8. 选择旧版本并点击“拉取预览”，应看到旧版本远端包进入项目档案导入预览，仍需用户确认恢复范围。
 
-当前 E2E 会断言 PUT body 是 `mr-calligraphy-project-repository-package-v1`，包含 `archive`、`projectSchema`、`repository` 和 64 位 `packageDigest`，并确认 Bearer token、远端回执、版本列表和带 `packageId` 的 GET 历史版本拉取预览会写入本机状态。
+当前 E2E 会断言 PUT body 是 `mr-calligraphy-project-repository-package-v1`，包含 `archive`、`projectSchema`、`repository` 和 64 位 `packageDigest`，并确认 Bearer token、远端回执、回执审计 HTML 下载、版本列表和带 `packageId` 的 GET 历史版本拉取预览会写入本机状态。

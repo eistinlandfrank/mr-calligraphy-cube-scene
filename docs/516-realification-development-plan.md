@@ -6668,3 +6668,59 @@
 提交：
 
 - 中文 commit message：`新增计划仓库回执审计`
+
+### 2026-06-12：新增项目仓库回执审计导出
+
+功能名：主后台项目仓库远端回执审计与导出。
+
+涉及文件：
+
+- `main-admin.html`
+- `project-archive.js`
+- `style.css`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/project-repository-api-contract.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- `MRProjectArchive` 新增项目仓库回执审计 API：`getProjectRepositoryReceiptAudit()`、`getProjectRepositoryReceiptAuditExport()` 和 `downloadProjectRepositoryReceiptAudit()`。
+- 远端项目仓库检查、推送和拉取会读取 `receipt/latestReceipt`，并为回执补充方向、endpoint 和本机收到时间。
+- 主后台“远端项目仓库 API”面板新增“项目仓库回执审计”状态、最近回执列表和“导出回执”按钮。
+- “导出回执”会下载 `mr-calligraphy-project-repository-receipts-*.html`，包含 packageId、sourcePackageId、packageDigest、repositoryDigest、receiptDigest、场景数、模型数和原始 JSON。
+- smoke test 和 Playwright 已覆盖新 DOM 标记、回执持久化、导出 API 和浏览器下载。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 API 返回的 `mr-calligraphy-project-repository-receipt-v1`，以及本机记录的 endpoint / 同步方向 / 收到时间。
+- 写入状态：`mr-calligraphy-project-repository-remote-v1.receipts`。
+- 成功反馈：主后台显示已保存回执数量、最近 packageId、摘要短码和模型数量。
+- 失败反馈：暂无回执时导出按钮禁用，直接调用导出 API 会返回明确失败。
+- 刷新后复现方式：回执列表保存在本机项目仓库远端状态，刷新后仍可显示和导出。
+
+已知限制：
+
+- 当前是本机浏览器审计列表，不是账号化项目空间、生产签名证书链、服务端不可篡改日志或多人协作 CMS。
+
+验收方式：
+
+- 手工验收：启动 `node scripts/project-repository-mock-server.js`，在主后台项目仓库面板配置 endpoint/token 后推送项目仓库包，回执审计区应出现最近回执；点击“导出回执”应下载 HTML。
+- 浏览器验收：`npm run test:e2e -- --grep "main admin publishes"` 验证主后台回执区和下载文件。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库回执审计导出`

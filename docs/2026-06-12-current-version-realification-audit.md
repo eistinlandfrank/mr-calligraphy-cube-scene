@@ -278,6 +278,7 @@ npm run test:e2e
 - 追加报告仓库签名回执审计记录：远端 `receipt/latestReceipt` 会写入 `lastSignedReceipt` 和最近 12 条 `signedReceipts`，站内报告可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证签名、摘要、方向和导出文件内容。
 - 追加学习计划日历提醒导出记录：`MRAppState.getPlanCalendarExport()` 会从真实计划项生成 `.ics`，前台“导出日历”可下载包含 `VCALENDAR`、`VEVENT` 和 `VALARM` 的文件；数据层和 E2E 已验证结构与下载内容。
 - 追加计划仓库回执审计记录：远端计划 API 返回的 `receipt/latestReceipt` 会写入 `lastReceipt` 和最近 12 条 `receipts`，前台计划远端同步区可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证摘要、方向、endpoint 和导出文件内容。
+- 追加项目仓库回执审计记录：远端项目仓库 API 返回的 `receipt/latestReceipt` 会写入 `mr-calligraphy-project-repository-remote-v1.receipts`，主后台远端项目仓库面板可查看回执摘要并导出 HTML 审计页；E2E 已验证 packageId、sourcePackageId、receiptDigest、方向和下载文件内容。
 
 已知限制：
 

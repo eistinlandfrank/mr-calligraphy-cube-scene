@@ -143,7 +143,7 @@
         ? mergeProjectRepositoryVersions(source.versions)
         : [],
       receipts: Array.isArray(source.receipts)
-        ? source.receipts.map((receipt) => normalizeProjectRepositoryReceipt(receipt)).filter(Boolean).slice(0, PROJECT_REPOSITORY_MAX_RECEIPTS)
+        ? mergeProjectRepositoryReceipts(source.receipts)
         : []
     };
   }
@@ -157,9 +157,10 @@
     const repositoryDigest = normalizeSha256(source.repositoryDigest || receipt.repositoryDigest);
     const acceptedAt = normalizeIsoDate(source.acceptedAt || receipt.acceptedAt);
     const pushedAt = normalizeIsoDate(source.pushedAt);
+    const receivedAt = normalizeIsoDate(source.receivedAt || receipt.receivedAt);
     const message = String(source.message || receipt.message || "").slice(0, 220);
     const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest);
-    if (!packageId && !sourcePackageId && !packageDigest && !repositoryDigest && !acceptedAt && !pushedAt && !message) {
+    if (!packageId && !sourcePackageId && !packageDigest && !repositoryDigest && !acceptedAt && !pushedAt && !receivedAt && !message) {
       return null;
     }
 
@@ -173,12 +174,44 @@
       remoteVersion: String(source.remoteVersion || receipt.remoteVersion || "").slice(0, 120),
       acceptedAt,
       pushedAt,
+      receivedAt,
+      endpoint: String(source.endpoint || receipt.endpoint || "").trim().slice(0, 240),
+      direction: ["check", "push", "pull"].includes(source.direction || receipt.direction) ? (source.direction || receipt.direction) : "",
       message,
       sceneCount: Math.max(0, Math.round(Number(source.sceneCount ?? receipt.sceneCount ?? 0))),
       modelCount: Math.max(0, Math.round(Number(source.modelCount ?? receipt.modelCount ?? 0))),
       receiptKind: String(source.receiptKind || receipt.receiptKind || "").slice(0, 120),
       receipt: cloneJsonValue(receipt)
     };
+  }
+
+  function mergeProjectRepositoryReceipts(primary = [], secondary = []) {
+    const merged = [];
+    const seen = new Set();
+    [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])].forEach((item) => {
+      const receipt = normalizeProjectRepositoryReceipt(item);
+      if (!receipt) {
+        return;
+      }
+      const key = getProjectRepositoryReceiptKey(receipt);
+      if (!key || seen.has(key)) {
+        return;
+      }
+      seen.add(key);
+      merged.push(receipt);
+    });
+    return merged.slice(0, PROJECT_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function appendProjectRepositoryReceipt(receipts, receipt) {
+    return mergeProjectRepositoryReceipts(receipt ? [receipt] : [], receipts);
+  }
+
+  function getProjectRepositoryReceiptKey(receipt) {
+    if (!receipt) return "";
+    return receipt.receiptDigest ||
+      receipt.id ||
+      [receipt.packageId, receipt.sourcePackageId, receipt.repositoryDigest, receipt.packageDigest, receipt.acceptedAt, receipt.pushedAt].filter(Boolean).join(":");
   }
 
   function normalizeProjectRepositoryVersion(record = {}) {
@@ -325,6 +358,161 @@
     };
   }
 
+  function getProjectRepositoryReceiptFromPayload(payload, context = {}) {
+    const candidate = payload?.receipt || payload?.latestReceipt || payload?.lastReceipt || null;
+    if (!candidate || typeof candidate !== "object") {
+      return null;
+    }
+    return normalizeProjectRepositoryReceipt({
+      ...candidate,
+      receipt: candidate,
+      direction: context.direction || candidate.direction || "",
+      endpoint: context.endpoint || candidate.endpoint || "",
+      receivedAt: context.receivedAt || candidate.receivedAt || "",
+      message: context.message || candidate.message || payload?.message || "",
+      packageId: context.packageId || payload?.packageId || candidate.packageId || "",
+      sourcePackageId: context.sourcePackageId || candidate.sourcePackageId || "",
+      packageDigest: context.packageDigest || payload?.packageDigest || candidate.packageDigest || "",
+      repositoryDigest: context.repositoryDigest || payload?.repositoryDigest || candidate.repositoryDigest || "",
+      remoteVersion: context.remoteVersion || payload?.remoteVersion || candidate.remoteVersion || ""
+    });
+  }
+
+  function getProjectRepositoryReceiptAudit() {
+    const state = readProjectRepositoryRemoteState();
+    const receipts = state.receipts;
+    const latestReceipt = receipts[0] || null;
+    return {
+      ok: true,
+      kind: "mr-calligraphy-project-repository-receipt-audit-v1",
+      version: PROJECT_REPOSITORY_REMOTE_VERSION,
+      endpoint: state.endpoint,
+      hasToken: Boolean(state.token),
+      total: receipts.length,
+      latestReceipt: latestReceipt ? cloneJsonValue(latestReceipt) : null,
+      receipts: cloneJsonValue(receipts),
+      boundary: PROJECT_REPOSITORY_REMOTE_BOUNDARY,
+      message: receipts.length
+        ? `已保存 ${receipts.length} 条项目仓库回执，最近一次：${formatArchiveDate(latestReceipt.receivedAt || latestReceipt.acceptedAt || latestReceipt.pushedAt)}。`
+        : "暂无远端项目仓库回执。"
+    };
+  }
+
+  function getProjectRepositoryReceiptAuditExport(options = {}) {
+    const audit = getProjectRepositoryReceiptAudit();
+    if (!audit.total) {
+      return {
+        ok: false,
+        message: "暂无可导出的项目仓库回执。"
+      };
+    }
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-project-repository-receipts-${formatTimestamp(new Date(exportedAt))}.html`;
+    const html = createProjectRepositoryReceiptAuditHtml(audit, exportedAt);
+    return {
+      ok: true,
+      filename,
+      mimeType: "text/html;charset=utf-8",
+      html,
+      byteLength: html.length,
+      receiptCount: audit.total,
+      message: `已生成 ${audit.total} 条项目仓库回执审计报告：${filename}。`
+    };
+  }
+
+  function downloadProjectRepositoryReceiptAudit(options = {}) {
+    const result = getProjectRepositoryReceiptAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      receiptCount: result.receiptCount,
+      message: `已下载项目仓库回执审计报告：${result.filename}。`
+    };
+  }
+
+  function createProjectRepositoryReceiptAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const digest = receipt.repositoryDigest || receipt.packageDigest || "";
+      const raw = JSON.stringify(receipt, null, 2);
+      return `<article class="card">
+        <div class="item-head">
+          <h2>${escapeHtml(receipt.packageId || receipt.sourcePackageId || "项目仓库回执")}</h2>
+          <span>${escapeHtml(formatProjectRepositoryReceiptDirection(receipt.direction))}</span>
+        </div>
+        <p>${escapeHtml(receipt.message || "远端已接收项目仓库包。")}</p>
+        <ul>
+          <li>本机包：${escapeHtml(receipt.sourcePackageId || "未知")}</li>
+          <li>远端版本：${escapeHtml(receipt.remoteVersion || "未知")}</li>
+          <li>场景 / 模型：${escapeHtml(receipt.sceneCount || 0)} / ${escapeHtml(receipt.modelCount || 0)}</li>
+          <li>服务端接收：${escapeHtml(formatArchiveDate(receipt.acceptedAt || receipt.pushedAt || receipt.receivedAt))}</li>
+          <li>本机记录：${escapeHtml(formatArchiveDate(receipt.receivedAt || receipt.pushedAt || receipt.acceptedAt))}</li>
+          <li>Endpoint：${escapeHtml(receipt.endpoint || audit.endpoint || "未知")}</li>
+          <li>Package Digest：${escapeHtml(receipt.packageDigest || "未知")}</li>
+          <li>Repository Digest：${escapeHtml(digest || "未知")}</li>
+          <li>Receipt Digest：${escapeHtml(receipt.receiptDigest || "未返回")}</li>
+        </ul>
+        <details>
+          <summary>查看原始回执 JSON</summary>
+          <pre>${escapeHtml(raw)}</pre>
+        </details>
+      </article>`;
+    }).join("");
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法项目仓库回执审计</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 44px; }
+    header { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(28px, 5vw, 46px); line-height: 1.08; }
+    h2 { font-size: 16px; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 12px; margin-top: 22px; }
+    .card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+    .item-head span { color: var(--jade); font-weight: 800; white-space: nowrap; }
+    ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted); overflow-wrap: anywhere; }
+    summary { color: var(--jade); cursor: pointer; font-weight: 800; }
+    pre { max-height: 260px; margin: 8px 0 0; padding: 10px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #f7faf8; color: #24332f; white-space: pre-wrap; word-break: break-word; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { .item-head { display: grid; } .item-head span { white-space: normal; } }
+    @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">MR Calligraphy Project Repository Receipt Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
+      <h1>项目仓库回执审计</h1>
+      <p class="muted">本报告来自当前浏览器保存的远端项目仓库回执；它证明前端 adapter 曾向配置 endpoint 发送或读取项目仓库包，但不替代生产账号、权限和不可篡改审计。</p>
+    </header>
+    <section class="stack">${rows}</section>
+    <footer>Endpoint：${escapeHtml(audit.endpoint || "未配置")}。回执数量：${escapeHtml(audit.total)}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatProjectRepositoryReceiptDirection(direction) {
+    return {
+      check: "远端检查",
+      push: "仓库推送",
+      pull: "仓库拉取"
+    }[direction] || "远端回执";
+  }
+
   function validateProjectRepositoryEndpoint(endpoint) {
     try {
       const base = typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
@@ -396,20 +584,29 @@
         headers: createProjectRepositoryRemoteHeaders(state)
       });
       const payload = await parseProjectRepositoryResponse(response, "远端项目仓库 API 检查失败。");
+      const checkedAt = new Date().toISOString();
       const message = String(payload.message || "远端项目仓库 API 可访问。").slice(0, 220);
       const remoteVersions = mergeProjectRepositoryVersions(getProjectRepositoryVersionsFromPayload(payload), state.versions);
+      const receipt = getProjectRepositoryReceiptFromPayload(payload, {
+        direction: "check",
+        endpoint: state.endpoint,
+        receivedAt: checkedAt,
+        message
+      });
       writeProjectRepositoryRemoteState({
         ...state,
-        lastCheckedAt: new Date().toISOString(),
+        lastCheckedAt: checkedAt,
         lastRemoteVersion: String(payload.remoteVersion || payload.contract?.kind || "").slice(0, 120),
         lastRemoteStatus: message,
         lastError: "",
-        versions: remoteVersions
+        versions: remoteVersions,
+        receipts: appendProjectRepositoryReceipt(state.receipts, receipt)
       });
       return {
         ok: true,
         message,
         remote: payload,
+        receipt,
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
@@ -448,6 +645,9 @@
         remoteVersion: payload.remoteVersion || payload.receipt?.remoteVersion || "",
         acceptedAt: payload.acceptedAt || payload.receipt?.acceptedAt || pushedAt,
         pushedAt,
+        receivedAt: pushedAt,
+        endpoint: state.endpoint,
+        direction: "push",
         sceneCount: repositoryPackage.summary.sceneCount,
         modelCount: repositoryPackage.summary.importedModels
       });
@@ -476,7 +676,7 @@
         lastRepositoryDigest: receipt?.repositoryDigest || repositoryPackage.packageDigest,
         lastError: "",
         versions: remoteVersions,
-        receipts: receipt ? [receipt, ...state.receipts] : state.receipts
+        receipts: appendProjectRepositoryReceipt(state.receipts, receipt)
       });
       return {
         ok: true,
@@ -516,6 +716,17 @@
       const message = String(payload.message || `远端项目仓库包已拉取：${repositoryPackage.packageId || "未命名包"}。`).slice(0, 220);
       const pulledVersion = createProjectRepositoryVersionFromPackage(repositoryPackage, payload);
       const remoteVersions = mergeProjectRepositoryVersions(getProjectRepositoryVersionsFromPayload(payload, pulledVersion), state.versions);
+      const receipt = getProjectRepositoryReceiptFromPayload(payload, {
+        direction: "pull",
+        endpoint: state.endpoint,
+        receivedAt: checkedAt,
+        message,
+        packageId: payload.packageId || pulledVersion?.packageId || repositoryPackage.packageId,
+        sourcePackageId: pulledVersion?.sourcePackageId || repositoryPackage.packageId,
+        packageDigest: payload.packageDigest || repositoryPackage.packageDigest,
+        repositoryDigest: payload.repositoryDigest || pulledVersion?.repositoryDigest || repositoryPackage.repositoryDigest,
+        remoteVersion: payload.remoteVersion || pulledVersion?.remoteVersion || repositoryPackage.remoteVersion || ""
+      });
       writeProjectRepositoryRemoteState({
         ...state,
         lastCheckedAt: checkedAt,
@@ -525,7 +736,8 @@
         lastPackageDigest: normalizeSha256(repositoryPackage.packageDigest) || state.lastPackageDigest,
         lastRepositoryDigest: normalizeSha256(payload.repositoryDigest || repositoryPackage.repositoryDigest) || state.lastRepositoryDigest,
         lastError: "",
-        versions: remoteVersions
+        versions: remoteVersions,
+        receipts: appendProjectRepositoryReceipt(state.receipts, receipt)
       });
       return {
         ok: true,
@@ -534,6 +746,7 @@
         package: repositoryPackage,
         archive,
         preview,
+        receipt,
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
@@ -2818,7 +3031,9 @@
     const repositoryRemotePushButton = document.getElementById("projectRepositoryPushRemote");
     const repositoryRemotePullButton = document.getElementById("projectRepositoryPullRemote");
     const repositoryVersionSelect = document.getElementById("projectRepositoryVersionSelect");
+    const repositoryReceiptStatus = document.getElementById("projectRepositoryReceiptStatus");
     const repositoryReceiptList = document.getElementById("projectRepositoryReceiptList");
+    const repositoryReceiptExportButton = document.getElementById("projectRepositoryReceiptExport");
 
     if (!exportButton && !importFile) return;
 
@@ -2843,6 +3058,7 @@
       if (repositoryRemoteCheckButton) repositoryRemoteCheckButton.disabled = isBusy;
       if (repositoryRemotePushButton) repositoryRemotePushButton.disabled = isBusy;
       if (repositoryRemotePullButton) repositoryRemotePullButton.disabled = isBusy;
+      if (repositoryReceiptExportButton) repositoryReceiptExportButton.disabled = isBusy || !getProjectRepositoryReceiptAudit().total;
       if (repositoryVersionSelect) repositoryVersionSelect.disabled = isBusy || !repositoryVersionSelect.options.length || !repositoryVersionSelect.value;
       if (cancelButton) cancelButton.disabled = isBusy || !pendingArchive;
       updateRestoreSelectionState();
@@ -3106,13 +3322,21 @@
     };
 
     const renderProjectRepositoryRemoteStatus = () => {
-      if (!repositoryRemoteStatus && !repositoryReceiptList) {
+      if (!repositoryRemoteStatus && !repositoryReceiptList && !repositoryReceiptStatus) {
         return;
       }
       const remote = getProjectRepositoryRemoteStatus();
+      const receiptAudit = getProjectRepositoryReceiptAudit();
       if (repositoryRemoteStatus) {
         repositoryRemoteStatus.textContent = `${remote.message} 边界：${remote.boundary}`;
         repositoryRemoteStatus.dataset.remoteTone = remote.tone === "ready" ? "ready" : remote.tone === "warning" ? "warning" : "idle";
+      }
+      if (repositoryReceiptStatus) {
+        repositoryReceiptStatus.textContent = receiptAudit.message;
+        repositoryReceiptStatus.dataset.receiptTone = receiptAudit.total ? "ready" : "idle";
+      }
+      if (repositoryReceiptExportButton) {
+        repositoryReceiptExportButton.disabled = isBusy || receiptAudit.total === 0;
       }
       if (repositoryVersionSelect) {
         const currentValue = repositoryVersionSelect.value;
@@ -3549,7 +3773,7 @@
       }
     });
 
-    repositoryRemotePullButton?.addEventListener("click", async () => {
+      repositoryRemotePullButton?.addEventListener("click", async () => {
       clearPendingImport();
       setBusy(true);
       setStatus("正在拉取远端项目仓库包并生成恢复预览。", "loading");
@@ -3571,6 +3795,12 @@
         setBusy(false);
         renderProjectRepositoryRemoteStatus();
       }
+    });
+
+    repositoryReceiptExportButton?.addEventListener("click", () => {
+      const result = downloadProjectRepositoryReceiptAudit();
+      setStatus(result.message || "项目仓库回执审计导出失败。", result.ok ? "success" : "error");
+      renderProjectRepositoryRemoteStatus();
     });
 
     confirmButton?.addEventListener("click", async () => {
@@ -3640,6 +3870,9 @@
     configureProjectRepositoryRemote,
     getProjectRepositoryRemoteConfig,
     getProjectRepositoryRemoteStatus,
+    getProjectRepositoryReceiptAudit,
+    getProjectRepositoryReceiptAuditExport,
+    downloadProjectRepositoryReceiptAudit,
     checkProjectRepositoryRemote,
     pushProjectRepositoryToRemote,
     pullProjectRepositoryFromRemote,
