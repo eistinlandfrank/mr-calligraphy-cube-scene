@@ -821,15 +821,20 @@ body.admin-page .design-panel {
   }
 
   body.admin-page .design-panel {
-    top: auto;
+    top: 292px;
     right: 16px;
     bottom: 16px;
+    left: 16px;
+    max-height: none;
+    overflow-y: auto;
   }
 
   .admin-risk-banner {
     left: 16px;
     top: 108px;
     width: calc(100vw - 32px);
+    max-height: 168px;
+    overflow-y: auto;
     min-width: 0;
     grid-template-columns: 1fr;
   }

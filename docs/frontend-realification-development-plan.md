@@ -2036,3 +2036,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化前台学习详情总结`
+
+## 61. 2026-06-12 真实化移动端视口验收
+
+本次把“移动端是否真的可用”从人工观感检查推进到自动浏览器验收：Playwright 会以 390×844 手机视口依次打开前台、主后台、写实后台和写实演示页，检查核心面板不横向溢出、不相互遮挡，并确认 WebGL / Canvas 画布仍有非空像素输出。
+
+完成内容：
+
+- `tests/e2e/real-flows.spec.js` 新增 `mobile viewports keep core panels usable without overlap` 用例。
+- 新增 `expectNoHorizontalOverflow()`，读取页面真实 `scrollWidth`，防止窄屏出现不可见横向溢出。
+- 新增 `expectBoxInsideViewport()`，检查核心面板的左右边界、顶部和可用高度。
+- 新增 `expectBoxesDoNotOverlap()`，检查前台主面板、后台风险提示和编辑面板之间没有重叠。
+- 移动端验收覆盖 `/`、`/main-admin.html`、`/realistic-admin.html` 和 `/realistic-demo.html` 四个入口。
+- 验收继续复用 `expectCanvasHasVisiblePixels()`，确认前台、主后台、写实后台和写实演示页画布不是空白 DOM。
+- 修复 `realistic-demo.css` 中写实后台移动端布局：权限风险提示限制高度并可滚动，编辑面板从提示下方开始，避免 390px 宽手机视口下遮挡。
+
+真实化说明：
+
+- 数据来源：真实浏览器布局盒、真实页面滚动宽度和真实 canvas 像素采样。
+- 写入状态：不新增业务状态；只调整移动端 CSS 布局，并增加可回归的 E2E 验收。
+- 成功反馈：Playwright 明确通过四个入口的面板边界、面板不重叠和画布非空检查。
+- 失败反馈：如果后续改样式导致后台提示遮住编辑面板，测试会直接指出重叠的选择器。
+- 刷新后复现方式：任意刷新对应页面并缩窄到手机视口，后台面板仍保留完整滚动编辑能力。
+
+仍待补：
+
+- 当前完成 390×844 手机视口核心入口验收；导入模型贴图替换、服务端资产回收、账号权限、多用户协作审计、更多设备矩阵和所有下载触屏路径仍待继续补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "mobile viewports keep core panels usable"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化移动端视口验收`

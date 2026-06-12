@@ -38,6 +38,46 @@ test.beforeEach(async ({ page }) => {
   ]);
 });
 
+test("mobile viewports keep core panels usable without overlap", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expectCanvasHasVisiblePixels(page, "#roomCanvas");
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  await expect(page.locator("#actionFeedback")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectBoxInsideViewport(page, ".scene-heading");
+  await expectBoxInsideViewport(page, ".mr-main-panel");
+  await expectBoxesDoNotOverlap(page, ".scene-heading", ".mr-main-panel", 8);
+
+  await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
+  await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
+  await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectBoxInsideViewport(page, ".main-admin-header");
+  await expectBoxInsideViewport(page, "#mainAdminRiskBanner");
+  await expectBoxInsideViewport(page, ".main-object-panel");
+  await expectBoxesDoNotOverlap(page, ".main-admin-header", "#mainAdminRiskBanner", 4);
+  await expectBoxesDoNotOverlap(page, "#mainAdminRiskBanner", ".main-object-panel", 12);
+
+  await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
+  await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
+  await expect(page.locator("#designObjectSelect")).toBeVisible();
+  await expectNoHorizontalOverflow(page);
+  await expectBoxInsideViewport(page, ".demo-header");
+  await expectBoxInsideViewport(page, "#realisticAdminRiskBanner");
+  await expectBoxInsideViewport(page, ".design-panel");
+  await expectBoxesDoNotOverlap(page, ".demo-header", "#realisticAdminRiskBanner", 4);
+  await expectBoxesDoNotOverlap(page, "#realisticAdminRiskBanner", ".design-panel", 12);
+
+  await page.goto("/realistic-demo.html", { waitUntil: "domcontentloaded" });
+  await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
+  await expectNoHorizontalOverflow(page);
+  await expectBoxInsideViewport(page, ".demo-header");
+  await expectBoxInsideViewport(page, ".demo-panel");
+  await expectBoxesDoNotOverlap(page, ".demo-header", ".demo-panel", 12);
+});
+
 test("front practice saves real strokes and exports a report", async ({ page }) => {
   const historyEndpointPath = "/e2e-history-repository";
   const reportEndpointPath = "/e2e-report-repository";
@@ -2819,6 +2859,47 @@ function createShareRevokeBodyFromUrl(url) {
     packageId: parsed.searchParams.get("packageId") || "",
     publicUrl: parsed.searchParams.get("publicUrl") || ""
   };
+}
+
+async function getElementBox(page, selector) {
+  await expect(page.locator(selector).first()).toBeVisible();
+  const box = await page.locator(selector).first().boundingBox();
+  expect(box, `${selector} should have a layout box`).not.toBeNull();
+  return box;
+}
+
+async function expectNoHorizontalOverflow(page) {
+  const overflow = await page.evaluate(() => {
+    const documentWidth = Math.max(
+      document.documentElement.scrollWidth,
+      document.body?.scrollWidth || 0
+    );
+    return documentWidth - window.innerWidth;
+  });
+  expect(overflow).toBeLessThanOrEqual(2);
+}
+
+async function expectBoxInsideViewport(page, selector) {
+  const box = await getElementBox(page, selector);
+  const viewport = page.viewportSize();
+  expect(viewport, "viewport should be configured").not.toBeNull();
+  expect(box.x, `${selector} left edge should stay in viewport`).toBeGreaterThanOrEqual(-1);
+  expect(box.width, `${selector} should not exceed viewport width`).toBeLessThanOrEqual(viewport.width + 2);
+  expect(box.x + box.width, `${selector} right edge should stay in viewport`).toBeLessThanOrEqual(viewport.width + 2);
+  expect(box.y, `${selector} top edge should stay in viewport`).toBeGreaterThanOrEqual(-1);
+  expect(box.height, `${selector} should keep a usable height`).toBeGreaterThan(24);
+  expect(box.y + Math.min(box.height, viewport.height), `${selector} should start within the visible viewport`).toBeLessThanOrEqual(viewport.height + 2);
+}
+
+async function expectBoxesDoNotOverlap(page, firstSelector, secondSelector, margin = 0) {
+  const firstBox = await getElementBox(page, firstSelector);
+  const secondBox = await getElementBox(page, secondSelector);
+  const separated =
+    firstBox.x + firstBox.width + margin <= secondBox.x ||
+    secondBox.x + secondBox.width + margin <= firstBox.x ||
+    firstBox.y + firstBox.height + margin <= secondBox.y ||
+    secondBox.y + secondBox.height + margin <= firstBox.y;
+  expect(separated, `${firstSelector} should not overlap ${secondSelector}`).toBe(true);
 }
 
 async function expectCanvasHasVisiblePixels(page, selector) {
