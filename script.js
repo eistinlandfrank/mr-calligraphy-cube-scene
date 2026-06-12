@@ -10835,9 +10835,12 @@ function getScoreEvidenceMetrics(scoreEvidence) {
   const evidence = scoreEvidence.evidence;
   return [
     { label: "评分类型", value: scoreEvidence.label || "基础练习评分" },
-    { label: "算法版本", value: scoreEvidence.algorithmVersion || scoreEvidence.kind || "local-heuristic-v2.0.0" },
+    { label: "算法版本", value: scoreEvidence.algorithmVersion || scoreEvidence.kind || "local-heuristic-v2.1.0" },
     { label: "范字来源", value: scoreEvidence.copybook || evidence.copybook || "通用范字" },
     { label: "目标笔画", value: `${evidence.targetStrokeCount || 0}笔` },
+    { label: "笔顺匹配", value: `${evidence.strokeOrderMatchPercent || 0}%` },
+    { label: "笔顺覆盖", value: `${evidence.strokeOrderCoveragePercent || 0}%` },
+    { label: "形态匹配", value: `${evidence.strokeShapeMatchPercent || 0}%` },
     { label: "覆盖范围", value: `${evidence.coveragePercent || 0}%` },
     { label: "重心偏移", value: `${evidence.centerOffsetPercent || 0}%` },
     { label: "长停顿", value: `${evidence.longBreaks || 0}次` },
@@ -10859,6 +10862,12 @@ function getScoreEvidenceItems(scoreEvidence) {
   const strokeOrderText = targetStrokeNames.length
     ? `范字笔顺：${targetStrokeNames.join("、")}。`
     : "";
+  const strokeMatchText = Array.isArray(evidence.strokeMatches) && evidence.strokeMatches.length
+    ? `逐笔轨迹：${evidence.strokeMatches.slice(0, 6).map((item) => `第${item.index}笔${item.status === "match" ? "匹配" : item.status === "possible-misorder" ? "疑似错序" : item.status === "extra" ? "超出目标" : "需复核"}${item.expected ? `“${item.expected}”` : ""}，${item.matchScore || 0}分`).join("；")}。`
+    : "";
+  const strokeWarningText = Array.isArray(evidence.strokeOrderWarnings) && evidence.strokeOrderWarnings.length
+    ? `笔顺提醒：${evidence.strokeOrderWarnings.join("；")}。`
+    : "";
   const pressureText = evidence.pressurePointCount
     ? `压感证据：${evidence.pressurePointCount} 个采样点，平均约 ${evidence.pressureAveragePercent || 0}%，范围 ${evidence.pressureMinPercent || 0}% - ${evidence.pressureMaxPercent || 0}%。`
     : "";
@@ -10870,9 +10879,21 @@ function getScoreEvidenceItems(scoreEvidence) {
     scoreEvidence.algorithmVersion || scoreEvidence.kind ? `算法版本：${scoreEvidence.algorithmVersion || scoreEvidence.kind}。` : "",
     scoreEvidence.copybook || evidence.copybook ? `范字来源：${scoreEvidence.copybook || evidence.copybook}。` : "",
     strokeOrderText,
+    evidence.strokeOrderVerdict ? `笔顺判定：${getStrokeOrderVerdictLabel(evidence.strokeOrderVerdict)}。` : "",
+    strokeMatchText,
+    strokeWarningText,
     pressureText,
     ...reasons
   ].filter(Boolean);
+}
+
+function getStrokeOrderVerdictLabel(verdict) {
+  return {
+    aligned: "当前书写顺序与本机范字参考基本一致",
+    partial: "当前只覆盖部分目标笔画",
+    "needs-shape-review": "存在形态偏弱的笔画",
+    "needs-order-review": "存在疑似错序笔画"
+  }[verdict] || "需要继续复核";
 }
 
 function buildAchievementDetail() {

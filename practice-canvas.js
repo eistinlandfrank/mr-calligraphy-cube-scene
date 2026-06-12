@@ -1,5 +1,5 @@
 (function () {
-  const SCORE_ALGORITHM_VERSION = "local-heuristic-v2.0.0";
+  const SCORE_ALGORITHM_VERSION = "local-heuristic-v2.1.0";
   const COPYBOOK_STROKE_LIBRARY = {
     "永": {
       copybook: "永字八法",
@@ -553,6 +553,7 @@
           centerOffset: 0,
           totalLength: 0,
           segmentStats: { variation: 0, pressureSpread: 0, longBreaks: 0 },
+          strokeOrderAnalysis: analyzeStrokeOrder([], copybookProfile),
           bounds: null
         })
       };
@@ -610,14 +611,16 @@
         centerOffset,
         totalLength,
         segmentStats,
+        strokeOrderAnalysis: analyzeStrokeOrder(strokes, copybookProfile),
         bounds
       }),
       feedback: buildFeedback({ metrics, strokes, targetCount, coverage, centerOffset })
     };
   }
 
-  function buildScoreEvidence({ glyph, targetCount, strokeCount, pointCount, metrics, coverage, centerOffset, totalLength, segmentStats, bounds }) {
+  function buildScoreEvidence({ glyph, targetCount, strokeCount, pointCount, metrics, coverage, centerOffset, totalLength, segmentStats, strokeOrderAnalysis, bounds }) {
     const copybookProfile = getCopybookProfile(glyph);
+    const orderAnalysis = strokeOrderAnalysis || analyzeStrokeOrder([], copybookProfile);
     const coveragePercent = Math.round(clamp(coverage, 0, 1) * 100);
     const centerOffsetPercent = Math.round(clamp(centerOffset, 0, 1) * 100);
     const variationPercent = Math.round(clamp(segmentStats.variation || 0, 0, 3) * 100);
@@ -647,6 +650,12 @@
         targetStrokeCount: targetCount,
         targetStrokeNames: [...copybookProfile.strokeOrder],
         copybook: copybookProfile.copybook,
+        strokeOrderMatchPercent: orderAnalysis.matchPercent,
+        strokeOrderCoveragePercent: orderAnalysis.coveragePercent,
+        strokeShapeMatchPercent: orderAnalysis.shapeMatchPercent,
+        strokeOrderVerdict: orderAnalysis.verdict,
+        strokeOrderWarnings: [...orderAnalysis.warnings],
+        strokeMatches: orderAnalysis.matches.map((item) => ({ ...item })),
         strokeCount,
         strokeCountDelta,
         pointCount,
@@ -675,7 +684,7 @@
           key: "stroke",
           label: "笔画",
           score: metrics.stroke || 0,
-          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔；范字笔顺：${copybookProfile.strokeOrder.slice(0, 6).join("、")}。`
+          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔；逐笔匹配 ${orderAnalysis.matchPercent}%，覆盖 ${orderAnalysis.coveragePercent}%；范字笔顺：${copybookProfile.strokeOrder.slice(0, 6).join("、")}。`
         },
         {
           key: "technique",
@@ -697,6 +706,192 @@
         }
       ]
     };
+  }
+
+  function analyzeStrokeOrder(strokes, copybookProfile) {
+    const expectedFeatures = copybookProfile.strokeOrder.map((name, index) => getExpectedStrokeFeature(name, index, copybookProfile.strokeOrder.length));
+    const actualFeatures = strokes.map(getActualStrokeFeature).filter(Boolean);
+    const matches = actualFeatures.map((actual, index) => {
+      const orderedExpected = expectedFeatures[index] || null;
+      const orderedScore = orderedExpected ? compareStrokeFeature(actual, orderedExpected) : 0;
+      const best = expectedFeatures
+        .map((expected) => ({ expected, score: compareStrokeFeature(actual, expected) }))
+        .sort((a, b) => b.score - a.score)[0] || null;
+      const bestIndex = best ? best.expected.index : -1;
+      const bestScore = best ? best.score : 0;
+      const hasOrderedMatch = orderedScore >= 55;
+      const isPossibleMisorder = orderedExpected && best && bestIndex !== index && bestScore - orderedScore >= 18 && bestScore >= 58;
+      const status = !orderedExpected
+        ? "extra"
+        : isPossibleMisorder
+          ? "possible-misorder"
+          : hasOrderedMatch
+            ? "match"
+            : "weak-match";
+      const expected = orderedExpected || best?.expected || null;
+      return {
+        index: index + 1,
+        expected: orderedExpected?.name || "超出目标笔画",
+        matched: best?.expected?.name || "",
+        matchedIndex: bestIndex >= 0 ? bestIndex + 1 : 0,
+        status,
+        matchScore: Math.round(orderedScore),
+        bestScore: Math.round(bestScore),
+        actualDirection: actual.direction,
+        expectedDirection: expected?.label || "",
+        angleDelta: expected ? Math.round(getMinimumAngleDelta(actual.angle, expected.angles)) : 0
+      };
+    });
+    const writtenCount = matches.filter((item) => item.status !== "extra").length;
+    const orderedMatches = matches.filter((item) => item.status === "match").length;
+    const weakMatches = matches.filter((item) => item.status === "weak-match").length;
+    const misorders = matches.filter((item) => item.status === "possible-misorder");
+    const extras = matches.filter((item) => item.status === "extra").length;
+    const missingCount = Math.max(0, expectedFeatures.length - actualFeatures.length);
+    const shapeMatchPercent = writtenCount
+      ? Math.round(matches.slice(0, expectedFeatures.length).reduce((sum, item) => sum + item.matchScore, 0) / writtenCount)
+      : 0;
+    const matchPercent = writtenCount ? Math.round((orderedMatches / writtenCount) * 100) : 0;
+    const coveragePercent = expectedFeatures.length ? Math.round((orderedMatches / expectedFeatures.length) * 100) : 0;
+    const warnings = [];
+    if (misorders.length) {
+      warnings.push(`疑似错序 ${misorders.length} 笔`);
+    }
+    if (weakMatches) {
+      warnings.push(`形态偏弱 ${weakMatches} 笔`);
+    }
+    if (missingCount) {
+      warnings.push(`缺少目标笔画 ${missingCount} 笔`);
+    }
+    if (extras) {
+      warnings.push(`多出 ${extras} 笔`);
+    }
+    return {
+      matchPercent,
+      coveragePercent,
+      shapeMatchPercent,
+      verdict: misorders.length ? "needs-order-review" : weakMatches ? "needs-shape-review" : missingCount ? "partial" : "aligned",
+      warnings,
+      matches
+    };
+  }
+
+  function getActualStrokeFeature(stroke, index) {
+    if (!Array.isArray(stroke) || stroke.length < 2) return null;
+    const start = stroke[0];
+    const end = stroke[stroke.length - 1];
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = getTotalLength([stroke]);
+    const angle = normalizeAngle(Math.atan2(dy, dx) * 180 / Math.PI);
+    const center = stroke.reduce((sum, point) => ({
+      x: sum.x + point.x,
+      y: sum.y + point.y
+    }), { x: 0, y: 0 });
+    return {
+      index,
+      dx,
+      dy,
+      length,
+      angle,
+      direction: getDirectionLabel(dx, dy),
+      centerX: center.x / stroke.length,
+      centerY: center.y / stroke.length,
+      startX: start.x,
+      startY: start.y,
+      endX: end.x,
+      endY: end.y
+    };
+  }
+
+  function getExpectedStrokeFeature(name, index, total) {
+    const text = String(name || "");
+    const normalizedIndex = total > 1 ? index / (total - 1) : 0;
+    const feature = {
+      index,
+      name: text,
+      label: "通用",
+      angles: [45, 90],
+      centerY: 0.16 + normalizedIndex * 0.68,
+      lengthClass: "medium"
+    };
+    if (text.includes("横")) {
+      feature.label = "横向";
+      feature.angles = [0, 180];
+      feature.lengthClass = "long";
+    }
+    if (text.includes("竖")) {
+      feature.label = "竖向";
+      feature.angles = [90];
+      feature.lengthClass = "long";
+    }
+    if (text.includes("撇")) {
+      feature.label = "左下斜";
+      feature.angles = [125, 145];
+      feature.lengthClass = "medium";
+    }
+    if (text.includes("捺") || text.includes("点") || text.includes("磔")) {
+      feature.label = "右下斜";
+      feature.angles = [35, 55, 75];
+      feature.lengthClass = text.includes("点") ? "short" : "medium";
+    }
+    if (text.includes("提")) {
+      feature.label = "右上斜";
+      feature.angles = [315, 335];
+      feature.lengthClass = "short";
+    }
+    if (text.includes("钩")) {
+      feature.label = "钩势";
+      feature.angles = [80, 100, 300, 330];
+      feature.lengthClass = "medium";
+    }
+    if (text.includes("折")) {
+      feature.label = "折势";
+      feature.angles = [0, 90, 180];
+      feature.lengthClass = "medium";
+    }
+    return feature;
+  }
+
+  function compareStrokeFeature(actual, expected) {
+    const angleDelta = getMinimumAngleDelta(actual.angle, expected.angles);
+    const angleScore = clamp(1 - angleDelta / 110, 0, 1) * 100;
+    const positionScore = clamp(1 - Math.abs(actual.centerY - expected.centerY) / 0.62, 0, 1) * 100;
+    const lengthScore = getLengthClassScore(actual.length, expected.lengthClass);
+    return Math.round(angleScore * 0.68 + positionScore * 0.18 + lengthScore * 0.14);
+  }
+
+  function getLengthClassScore(length, lengthClass) {
+    if (lengthClass === "short") {
+      return clamp(1 - Math.max(0, length - 0.28) / 0.45, 0, 1) * 100;
+    }
+    if (lengthClass === "long") {
+      return clamp(length / 0.55, 0, 1) * 100;
+    }
+    return clamp(1 - Math.abs(length - 0.42) / 0.55, 0, 1) * 100;
+  }
+
+  function getDirectionLabel(dx, dy) {
+    const absX = Math.abs(dx);
+    const absY = Math.abs(dy);
+    if (absX > absY * 1.7) return dx >= 0 ? "横向右行" : "横向左行";
+    if (absY > absX * 1.7) return dy >= 0 ? "竖向下行" : "竖向上行";
+    if (dx >= 0 && dy >= 0) return "右下斜行";
+    if (dx < 0 && dy >= 0) return "左下斜行";
+    if (dx >= 0 && dy < 0) return "右上斜行";
+    return "左上斜行";
+  }
+
+  function getMinimumAngleDelta(angle, expectedAngles = []) {
+    const normalizedAngle = normalizeAngle(angle);
+    return Math.min(...expectedAngles.map((expected) => {
+      const delta = Math.abs(normalizedAngle - normalizeAngle(expected));
+      return Math.min(delta, 360 - delta);
+    }));
+  }
+
+  function normalizeAngle(angle) {
+    return (angle + 360) % 360;
   }
 
   function getCopybookProfile(glyph) {

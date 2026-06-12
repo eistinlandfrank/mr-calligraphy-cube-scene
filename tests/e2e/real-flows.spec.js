@@ -633,12 +633,16 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.sessions.some((session) => session.status === "saved" && session.strokeCount > 0)).toBe(true);
   expect(learningState.scoreService.status).toBe("scored");
   expect(learningState.scoreService.lastScore).toBeGreaterThan(0);
-  expect(learningState.scoreService.algorithmVersion).toBe("local-heuristic-v2.0.0");
+  expect(learningState.scoreService.algorithmVersion).toBe("local-heuristic-v2.1.0");
   expect(learningState.scoreService.lastEvidenceSummary).toContain("采样");
+  expect(learningState.scoreService.lastEvidenceSummary).toContain("笔顺匹配");
   expect(learningState.scoreService.lastEvidenceSummary).toContain("压感");
   const savedPracticeSession = learningState.sessions.find((session) => session.status === "saved" && session.strokeCount > 0);
-  expect(savedPracticeSession?.scoreEvidence?.algorithmVersion).toBe("local-heuristic-v2.0.0");
+  expect(savedPracticeSession?.scoreEvidence?.algorithmVersion).toBe("local-heuristic-v2.1.0");
   expect(savedPracticeSession?.scoreEvidence?.evidence?.targetStrokeNames?.length).toBeGreaterThan(0);
+  expect(savedPracticeSession?.scoreEvidence?.evidence?.strokeMatches?.length).toBeGreaterThan(0);
+  expect(savedPracticeSession?.scoreEvidence?.evidence?.strokeOrderMatchPercent).toBeGreaterThanOrEqual(0);
+  expect(savedPracticeSession?.scoreEvidence?.evidence?.strokeOrderVerdict).toBeTruthy();
   expect(savedPracticeSession?.scoreEvidence?.evidence?.pressurePointCount).toBeGreaterThan(0);
 
   await expect(page.locator("#reviewDownloadVideo")).toBeEnabled();

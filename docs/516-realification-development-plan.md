@@ -5618,7 +5618,7 @@
 已知限制：
 
 - 当前是浏览器本机启发式评分服务，不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。
-- 后续需要在同一 adapter 上扩展范字路径库、笔顺模型、硬件采样信息、服务端专业模型和教师标定来源。
+- 后续需要在同一 adapter 上继续扩展高精度笔锋路径、硬件采样校准、服务端专业模型和教师标定来源。
 
 提交：
 
@@ -8835,7 +8835,7 @@
 仍待补：
 
 - 该能力仍是本机启发式评分，不是专业书法评级、云端识别模型、硬件压感校准或教师评分标定。
-- 第一版笔顺库只提供文本参考，还没有逐笔轨迹匹配、错序判定、笔锋路径分析和服务端模型校验。
+- 逐笔轨迹匹配已在下一节完成第一版；仍缺专业错序模型、逐点范字路径误差、笔锋路径分析和服务端模型校验。
 
 验收：
 
@@ -8850,3 +8850,44 @@
 提交：
 
 - 中文 commit message：`新增评分版本与笔顺压感证据`
+
+### 2026-06-12：新增逐笔轨迹匹配证据
+
+功能名：基础评分逐笔轨迹匹配证据。
+
+完成内容：
+
+- `practice-canvas.js` 将评分算法升级为 `local-heuristic-v2.1.0`。
+- 新增 `analyzeStrokeOrder()`，按真实笔迹每一笔的方向、角度、长度和中心位置匹配本机范字笔顺。
+- 评分证据新增逐笔匹配列表 `strokeMatches`，记录目标笔画、最佳匹配笔画、匹配分、最佳分、实际方向、目标方向和角度差。
+- 评分证据新增 `strokeOrderMatchPercent`、`strokeOrderCoveragePercent`、`strokeShapeMatchPercent`、`strokeOrderVerdict`、`strokeOrderWarnings`。
+- `app-state.js` 归一化和持久化逐笔匹配证据，旧记录缺字段时保持兼容。
+- `ScoreService` 最近证据摘要增加“笔顺匹配xx%”。
+- 前台“查看笔画分析”详情新增笔顺匹配率、目标覆盖率、形态匹配率、逐笔轨迹摘要和笔顺提醒。
+- 数据层脚本和 Playwright 前台真实流程新增逐笔匹配字段断言。
+
+真实化说明：
+
+- 数据来源：真实笔迹点位、每笔起终点、方向角、轨迹长度、中心位置和本机范字笔顺库。
+- 写入状态：`mr-calligraphy-learning-state-v1.sessions[*].scoreEvidence.evidence.strokeMatches` 与评分服务摘要。
+- 成功反馈：评分分析中展示逐笔匹配、疑似错序、形态偏弱和缺笔提醒。
+- 失败反馈：没有笔迹时不伪造匹配；旧记录没有逐笔证据时只显示已有评分解释。
+- 刷新后复现方式：保存作品后刷新，笔画分析继续读取持久化逐笔证据。
+
+仍待补：
+
+- 当前是浏览器本机启发式轨迹匹配，不是专业逐笔识别模型、逐点范字路径误差、笔锋压力热力图、教师人工标定或服务端评分。
+
+验收：
+
+- `node --check practice-canvas.js`
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增逐笔轨迹匹配证据`

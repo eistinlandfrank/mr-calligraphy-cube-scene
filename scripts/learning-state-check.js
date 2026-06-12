@@ -500,9 +500,13 @@ assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应
 const practiceScoreEvidence = window.MRAppState.recordPracticeResult(createPracticeResult());
 assert(practiceScoreEvidence.ok, "带评分证据的练习结果应可写入本机状态。");
 assert(practiceScoreEvidence.practice.scoreEvidence.label === "基础练习评分", "练习结果应保留基础评分类型。");
-assert(practiceScoreEvidence.practice.scoreEvidence.algorithmVersion === "local-heuristic-v2.0.0", "练习结果应保留评分算法版本。");
+assert(practiceScoreEvidence.practice.scoreEvidence.algorithmVersion === "local-heuristic-v2.1.0", "练习结果应保留评分算法版本。");
 assert(practiceScoreEvidence.practice.scoreEvidence.copybook === "永字八法", "练习结果应保留范字来源。");
 assert(practiceScoreEvidence.practice.scoreEvidence.evidence.targetStrokeNames.includes("侧点"), "练习结果应保留范字笔顺。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.strokeOrderMatchPercent === 67, "练习结果应保留逐笔匹配率。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.strokeOrderCoveragePercent === 25, "练习结果应保留目标笔顺覆盖率。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.strokeMatches.length === 3, "练习结果应保留逐笔匹配列表。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.strokeOrderWarnings.includes("缺少目标笔画 5 笔"), "练习结果应保留笔顺提醒。");
 assert(practiceScoreEvidence.practice.scoreEvidence.evidence.coveragePercent === 58, "练习结果应保留覆盖范围证据。");
 assert(practiceScoreEvidence.practice.scoreEvidence.evidence.pressurePointCount === 4, "练习结果应保留压感采样点数。");
 assert(
@@ -514,17 +518,18 @@ assert(stateAfterPractice.sessions.at(-1).scoreEvidence.reasons.length === 5, "�
 const scoreServiceAfterPractice = window.MRAppState.getScoreServiceStatus();
 assert(scoreServiceAfterPractice.status === "scored", "评分服务应记录已评分状态。");
 assert(scoreServiceAfterPractice.lastScore === 78, "评分服务应记录最近一次真实练习分数。");
-assert(scoreServiceAfterPractice.algorithmVersion === "local-heuristic-v2.0.0", "评分服务应记录最近算法版本。");
+assert(scoreServiceAfterPractice.algorithmVersion === "local-heuristic-v2.1.0", "评分服务应记录最近算法版本。");
 assert(scoreServiceAfterPractice.scoredSessionCount === 4, "评分服务应累计新增评分次数。");
 assert(scoreServiceAfterPractice.totalPointCount === 287, "评分服务应累计新增采样点。");
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("覆盖58%"), "评分服务应摘要最近一次证据。");
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("范字永字八法"), "评分服务摘要应包含范字来源。");
+assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("笔顺匹配67%"), "评分服务摘要应包含逐笔匹配率。");
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("压感4点"), "评分服务摘要应包含压感采样。");
 assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
-assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.0.0"), "评分服务状态消息应显示算法版本。");
+assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.1.0"), "评分服务状态消息应显示算法版本。");
 const persistedScoreService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).scoreService;
 assert(persistedScoreService.lastScore === 78, "评分服务状态应持久化最近分数。");
-assert(persistedScoreService.algorithmVersion === "local-heuristic-v2.0.0", "评分服务状态应持久化算法版本。");
+assert(persistedScoreService.algorithmVersion === "local-heuristic-v2.1.0", "评分服务状态应持久化算法版本。");
 assert(persistedScoreService.lastEvidenceSummary.includes("覆盖58%"), "评分服务证据摘要应持久化。");
 
 const lockedLibraryBeforeStages = window.MRAppState.getTaskLibrary("single");
@@ -1739,8 +1744,8 @@ function createPracticeResult() {
     },
     score: 78,
     scoreEvidence: {
-      kind: "local-heuristic-v2.0.0",
-      algorithmVersion: "local-heuristic-v2.0.0",
+      kind: "local-heuristic-v2.1.0",
+      algorithmVersion: "local-heuristic-v2.1.0",
       label: "基础练习评分",
       disclaimer: "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。",
       glyph: "永",
@@ -1751,6 +1756,16 @@ function createPracticeResult() {
         copybook: "永字八法",
         targetStrokeCount: 8,
         targetStrokeNames: ["侧点", "横勒", "竖弩", "钩趯", "提策", "撇掠", "短撇啄", "捺磔"],
+        strokeOrderMatchPercent: 67,
+        strokeOrderCoveragePercent: 25,
+        strokeShapeMatchPercent: 63,
+        strokeOrderVerdict: "partial",
+        strokeOrderWarnings: ["形态偏弱 1 笔", "缺少目标笔画 5 笔"],
+        strokeMatches: [
+          { index: 1, expected: "侧点", matched: "侧点", matchedIndex: 1, status: "match", matchScore: 84, bestScore: 84, actualDirection: "右下斜行", expectedDirection: "右下斜", angleDelta: 9 },
+          { index: 2, expected: "横勒", matched: "横勒", matchedIndex: 2, status: "match", matchScore: 68, bestScore: 68, actualDirection: "横向右行", expectedDirection: "横向", angleDelta: 3 },
+          { index: 3, expected: "竖弩", matched: "撇掠", matchedIndex: 6, status: "weak-match", matchScore: 38, bestScore: 60, actualDirection: "左下斜行", expectedDirection: "竖向", angleDelta: 42 }
+        ],
         strokeCount: 3,
         strokeCountDelta: 5,
         pointCount: 7,
@@ -1770,7 +1785,7 @@ function createPracticeResult() {
       },
       reasons: [
         { key: "structure", label: "结构", score: 82, evidence: "重心偏移约 6%，书写覆盖约 58%。" },
-        { key: "stroke", label: "笔画", score: 74, evidence: "当前 3 笔，目标约 8 笔；范字笔顺：侧点、横勒、竖弩、钩趯、提策、撇掠。" },
+        { key: "stroke", label: "笔画", score: 74, evidence: "当前 3 笔，目标约 8 笔；逐笔匹配 67%，覆盖 25%；范字笔顺：侧点、横勒、竖弩、钩趯、提策、撇掠。" },
         { key: "technique", label: "笔法", score: 79, evidence: "笔迹总长度 1.42，采样点 7 个。" },
         { key: "fluency", label: "流畅", score: 76, evidence: "线段变化 35%，长停顿 1 次。" },
         { key: "force", label: "力度", score: 81, evidence: "压感采样 4 点，平均约 54%，跨度约 17%，笔画差 5。" }

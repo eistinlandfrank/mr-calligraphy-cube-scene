@@ -47,8 +47,8 @@ node scripts/control-inventory.js
 | 10 步学习路径 | 可导航，支持 `?step=1-10` 直达；已新增本机 `LearningPathService`，用 `LearningTask`、`PracticeSession`、`ArtworkRecord`、`ReportRecord` 和 `PlanRecord` 推导 10 步标题、说明、完成状态、证据和下一步动作 | 仍不是云端课程编排、教师下发任务或跨设备学习进度；视觉场景和少量标签仍保留静态兜底 | 继续把课程任务版本、服务端课程包、教师端排课和跨设备进度接到同一服务接口 |
 | 学习模式 | 单字、集字、创作可切换，并有本机任务状态 | 没有课程编排、教师下发、步骤依赖和评分规则 | 增加课程/任务 schema、任务版本、必做步骤、完成条件和任务依赖 |
 | AI 讲解 | 浏览器本机语音合成能朗读本机讲解段落；已新增本机 `LectureService` adapter，记录语音能力、播放段落、降级、失败和完成状态 | 不是云端 AI 音频，也不是根据真实笔迹动态生成 | UI 保持“本机语音讲解”定位；后续扩展云端生成和音频资源 |
-| 书写练习 | 支持鼠标/触控笔迹、撤销、清空、回放、本机保存、第一版范字笔顺和压感采样证据 | 缺笔锋路径、硬件压感校准和专业评分模型 | 增加笔画顺序校验、笔锋分析、专业评分接口和离线 fallback |
-| 评分反馈 | 能从本机笔迹计算结构、笔画、笔法、力度、流畅度；已新增本机 `ScoreService` adapter，记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点；`local-heuristic-v2.0.0` 会保存范字来源、目标笔顺、笔画差和压感采样 | 仍是启发式评分，容易被误解为专业识别模型 | 继续保持“基础练习评分”边界；后续扩展笔锋模型、硬件压感校准、教师标定和服务端专业评分来源 |
+| 书写练习 | 支持鼠标/触控笔迹、撤销、清空、回放、本机保存、第一版范字笔顺、逐笔轨迹匹配和压感采样证据 | 缺高精度笔锋路径、硬件压感校准和专业评分模型 | 增加笔锋分析、专业评分接口、教师标定和离线 fallback |
+| 评分反馈 | 能从本机笔迹计算结构、笔画、笔法、力度、流畅度；已新增本机 `ScoreService` adapter，记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点；`local-heuristic-v2.1.0` 会保存范字来源、目标笔顺、逐笔匹配列表、疑似错序提醒、笔画差和压感采样 | 仍是启发式评分，容易被误解为专业识别模型 | 继续保持“基础练习评分”边界；后续扩展笔锋模型、硬件压感校准、教师标定和服务端专业评分来源 |
 | 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint/token/Workspace 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单和 `.ics` 日历提醒；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本和字段级合并入口；推送 422 或网络中断时会保留待同步队列；远端计划仓库 API 合同、本机 mock 服务、Workspace 空间隔离、回执审计导出和回执本机一致性校验已完成第一版 | 缺真正账号登录、后台托管仓库、远端提醒、教师端通知和服务端不可篡改审计 | 继续增加账号同步、后台计划仓库、教师端通知、远端提醒和服务端审计 |
 
 ### 3.2 作品、报告和分享
@@ -153,9 +153,9 @@ node scripts/control-inventory.js
 
 任务：
 
-- 评分结果旁显示计算依据，例如笔画数量、采样点、重心偏移、停顿次数、范字笔顺和压感采样。
+- 评分结果旁显示计算依据，例如笔画数量、采样点、重心偏移、停顿次数、范字笔顺、逐笔匹配和压感采样。
 - 把启发式评分命名为“基础练习评分”。
-- 已增加本机 `ScoreService` adapter 和 `local-heuristic-v2.0.0` 证据包，未来可替换成专业模型或服务端评分来源。
+- 已增加本机 `ScoreService` adapter 和 `local-heuristic-v2.1.0` 证据包，未来可替换成专业模型或服务端评分来源。
 - 本机语音讲解继续可用，并通过 `LectureService` 记录能力、降级和完成状态；后续在同一接口上接云端讲解服务。
 
 验收：
@@ -3788,7 +3788,7 @@ GitHub 状态：
 仍待补：
 
 - 当前不是专业书法模型、硬件压感校准、教师人工标定或服务端评分。
-- 笔顺库目前是文本参考，不包含逐笔轨迹匹配、错序判定和笔锋识别。
+- 逐笔轨迹匹配已在下一节完成第一版；当前仍缺逐点范字路径比对、专业错序模型和笔锋识别。
 
 验收：
 
@@ -3803,3 +3803,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增评分版本与笔顺压感证据`
+
+### 2026-06-12：新增逐笔轨迹匹配证据
+
+完成内容：
+
+- 基础评分算法升级为 `local-heuristic-v2.1.0`。
+- `practice-canvas.js` 新增逐笔轨迹匹配：按每笔真实轨迹的起止方向、角度、中心位置和长度匹配本机范字笔顺。
+- 评分证据新增 `strokeMatches`、`strokeOrderMatchPercent`、`strokeOrderCoveragePercent`、`strokeShapeMatchPercent`、`strokeOrderVerdict` 和 `strokeOrderWarnings`。
+- `app-state.js` 归一化并持久化逐笔匹配列表，评分服务摘要显示“笔顺匹配xx%”。
+- “查看笔画分析”面板新增笔顺匹配、笔顺覆盖、形态匹配、逐笔轨迹摘要和笔顺提醒。
+- 数据层和 E2E 均覆盖真实书写保存后的 `strokeMatches`、`strokeOrderVerdict` 和评分摘要。
+
+真实化说明：
+
+- 数据来源：真实书写每一笔的起点、终点、角度、长度、中心位置和本机范字笔顺库。
+- 写入状态：`mr-calligraphy-learning-state-v1.sessions[*].scoreEvidence.evidence.strokeMatches` 与 `scoreService.lastEvidenceSummary`。
+- 成功反馈：分析详情显示逐笔匹配率、目标覆盖率、形态匹配率和疑似错序/缺笔提醒。
+- 失败反馈：无笔迹时不会伪造匹配结果；旧记录没有 `strokeMatches` 时只展示已有证据。
+- 刷新后复现方式：保存作品后刷新，评分摘要和分析详情继续读取同一份逐笔证据。
+
+仍待补：
+
+- 当前仍是本机启发式轨迹匹配，不是专业书法模型、逐点范字路径比对、笔锋热力图、硬件压感校准或教师人工标定。
+
+验收：
+
+- `node --check practice-canvas.js`
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增逐笔轨迹匹配证据`
