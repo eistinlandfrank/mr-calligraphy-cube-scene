@@ -1373,6 +1373,9 @@ test("front report repository imports a local JSON package", async ({ page }) =>
 
 test("front history repository shows real remote failure feedback", async ({ page }) => {
   const requests = [];
+  const networkPushPath = "/e2e-history-repository-network-push";
+  const recoveryPushPath = "/e2e-history-repository-recovery-push";
+  let latestRecoveryReceipt = null;
   const routes = [
     {
       path: "/e2e-history-repository-expired-token",
@@ -1435,6 +1438,75 @@ test("front history repository shows real remote failure feedback", async ({ pag
       });
     });
   }
+
+  await page.route(`**${networkPushPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: networkPushPath,
+      method: request.method(),
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body: request.method() === "PUT" ? request.postDataJSON() : null
+    });
+    await route.abort("failed");
+  });
+
+  await page.route(`**${recoveryPushPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    requests.push({
+      path: recoveryPushPath,
+      method,
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body
+    });
+
+    if (method === "PUT") {
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = sha256StableJson(body);
+      latestRecoveryReceipt = {
+        receiptKind: "mr-calligraphy-history-repository-receipt-v1",
+        remoteVersion: "e2e-history-recovery-v1",
+        workspaceId: body.workspaceId,
+        packageId: "e2e-history-recovered-package",
+        sourcePackageId: body.packageId,
+        repositoryDigest,
+        acceptedAt,
+        recordCount: body.summary.total,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: sha256StableJson({
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          repositoryDigest,
+          acceptedAt
+        })
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `学习档案恢复端 E2E 已接收 ${body.summary.total} 条档案。`,
+          remoteVersion: "e2e-history-recovery-v1",
+          packageId: latestRecoveryReceipt.packageId,
+          receipt: latestRecoveryReceipt
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "学习档案恢复端 E2E 可访问。"
+      })
+    });
+  });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
@@ -1511,8 +1583,13 @@ test("front history repository shows real remote failure feedback", async ({ pag
   await page.locator("#historyRepositoryPushButton").click();
   await expect(page.locator("#noticeState")).toContainText("HTTP 422");
   await expect(page.locator("#historyRepositorySummary")).toContainText("HTTP 422");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("失败历史");
+  await expect(page.locator("#historyRepositoryPushButton")).toHaveText("重试推送");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastError).toContain("HTTP 422");
+  expect(learningState.historyRepository.remoteRetryAfter).toBeTruthy();
+  expect(learningState.historyRepository.remoteFailureHistory[0].action).toBe("push");
+  expect(learningState.historyRepository.remoteFailureHistory[0].failureKind).toBe("http");
 
   const putRequest = requests.find((item) => item.path === "/e2e-history-repository-rejected-push" && item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer history-rejected-push-token");
@@ -1520,6 +1597,78 @@ test("front history repository shows real remote failure feedback", async ({ pag
   expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
   expect(putRequest.body.workspaceId).toBe("local-browser");
   expect(putRequest.body.summary.total).toBe(2);
+  expect(learningState.historyRepository.remoteFailureHistory[0].packageId).toBe(putRequest.body.packageId);
+  expect(learningState.historyRepository.remoteFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+
+  const networkPushEndpoint = await getSameOriginEndpoint(page, networkPushPath);
+  await configureHistoryRepositoryRemoteInUi(page, networkPushEndpoint, "history-network-push-token");
+  await expect(page.locator("#historyRepositoryPushButton")).toHaveText("重试推送");
+  await page.locator("#historyRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("网络请求异常");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("网络请求异常");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("失败历史");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.remoteFailureHistory[0].action).toBe("push");
+  expect(learningState.historyRepository.remoteFailureHistory[0].failureKind).toBe("network");
+  expect(learningState.historyRepository.remoteFailureHistory[0].endpoint).toContain(networkPushPath);
+  expect(requests.some((item) => item.path === networkPushPath && item.method === "PUT" && item.authorization === "Bearer history-network-push-token")).toBe(true);
+
+  const timeoutResult = await page.evaluate(async () => {
+    const originalFetch = window.fetch;
+    window.fetch = () => new Promise((resolve) => {
+      window.setTimeout(() => {
+        resolve(new Response(JSON.stringify({
+          ok: true,
+          message: "学习档案慢响应 E2E 最终可访问。"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }));
+      }, 40);
+    });
+    try {
+      return await window.MRAppState.checkRemoteHistoryRepository({ timeoutMs: 1, retryDelayMs: 5 });
+    } finally {
+      window.fetch = originalFetch;
+    }
+  });
+  expect(timeoutResult.ok).toBe(false);
+  expect(timeoutResult.message).toContain("请求超时");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.remoteFailureHistory[0].action).toBe("check");
+  expect(learningState.historyRepository.remoteFailureHistory[0].failureKind).toBe("timeout");
+  expect(learningState.historyRepository.remoteRetryAfter).toBeTruthy();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#historyPanel")).toBeVisible();
+  await page.locator(".history-repository-remote summary").click();
+  await expect(page.locator("#historyRepositorySummary")).toContainText("请求超时");
+  await expect(page.locator("#historyRepositoryPushButton")).toHaveText("重试推送");
+
+  const recoveryPushEndpoint = await getSameOriginEndpoint(page, recoveryPushPath);
+  await configureHistoryRepositoryRemoteInUi(page, recoveryPushEndpoint, "history-recovery-token");
+  await expect(page.locator("#historyRepositoryPushButton")).toHaveText("重试推送");
+  await page.locator("#historyRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已推送 2 条学习档案");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("已推送 2 条学习档案");
+  await expect(page.locator("#historyRepositoryPushButton")).toHaveText("推送档案");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepository.lastError).toBe("");
+  expect(learningState.historyRepository.remoteRetryAfter || "").toBe("");
+  expect(learningState.historyRepository.lastRemoteDirection).toBe("push");
+  expect(learningState.historyRepository.lastRemotePushAt).toBeTruthy();
+  expect(learningState.historyRepository.remoteFailureHistory.length).toBeGreaterThanOrEqual(3);
+  expect(learningState.historyRepository.lastReceipt.receiptDigest).toBe(latestRecoveryReceipt.receiptDigest);
+  expect(learningState.historyRepository.lastReceipt.verificationStatus).toBe("verified");
+  const recoveryStatus = await page.evaluate(() => window.MRAppState.getHistoryRepositoryStatus());
+  expect(recoveryStatus.historyPushRetryPending).toBe(false);
+  expect(recoveryStatus.remoteFailureCount).toBeGreaterThanOrEqual(3);
+
+  const recoveryPutRequest = requests.find((item) => item.path === recoveryPushPath && item.method === "PUT");
+  expect(recoveryPutRequest.authorization).toBe("Bearer history-recovery-token");
+  expect(recoveryPutRequest.workspaceId).toBe("local-browser");
+  expect(recoveryPutRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
+  expect(recoveryPutRequest.body.summary.total).toBe(2);
 });
 
 test("front history repository handles network, paged pull, and id conflicts", async ({ page }) => {

@@ -7394,6 +7394,7 @@ function renderHistoryRepositoryStatus(history) {
   }
   if (els.historyRepositoryPushButton) {
     els.historyRepositoryPushButton.disabled = !status?.remoteConfigured || !history?.total;
+    els.historyRepositoryPushButton.textContent = status?.historyPushRetryPending ? "重试推送" : "推送档案";
   }
   if (els.historyRepositoryPullButton) {
     els.historyRepositoryPullButton.disabled = !status?.remoteConfigured;

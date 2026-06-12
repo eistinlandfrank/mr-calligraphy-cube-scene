@@ -3850,3 +3850,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增项目仓库重试恢复`
+
+## 105. 2026-06-13 新增学习档案仓库重试恢复
+
+本次把前台“远端学习档案 API”从“失败后只显示最近错误”推进到“失败原因、失败历史、建议重试时间和恢复推送都可追踪”。学习档案仓库检查、推送和分页拉取现在都带请求超时保护；推送失败后按钮会显示“重试推送”，修复 endpoint 后可继续发送当前本机学习档案包。
+
+完成内容：
+
+- `app-state.js` 新增学习档案仓库远端请求超时包装，默认 8 秒。
+- `historyRepository` 新增 `lastRemotePushAt`、`lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 失败历史记录动作类型、失败类型、endpoint、workspace、包 ID、包摘要、记录数、失败时间和建议重试时间。
+- 失败类型区分 HTTP 拒收、网络异常、请求超时、结构校验失败和远端响应未完成。
+- 前台学习档案仓库状态会显示失败历史摘要；推送失败未恢复时按钮显示“重试推送”。
+- 推送成功后清空当前错误和重试时间，但保留失败历史用于本机审计。
+- Playwright 已扩展学习档案失败用例，覆盖 401、500、非法 JSON、空包、PUT 422、网络中断、页面内超时注入、恢复 endpoint 后成功重试和回执本机校验。
+
+真实化说明：
+
+- 数据来源：前台当前本机学习档案包、真实远端 API 响应、浏览器 fetch 错误和本机 `historyRepository` 状态。
+- 写入状态：`mr-calligraphy-learning-state-v1.historyRepository.remoteFailureHistory`、`remoteRetryAfter`、`lastRemoteFailureAt`、`lastFailureAction` 和 `lastRemotePushAt`。
+- 成功反馈：恢复推送后页面显示已推送学习档案，按钮恢复为“推送档案”，回执列表显示本机校验通过。
+- 失败反馈：HTTP、网络、超时或结构错误都不会显示远端成功，会写入失败历史和下一次建议重试时间。
+- 刷新后复现方式：失败历史、最近错误和重试状态保存在 localStorage，刷新前台后仍可读取。
+
+仍待补：
+
+- 当前是浏览器本机远端 adapter 的失败恢复，不是账号化学习档案仓库、服务端后台队列、跨设备自动同步、教师端批注审计或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front history repository shows real remote failure feedback"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front history repository handles network, paged pull, and id conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案重试恢复`

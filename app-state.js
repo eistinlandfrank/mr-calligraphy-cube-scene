@@ -40,6 +40,9 @@
   const HISTORY_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
+  const HISTORY_REPOSITORY_MAX_FAILURES = 12;
+  const HISTORY_REPOSITORY_REQUEST_TIMEOUT_MS = 8000;
+  const HISTORY_REPOSITORY_RETRY_BASE_MS = 15000;
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
   const REPORT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，携带 Workspace 空间 ID 做服务端隔离第一版，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
@@ -1587,6 +1590,7 @@
       lastImportedAt: normalizePlanDate(source.lastImportedAt),
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
       lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
+      lastRemotePushAt: normalizePlanDate(source.lastRemotePushAt || (lastRemoteDirection === "push" ? source.lastRemoteSyncAt : null)),
       lastRemoteDirection,
       lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).slice(0, 180) : "",
       lastExportedRecordCount: normalizeInteger(source.lastExportedRecordCount, 0, 0, 99999),
@@ -1597,6 +1601,12 @@
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
       lastReceipt,
       receipts: appendHistoryRepositoryReceipt({ receipts, workspaceId }, lastReceipt),
+      lastRemoteFailureAt: normalizePlanDate(source.lastRemoteFailureAt),
+      lastFailureAction: normalizeHistoryRepositoryFailureAction(source.lastFailureAction),
+      remoteRetryAfter: normalizePlanDate(source.remoteRetryAfter),
+      remoteFailureHistory: Array.isArray(source.remoteFailureHistory)
+        ? source.remoteFailureHistory.map(normalizeHistoryRepositoryFailure).filter(Boolean).slice(0, HISTORY_REPOSITORY_MAX_FAILURES)
+        : [],
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
@@ -1771,6 +1781,85 @@
   function normalizeHistoryRepositoryHex(value) {
     const hex = String(value || "").trim().toLowerCase();
     return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
+  }
+
+  function normalizeHistoryRepositoryFailureAction(action) {
+    return ["check", "push", "pull"].includes(action) ? action : "";
+  }
+
+  function normalizeHistoryRepositoryFailure(record) {
+    if (!record || typeof record !== "object") return null;
+    const failedAt = normalizePlanDate(record.failedAt) || new Date().toISOString();
+    const message = String(record.message || "").trim().slice(0, 220);
+    if (!message) return null;
+    const action = normalizeHistoryRepositoryFailureAction(record.action) || "check";
+    return {
+      id: String(record.id || `history-repository-failure-${action}-${failedAt.replace(/[-:.TZ]/g, "").slice(0, 14)}`).slice(0, 120),
+      action,
+      failedAt,
+      retryAfter: normalizePlanDate(record.retryAfter),
+      attemptCount: normalizeInteger(record.attemptCount, 0, 0, 9999),
+      recordCount: normalizeInteger(record.recordCount, 0, 0, 99999),
+      endpoint: String(record.endpoint || "").trim().slice(0, 240),
+      workspaceId: normalizeHistoryRepositoryWorkspaceId(record.workspaceId),
+      packageId: String(record.packageId || "").trim().slice(0, 120),
+      packageDigest: normalizeHistoryRepositoryHex(record.packageDigest),
+      failureKind: ["http", "network", "timeout", "validation", "response", "unknown"].includes(record.failureKind)
+        ? record.failureKind
+        : classifyHistoryRepositoryFailure(message),
+      message
+    };
+  }
+
+  function classifyHistoryRepositoryFailure(message = "") {
+    const text = String(message || "");
+    if (/超时|timeout/i.test(text)) return "timeout";
+    if (/HTTP\s+\d+/.test(text)) return "http";
+    if (/网络请求异常|Failed|Network/i.test(text)) return "network";
+    if (/格式|结构|JSON|缺少|不是/.test(text)) return "validation";
+    if (/没有返回|无响应|请求失败/.test(text)) return "response";
+    return "unknown";
+  }
+
+  function getHistoryRepositoryRetryDelayMs(attemptCount, options = {}) {
+    if (Number.isFinite(Number(options.retryDelayMs))) {
+      return Math.max(0, Math.min(3600000, Math.round(Number(options.retryDelayMs))));
+    }
+    const attempt = normalizeInteger(attemptCount, 1, 1, 10);
+    return Math.min(10 * 60 * 1000, HISTORY_REPOSITORY_RETRY_BASE_MS * Math.max(1, 2 ** (attempt - 1)));
+  }
+
+  function getHistoryRepositoryRetrySummary(repository = state.historyRepository) {
+    const normalized = normalizeHistoryRepository(repository);
+    if (!normalized.remoteFailureHistory.length || !normalized.remoteRetryAfter) {
+      return "";
+    }
+    const latestFailure = normalized.remoteFailureHistory[0] || null;
+    const actionLabel = {
+      check: "检查",
+      push: "推送",
+      pull: "拉取"
+    }[latestFailure?.action] || "同步";
+    const reason = latestFailure?.failureKind === "timeout"
+      ? "请求超时"
+      : latestFailure?.failureKind === "http"
+        ? "服务端拒收"
+        : latestFailure?.failureKind === "network"
+          ? "网络异常"
+          : latestFailure?.failureKind === "validation"
+            ? "结构校验失败"
+            : "远端响应未完成";
+    return `失败历史 ${normalized.remoteFailureHistory.length} 次，最近一次${actionLabel}为${reason}；建议 ${formatPlanDate(normalized.remoteRetryAfter)} 后重试。`;
+  }
+
+  function hasHistoryRepositoryPushRetryPending(repository = state.historyRepository) {
+    const normalized = normalizeHistoryRepository(repository);
+    const lastPushTime = Date.parse(normalized.lastRemotePushAt || "") || 0;
+    return normalized.remoteFailureHistory.some((failure) => {
+      if (failure.action !== "push") return false;
+      const failedAt = Date.parse(failure.failedAt || "") || 0;
+      return failedAt > lastPushTime;
+    });
   }
 
   function normalizeReportRepository(record = {}) {
@@ -12884,11 +12973,16 @@
     if (repository.lastError) {
       tone = "warning";
       message = repository.lastError;
+      const retrySummary = getHistoryRepositoryRetrySummary(repository);
+      if (retrySummary) {
+        message = `${message} ${retrySummary}`;
+      }
     }
     const receiptSummary = getHistoryRepositoryReceiptSummary(repository.lastReceipt);
     if (receiptSummary && !repository.lastError) {
       message = `${message} ${receiptSummary}`;
     }
+    const remoteRetrySummary = getHistoryRepositoryRetrySummary(repository);
 
     return {
       ok: true,
@@ -12911,6 +13005,7 @@
       lastImportedAt: repository.lastImportedAt,
       lastCheckedAt: repository.lastCheckedAt,
       lastRemoteSyncAt: repository.lastRemoteSyncAt,
+      lastRemotePushAt: repository.lastRemotePushAt,
       lastRemoteDirection: repository.lastRemoteDirection,
       lastRemoteStatus: repository.lastRemoteStatus,
       lastExportedRecordCount: repository.lastExportedRecordCount,
@@ -12923,6 +13018,13 @@
       receiptCount: repository.receipts.length,
       receipts: clone(repository.receipts),
       receiptStatus: receiptSummary,
+      lastRemoteFailureAt: repository.lastRemoteFailureAt,
+      lastFailureAction: repository.lastFailureAction,
+      remoteRetryAfter: repository.remoteRetryAfter,
+      remoteFailureCount: repository.remoteFailureHistory.length,
+      remoteFailureHistory: clone(repository.remoteFailureHistory),
+      remoteRetrySummary,
+      historyPushRetryPending: hasHistoryRepositoryPushRetryPending(repository),
       lastError: repository.lastError
     };
   }
@@ -13194,11 +13296,50 @@
     return { ok: true, package: source };
   }
 
-  function recordHistoryRepositoryError(message) {
+  function recordHistoryRepositoryError(message, options = {}) {
+    const current = normalizeHistoryRepository(state.historyRepository);
+    const now = new Date().toISOString();
+    const normalizedMessage = String(message || "学习档案仓库同步失败。").trim().slice(0, 220);
+    const action = normalizeHistoryRepositoryFailureAction(options.action);
+    const trackRemote = Boolean(action || options.trackRemote === true);
+    let remoteRetryAfter = current.remoteRetryAfter;
+    let remoteFailureHistory = current.remoteFailureHistory;
+    let lastRemoteFailureAt = current.lastRemoteFailureAt;
+    let lastFailureAction = current.lastFailureAction;
+
+    if (trackRemote) {
+      const attemptCount = normalizeInteger(options.attemptCount, current.remoteFailureHistory.length + 1, 1, 9999);
+      const retryDelayMs = getHistoryRepositoryRetryDelayMs(attemptCount, options);
+      const retryAfter = retryDelayMs ? new Date(Date.now() + retryDelayMs).toISOString() : now;
+      const failure = normalizeHistoryRepositoryFailure({
+        failedAt: now,
+        retryAfter,
+        attemptCount,
+        action: action || "check",
+        endpoint: options.endpoint || current.remoteEndpoint,
+        workspaceId: options.workspaceId || current.workspaceId,
+        packageId: options.packageId || current.lastPackageId || "",
+        packageDigest: options.packageDigest || "",
+        recordCount: options.recordCount ?? current.lastRemoteRecordCount ?? getHistoryRepositoryRecordCount(),
+        failureKind: options.failureKind || classifyHistoryRepositoryFailure(normalizedMessage),
+        message: normalizedMessage
+      });
+      remoteFailureHistory = [failure, ...current.remoteFailureHistory]
+        .filter(Boolean)
+        .slice(0, HISTORY_REPOSITORY_MAX_FAILURES);
+      remoteRetryAfter = retryAfter;
+      lastRemoteFailureAt = now;
+      lastFailureAction = failure?.action || action || current.lastFailureAction;
+    }
+
     state.historyRepository = normalizeHistoryRepository({
-      ...state.historyRepository,
-      lastCheckedAt: new Date().toISOString(),
-      lastError: message
+      ...current,
+      lastCheckedAt: now,
+      lastRemoteFailureAt,
+      lastFailureAction,
+      remoteRetryAfter,
+      remoteFailureHistory,
+      lastError: normalizedMessage
     });
     saveState();
   }
@@ -13376,6 +13517,10 @@
         lastReceipt: null,
         receipts: [],
         lastRemoteStatus: "",
+        lastRemoteFailureAt: null,
+        lastFailureAction: "",
+        remoteRetryAfter: null,
+        remoteFailureHistory: [],
         lastError: ""
       });
       addEvent("history-repository-remote", "清除远端学习档案 API 配置");
@@ -13409,6 +13554,7 @@
       lastCheckedAt: new Date().toISOString(),
       lastReceipt: sameRemoteSpace ? repository.lastReceipt : null,
       receipts: sameRemoteSpace ? repository.receipts : [],
+      remoteRetryAfter: null,
       lastRemoteStatus: `远端学习档案 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
@@ -13435,6 +13581,26 @@
       headers,
       ...(options.body ? { body: JSON.stringify(options.body) } : {})
     };
+  }
+
+  function requestHistoryRepository(repository, fetchApi, options = {}) {
+    const requestUrl = options.requestUrl || repository.remoteEndpoint;
+    const timeoutMs = normalizeInteger(options.timeoutMs, HISTORY_REPOSITORY_REQUEST_TIMEOUT_MS, 1, 600000);
+    const request = buildHistoryRepositoryRequest(repository, options);
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`请求超时 ${timeoutMs}ms`);
+        error.name = "TimeoutError";
+        reject(error);
+      }, timeoutMs);
+    });
+    const requestPromise = Promise.resolve().then(() => fetchApi(requestUrl, request));
+    return Promise.race([requestPromise, timeout]).finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
   }
 
   async function parseRemoteHistoryRepositoryResponse(response, options = {}) {
@@ -13526,12 +13692,17 @@
 
   function formatHistoryRepositoryNetworkError(action, error) {
     const detail = String(error?.message || "").trim();
+    if (error?.name === "TimeoutError" || /超时|timeout/i.test(detail)) {
+      return detail
+        ? `远端学习档案 API ${action}失败：请求超时（${detail}）。`
+        : `远端学习档案 API ${action}失败：请求超时。`;
+    }
     return detail
       ? `远端学习档案 API ${action}失败：网络请求异常（${detail}）。`
       : `远端学习档案 API ${action}失败：网络请求异常。`;
   }
 
-  function checkRemoteHistoryRepository() {
+  function checkRemoteHistoryRepository(options = {}) {
     const repository = normalizeHistoryRepository(state.historyRepository);
     const remoteConfigured = Boolean(repository.remoteEndpoint);
     const fetchApi = getPlanRepositoryFetch();
@@ -13557,22 +13728,20 @@
         message: `${status.message} ${HISTORY_REPOSITORY_BOUNDARY}`
       };
     }
-    return checkRemoteHistoryRepositoryAsync(repository, fetchApi);
+    return checkRemoteHistoryRepositoryAsync(repository, fetchApi, options);
   }
 
-  async function checkRemoteHistoryRepositoryAsync(repository, fetchApi) {
+  async function checkRemoteHistoryRepositoryAsync(repository, fetchApi, options = {}) {
     try {
-      const response = await fetchApi(repository.remoteEndpoint, buildHistoryRepositoryRequest(repository));
+      const response = await requestHistoryRepository(repository, fetchApi, options);
       const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: repository.remoteEndpoint });
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.historyRepository = normalizeHistoryRepository({
-          ...repository,
-          mode: "remote-api",
-          lastCheckedAt: now,
-          lastError: parsed.message
+        recordHistoryRepositoryError(parsed.message, {
+          action: "check",
+          failureKind: classifyHistoryRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
       }
 
@@ -13599,6 +13768,7 @@
         lastReceipt: receipt,
         receipts: appendHistoryRepositoryReceipt(repository, parsedReceipt),
         lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("history-repository-remote-check", `检查远端学习档案 API：${repository.workspaceId} / ${recordCount} 条记录`);
@@ -13612,7 +13782,11 @@
       };
     } catch (error) {
       const message = formatHistoryRepositoryNetworkError("检查", error);
-      recordHistoryRepositoryError(message);
+      recordHistoryRepositoryError(message, {
+        action: "check",
+        failureKind: classifyHistoryRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
   }
@@ -13621,40 +13795,45 @@
     const repository = normalizeHistoryRepository(state.historyRepository);
     const fetchApi = getPlanRepositoryFetch();
     if (!repository.remoteEndpoint) {
-      return checkRemoteHistoryRepository();
+      return checkRemoteHistoryRepository(options);
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法推送学习档案到远端 API。";
-      recordHistoryRepositoryError(message);
+      recordHistoryRepositoryError(message, {
+        action: "push",
+        failureKind: "network",
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
     const packageResult = getHistoryRepositoryPackage(options);
     if (!packageResult.ok) {
       return packageResult;
     }
-    return pushHistoryRepositoryToRemoteAsync(repository, fetchApi, packageResult.package);
+    return pushHistoryRepositoryToRemoteAsync(repository, fetchApi, packageResult.package, options);
   }
 
-  async function pushHistoryRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage) {
+  async function pushHistoryRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage, options = {}) {
     try {
-      const response = await fetchApi(
-        repository.remoteEndpoint,
-        buildHistoryRepositoryRequest(repository, {
-          method: "PUT",
-          body: repositoryPackage
-        })
-      );
+      const response = await requestHistoryRepository(repository, fetchApi, {
+        method: "PUT",
+        body: repositoryPackage,
+        timeoutMs: options.timeoutMs
+      });
       const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: repository.remoteEndpoint });
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const recordCount = repositoryPackage.summary.total;
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.historyRepository = normalizeHistoryRepository({
-          ...repository,
-          lastCheckedAt: now,
-          lastError: parsed.message
+        const packageDigest = sha256StableJson(repositoryPackage);
+        recordHistoryRepositoryError(parsed.message, {
+          action: "push",
+          packageId: repositoryPackage.packageId,
+          packageDigest,
+          recordCount,
+          failureKind: classifyHistoryRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
       }
 
@@ -13673,6 +13852,7 @@
         workspaceId: repository.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
+        lastRemotePushAt: now,
         lastRemoteDirection: "push",
         lastRemoteRecordCount: recordCount,
         lastExportedAt: now,
@@ -13685,6 +13865,7 @@
         lastRemoteStatus: receipt
           ? `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
           : `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}。`,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("history-repository-remote-push", `推送学习档案到远端 API：${repository.workspaceId} / ${recordCount} 条记录`);
@@ -13699,7 +13880,15 @@
       };
     } catch (error) {
       const message = formatHistoryRepositoryNetworkError("推送", error);
-      recordHistoryRepositoryError(message);
+      const packageDigest = sha256StableJson(repositoryPackage);
+      recordHistoryRepositoryError(message, {
+        action: "push",
+        packageId: repositoryPackage.packageId,
+        packageDigest,
+        recordCount: repositoryPackage.summary.total,
+        failureKind: classifyHistoryRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
   }
@@ -13755,7 +13944,7 @@
     };
   }
 
-  async function fetchRemoteHistoryRepositoryPages(repository, fetchApi) {
+  async function fetchRemoteHistoryRepositoryPages(repository, fetchApi, options = {}) {
     const pages = [];
     const visitedUrls = new Set();
     let nextPageUrl = repository.remoteEndpoint;
@@ -13772,7 +13961,10 @@
       }
 
       visitedUrls.add(nextPageUrl);
-      const response = await fetchApi(nextPageUrl, buildHistoryRepositoryRequest(repository));
+      const response = await requestHistoryRepository(repository, fetchApi, {
+        requestUrl: nextPageUrl,
+        timeoutMs: options.timeoutMs
+      });
       const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: nextPageUrl });
       if (!parsed.ok) {
         return {
@@ -13804,31 +13996,43 @@
     };
   }
 
-  function pullHistoryRepositoryFromRemote() {
+  function pullHistoryRepositoryFromRemote(options = {}) {
     const repository = normalizeHistoryRepository(state.historyRepository);
     const fetchApi = getPlanRepositoryFetch();
     if (!repository.remoteEndpoint) {
-      return checkRemoteHistoryRepository();
+      return checkRemoteHistoryRepository(options);
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法从远端 API 拉取学习档案。";
-      recordHistoryRepositoryError(message);
+      recordHistoryRepositoryError(message, {
+        action: "pull",
+        failureKind: "network",
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
-    return pullHistoryRepositoryFromRemoteAsync(repository, fetchApi);
+    return pullHistoryRepositoryFromRemoteAsync(repository, fetchApi, options);
   }
 
-  async function pullHistoryRepositoryFromRemoteAsync(repository, fetchApi) {
+  async function pullHistoryRepositoryFromRemoteAsync(repository, fetchApi, options = {}) {
     try {
-      const remotePages = await fetchRemoteHistoryRepositoryPages(repository, fetchApi);
+      const remotePages = await fetchRemoteHistoryRepositoryPages(repository, fetchApi, options);
       if (!remotePages.ok) {
-        recordHistoryRepositoryError(remotePages.message);
+        recordHistoryRepositoryError(remotePages.message, {
+          action: "pull",
+          failureKind: classifyHistoryRepositoryFailure(remotePages.message),
+          retryDelayMs: options.retryDelayMs
+        });
         return { ok: false, status: getHistoryRepositoryStatus(), message: remotePages.message };
       }
       const repositoryPackages = remotePages.pages.map((page) => page.package).filter(Boolean);
       if (!repositoryPackages.length) {
         const message = "远端学习档案 API 没有返回可导入的档案包。";
-        recordHistoryRepositoryError(message);
+        recordHistoryRepositoryError(message, {
+          action: "pull",
+          failureKind: "response",
+          retryDelayMs: options.retryDelayMs
+        });
         return { ok: false, status: getHistoryRepositoryStatus(), message };
       }
 
@@ -13865,6 +14069,7 @@
         lastReceipt: receipt || repository.lastReceipt,
         receipts: appendHistoryRepositoryReceipt(repository, receipt),
         lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。${warningText}`,
+        remoteRetryAfter: null,
         lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
           : ""
@@ -13885,7 +14090,11 @@
       };
     } catch (error) {
       const message = formatHistoryRepositoryNetworkError("拉取", error);
-      recordHistoryRepositoryError(message);
+      recordHistoryRepositoryError(message, {
+        action: "pull",
+        failureKind: classifyHistoryRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getHistoryRepositoryStatus(), message };
     }
   }
