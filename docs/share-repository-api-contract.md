@@ -142,7 +142,19 @@ mock 服务会：
 - 校验可选 Bearer token。
 - 返回 `mr-calligraphy-share-repository-receipt-v1` 回执、`repositoryDigest` 和 `publicUrl`。
 
-## 7. 验收
+## 7. 回执审计导出
+
+前台复盘区“远端分享 API”会显示最近作品分享远端回执，并提供“导出回执”按钮。
+
+导出内容来自 `mr-calligraphy-learning-state-v1.shareService.receipts`，不是临时页面状态。导出的 HTML 会包含：
+
+- `mr-calligraphy-share-repository-receipt-audit-v1` 审计来源。
+- 每条回执的方向、分享数量、`shareId`、`artworkId`、`publicUrl`、HTML 字节数、`repositoryDigest`、`receiptDigest`、远端版本、endpoint、接收时间和原始 JSON。
+- 当前远端 adapter 边界说明：它是真实 HTTP 回执记录，但不是生产不可篡改审计、账号权限或 CDN 日志。
+
+没有任何远端回执时，导出 API 会返回失败状态，不生成空审计文件。
+
+## 8. 验收
 
 脚本验收：
 
@@ -157,4 +169,4 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 npm run test:e2e -- --grep "front practice saves real strokes and exports a report"
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、分享包、publicUrl、回执和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、分享包、publicUrl、回执、回执审计导出和错误 token 拒绝。

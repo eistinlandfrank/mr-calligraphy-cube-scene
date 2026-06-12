@@ -7060,3 +7060,43 @@
 提交：
 
 - 中文 commit message：`新增作品分享远端发布`
+
+### 2026-06-12：新增作品分享远端回执审计
+
+功能名：作品分享远端回执审计与导出。
+
+完成内容：
+
+- `shareService.receipts` 现在可通过 `MRAppState.getShareRepositoryReceiptAudit()` 读取，返回稳定 kind、总数、最新回执和最近回执列表。
+- 新增 `MRAppState.getShareRepositoryReceiptAuditExport()`，从本机持久化回执生成离线 HTML 审计页。
+- 新增 `MRAppState.downloadShareRepositoryReceiptAudit()`，下载 `mr-calligraphy-share-repository-receipts-*.html`。
+- 复盘区“远端分享 API”新增“回执审计”区域，展示最近回执状态、列表和“导出回执”按钮。
+- 回执审计列表展示检查/发布方向、收到时间、仓库摘要、回执摘要、远端版本、分享数量和 publicUrl 状态。
+- 资源缓存版本更新为 `share-receipt-20260612`，避免旧 JS/CSS 缓存遮住新控件。
+- smoke test 新增 `shareRepositoryReceiptAudit`、`shareRepositoryReceiptStatus`、`shareRepositoryReceiptList` 和 `shareRepositoryReceiptExportButton` 标记。
+- `learning-state-check.js` 新增无回执不可导出、mock 推送后生成审计、HTML 包含 publicUrl 和 receiptDigest 的断言。
+- Playwright 前台主流程新增回执列表可见、下载 HTML 和文件内容校验。
+
+真实化说明：
+
+- 数据来源：远端分享 API 返回的 `mr-calligraphy-share-repository-receipt-v1`，以及本机补充的 direction、endpoint 和 receivedAt。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService.receipts[*]` 和 `lastReceipt`。
+- 成功反馈：复盘区显示最近作品分享远端回执，导出 HTML 包含 publicUrl、repositoryDigest、receiptDigest 和原始 JSON。
+- 失败反馈：没有回执时导出按钮禁用；直接调用导出 API 返回明确失败，不生成空文件。
+- 刷新后复现方式：回执保存在 localStorage，刷新复盘区后仍可显示和导出。
+
+仍待补：
+
+- 当前是本机浏览器回执审计，不是生产不可篡改日志、账号权限审计、CDN 访问日志、微信分享回执或服务端撤销审计。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享远端回执审计`

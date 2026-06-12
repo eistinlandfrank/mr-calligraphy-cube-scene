@@ -2134,3 +2134,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增作品分享远端发布`
+
+### 2026-06-12：新增作品分享远端回执审计
+
+完成内容：
+
+- `shareService.receipts` 从内部状态暴露为可查看的作品分享远端回执审计。
+- 新增 `getShareRepositoryReceiptAudit()`、`getShareRepositoryReceiptAuditExport()` 和 `downloadShareRepositoryReceiptAudit()`。
+- 前台“远端分享 API”面板新增回执审计区、最近回执列表和“导出回执”按钮。
+- 回执审计 HTML 会导出方向、分享 ID、作品 ID、publicUrl、HTML 字节数、仓库摘要、回执摘要、远端版本、endpoint、时间和原始 JSON。
+- smoke test 新增前台回执审计 DOM 标记。
+- `learning-state-check.js` 新增无回执不可导出、mock 推送后可导出和 HTML 内容断言。
+- Playwright 主流程新增远端分享回执列表和下载文件内容验收。
+
+真实化说明：
+
+- 数据来源：远端分享 API 的 `receipt/latestReceipt` 和本机补充的方向、endpoint、收到时间。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService.receipts[*]`。
+- 成功反馈：复盘区显示回执数量，导出 HTML 中可核对 publicUrl 和 receiptDigest。
+- 失败反馈：无回执时导出按钮禁用，API 返回“暂无可导出”。
+- 刷新后复现方式：回执保存在本机学习状态中，刷新后仍可查看和导出。
+
+仍待补：
+
+- 当前仍是本机浏览器审计链，不是服务端不可篡改审计、账号权限审计、CDN 访问日志或远端撤销记录。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享远端回执审计`

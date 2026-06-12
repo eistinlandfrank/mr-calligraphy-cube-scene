@@ -286,12 +286,13 @@ npm run test:e2e
 - 追加书写视频封面和导出记录：前台复盘页导出 WebM 后会生成 PNG 封面，写入 `mr-calligraphy-learning-state-v1.videoExportService.records`，复盘面板显示导出摘要并可下载封面；数据层和 E2E 已验证 WebM 下载、封面记录、PNG 下载和刷新后持久化。
 - 追加书写视频导出队列和失败重试：每次导出会写入 `videoExportService.jobs`，状态覆盖排队、生成中、已完成和失败；失败任务在复盘页显示错误和重试按钮，E2E 已验证禁用 `MediaRecorder` 后失败、恢复录制能力后重试下载 WebM。
 - 追加作品分享远端 API adapter：复盘区可配置远端分享 endpoint/token，真实 GET 检查、PUT 发布分享包，并保存 publicUrl、packageId 和回执；新增分享 API 合同、本机 mock server、数据层断言和 E2E 前台按钮验收。
+- 追加作品分享远端回执审计记录：远端分享 API 返回的 `receipt/latestReceipt` 会写入 `shareService.receipts`，复盘区可查看最近回执并导出 HTML 审计页；数据层和 E2E 已验证无回执不可导出、publicUrl、receiptDigest 和下载文件内容。
 
 已知限制：
 
-- 当前新增的是用户自备 endpoint 的远端分享 adapter，不是内置账号系统、微信分享、班级作品墙、生产 CDN 或服务端权限审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
+- 当前新增的是用户自备 endpoint 的远端分享 adapter 和本机回执审计，不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计或不可篡改日志；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `新增作品分享远端发布`
+- `新增分享远端回执审计`

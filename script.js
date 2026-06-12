@@ -846,6 +846,10 @@ const els = {
   shareRemoteCheckButton: document.getElementById("shareRemoteCheckButton"),
   shareRemotePushButton: document.getElementById("shareRemotePushButton"),
   shareRemoteCopyButton: document.getElementById("shareRemoteCopyButton"),
+  shareRepositoryReceiptAudit: document.getElementById("shareRepositoryReceiptAudit"),
+  shareRepositoryReceiptStatus: document.getElementById("shareRepositoryReceiptStatus"),
+  shareRepositoryReceiptList: document.getElementById("shareRepositoryReceiptList"),
+  shareRepositoryReceiptExportButton: document.getElementById("shareRepositoryReceiptExportButton"),
   shareServiceRecords: document.getElementById("shareServiceRecords"),
   reportPanel: document.getElementById("reportPanel"),
   reportTitle: document.getElementById("reportTitle"),
@@ -3690,6 +3694,7 @@ function bindReviewControls() {
   els.shareRemoteCheckButton?.addEventListener("click", checkShareRemote);
   els.shareRemotePushButton?.addEventListener("click", pushActiveShareRemote);
   els.shareRemoteCopyButton?.addEventListener("click", copyRemoteShareUrl);
+  els.shareRepositoryReceiptExportButton?.addEventListener("click", exportShareRepositoryReceipts);
   els.shareServiceRecords?.addEventListener("click", handleShareRecordAction);
 }
 
@@ -4651,6 +4656,7 @@ function renderShareServicePanel(artwork) {
   if (els.shareRemoteCopyButton) {
     els.shareRemoteCopyButton.disabled = !status?.lastRemotePublicUrl;
   }
+  renderShareRepositoryReceipts();
 
   if (!els.shareServiceRecords) return;
   els.shareServiceRecords.innerHTML = "";
@@ -4693,6 +4699,41 @@ function renderShareServicePanel(artwork) {
     item.append(body, actions);
     els.shareServiceRecords.appendChild(item);
   });
+}
+
+function renderShareRepositoryReceipts() {
+  const audit = window.MRAppState?.getShareRepositoryReceiptAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.shareRepositoryReceiptStatus) {
+    els.shareRepositoryReceiptStatus.textContent = audit?.message || "暂无作品分享远端回执。";
+    els.shareRepositoryReceiptStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.shareRepositoryReceiptExportButton) {
+    els.shareRepositoryReceiptExportButton.disabled = !receipts.length;
+  }
+  if (!els.shareRepositoryReceiptList) return;
+  els.shareRepositoryReceiptList.replaceChildren();
+  receipts.slice(0, 5).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.packageId || receipt.sourcePackageId || receipt.shareId || "作品分享回执";
+    const meta = document.createElement("span");
+    const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
+    const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
+    meta.textContent = `${formatShareRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
+    const detail = document.createElement("small");
+    const publicText = receipt.publicUrl ? "有公开链接" : "未返回公开链接";
+    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.shareCount || 0} 条分享 / ${publicText}`;
+    item.append(title, meta, detail);
+    els.shareRepositoryReceiptList.appendChild(item);
+  });
+}
+
+function formatShareRepositoryReceiptDirection(direction) {
+  return {
+    check: "检查",
+    push: "发布"
+  }[direction] || "回执";
 }
 
 function createLatestArtworkShareLink() {
@@ -4804,12 +4845,23 @@ function copyRemoteShareUrl() {
   });
 }
 
+function exportShareRepositoryReceipts() {
+  const result = window.MRAppState?.downloadShareRepositoryReceiptAudit?.();
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的作品分享远端回执。");
+  }
+  renderLearningState();
+}
+
 function setShareRemoteBusy(isBusy) {
   [
     els.shareRemoteSaveButton,
     els.shareRemoteCheckButton,
     els.shareRemotePushButton,
-    els.shareRemoteCopyButton
+    els.shareRemoteCopyButton,
+    els.shareRepositoryReceiptExportButton
   ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);

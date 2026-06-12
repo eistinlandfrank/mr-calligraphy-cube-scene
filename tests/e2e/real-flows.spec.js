@@ -398,6 +398,17 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.shareService.lastRemotePublicUrl).toContain(shareRecordId);
   expect(learningState.shareService.lastReceipt.receiptDigest).toBe("e".repeat(64));
   expect(learningState.shareService.records[0].remotePublicUrl).toContain(shareRecordId);
+  await expect(page.locator("#shareRepositoryReceiptStatus")).toContainText("作品分享远端回执");
+  await expect(page.locator("#shareRepositoryReceiptList")).toContainText("发布");
+  const shareReceiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#shareRepositoryReceiptExportButton").click();
+  const shareReceiptDownload = await shareReceiptDownloadPromise;
+  expect(shareReceiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-share-repository-receipts-.*\.html$/);
+  const shareReceiptPath = await shareReceiptDownload.path();
+  const shareReceiptHtml = fs.readFileSync(shareReceiptPath, "utf8");
+  expect(shareReceiptHtml).toContain("MR 书法作品分享远端回执审计");
+  expect(shareReceiptHtml).toContain("https://share.example.test/");
+  expect(shareReceiptHtml).toContain("e".repeat(64));
 
   await page.locator("#reviewCopyShareLink").click();
   await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);

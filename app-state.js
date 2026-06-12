@@ -7240,6 +7240,114 @@
     };
   }
 
+  function getShareRepositoryReceiptAudit() {
+    const service = normalizeShareService(state.shareService);
+    const receipts = service.receipts;
+    return {
+      ok: true,
+      kind: "mr-calligraphy-share-repository-receipt-audit-v1",
+      total: receipts.length,
+      latestReceipt: receipts[0] || null,
+      receipts: clone(receipts),
+      boundary: SHARE_REPOSITORY_BOUNDARY,
+      message: receipts.length
+        ? `已保存 ${receipts.length} 条作品分享远端回执，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        : "暂无作品分享远端回执。"
+    };
+  }
+
+  function getShareRepositoryReceiptAuditExport() {
+    const audit = getShareRepositoryReceiptAudit();
+    if (!audit.total) {
+      return {
+        ok: false,
+        message: "暂无可导出的作品分享远端回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-share-repository-receipts-${exportedAt.slice(0, 10)}.html`,
+      html: renderShareRepositoryReceiptAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.total} 条作品分享远端回执审计导出。`
+    };
+  }
+
+  function downloadShareRepositoryReceiptAudit() {
+    const result = getShareRepositoryReceiptAuditExport();
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      receiptCount: result.audit.total,
+      message: result.message
+    };
+  }
+
+  function renderShareRepositoryReceiptAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const warnings = Array.isArray(receipt.warnings) && receipt.warnings.length ? receipt.warnings.join("；") : "无";
+      return `
+        <section class="receipt">
+          <h2>${escapeHtml(receipt.packageId || receipt.sourcePackageId || receipt.shareId || "packageId 未知")}</h2>
+          <dl>
+            <dt>方向</dt><dd>${escapeHtml(formatShareRepositoryReceiptDirection(receipt.direction))}</dd>
+            <dt>分享数量</dt><dd>${escapeHtml(receipt.shareCount || 0)}</dd>
+            <dt>Share ID</dt><dd>${escapeHtml(receipt.shareId || "未知")}</dd>
+            <dt>Artwork ID</dt><dd>${escapeHtml(receipt.artworkId || "未知")}</dd>
+            <dt>Public URL</dt><dd>${escapeHtml(receipt.publicUrl || "未返回")}</dd>
+            <dt>HTML Bytes</dt><dd>${escapeHtml(receipt.htmlBytes || 0)}</dd>
+            <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
+            <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
+            <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
+            <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
+            <dt>Received At</dt><dd>${escapeHtml(receipt.receivedAt || "未知")}</dd>
+            <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
+            <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
+          </dl>
+          <pre>${escapeHtml(JSON.stringify(receipt, null, 2))}</pre>
+        </section>`;
+    }).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法作品分享远端回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 12px; font-size: 17px; overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 6px; background: #1f2937; color: #f8fafc; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法作品分享远端回执审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatShareRepositoryReceiptDirection(direction) {
+    return {
+      check: "检查",
+      push: "发布"
+    }[direction] || "远端回执";
+  }
+
   function getShareServiceRemoteConfig() {
     const service = normalizeShareService(state.shareService);
     return {
@@ -11888,6 +11996,8 @@
     getArtworkShareRemotePackage,
     getShareServiceStatus,
     getShareServiceRemoteConfig,
+    getShareRepositoryReceiptAudit,
+    getShareRepositoryReceiptAuditExport,
     getPracticeVideoExportStatus,
     getPracticeVideoRetrySource,
     getLatestReview,
@@ -11979,6 +12089,7 @@
     downloadReport,
     downloadReportPdf,
     downloadReportComparison,
+    downloadShareRepositoryReceiptAudit,
     downloadArtworkSharePage,
     downloadArchive
   };
