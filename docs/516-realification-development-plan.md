@@ -9826,3 +9826,50 @@
 提交：
 
 - 中文 commit message：`新增课堂评阅导入回写`
+
+### 2026-06-13：新增课堂评阅汇总导出
+
+功能名：前台课堂评阅汇总 HTML 导出。
+
+开发原因：
+
+- 课堂评阅已经能导出、填写、导回本机作品集，但老师或家长仍缺少一份可归档的整体汇总。
+- 如果评阅结果只能散落在作品卡片里，课堂交接和打印归档还不够顺手。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-classroom-review-summary-v1` 汇总格式和边界说明。
+- 新增 `MRAppState.getArtworkClassroomReviewSummaryExport()` 和 `downloadArtworkClassroomReviewSummary()`。
+- 汇总 HTML 包含评阅总数、教师均分、有分数数量、评阅人数量、等级分布和 review digest。
+- 每条评阅明细包含作品缩略图、作品标题、本机评分、教师分数、评阅等级、评阅人、课堂批注和 digest。
+- 前台作品集新增“评阅汇总”按钮，只有存在已导入课堂评阅时启用。
+- 导出后写入 `artworkRepository.lastClassroomReviewSummaryExportedAt` 和 `lastClassroomReviewSummaryCount`。
+- Playwright 作品仓库用例扩展为导入评阅后导出评阅汇总，并验证下载 HTML 内容和 localStorage 状态。
+- smoke test 新增 `artworkClassroomReviewSummaryExportButton` 页面标记。
+
+验收方式：
+
+- 先通过“导入评阅”把至少一条课堂评阅回写到作品集。
+- 点击“评阅汇总”应下载 `mr-calligraphy-classroom-review-summary-*.html`。
+- 打开下载文件，应看到“MR 课堂评阅汇总”、教师均分、等级分布、评阅人、教师分数、批注和 digest。
+- 没有已导入课堂评阅时，按钮应禁用或返回明确失败，不导出空汇总。
+
+真实边界：
+
+- 数据来源：当前浏览器本机 `ArtworkRecord.classroomReview`。
+- 这是可离线打开和打印的本机 HTML 汇总，不是账号化教师端、班级成绩册、云端批改、权限校验、服务端签名或不可篡改审计。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅汇总导出`

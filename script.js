@@ -945,6 +945,7 @@ const els = {
   artworkClassroomReviewExportButton: document.getElementById("artworkClassroomReviewExportButton"),
   artworkClassroomReviewImportButton: document.getElementById("artworkClassroomReviewImportButton"),
   artworkClassroomReviewImportInput: document.getElementById("artworkClassroomReviewImportInput"),
+  artworkClassroomReviewSummaryExportButton: document.getElementById("artworkClassroomReviewSummaryExportButton"),
   artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
   artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
   artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
@@ -4197,6 +4198,7 @@ function bindHistoryControls() {
   els.artworkClassroomReviewExportButton?.addEventListener("click", exportArtworkClassroomReviewPage);
   els.artworkClassroomReviewImportButton?.addEventListener("click", openArtworkClassroomReviewImport);
   els.artworkClassroomReviewImportInput?.addEventListener("change", importArtworkClassroomReviewNotes);
+  els.artworkClassroomReviewSummaryExportButton?.addEventListener("click", exportArtworkClassroomReviewSummary);
   els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
   els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
   els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
@@ -8841,6 +8843,9 @@ function renderArtworkRepositoryStatus() {
   if (els.artworkClassroomReviewImportButton) {
     els.artworkClassroomReviewImportButton.disabled = !status.artworkCount || !window.FileReader;
   }
+  if (els.artworkClassroomReviewSummaryExportButton) {
+    els.artworkClassroomReviewSummaryExportButton.disabled = !status.classroomReviewCount;
+  }
   renderArtworkRepositoryConflictPanel(status);
 }
 
@@ -9968,6 +9973,12 @@ async function importArtworkClassroomReviewNotes(event) {
   } finally {
     input.value = "";
   }
+}
+
+function exportArtworkClassroomReviewSummary() {
+  const result = window.MRAppState?.downloadArtworkClassroomReviewSummary?.();
+  renderHistoryArtworkGallery();
+  showNotice(result?.message || "当前没有可导出的课堂评阅汇总。");
 }
 
 function openArtworkRepositoryImport() {

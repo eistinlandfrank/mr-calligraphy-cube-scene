@@ -1576,6 +1576,19 @@ test("front artwork repository exports and imports local artwork package", async
   await expect(page.locator("#artworkGalleryGrid")).toContainText("E2E 王老师");
   await expect(page.locator("#artworkGalleryGrid")).toContainText("96分");
   await expect(page.locator("#artworkGalleryGrid")).toContainText("课堂评阅回写成功");
+  await expect(page.locator("#artworkClassroomReviewSummaryExportButton")).toBeEnabled();
+  const reviewSummaryDownloadPromise = page.waitForEvent("download");
+  await page.locator("#artworkClassroomReviewSummaryExportButton").click();
+  const reviewSummaryDownload = await reviewSummaryDownloadPromise;
+  expect(reviewSummaryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-classroom-review-summary-.*\.html$/);
+  const reviewSummaryHtml = fs.readFileSync(await reviewSummaryDownload.path(), "utf8");
+  expect(reviewSummaryHtml).toContain("MR 课堂评阅汇总");
+  expect(reviewSummaryHtml).toContain("ClassroomReviewSummary: yes");
+  expect(reviewSummaryHtml).toContain("E2E 王老师");
+  expect(reviewSummaryHtml).toContain("96");
+  expect(reviewSummaryHtml).toContain("课堂评阅回写成功");
+  expect(reviewSummaryHtml).toContain("Digest");
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅汇总");
   const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(resolvedState.artworks).toHaveLength(3);
   expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
@@ -1593,6 +1606,8 @@ test("front artwork repository exports and imports local artwork package", async
   expect(resolvedState.artworkRepository.lastClassroomReviewImportedCount).toBe(1);
   expect(resolvedState.artworkRepository.lastClassroomReviewSkippedCount).toBe(1);
   expect(resolvedState.artworkRepository.lastClassroomReviewImportedAt).toBeTruthy();
+  expect(resolvedState.artworkRepository.lastClassroomReviewSummaryCount).toBe(1);
+  expect(resolvedState.artworkRepository.lastClassroomReviewSummaryExportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastConflictRecords).toHaveLength(0);
 });
 

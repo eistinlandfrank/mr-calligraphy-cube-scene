@@ -32,7 +32,9 @@
   const ARTWORK_COLLECTION_BOUNDARY = "作品集 HTML 导出会把当前浏览器里的多幅 ArtworkRecord 渲染成可离线打开、打印或手动分享的静态作品集；它不是云端公开链接、课堂作品墙、账号权限或生产 CDN。";
   const ARTWORK_CLASSROOM_REVIEW_KIND = "mr-calligraphy-classroom-review-v1";
   const ARTWORK_CLASSROOM_REVIEW_NOTES_KIND = "mr-calligraphy-classroom-review-notes-v1";
+  const ARTWORK_CLASSROOM_REVIEW_SUMMARY_KIND = "mr-calligraphy-classroom-review-summary-v1";
   const ARTWORK_CLASSROOM_REVIEW_BOUNDARY = "课堂评阅表导出会把当前浏览器里的作品生成可离线打开、填写、打印和导出评阅 JSON 的 HTML；它不是账号化教师端、课堂作品墙、云端批改或生产权限系统。";
+  const ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY = "课堂评阅汇总导出会把已导回当前浏览器的作品评阅记录生成可离线打开和打印的 HTML；它不是账号化教师端、班级成绩册、云端批改或服务端不可篡改审计。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -2103,6 +2105,8 @@
       lastClassroomReviewImportedAt: normalizePlanDate(source.lastClassroomReviewImportedAt),
       lastClassroomReviewImportedCount: normalizeInteger(source.lastClassroomReviewImportedCount, 0, 0, 99999),
       lastClassroomReviewSkippedCount: normalizeInteger(source.lastClassroomReviewSkippedCount, 0, 0, 99999),
+      lastClassroomReviewSummaryExportedAt: normalizePlanDate(source.lastClassroomReviewSummaryExportedAt),
+      lastClassroomReviewSummaryCount: normalizeInteger(source.lastClassroomReviewSummaryCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : null,
@@ -12720,6 +12724,7 @@
     const repository = normalizeArtworkRepository(state.artworkRepository);
     const artworkCount = state.artworks.length;
     const linkedSessionCount = getArtworkRepositoryLinkedSessions(state.artworks).length;
+    const classroomReviewCount = state.artworks.filter((artwork) => normalizeArtwork(artwork)?.classroomReview).length;
     let tone = "idle";
     let message = artworkCount
       ? `本机作品仓库有 ${artworkCount} 幅作品，关联 ${linkedSessionCount} 条练习，可导出 JSON 仓库包。`
@@ -12755,6 +12760,12 @@
             at: repository.lastClassroomReviewImportedAt,
             message: `最近导入 ${repository.lastClassroomReviewImportedCount} 条课堂评阅，跳过 ${repository.lastClassroomReviewSkippedCount} 条：${formatPlanDate(repository.lastClassroomReviewImportedAt)}。`
           }
+        : null,
+      repository.lastClassroomReviewSummaryExportedAt
+        ? {
+            at: repository.lastClassroomReviewSummaryExportedAt,
+            message: `最近导出 ${repository.lastClassroomReviewSummaryCount} 条课堂评阅汇总：${formatPlanDate(repository.lastClassroomReviewSummaryExportedAt)}。`
+          }
         : null
     ]
       .filter(Boolean)
@@ -12779,6 +12790,7 @@
       workspaceId: repository.workspaceId,
       artworkCount,
       linkedSessionCount,
+      classroomReviewCount,
       tone,
       message,
       boundary: ARTWORK_REPOSITORY_BOUNDARY,
@@ -12796,6 +12808,8 @@
       lastClassroomReviewImportedAt: repository.lastClassroomReviewImportedAt,
       lastClassroomReviewImportedCount: repository.lastClassroomReviewImportedCount,
       lastClassroomReviewSkippedCount: repository.lastClassroomReviewSkippedCount,
+      lastClassroomReviewSummaryExportedAt: repository.lastClassroomReviewSummaryExportedAt,
+      lastClassroomReviewSummaryCount: repository.lastClassroomReviewSummaryCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
@@ -13505,6 +13519,215 @@
         ? `已导入 ${importedCount} 条课堂评阅并回写到本机作品，跳过 ${skippedCount} 条。`
         : `课堂评阅 JSON 没有匹配到本机作品，已跳过 ${skippedCount} 条。`
     };
+  }
+
+  function getArtworkClassroomReviewSummaryExport(options = {}) {
+    const selectedIds = Array.isArray(options.ids)
+      ? new Set(options.ids.map(String).filter(Boolean))
+      : null;
+    const reviewedArtworks = state.artworks
+      .map(normalizeArtwork)
+      .filter(Boolean)
+      .filter((artwork) => artwork.classroomReview)
+      .filter((artwork) => !selectedIds || selectedIds.has(artwork.id))
+      .sort((a, b) => Date.parse(b.classroomReview.reviewedAt || b.createdAt || 0) - Date.parse(a.classroomReview.reviewedAt || a.createdAt || 0));
+    if (!reviewedArtworks.length) {
+      return {
+        ok: false,
+        message: "还没有可导出的课堂评阅汇总。请先导入评阅 JSON。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const packageId = `classroom-review-summary-${Date.now()}`;
+    const summaryPackage = {
+      kind: ARTWORK_CLASSROOM_REVIEW_SUMMARY_KIND,
+      version: VERSION,
+      packageId,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      boundary: ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY,
+      summary: getArtworkClassroomReviewSummary(reviewedArtworks),
+      artworks: reviewedArtworks.map(decorateArtworkClassroomReviewSummaryItem)
+    };
+    return {
+      ok: true,
+      package: clone(summaryPackage),
+      html: createArtworkClassroomReviewSummaryHtml(summaryPackage),
+      filename: `mr-calligraphy-classroom-review-summary-${Date.now()}.html`,
+      message: `已生成 ${reviewedArtworks.length} 条课堂评阅汇总。${ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY}`
+    };
+  }
+
+  function downloadArtworkClassroomReviewSummary(options = {}) {
+    const result = getArtworkClassroomReviewSummaryExport(options);
+    if (!result.ok) {
+      recordArtworkRepositoryError(result.message);
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastClassroomReviewSummaryExportedAt: now,
+      lastClassroomReviewSummaryCount: result.package.artworks.length,
+      lastCheckedAt: now,
+      lastError: ""
+    });
+    addEvent("artwork-classroom-review-summary-export", `导出课堂评阅汇总：${result.package.artworks.length} 条`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      exportedReviewCount: result.package.artworks.length,
+      status: getArtworkRepositoryStatus(),
+      message: `${result.message} 已下载：${result.filename}。`
+    };
+  }
+
+  function getArtworkClassroomReviewSummary(artworks = []) {
+    const count = artworks.length;
+    const teacherScores = artworks
+      .map((artwork) => artwork.classroomReview?.teacherScore)
+      .filter((score) => Number.isFinite(Number(score)));
+    const averageTeacherScore = teacherScores.length
+      ? Math.round(teacherScores.reduce((sum, score) => sum + Number(score), 0) / teacherScores.length)
+      : 0;
+    const levelCounts = artworks.reduce((counts, artwork) => {
+      const level = artwork.classroomReview?.level || "未评定";
+      counts[level] = (counts[level] || 0) + 1;
+      return counts;
+    }, {});
+    const reviewers = [...new Set(artworks.map((artwork) => artwork.classroomReview?.reviewer).filter(Boolean))];
+    return {
+      total: count,
+      averageTeacherScore,
+      scoredCount: teacherScores.length,
+      levelCounts,
+      reviewers,
+      digest: sha256StableJson(artworks.map((artwork) => ({
+        id: artwork.id,
+        reviewDigest: artwork.classroomReview?.reviewDigest || ""
+      })))
+    };
+  }
+
+  function decorateArtworkClassroomReviewSummaryItem(artwork) {
+    return {
+      id: artwork.id,
+      title: artwork.title,
+      glyph: artwork.glyph,
+      style: artwork.style,
+      score: artwork.score,
+      createdAt: artwork.createdAt,
+      imageData: artwork.imageData,
+      tags: normalizeArtworkTags(artwork.tags),
+      feedback: normalizeStringList(artwork.feedback).slice(0, 3),
+      classroomReview: clone(artwork.classroomReview)
+    };
+  }
+
+  function createArtworkClassroomReviewSummaryHtml(summaryPackage) {
+    const summary = summaryPackage.summary || {};
+    const artworks = Array.isArray(summaryPackage.artworks) ? summaryPackage.artworks : [];
+    const levelBadges = Object.entries(summary.levelCounts || {})
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hans-CN"))
+      .map(([level, count]) => `<span>${escapeHtml(level)} ${escapeHtml(count)}</span>`)
+      .join("") || "<span>未评定 0</span>";
+    const rows = artworks.map((artwork, index) => createArtworkClassroomReviewSummaryRowHtml(artwork, index)).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 课堂评阅汇总 · ${escapeHtml(artworks.length)} 条</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#65746e; --line:#dce5df; --paper:#fbf7ee; --card:#ffffff; --wash:#edf7f2; --jade:#257861; --gold:#b98238; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(1120px, calc(100% - 28px)); margin: 0 auto; padding: 24px 0 42px; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1 { font-size: clamp(30px, 6vw, 54px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 19px; }
+    h3 { font-size: 16px; }
+    button { min-height: 38px; padding: 0 14px; border: 1px solid var(--ink); border-radius: 8px; color: #fff; background: var(--ink); font: inherit; cursor: pointer; }
+    header { display: grid; gap: 10px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; padding: 9px 0; background: var(--paper); }
+    .meta, .muted { color: var(--muted); }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+    .stat, .review-row, .boundary { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+    .stat { padding: 13px; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 3px; font-size: 26px; line-height: 1.1; }
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .badges span { min-height: 26px; padding: 3px 9px; border-radius: 99px; background: var(--wash); color: var(--ink); font-size: 12px; font-weight: 850; }
+    .list { display: grid; gap: 10px; margin-top: 18px; }
+    .review-row { display: grid; grid-template-columns: 86px minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.5fr); gap: 10px; align-items: stretch; padding: 10px; break-inside: avoid; page-break-inside: avoid; }
+    .thumb { display: grid; min-height: 82px; place-items: center; overflow: hidden; border-radius: 7px; background: #f1e5ce; color: rgba(48, 34, 20, 0.72); font-size: 32px; font-weight: 900; }
+    .thumb img { width: 100%; height: 100%; object-fit: contain; }
+    .cell { display: grid; gap: 5px; min-width: 0; }
+    .cell strong { font-size: 15px; }
+    .cell span, .cell p { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+    .score { color: var(--jade); font-size: 28px; font-weight: 950; line-height: 1; }
+    .boundary { display: grid; gap: 8px; margin-top: 18px; padding: 14px; }
+    @media print { @page { size: A4; margin: 12mm; } body { background: #fff; font-size: 12px; } main { width: 100%; padding: 0; } .toolbar { display: none; } .review-row { grid-template-columns: 64px 1fr 0.8fr 1.4fr; } .thumb { min-height: 64px; } }
+    @media (max-width: 760px) { .stats, .review-row { grid-template-columns: 1fr; } .thumb { min-height: 160px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="toolbar"><button type="button" onclick="window.print()">打印 / 保存 PDF</button></div>
+    <header>
+      <p class="meta">MR Calligraphy Classroom Review Summary · ${escapeHtml(formatDateTime(summaryPackage.exportedAt))}</p>
+      <h1>MR 课堂评阅汇总</h1>
+      <p class="muted">这份汇总来自当前浏览器已导入的课堂评阅 JSON，适合离线归档、打印或线下交接；它不是账号化教师端或云端成绩册。</p>
+      <div class="badges">${levelBadges}</div>
+    </header>
+    <section class="stats" aria-label="评阅汇总摘要">
+      <div class="stat"><span>评阅</span><strong>${summary.total || artworks.length}</strong></div>
+      <div class="stat"><span>教师均分</span><strong>${summary.averageTeacherScore || 0}</strong></div>
+      <div class="stat"><span>有分数</span><strong>${summary.scoredCount || 0}</strong></div>
+      <div class="stat"><span>评阅人</span><strong>${summary.reviewers?.length || 0}</strong></div>
+    </section>
+    <section class="list" aria-label="评阅明细">
+      ${rows}
+    </section>
+    <section class="boundary">
+      <h2>导出边界</h2>
+      <p class="muted">${escapeHtml(summaryPackage.boundary || ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY)}</p>
+      <p class="muted">ClassroomReviewSummary: yes · PackageId: ${escapeHtml(summaryPackage.packageId)} · Digest: ${escapeHtml(summary.digest || "")}</p>
+    </section>
+  </main>
+</body>
+</html>`;
+  }
+
+  function createArtworkClassroomReviewSummaryRowHtml(artwork, index) {
+    const review = artwork.classroomReview || {};
+    const image = artwork.imageData
+      ? `<img src="${escapeAttr(artwork.imageData)}" alt="${escapeAttr(artwork.title)}">`
+      : `${escapeHtml(artwork.glyph || "作品")}`;
+    const score = Number.isFinite(Number(review.teacherScore)) ? `${review.teacherScore}` : "-";
+    const feedback = artwork.feedback?.length ? artwork.feedback.join("；") : "暂无自动反馈";
+    return `<article class="review-row">
+      <div class="thumb">${image}</div>
+      <div class="cell">
+        <strong>${escapeHtml(index + 1)}. ${escapeHtml(artwork.title)}</strong>
+        <span>${escapeHtml(formatDateTime(artwork.createdAt))} / ${escapeHtml(artwork.glyph || "-")} / ${escapeHtml(artwork.style || "-")} / 本机 ${escapeHtml(artwork.score || 0)} 分</span>
+        <span>${escapeHtml(feedback)}</span>
+      </div>
+      <div class="cell">
+        <strong>${escapeHtml(review.reviewer || "本机课堂评阅")}</strong>
+        <span>${escapeHtml(review.level || "未评定")}</span>
+        <span>教师分数</span>
+        <span class="score">${escapeHtml(score)}</span>
+      </div>
+      <div class="cell">
+        <strong>课堂批注</strong>
+        <p>${escapeHtml(review.note || "暂无批注")}</p>
+        <span>Digest ${escapeHtml(review.reviewDigest || "")}</span>
+      </div>
+    </article>`;
   }
 
   function getArtworkRepositorySummary(artworks = [], linkedSessions = []) {
@@ -16408,6 +16631,8 @@
     getArtworkClassroomReviewExport,
     downloadArtworkClassroomReviewPage,
     importArtworkClassroomReviewNotes,
+    getArtworkClassroomReviewSummaryExport,
+    downloadArtworkClassroomReviewSummary,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

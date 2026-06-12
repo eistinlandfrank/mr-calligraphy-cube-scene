@@ -30,7 +30,7 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 75 | 27 | 0 | 0 | 0 | 0 |
+| `index.html` | 75 | 28 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
@@ -4672,3 +4672,45 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增课堂评阅导入回写`
+
+## 114. 2026-06-13 新增课堂评阅汇总导出
+
+本次把导回本机作品集的课堂评阅再补成可归档文件。用户导入老师评阅 JSON 后，可以一键导出 `mr-calligraphy-classroom-review-summary-*.html`，用于课堂归档、打印或线下交接。
+
+完成内容：
+
+- 新增 `mr-calligraphy-classroom-review-summary-v1` 汇总格式和课堂评阅汇总边界说明。
+- 新增 `MRAppState.getArtworkClassroomReviewSummaryExport()` 和 `downloadArtworkClassroomReviewSummary()`。
+- 汇总 HTML 包含评阅总数、教师均分、有分数数量、评阅人数量、等级分布、作品缩略图、教师分数、等级、评阅人、批注和 review digest。
+- 前台作品仓库工具区新增 `artworkClassroomReviewSummaryExportButton`，文案为“评阅汇总”。
+- 只有存在已导入课堂评阅时才启用汇总导出，避免空壳文件。
+- 导出结果写入 `artworkRepository.lastClassroomReviewSummaryExportedAt` 和 `lastClassroomReviewSummaryCount`。
+- E2E 用例覆盖导入课堂评阅后点击“评阅汇总”、读取下载 HTML、验证教师、分数、批注、digest 和状态写入。
+- smoke test 新增评阅汇总按钮标记。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机 `artworks[*].classroomReview`。
+- 写入状态：汇总导出时间和数量写入 `artworkRepository`。
+- 成功反馈：状态栏显示最近导出课堂评阅汇总，下载 HTML 可离线打开和打印。
+- 失败反馈：没有已导入课堂评阅时返回明确失败，不生成空汇总。
+- 刷新后复现方式：评阅和导出状态都随 localStorage 恢复。
+
+仍待补：
+
+- 当前是本机离线汇总，不是账号化教师端、班级成绩册、云端批改、权限校验、服务端签名或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅汇总导出`
