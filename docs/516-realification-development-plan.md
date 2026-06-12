@@ -9166,3 +9166,42 @@
 提交：
 
 - 中文 commit message：`新增学习动作真实详情`
+
+### 2026-06-13：新增学习过程动作详情
+
+完成内容：
+
+- `script.js` 新增动作反馈缓存，内部刷新同一场景/热点时会恢复最近一次真实动作详情。
+- 讲解动作新增详情卡，显示段落进度、本机语音服务、朗读次数、文本降级次数和服务边界。
+- 临摹动作新增详情卡，显示 PracticeSession 会话 ID、当前字、训练模式、笔画数、采样点和目标步骤。
+- 训练模式动作新增详情卡，展示示范/对比模式是否同步到当前会话。
+- 笔画切换动作新增详情卡，展示当前笔画、索引、当前字和会话状态。
+- 创作风格动作新增详情卡，说明行书风格会在保存作品时进入本机作品记录。
+- 保存作品动作新增详情卡，展示作品 ID、关联会话、评分、采样点、评分证据和反馈建议。
+- 学习档案、优秀筛选和查看作品动作新增真实详情，不展示静态样本或假作品页。
+- 前台真实流程 E2E 新增讲解、临摹、模式、笔画和保存作品详情断言。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getLectureProgress()`、`getLectureServiceStatus()`、`startPractice()`、`setTrainingMode()`、`moveStroke()`、`saveArtwork()`、本机作品集和评分证据。
+- 写入状态：使用现有 `mr-calligraphy-learning-state-v1.lectureService`、`sessions[*]`、`artworks[*]`、`scoreService` 和历史记录。
+- 成功反馈：用户能看到具体会话 ID、作品 ID、当前笔画、语音服务状态和评分证据，而不是只有临时提示。
+- 失败反馈：没有真实笔迹时保存作品只显示失败详情，不新增作品；没有作品时查看作品只显示空状态。
+- 刷新后复现方式：完成讲解、临摹、模式切换和保存作品后刷新，相关详情仍可由本机状态重新生成。
+
+仍待补：
+
+- 当前是浏览器本机训练过程闭环，不是硬件笔压输入、多人课堂同步、教师端实时批改或生产云端训练记录。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习过程动作详情`

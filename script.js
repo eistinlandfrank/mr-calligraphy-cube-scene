@@ -1059,6 +1059,7 @@ const els = {
 
 let currentIndex = 0;
 let activePointIndex = 0;
+let activeActionPresentation = null;
 let cubeYaw = 0;
 let cubePitch = -7;
 let cubeScale = 1;
@@ -4303,6 +4304,33 @@ function renderLearningState() {
   renderReportPanel(currentIndex);
   renderHistoryPanel(currentIndex);
   renderPlanPanel(currentIndex);
+}
+
+function setActionPresentation(feedback = "", detail = null, sceneIndex = currentIndex, pointIndex = activePointIndex) {
+  activeActionPresentation = {
+    feedback: String(feedback || ""),
+    detail,
+    sceneIndex,
+    pointIndex
+  };
+}
+
+function clearActionPresentation() {
+  activeActionPresentation = null;
+}
+
+function restoreActionPresentation(sceneIndex, pointIndex) {
+  if (!activeActionPresentation) {
+    return false;
+  }
+  if (activeActionPresentation.sceneIndex !== sceneIndex || activeActionPresentation.pointIndex !== pointIndex) {
+    return false;
+  }
+  if (activeActionPresentation.feedback) {
+    els.actionFeedback.textContent = activeActionPresentation.feedback;
+  }
+  renderActionDetail(activeActionPresentation.detail || null);
+  return true;
 }
 
 function renderLearningStateSummary() {
@@ -10147,6 +10175,9 @@ function loadScene(index, options = {}) {
     return;
   }
 
+  if (!options.preserveActionPresentation) {
+    clearActionPresentation();
+  }
   currentIndex = index;
   const pointIndex = clampScenePointIndex(index, Number.isInteger(options.pointIndex) ? options.pointIndex : 0);
   activePointIndex = pointIndex;
@@ -10180,6 +10211,9 @@ function loadScene(index, options = {}) {
 
 function selectPoint(pointIndex, options = {}) {
   const nextPointIndex = clampScenePointIndex(currentIndex, pointIndex);
+  if (!options.preserveActionPresentation) {
+    clearActionPresentation();
+  }
   activePointIndex = nextPointIndex;
   updateInteractionPanel(currentIndex, nextPointIndex);
   if (options.updateRoute !== false) {
@@ -10515,8 +10549,10 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   els.metricGrid.innerHTML = "";
   els.pointList.innerHTML = "";
   els.actionList.innerHTML = "";
-  els.actionFeedback.textContent = getLearningActionHint(sceneIndex);
-  renderActionDetail(null);
+  if (!restoreActionPresentation(sceneIndex, pointIndex)) {
+    els.actionFeedback.textContent = getLearningActionHint(sceneIndex);
+    renderActionDetail(null);
+  }
 
   pointView.tags.forEach((tag) => {
     const tagEl = document.createElement("span");
@@ -10743,6 +10779,7 @@ function runAction(action) {
 function applyActionResult(result = {}, action = {}) {
   els.actionFeedback.textContent = result.message || (action.label ? "操作已处理，但没有返回详细结果。" : "");
   renderActionDetail(result.detail || null);
+  setActionPresentation(els.actionFeedback.textContent, result.detail || null);
   if (result.plan?.id) {
     activePlanId = result.plan.id;
   }
@@ -10751,7 +10788,14 @@ function applyActionResult(result = {}, action = {}) {
     setReportDetailRoute(result.report.id);
   }
   if (result.openArtworkId) {
+    const feedbackMessage = result.message || "已打开最近保存的作品。";
+    const detail = result.detail || null;
     openArtworkDetailRoute(result.openArtworkId);
+    if (feedbackMessage) {
+      els.actionFeedback.textContent = feedbackMessage;
+    }
+    renderActionDetail(detail);
+    setActionPresentation(feedbackMessage, detail);
     return;
   }
   renderLearningStateSummary();
@@ -10775,6 +10819,7 @@ function applyActionResult(result = {}, action = {}) {
         els.actionFeedback.textContent = feedbackMessage;
       }
       renderActionDetail(detail);
+      setActionPresentation(feedbackMessage, detail);
     }, 420);
     return;
   }
@@ -11313,6 +11358,300 @@ function buildNavigationActionDetail(action = {}, result = {}) {
   };
 }
 
+function buildTaskActionDetail(result = {}, actionLabel = "学习任务") {
+  const stats = window.MRAppState?.getStats?.();
+  const task = result.task || null;
+  const progress = result.progress || stats?.taskProgress || null;
+  const strokePlan = Array.isArray(task?.strokePlan)
+    ? task.strokePlan
+    : Array.isArray(stats?.taskSteps)
+      ? stats.taskSteps
+      : [];
+
+  return {
+    type: "task",
+    eyebrow: "本机任务切换",
+    title: task?.taskTitle || stats?.taskTitle || actionLabel,
+    status: result.locked ? "未解锁" : progress?.statusLabel || "已确认",
+    summary: result.message || `已读取当前本机任务：${stats?.taskTitle || "未选择"}。`,
+    metrics: [
+      { label: "当前字", value: task?.glyph || stats?.glyph || "未选择" },
+      { label: "碑帖", value: task?.copybook || stats?.copybook || "未选择" },
+      { label: "级别", value: task?.level || stats?.taskLevel || "基础" },
+      { label: "任务进度", value: `${progress?.percent ?? stats?.taskProgress?.percent ?? 0}%` },
+      { label: "真实练习", value: `${progress?.practicedSessionCount ?? stats?.practicedSessionCount ?? 0}次` },
+      { label: "报告", value: `${progress?.reportCount ?? stats?.reportCount ?? 0}份` }
+    ],
+    items: [
+      task?.id ? `任务 ID：${task.id}。` : "",
+      task?.focus || stats?.taskFocus ? `练习重点：${task?.focus || stats.taskFocus}。` : "",
+      strokePlan.length ? `步骤计划：${strokePlan.slice(0, 5).join("、")}。` : "",
+      progress?.dependencyStatus?.label ? `依赖状态：${progress.dependencyStatus.label}。` : "",
+      "任务切换只使用本机任务库和完成规则，不伪造解锁状态。"
+    ].filter(Boolean)
+  };
+}
+
+function buildLectureActionDetail(result = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const progress = result.lecture || window.MRAppState?.getLectureProgress?.() || null;
+  const service = window.MRAppState?.getLectureServiceStatus?.() || null;
+
+  return {
+    type: "lecture",
+    eyebrow: "本机讲解",
+    title: progress?.currentStep?.title || `${stats?.glyph || "当前字"}字讲解`,
+    status: progress?.status === "complete" ? "已完成" : progress?.status === "playing" ? "播放中" : "待讲解",
+    summary: result.message || progress?.currentStep?.body || "讲解进度会写入本机状态。",
+    metrics: [
+      { label: "段落", value: `${progress?.completedSteps || 0}/${progress?.totalSteps || 0}` },
+      { label: "进度", value: `${progress?.progressPercent || 0}%` },
+      { label: "耗时", value: `${progress?.elapsedSeconds || 0}s` },
+      { label: "服务", value: service?.modeLabel || "本机讲解" },
+      { label: "朗读", value: `${service?.spokenStepCount || 0}段` },
+      { label: "降级", value: `${service?.fallbackStepCount || 0}段` }
+    ],
+    items: [
+      progress?.currentStep?.body || "",
+      service?.voiceName ? `本机声音：${service.voiceName}。` : "未检测到本机语音声音时，会降级为文本计时。",
+      service?.boundary || "讲解为本机能力，不是远端 AI 音频生成。"
+    ].filter(Boolean)
+  };
+}
+
+function buildPracticeSessionActionDetail(result = {}, action = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const session = result.session || stats?.latestSession || null;
+  const target = typeof result.target === "number" ? result.target : action.target;
+  const targetScene = typeof target === "number" ? getLearningSceneView(target) : null;
+
+  return {
+    type: "practice",
+    eyebrow: "本机练习会话",
+    title: session?.title || `${session?.glyph || stats?.glyph || "当前字"}字练习`,
+    status: session?.status === "saved" ? "已保存" : "练习中",
+    summary: result.message || "已创建或继续本机 PracticeSession。",
+    metrics: [
+      { label: "会话", value: session?.id || "未创建" },
+      { label: "当前字", value: session?.glyph || stats?.glyph || "未选择" },
+      { label: "模式", value: (session?.trainingMode || stats?.trainingMode) === "compare" ? "对比" : "示范" },
+      { label: "笔画", value: `${session?.strokeCount || 0}笔` },
+      { label: "采样点", value: `${session?.pointCount || 0}点` },
+      { label: "目标", value: targetScene?.shortName || "临摹" }
+    ],
+    items: [
+      session?.id ? `会话 ID：${session.id}。` : "",
+      targetScene?.focus ? `目标重点：${targetScene.focus}` : "",
+      "练习会话会保存训练模式、笔画索引、真实笔迹和评分证据。"
+    ].filter(Boolean)
+  };
+}
+
+function buildTrainingModeActionDetail(result = {}, modeLabel = "示范") {
+  const stats = window.MRAppState?.getStats?.();
+  const state = window.MRAppState?.getState?.();
+  const session = state?.currentSessionId
+    ? state.sessions?.find((item) => item.id === state.currentSessionId)
+    : stats?.latestSession;
+
+  return {
+    type: "training-mode",
+    eyebrow: "训练模式",
+    title: `${modeLabel}模式`,
+    status: stats?.trainingMode === "compare" ? "对比" : "示范",
+    summary: result.message || `已切换为${modeLabel}模式。`,
+    metrics: [
+      { label: "当前字", value: stats?.glyph || "未选择" },
+      { label: "会话", value: session?.id || "待创建" },
+      { label: "模式", value: stats?.trainingMode === "compare" ? "对比" : "示范" },
+      { label: "活动会话", value: `${stats?.taskProgress?.activeSessionCount || 0}个` }
+    ],
+    items: [
+      session?.id ? `当前会话会同步保存训练模式：${session.id}。` : "当前还没有活动练习会话，下一次开始临摹会使用该模式。",
+      "模式切换写入浏览器本机状态，不只改变静态文案。"
+    ]
+  };
+}
+
+function buildStrokeActionDetail(result = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const strokes = window.MRAppState?.strokes || [];
+  const activeIndex = Math.max(0, strokes.indexOf(stats?.activeStroke));
+  const session = window.MRAppState?.getState?.()?.currentSessionId || "";
+
+  return {
+    type: "stroke",
+    eyebrow: "本机笔画索引",
+    title: stats?.activeStroke || "当前笔画",
+    status: `${activeIndex + 1}/${strokes.length || 8}`,
+    summary: result.message || "已更新当前笔画索引。",
+    metrics: [
+      { label: "当前笔画", value: stats?.activeStroke || "未选择" },
+      { label: "索引", value: `${activeIndex + 1}/${strokes.length || 8}` },
+      { label: "当前字", value: stats?.glyph || "未选择" },
+      { label: "会话", value: session || "待创建" }
+    ],
+    items: [
+      strokes.length ? `笔画库：${strokes.join("、")}。` : "",
+      "切换笔画会写入当前练习状态，后续保存作品会关联该笔画索引。"
+    ].filter(Boolean)
+  };
+}
+
+function buildArtworkStyleActionDetail(result = {}, style = "行书") {
+  const stats = window.MRAppState?.getStats?.();
+  const state = window.MRAppState?.getState?.();
+
+  return {
+    type: "artwork-style",
+    eyebrow: "创作风格",
+    title: `${style}风格`,
+    status: state?.artworkStyle || style,
+    summary: result.message || `已切换为${style}风格。`,
+    metrics: [
+      { label: "当前字", value: stats?.glyph || "未选择" },
+      { label: "风格", value: state?.artworkStyle || style },
+      { label: "作品", value: `${stats?.artworkCount || 0}幅` },
+      { label: "评分", value: formatAverageScore(stats) }
+    ],
+    items: [
+      "风格会在保存作品时写入本机作品记录。",
+      "当前只是本机创作风格字段，不伪装成生成式字体模型。"
+    ]
+  };
+}
+
+function buildArtworkActionDetail(result = {}, practiceResult = null) {
+  const artwork = result.artwork || window.MRAppState?.getStats?.()?.latestArtwork || null;
+  const scoreEvidence = artwork?.scoreEvidence || practiceResult?.scoreEvidence || null;
+  const evidenceMetrics = getScoreEvidenceMetrics(scoreEvidence).filter((metric) => [
+    "算法版本",
+    "笔顺匹配",
+    "路径贴合",
+    "路径误差",
+    "压感采样"
+  ].includes(metric.label));
+
+  return {
+    type: "artwork",
+    eyebrow: "本机作品保存",
+    title: artwork?.title || "保存作品",
+    status: artwork?.id || "已保存",
+    summary: result.message || "作品已保存到本机作品集。",
+    metrics: [
+      { label: "评分", value: artwork?.score ? `${artwork.score}分` : "未评分" },
+      { label: "笔画", value: `${artwork?.strokeCount || practiceResult?.strokeCount || 0}笔` },
+      { label: "采样点", value: `${artwork?.pointCount || practiceResult?.pointCount || 0}点` },
+      { label: "风格", value: artwork?.style || "楷书" },
+      { label: "证据", value: scoreEvidence ? "已保存" : "无证据" },
+      ...evidenceMetrics
+    ],
+    items: [
+      artwork?.id ? `作品 ID：${artwork.id}。` : "",
+      artwork?.sessionId ? `关联练习会话：${artwork.sessionId}。` : "",
+      scoreEvidence ? "作品已携带真实评分证据，可用于复盘、报告和分享页。" : "本作品缺少评分证据，后续复盘不会补造证据。",
+      ...(Array.isArray(artwork?.feedback) ? artwork.feedback.slice(0, 3) : [])
+    ].filter(Boolean)
+  };
+}
+
+function buildHistoryActionDetail(result = {}, action = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const target = typeof result.target === "number" ? result.target : action.target;
+  const targetScene = typeof target === "number" ? getLearningSceneView(target) : null;
+
+  return {
+    type: "history",
+    eyebrow: "本机学习档案",
+    title: action.label || "学习记录",
+    status: `${stats?.recordCount || 0}条`,
+    summary: result.message || "已读取本机学习档案。",
+    metrics: [
+      { label: "练习", value: `${stats?.sessionCount || 0}次` },
+      { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
+      { label: "作品", value: `${stats?.artworkCount || 0}幅` },
+      { label: "报告", value: `${stats?.reportCount || 0}份` },
+      { label: "阶段", value: `${stats?.stageRecordCount || 0}条` },
+      { label: "目标", value: targetScene?.shortName || "档案" }
+    ],
+    items: [
+      stats?.latestRecordAt ? `最近记录：${formatHistoryTime(stats.latestRecordAt)}。` : "暂无最近记录。",
+      "学习档案来自本机练习、作品、报告、阶段和计划记录。",
+      targetScene?.focus || ""
+    ].filter(Boolean)
+  };
+}
+
+function buildExcellentFilterActionDetail(result = {}) {
+  const state = window.MRAppState?.getState?.();
+  const excellent = Array.isArray(state?.artworks)
+    ? state.artworks.filter((artwork) => Number(artwork.score) >= 88)
+    : [];
+
+  return {
+    type: "history-filter",
+    eyebrow: "作品筛选",
+    title: "优秀作品",
+    status: `${excellent.length}幅`,
+    summary: result.message || "已按本机作品评分筛选优秀记录。",
+    metrics: [
+      { label: "优秀阈值", value: "88分" },
+      { label: "命中", value: `${excellent.length}幅` },
+      { label: "全部作品", value: `${state?.artworks?.length || 0}幅` }
+    ],
+    items: [
+      ...(excellent.slice(-4).map((artwork) => `${artwork.title || artwork.id}：${artwork.score || 0}分。`)),
+      "筛选只读取本机作品评分，不展示静态优秀样本。"
+    ]
+  };
+}
+
+function buildArtworkOpenActionDetail(artwork = null) {
+  return {
+    type: "artwork-open",
+    eyebrow: "作品详情",
+    title: artwork?.title || "最近作品",
+    status: artwork?.id || "未找到",
+    summary: artwork
+      ? `已打开最近保存的作品：${artwork.title}。`
+      : "还没有保存作品，请先完成一次保存作品。",
+    metrics: [
+      { label: "当前字", value: artwork?.glyph || "未选择" },
+      { label: "风格", value: artwork?.style || "未保存" },
+      { label: "评分", value: artwork?.score ? `${artwork.score}分` : "未评分" },
+      { label: "笔画", value: `${artwork?.strokeCount || 0}笔` },
+      { label: "采样点", value: `${artwork?.pointCount || 0}点` }
+    ],
+    items: [
+      artwork?.id ? `作品 ID：${artwork.id}。` : "",
+      artwork?.createdAt ? `保存时间：${formatHistoryTime(artwork.createdAt)}。` : "",
+      "作品详情会跳转到本机学习档案，不伪装成远端作品页。"
+    ].filter(Boolean)
+  };
+}
+
+function buildActionFailureDetail(title, message, items = []) {
+  const stats = window.MRAppState?.getStats?.();
+
+  return {
+    type: "failure",
+    eyebrow: "真实失败反馈",
+    title,
+    status: "未执行",
+    summary: message,
+    metrics: [
+      { label: "当前字", value: stats?.glyph || "未选择" },
+      { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
+      { label: "作品", value: `${stats?.artworkCount || 0}幅` },
+      { label: "报告", value: `${stats?.reportCount || 0}份` }
+    ],
+    items: [
+      ...items,
+      "操作失败时不会写入假记录或返回虚假成功。"
+    ].filter(Boolean)
+  };
+}
+
 function getLearningActionHint(sceneIndex) {
   if (!window.MRAppState) {
     return "点击场景热点或下方按钮，可查看该模块的交互反馈。";
@@ -11366,28 +11705,86 @@ function runLearningAction(action) {
         };
       }
     case "选择日课字":
-      stopLecturePlayback();
-      return appState.selectDailyGlyph();
+      {
+        stopLecturePlayback();
+        const result = appState.selectDailyGlyph();
+        return {
+          ...result,
+          detail: buildTaskActionDetail(result, "选择日课字")
+        };
+      }
     case "进入 AI 讲解":
-      return { ...appState.startLecture(), target: action.target };
+      {
+        const result = appState.startLecture();
+        return {
+          ...result,
+          target: action.target,
+          detail: buildLectureActionDetail(result)
+        };
+      }
     case "播放讲解":
-      return startLecturePlayback();
+      {
+        const result = startLecturePlayback();
+        return {
+          ...result,
+          detail: result.ok === false
+            ? buildActionFailureDetail("播放讲解", result.message, ["本机讲解正在运行或状态层未初始化。"])
+            : buildLectureActionDetail(result)
+        };
+      }
     case "切换碑帖":
-      stopLecturePlayback();
-      return appState.rotateCopybook();
+      {
+        stopLecturePlayback();
+        const result = appState.rotateCopybook();
+        return {
+          ...result,
+          detail: buildTaskActionDetail(result, "切换碑帖")
+        };
+      }
     case "进入临摹训练":
     case "开始临摹":
     case "继续学习":
     case "再写一遍":
-      return { ...appState.startPractice(), target: action.target ?? 3 };
+      {
+        const result = appState.startPractice();
+        return {
+          ...result,
+          target: action.target ?? 3,
+          detail: buildPracticeSessionActionDetail({ ...result, target: action.target ?? 3 }, action)
+        };
+      }
     case "示范模式":
-      return appState.setTrainingMode("guide");
+      {
+        const result = appState.setTrainingMode("guide");
+        return {
+          ...result,
+          detail: buildTrainingModeActionDetail(result, "示范")
+        };
+      }
     case "对比模式":
-      return appState.setTrainingMode("compare");
+      {
+        const result = appState.setTrainingMode("compare");
+        return {
+          ...result,
+          detail: buildTrainingModeActionDetail(result, "对比")
+        };
+      }
     case "上一个笔画":
-      return appState.moveStroke(-1);
+      {
+        const result = appState.moveStroke(-1);
+        return {
+          ...result,
+          detail: buildStrokeActionDetail(result)
+        };
+      }
     case "下一个笔画":
-      return appState.moveStroke(1);
+      {
+        const result = appState.moveStroke(1);
+        return {
+          ...result,
+          detail: buildStrokeActionDetail(result)
+        };
+      }
     case "进入笔画拆解":
       return appState.recordLearningStage("strokeBreakdown", {
         target: action.target,
@@ -11404,22 +11801,51 @@ function runLearningAction(action) {
         note: "已完成笔画拆解并进入创作实践，后续保存作品会继续关联本机任务。"
       });
     case "切换行书":
-      return appState.setArtworkStyle("行书");
+      {
+        const result = appState.setArtworkStyle("行书");
+        return {
+          ...result,
+          detail: buildArtworkStyleActionDetail(result, "行书")
+        };
+      }
     case "保存作品":
       {
         const practiceResult = getCurrentPracticeResult({ includeImage: true, requireStrokes: true });
         if (!practiceResult) {
-          return { ok: false, message: "请先在练习格中书写，再保存作品。" };
+          const message = "请先在练习格中书写，再保存作品。";
+          return {
+            ok: false,
+            message,
+            detail: buildActionFailureDetail("保存作品", message, ["练习格中没有真实笔迹采样。"])
+          };
         }
-        return appState.saveArtwork(practiceResult);
+        const result = appState.saveArtwork(practiceResult);
+        return {
+          ...result,
+          detail: result.ok === false
+            ? buildActionFailureDetail("保存作品", result.message || "保存作品失败。")
+            : buildArtworkActionDetail(result, practiceResult)
+        };
       }
     case "查看学习记录":
     case "打开历史记录":
-      return { message: appState.getReportPreview(), target: 6 };
+      {
+        const result = { message: appState.getReportPreview(), target: 6 };
+        return {
+          ...result,
+          detail: buildHistoryActionDetail(result, action)
+        };
+      }
     case "筛选优秀记录":
       activeHistoryFilter = "excellent";
       renderHistoryPanel(6);
-      return appState.filterExcellentRecords();
+      {
+        const result = appState.filterExcellentRecords();
+        return {
+          ...result,
+          detail: buildExcellentFilterActionDetail(result)
+        };
+      }
     case "导出学习报告":
     case "导出报告":
       {
@@ -11435,8 +11861,16 @@ function runLearningAction(action) {
       {
         const latestArtwork = appState.getStats().latestArtwork;
         return latestArtwork
-          ? { message: `已打开最近保存的作品：${latestArtwork.title}。`, openArtworkId: latestArtwork.id }
-          : { ok: false, message: "还没有保存作品，请先完成一次保存作品。" };
+          ? {
+              message: `已打开最近保存的作品：${latestArtwork.title}。`,
+              openArtworkId: latestArtwork.id,
+              detail: buildArtworkOpenActionDetail(latestArtwork)
+            }
+          : {
+              ok: false,
+              message: "还没有保存作品，请先完成一次保存作品。",
+              detail: buildActionFailureDetail("查看作品", "还没有保存作品，请先完成一次保存作品。", ["本机作品集为空。"])
+            };
       }
     case "生成视频":
       return exportPracticeReplayVideo();

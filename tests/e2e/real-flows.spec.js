@@ -679,10 +679,31 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.getByRole("button", { name: "播放讲解" }).click();
   await expect(page.locator("#lectureStatusLabel")).toContainText("已完成");
   await expect(page.locator("#lectureServiceSummary")).toContainText("本机语音");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("本机讲解");
+  await expect(page.locator("#actionDetail")).toContainText("段落");
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.lectureService.voiceName).toBe("E2E 中文语音");
   expect(learningState.lectureService.spokenStepCount).toBeGreaterThanOrEqual(5);
   expect(learningState.lectureService.status).toBe("complete");
+
+  await page.locator("#actionList .action-button").filter({ hasText: /^开始临摹$/ }).click();
+  await expect(page.locator("#sceneTitle")).toContainText("真实临摹");
+  await expect(page.locator("#actionFeedback")).toContainText("练习会话");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("本机练习会话");
+  await expect(page.locator("#actionDetail")).toContainText("会话 ID");
+
+  await page.locator("#actionList .action-button").filter({ hasText: /^对比模式$/ }).click();
+  await expect(page.locator("#actionFeedback")).toContainText("对比模式");
+  await expect(page.locator("#actionDetail")).toContainText("训练模式");
+  await expect(page.locator("#actionDetail")).toContainText("当前会话");
+
+  await page.getByRole("button", { name: /切换到步骤 5/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^下一个笔画$/ }).click();
+  await expect(page.locator("#actionFeedback")).toContainText("当前笔画已切换");
+  await expect(page.locator("#actionDetail")).toContainText("本机笔画索引");
+  await expect(page.locator("#actionDetail")).toContainText("当前笔画");
 
   await drawPracticeStroke(page);
   await expect(page.locator("#practiceCanvasStatus")).toContainText(/1 笔|2 笔|当前评分/);
@@ -690,6 +711,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.getByRole("button", { name: /切换到步骤 6/ }).click();
   await page.getByRole("button", { name: "保存作品" }).click();
   await expect(page.locator("#actionFeedback")).toContainText("作品已真实保存到本机记录");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("本机作品保存");
+  await expect(page.locator("#actionDetail")).toContainText("作品 ID");
+  await expect(page.locator("#actionDetail")).toContainText("真实评分证据");
   await expect(page.locator("#scoreServiceSummary")).toContainText("本机基础评分");
   await expect(page.locator("#scoreServiceSummary")).toContainText("不是专业书法评级");
 
