@@ -7140,3 +7140,38 @@
 提交：
 
 - 中文 commit message：`新增分享远端撤销`
+
+### 2026-06-12：真实化主后台基础物体更新
+
+功能名：主后台新增基础物体更新。
+
+完成内容：
+
+- 取消 `main-admin.html` 中 `mainNewObjectUpdate` 的静态禁用状态，避免后台控件看起来像不可用假按钮。
+- `main-admin-scene.js` 继续按选中对象动态控制按钮状态：只有选中未隐藏、未锁定、未删除的新增基础物体时可更新。
+- `updateSelectedCustomObject()` 会真实更新名称、类型、颜色和尺寸，并记录撤销栈、快照和本机布局。
+- smoke test 新增主后台基础物体表单和更新按钮 DOM 标记。
+- Playwright 主后台流程覆盖新增基础物体后更新为圆柱、修改颜色/半径/高度，并验证草稿、发布版本和前台发布布局。
+
+真实化说明：
+
+- 数据来源：主后台基础物体表单、当前选中自定义对象和本机 layout。
+- 写入状态：`mr-calligraphy-main-scene-layout-v1.customObjects[*]`；发布后进入 `mr-calligraphy-main-scene-published-v1.layout.customObjects[*]`。
+- 成功反馈：`mainCustomStatus` 显示已更新，发布差异列表显示更新后的对象名称。
+- 失败反馈：未选中新增基础物体、对象隐藏、锁定或删除时无法更新，不返回虚假成功。
+- 刷新后复现方式：对象规格存入 localStorage，刷新主后台仍可加载并继续编辑。
+
+仍待补：
+
+- 导入模型仍只支持文件导入和整体 transform，后续可继续做材质、替换文件、版本差异和多人审计。
+
+验收：
+
+- `node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化主后台物体更新`

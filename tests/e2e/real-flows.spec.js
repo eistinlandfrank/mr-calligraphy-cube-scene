@@ -1523,6 +1523,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
 });
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
+  test.setTimeout(90_000);
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
   const remoteEndpointPath = "/e2e-remote-publish";
   const projectRepositoryEndpointPath = "/e2e-project-repository";
@@ -1684,15 +1685,35 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#mainPublishDiffSummary")).toContainText("尚未发布");
   await expect(page.locator("#mainPublishDiffList")).toContainText(objectLabel);
 
+  await expect(page.locator("#mainNewObjectUpdate")).toBeEnabled();
+  const updatedObjectLabel = `${objectLabel} 已更新`;
+  await page.locator("#mainNewObjectName").fill(updatedObjectLabel);
+  await page.locator("#mainNewObjectType").selectOption("cylinder");
+  await expect(page.locator("[data-custom-size='radius']")).toBeVisible();
+  await page.locator("#mainNewObjectColor").fill("#336699");
+  await page.locator("#mainNewObjectRadius").fill("0.55");
+  await page.locator("#mainNewObjectHeight").fill("1.25");
+  await page.locator("#mainNewObjectUpdate").click();
+  await expect(page.locator("#mainCustomStatus")).toContainText(`已更新：${updatedObjectLabel}`);
+  await expect(page.locator("#mainPublishDiffList")).toContainText(updatedObjectLabel);
+
   const draft = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
-  expect(draft.customObjects.some((item) => item.label === objectLabel)).toBe(true);
+  const updatedDraftObject = draft.customObjects.find((item) => item.label === updatedObjectLabel);
+  expect(updatedDraftObject).toBeTruthy();
+  expect(updatedDraftObject.type).toBe("cylinder");
+  expect(updatedDraftObject.color).toBe("#336699");
+  expect(updatedDraftObject.size.radius).toBeCloseTo(0.55, 2);
+  expect(updatedDraftObject.size.height).toBeCloseTo(1.25, 2);
 
   await page.locator("#mainPublishLayout").click();
   await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
   await expect(page.locator("#mainPublishDiffSummary")).toContainText("一致");
 
   const published = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
-  expect(published.layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);
+  const publishedUpdatedObject = published.layout.customObjects.find((item) => item.label === updatedObjectLabel);
+  expect(publishedUpdatedObject).toBeTruthy();
+  expect(publishedUpdatedObject.type).toBe("cylinder");
+  expect(publishedUpdatedObject.size.radius).toBeCloseTo(0.55, 2);
   expect(published.stats.customCount).toBeGreaterThan(0);
 
   await page.locator("#projectRepositoryRefresh").click();
@@ -1831,6 +1852,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.locator("#mainRemotePublishApproveReview").click();
   await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("审核通过");
 
+  await expect(page.locator("#mainRemotePublishPush")).toBeEnabled();
   await page.locator("#mainRemotePublishPush").click();
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 已接收");
   await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("1 条");
@@ -1857,7 +1879,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
   await expect.poll(async () => {
     const record = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
-    return Boolean(record?.layout?.customObjects?.some((item) => item.label === objectLabel));
+    return Boolean(record?.layout?.customObjects?.some((item) => item.label === updatedObjectLabel && item.type === "cylinder"));
   }).toBe(true);
 });
 

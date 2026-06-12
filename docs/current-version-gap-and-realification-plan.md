@@ -2207,3 +2207,36 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增分享远端撤销`
+
+### 2026-06-12：真实化主后台基础物体更新
+
+完成内容：
+
+- 主后台“更新所选”按钮不再被 HTML 静态锁死，改由当前选中对象状态动态启用或禁用。
+- 复用现有 `updateSelectedCustomObject()`，对新增基础物体的名称、类型、颜色和尺寸进行真实更新。
+- 更新会写入 `mr-calligraphy-main-scene-layout-v1.customObjects[*]`，并可继续发布到 `mr-calligraphy-main-scene-published-v1`。
+- smoke test 主后台页面标记新增基础物体新增/更新相关控件。
+- Playwright 主后台主流程新增更新断言，确认草稿、本机发布版本和前台读取的发布布局都包含更新后的 cylinder 规格。
+
+真实化说明：
+
+- 数据来源：主后台基础物体表单和当前选中的自定义对象。
+- 写入状态：`main-scene-layout` 草稿对象规格；发布后写入本机发布版本。
+- 成功反馈：面板显示“已更新”，发布差异列表显示更新后的名称。
+- 失败反馈：非新增基础物体、锁定、隐藏或删除对象不能更新，不伪造成功。
+- 刷新后复现方式：刷新主后台后仍能从 localStorage 读取更新后的对象。
+
+仍待补：
+
+- 当前只覆盖基础几何体的结构更新；导入模型的材质编辑、网格替换和多人审计仍待后续生产化。
+
+验收：
+
+- `node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化主后台物体更新`

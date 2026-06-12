@@ -1577,3 +1577,38 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增分享远端撤销`
+
+## 49. 2026-06-12 真实化主后台基础物体更新
+
+本次把主后台“新增物体”面板里的“更新所选”从容易被误认为不可用的按钮，补成有浏览器级验收的真实编辑闭环。
+
+完成内容：
+
+- `main-admin.html` 取消 `mainNewObjectUpdate` 的静态 `disabled`，由 `main-admin-scene.js` 在选中状态变化时动态控制是否可点。
+- 保留现有 `updateSelectedCustomObject()` 真实逻辑：只能更新新增基础物体，不能伪更新默认模型、导入模型、隐藏、锁定或删除对象。
+- smoke test 主后台页面标记新增 `mainObjectSelect`、`mainNewObjectName`、`mainNewObjectType`、`mainNewObjectAdd`、`mainNewObjectUpdate` 和 `mainCustomStatus`。
+- Playwright 主后台发布流程新增“新增基础物体后更新名称、类型、颜色、半径和高度”的断言。
+- E2E 会读取 `mr-calligraphy-main-scene-layout-v1` 和 `mr-calligraphy-main-scene-published-v1`，确认更新后的 cylinder 规格写入草稿、发布版本和前台读取的发布布局。
+
+真实化说明：
+
+- 数据来源：主后台新增基础物体表单、当前选中的自定义物体和本机布局状态。
+- 写入状态：`mr-calligraphy-main-scene-layout-v1.customObjects[*]`，发布后同步进入 `mr-calligraphy-main-scene-published-v1.layout.customObjects[*]`。
+- 成功反馈：面板显示“已更新”，发布差异列表显示更新后的对象名称，前台读取发布布局时能看到更新后的类型和尺寸。
+- 失败反馈：未选中新增基础物体、对象隐藏、锁定或删除时按钮会禁用或返回明确状态，不写入虚假成功。
+- 刷新后复现方式：更新后的对象规格保存在 localStorage，刷新主后台和前台发布页后仍可读取。
+
+仍待补：
+
+- 当前更新范围限于主后台新增的基础几何体；导入模型的网格编辑、材质参数细分和多人协作审计仍需后续扩展。
+
+验收：
+
+- `node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化主后台物体更新`
