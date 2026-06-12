@@ -73,6 +73,7 @@ const remotePublishTokenInput = document.getElementById("realisticRemotePublishT
 const remotePublishSaveButton = document.getElementById("realisticRemotePublishSave");
 const remotePublishCheckButton = document.getElementById("realisticRemotePublishCheck");
 const remotePublishPushButton = document.getElementById("realisticRemotePublishPush");
+const remotePublishRevokeButton = document.getElementById("realisticRemotePublishRevoke");
 const remotePublishReviewStatus = document.getElementById("realisticRemotePublishReviewStatus");
 const remotePublishRequestReviewButton = document.getElementById("realisticRemotePublishRequestReview");
 const remotePublishApproveReviewButton = document.getElementById("realisticRemotePublishApproveReview");
@@ -1574,6 +1575,9 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
   if (remotePublishPushButton) {
     remotePublishPushButton.disabled = !adapter || !status?.remoteConfigured || !hasLocalRelease || !workflow?.canPush;
   }
+  if (remotePublishRevokeButton) {
+    remotePublishRevokeButton.disabled = !adapter || !status?.remoteConfigured || !status?.canRevoke;
+  }
   if (remotePublishRequestReviewButton) {
     remotePublishRequestReviewButton.disabled = !adapter || !hasLocalRelease || !workflow?.canRequestReview;
   }
@@ -1610,7 +1614,9 @@ function renderRemotePublishReceipts(audit) {
     const digest = receipt.receiptDigest || receipt.packageDigest || "";
     const signatureCount = Number(receipt.assetSignatureSummary?.signedAssetCount || 0);
     const signatureMeta = signatureCount ? ` · 资产签名 ${signatureCount}` : "";
-    meta.textContent = `${formatDateTime(receipt.acceptedAt || receipt.pushedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}`;
+    const purgeCount = Number(receipt.cdnPurgeSummary?.purgedUrlCount || 0);
+    const purgeMeta = purgeCount ? ` · purge ${purgeCount}` : "";
+    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}${purgeMeta}`;
     const message = document.createElement("small");
     message.textContent = receipt.message || receipt.remoteVersion || "远端已接收。";
     item.append(title, meta, message);
@@ -1665,6 +1671,22 @@ async function pushRemotePublishedLayout() {
   } finally {
     setRemotePublishBusy(false);
     renderRemotePublishPanel(record);
+  }
+}
+
+async function revokeRemotePublishedLayout() {
+  setRemotePublishBusy(true);
+  try {
+    const result = await window.MRProjectRemotePublish?.revoke?.("realisticScene", {
+      sceneLabel: "写实场景",
+      reason: publishNoteInput?.value || "local-user-revoked-remote-publish"
+    });
+    showNotice(result?.message || "远端发布撤销失败。");
+  } catch (error) {
+    showNotice(`远端发布撤销失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setRemotePublishBusy(false);
+    renderRemotePublishPanel();
   }
 }
 
@@ -1733,6 +1755,7 @@ function setRemotePublishBusy(isBusy) {
     remotePublishSaveButton,
     remotePublishCheckButton,
     remotePublishPushButton,
+    remotePublishRevokeButton,
     remotePublishRequestReviewButton,
     remotePublishApproveReviewButton,
     remotePublishRejectReviewButton,
@@ -3308,6 +3331,7 @@ function bindUi() {
     remotePublishSaveButton?.addEventListener("click", saveRemotePublishConfig);
     remotePublishCheckButton?.addEventListener("click", checkRemotePublishApi);
     remotePublishPushButton?.addEventListener("click", pushRemotePublishedLayout);
+    remotePublishRevokeButton?.addEventListener("click", revokeRemotePublishedLayout);
     remotePublishRequestReviewButton?.addEventListener("click", requestRemotePublishReview);
     remotePublishApproveReviewButton?.addEventListener("click", approveRemotePublishReview);
     remotePublishRejectReviewButton?.addEventListener("click", rejectRemotePublishReview);

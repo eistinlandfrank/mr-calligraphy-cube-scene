@@ -1,6 +1,6 @@
 # 当前版本功能缺口与前端真实化开发文档
 
-日期：2026-06-11  
+日期：2026-06-12
 适用范围：当前 `main` 分支，已恢复并继续开发的 5.16 版本线。  
 当前本机入口：`http://localhost:41496/`、`http://localhost:41496/main-admin.html`、`http://localhost:41496/realistic-demo.html`、`http://localhost:41496/realistic-admin.html`。
 
@@ -31,9 +31,9 @@ node scripts/control-inventory.js
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 39 | 6 | 1 | 0 | 0 | 0 |
+| `main-admin.html` | 40 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 25 | 2 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 26 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：四个入口 HTML 的静态按钮和导航链接已经没有 `demo-content` 或缺失标记；前台动态场景热点按钮也已纳入清单脚本并改为本机真实交互。下一步要审计的是“标为真实的控件是否足够真实”。
@@ -67,7 +67,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局；项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 执行真实 GET/PUT，支持远端版本历史和指定版本拉取预览 | 保存主体仍在 localStorage / IndexedDB，远端 adapter 不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 能编辑写实样张对象、导入模型、保存快照和发布到演示；已纳入 `project-scene-repository-v1` 统一视图 | 与主后台对象模型仍有字段差异 | 继续做字段迁移、资产引用规则和完整 diff |
-| 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包，远端推送前已有本机审核流、本机发布锁、服务端锁 / 最近回执预检、模型/贴图资产清单、远端资产签名回执和回执审计 | 远端发布 adapter 已完成开发级闭环，但还不是服务端账号权限、CDN 部署、生产证书签名或服务器托管 | 继续增加服务端审批合同、账号权限、生产证书资产签名和不可篡改审计 |
+| 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包；远端推送前已有本机审核流、本机发布锁、服务端锁 / 最近回执预检、模型/贴图资产清单、远端资产签名回执、DELETE 撤销发布和 CDN purge 回执审计 | 远端发布 adapter 已完成开发级闭环，但还不是服务端账号权限、生产 CDN 部署、生产证书签名或服务器托管 | 继续增加服务端审批合同、账号权限、生产证书资产签名、生产 CDN 回调和不可篡改审计 |
 | 项目档案 | 可导出/导入 JSON，含 schema、迁移、模型哈希、选择恢复、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、版本历史拉取预览、API 合同和本机 mock 服务 | 三方合并、完整 JSON 树、账号权限和远端资产服务仍弱 | 增加账号化服务端 repository、多人合并策略和远端资产完整性校验 |
 | 后台权限 | 当前无需登录即可编辑，主后台和写实后台已增加本机无权限保护提示与确认状态 | 任何人打开后台仍能改本机内容 | 后端版加入账号、角色、审计和发布权限 |
 
@@ -2824,3 +2824,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`真实化远端发布资产签名回执`
+
+### 2026-06-12：真实化远端发布撤销与 CDN purge 回执
+
+完成内容：
+
+- 主后台和写实后台远端发布面板新增“撤销远端”按钮，只有最近回执是可撤销发布且 endpoint 已配置时才启用。
+- `project-remote-publish.js` 新增 `mr-calligraphy-remote-publish-revoke-v1` 撤销包、真实 `DELETE` 请求、撤销回执规范化和 `lastRemoteDirection = "revoke"` 状态。
+- 撤销成功后会清空本机发布锁，避免已撤销的发布包继续阻塞后续重新发布。
+- 回执审计新增 `direction`、`sourcePackageId`、`revokedAt` 和 `cdnPurgeSummary`，HTML 导出显示 `CDN Purge` 字段。
+- 主后台和写实后台回执列表会区分“发布 / 撤销”，撤销回执显示 `purge N`。
+- `scripts/remote-publish-mock-server.js` 支持真实 HTTP `DELETE`，按 `sourcePackageId` / `releaseId` / `packageDigest` 匹配原发布回执，返回 mock CDN purge 摘要，并解除重复 digest 锁。
+- `scripts/remote-publish-check.js` 覆盖 fake fetch 和真实 mock server 两条撤销路径，验证 DELETE body、撤销后禁用按钮状态、CDN purge 持久化和撤销后重新发布。
+- 主后台 E2E 在远端发布后点击“撤销远端”，验证 DELETE 请求、回执列表、CDN purge 文案和本机状态持久化。
+- `docs/remote-publish-api-contract.md` 补齐 `DELETE` 合同、撤销包、撤销回执和 CDN purge 摘要字段。
+
+真实化说明：
+
+- 数据来源：最近远端发布回执、原发布 `packageDigest` / `releaseId` / `packageId`、远端 DELETE 响应和 CDN purge 摘要。
+- 写入状态：撤销成功后写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].receipts[0]`，并保存 `lastRevokedAt` 与 `lastRemoteDirection`。
+- 成功反馈：后台状态显示远端撤销结果，回执列表显示“撤销”和 purge 数量，审计导出包含 CDN purge 摘要。
+- 失败反馈：无 endpoint、无可撤销发布、远端拒绝或网络异常时不会伪造成功。
+- 刷新后复现方式：撤销回执保存在本机远端发布状态中，刷新后台仍能看到撤销方向和 CDN purge 摘要。
+
+仍待补：
+
+- 当前是用户自备 endpoint 与本机 mock 服务的开发验收；不是生产 CDN 实际失效保证、账号权限、服务端不可篡改审计或发布审批系统。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化远端发布撤销回执`

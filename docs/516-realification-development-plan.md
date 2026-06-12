@@ -7797,3 +7797,48 @@
 提交：
 
 - 中文 commit message：`真实化远端发布资产签名回执`
+
+### 2026-06-12：真实化远端发布撤销与 CDN purge 回执
+
+功能名：远端发布撤销包、撤销回执和 CDN purge 摘要。
+
+完成内容：
+
+- 主后台远端发布面板新增 `mainRemotePublishRevoke`，写实后台远端发布面板新增 `realisticRemotePublishRevoke`。
+- 按钮只在 endpoint 已配置且最近回执是可撤销发布时启用；撤销成功后自动禁用。
+- `project-remote-publish.js` 新增 `mr-calligraphy-remote-publish-revoke-v1` 撤销包，使用真实 `DELETE` 请求发送到同一远端发布 endpoint。
+- 撤销包携带 `sourcePackageId`、`releaseId`、`packageDigest`、`receiptDigest`、`requestedAt` 和撤销原因。
+- 远端响应会规范化成 `mr-calligraphy-remote-publish-revoke-receipt-v1`，写入本机回执审计。
+- 撤销成功后保存 `lastRevokedAt`、`lastRemoteDirection = "revoke"`，并清空本机发布锁。
+- 回执审计 HTML 新增方向、原发布包、撤销时间和 `CDN Purge` 字段。
+- `scripts/remote-publish-mock-server.js` 支持 `DELETE /api/remote-publish`，匹配原发布回执并返回 `mock-cdn` purge 摘要；撤销后相同 `packageDigest` 可重新发布。
+- `scripts/remote-publish-check.js` 覆盖 fake fetch 和真实 mock server 的 POST/DELETE 流程。
+- 主后台 E2E 验证远端发布后点击撤销、DELETE body、回执列表 purge 文案和 localStorage 持久化。
+- `docs/remote-publish-api-contract.md` 补齐撤销发布和 CDN purge 回执合同。
+
+真实化说明：
+
+- 数据来源：最近远端发布回执、远端 DELETE 响应和服务端返回的 CDN purge 摘要。
+- 写入状态：更新 `mr-calligraphy-remote-publish-v1.scenes[sceneId]` 的撤销回执、最近撤销时间和最近远端方向。
+- 成功反馈：状态栏显示远端撤销结果，回执列表展示“撤销”和 purge 数量。
+- 失败反馈：没有可撤销回执、远端拒绝或网络异常时不会伪造撤销成功。
+- 刷新后复现方式：刷新后台后仍能从回执审计读取撤销方向、原发布包和 CDN purge 摘要。
+
+仍待补：
+
+- 当前是开发级远端撤销 adapter 和 mock CDN purge 回执；生产 CDN 实际失效保证、账号权限、审批系统和不可篡改服务端审计仍待补齐。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化远端发布撤销回执`

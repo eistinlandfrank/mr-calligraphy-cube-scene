@@ -21,6 +21,7 @@ run().catch((error) => {
 async function run() {
   const adapter = window.MRProjectRemotePublish;
   assert(adapter.packageKind === "mr-calligraphy-remote-publish-package-v1", "远端发布包 kind 应稳定。");
+  assert(adapter.revokeKind === "mr-calligraphy-remote-publish-revoke-v1", "远端发布撤销包 kind 应稳定。");
 
   const unconfigured = await adapter.check("mainScene");
   assert(!unconfigured.ok && unconfigured.message.includes("尚未配置远端发布 API"), "未配置远端发布 API 时不应伪造成功。");
@@ -139,18 +140,34 @@ async function run() {
         receipt: fakeRemoteLatestReceipt
       });
     }
+    if (options.method === "DELETE") {
+      const body = JSON.parse(options.body);
+      fakeRemoteLatestReceipt = createFakeRemoteRevokeReceipt(body, fakeRemoteLatestReceipt, "2026-06-12T08:05:00.000Z");
+      return jsonResponse({
+        ok: true,
+        message: `${body.sceneLabel}远端发布已撤销。`,
+        packageId: fakeRemoteLatestReceipt.packageId,
+        sourcePackageId: fakeRemoteLatestReceipt.sourcePackageId,
+        releaseId: fakeRemoteLatestReceipt.releaseId,
+        packageDigest: fakeRemoteLatestReceipt.packageDigest,
+        remoteVersion: `${body.sceneId}-remote-v1`,
+        cdnPurgeSummary: fakeRemoteLatestReceipt.cdnPurgeSummary,
+        receipt: fakeRemoteLatestReceipt
+      });
+    }
+    const activePublishReceipt = fakeRemoteLatestReceipt?.direction === "revoke" ? null : fakeRemoteLatestReceipt;
     return jsonResponse({
       ok: true,
       message: "远端发布 API 可访问。",
       remoteVersion: "remote-check-v1",
       latestReceipt: fakeRemoteLatestReceipt,
-      publishLock: fakeRemoteLatestReceipt
+      publishLock: activePublishReceipt
         ? {
             locked: true,
-            sceneId: fakeRemoteLatestReceipt.sceneId,
-            releaseId: fakeRemoteLatestReceipt.releaseId,
-            packageDigest: fakeRemoteLatestReceipt.packageDigest,
-            lockedAt: fakeRemoteLatestReceipt.acceptedAt,
+            sceneId: activePublishReceipt.sceneId,
+            releaseId: activePublishReceipt.releaseId,
+            packageDigest: activePublishReceipt.packageDigest,
+            lockedAt: activePublishReceipt.acceptedAt,
             reason: "测试远端已有相同发布包。"
           }
         : { locked: false }
@@ -214,6 +231,7 @@ async function run() {
   assert(mainPush.receipt.receiptDigest, "主场景回执审计记录应包含 receiptDigest。");
   assert(mainPush.receipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执应保存远端资产签名数量。");
   assert(mainPush.receipt.assetSignatures.length === 2, "主场景回执应保存每个资产的签名明细。");
+  assert(mainPush.status.canRevoke, "主场景推送成功后应允许撤销最近远端发布。");
   const mainAudit = adapter.getReceiptAudit("mainScene");
   assert(mainAudit.total === 1, "主场景推送成功后应保存一条远端回执审计。");
   assert(mainAudit.latestReceipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景回执审计应保留 packageDigest。");
@@ -266,6 +284,27 @@ async function run() {
     record: mainRecord,
     release: mainRecord.releases[0]
   });
+
+  const revokedMain = await adapter.revoke("mainScene", {
+    sceneLabel: "主场景",
+    reason: "脚本验收撤销"
+  });
+  assert(revokedMain.ok, "主场景应能向远端 API 发送撤销请求。");
+  const deleteRequest = fetchCalls.find((item) => item.options.method === "DELETE");
+  assert(deleteRequest, "撤销远端发布应真实发送 DELETE 请求。");
+  const deleteBody = JSON.parse(deleteRequest.options.body);
+  assert(deleteBody.kind === "mr-calligraphy-remote-publish-revoke-v1", "撤销 DELETE body 应是远端发布撤销包。");
+  assert(deleteBody.sourcePackageId === "accepted-mainScene", "撤销包应定位原远端 packageId。");
+  assert(revokedMain.receipt.direction === "revoke", "撤销成功后应保存撤销回执。");
+  assert(revokedMain.receipt.sourcePackageId === "accepted-mainScene", "撤销回执应保留原发布 packageId。");
+  assert(revokedMain.receipt.cdnPurgeSummary.purgedUrlCount > 0, "撤销回执应包含 CDN purge URL 数量。");
+  assert(!revokedMain.status.canRevoke, "最近一条回执为撤销后不应继续显示可撤销。");
+  assert(!revokedMain.status.lock.lockedAt, "撤销成功后应清空本机发布锁。");
+  const revokedAudit = adapter.getReceiptAudit("mainScene");
+  assert(revokedAudit.total === 2, "撤销成功后应追加第二条回执审计。");
+  assert(revokedAudit.latestReceipt.direction === "revoke", "回执审计最新项应是撤销回执。");
+  const revokedAuditExport = adapter.getReceiptAuditExport("mainScene");
+  assert(revokedAuditExport.html.includes("CDN Purge"), "撤销后回执审计导出应包含 CDN purge 字段。");
   fakeRemoteLatestReceipt = null;
 
   let rejectedPostCount = 0;
@@ -351,9 +390,13 @@ async function run() {
   assert(persisted.scenes.mainScene.lastPackageDigest === mainPackage.package.manifest.packageDigest, "主场景远端 packageDigest 应持久化。");
   assert(persisted.scenes.mainScene.lastReleaseId === "main-release-1", "主场景远端 releaseId 应持久化。");
   assert(persisted.scenes.mainScene.review.status === "approved", "主场景审核通过状态应持久化。");
-  assert(persisted.scenes.mainScene.receipts.length === 1, "主场景回执审计应持久化。");
+  assert(persisted.scenes.mainScene.lastRemoteDirection === "revoke", "主场景最近远端方向应持久化为撤销。");
+  assert(persisted.scenes.mainScene.lastRevokedAt, "主场景最近远端撤销时间应持久化。");
+  assert(persisted.scenes.mainScene.receipts.length === 2, "主场景发布和撤销回执审计应持久化。");
   assert(persisted.scenes.mainScene.receipts[0].receiptDigest, "主场景持久化回执应包含 receiptDigest。");
-  assert(persisted.scenes.mainScene.receipts[0].assetSignatureSummary.signedAssetCount === 2, "主场景持久化回执应包含资产签名摘要。");
+  assert(persisted.scenes.mainScene.receipts[0].direction === "revoke", "主场景最新持久化回执应为撤销方向。");
+  assert(persisted.scenes.mainScene.receipts[0].cdnPurgeSummary.purgedUrlCount > 0, "主场景撤销回执应持久化 CDN purge 摘要。");
+  assert(persisted.scenes.mainScene.receipts[1].assetSignatureSummary.signedAssetCount === 2, "主场景发布回执应继续包含资产签名摘要。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
@@ -363,7 +406,7 @@ async function run() {
 
   await runMockServerChecks(adapter, nativeFetch);
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、模型/贴图资产清单、资产摘要、远端资产签名回执、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、模型/贴图资产清单、资产摘要、远端资产签名回执、远端撤销、CDN purge 回执、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST/DELETE 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
 }
 
 async function runMockServerChecks(adapter, fetchApi) {
@@ -427,6 +470,31 @@ async function runMockServerChecks(adapter, fetchApi) {
     const duplicatePayload = await duplicate.json();
     assert(duplicate.status === 409 && duplicatePayload.ok === false, "mock 服务应拒绝重复 packageDigest。");
     assert(duplicatePayload.packageDigest === mockPackage.package.manifest.packageDigest, "重复拒绝结果应指出 packageDigest。");
+
+    const revoked = await adapter.revoke("mainScene", {
+      sceneLabel: "主场景",
+      reason: "mock 服务撤销验收"
+    });
+    assert(revoked.ok, "远端发布 mock 服务应接收真实 DELETE 撤销包。");
+    assert(revoked.receipt.direction === "revoke", "adapter 应保存 mock 服务撤销回执。");
+    assert(revoked.receipt.sourcePackageId === pushed.packageId, "mock 撤销回执应保留原发布 packageId。");
+    assert(revoked.receipt.cdnPurgeSummary.cdnProvider === "mock-cdn", "mock 撤销回执应返回 CDN provider。");
+    assert(revoked.receipt.cdnPurgeSummary.purgedUrlCount > 0, "mock 撤销回执应返回 purge URL 数量。");
+    assert(!revoked.status.canRevoke, "mock 撤销后 adapter 不应继续允许撤销最近回执。");
+    assert(!revoked.status.lock.lockedAt, "mock 撤销后 adapter 应清空发布锁。");
+    assert(mock.state.received[0].direction === "revoke", "mock 服务最新记录应是撤销回执。");
+    assert(mock.state.received[0].cdnPurgeSummary.purgeRequestId, "mock 服务撤销回执应生成 purge request id。");
+
+    const repost = await fetchApi(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer mock-token"
+      },
+      body: JSON.stringify(mockPackage.package)
+    });
+    const repostPayload = await repost.json();
+    assert(repost.status === 201 && repostPayload.ok === true, "mock 服务撤销后应允许相同 packageDigest 重新发布。");
   } finally {
     await mock.close();
   }
@@ -489,6 +557,7 @@ function createFakeRemotePublishReceipt(body, acceptedAt) {
   const assetSignatures = createFakeAssetSignatures(body, acceptedAt);
   return {
     receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
+    direction: "publish",
     packageId: `accepted-${body.sceneId}`,
     releaseId: body.release.id,
     sceneId: body.sceneId,
@@ -506,6 +575,35 @@ function createFakeRemotePublishReceipt(body, acceptedAt) {
       signedAt: acceptedAt
     },
     assetSignatures
+  };
+}
+
+function createFakeRemoteRevokeReceipt(body, sourceReceipt, acceptedAt) {
+  const source = sourceReceipt && typeof sourceReceipt === "object" ? sourceReceipt : {};
+  const purgedAssetCount = source.assetSignatureSummary?.signedAssetCount || (Array.isArray(source.assetSignatures) ? source.assetSignatures.length : 0);
+  const cdnPurgeSummary = {
+    kind: "mr-calligraphy-remote-publish-cdn-purge-summary-v1",
+    status: "accepted",
+    cdnProvider: "e2e-cdn",
+    purgeRequestId: `purge-${String(source.packageDigest || body.packageDigest || "").slice(0, 12)}`,
+    purgedAssetCount,
+    purgedUrlCount: Math.max(1, purgedAssetCount),
+    requestedAt: body.requestedAt,
+    completedAt: acceptedAt
+  };
+  return {
+    receiptKind: "mr-calligraphy-remote-publish-revoke-receipt-v1",
+    direction: "revoke",
+    packageId: `accepted-revoke-${body.sceneId}`,
+    sourcePackageId: body.sourcePackageId || source.packageId || "",
+    releaseId: body.releaseId || source.releaseId || "",
+    sceneId: body.sceneId,
+    packageDigest: body.packageDigest || source.packageDigest || "",
+    acceptedAt,
+    revokedAt: acceptedAt,
+    remoteVersion: `${body.sceneId}-remote-v1`,
+    cdnPurgeSummary,
+    receiptDigest: "d".repeat(64)
   };
 }
 

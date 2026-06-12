@@ -31,6 +31,7 @@ function createRemotePublishMockServer(options = {}) {
 
       if (request.method === "GET") {
         const latestReceipt = state.received[0] || null;
+        const latestPublishReceipt = latestReceipt?.direction === "revoke" ? null : latestReceipt;
         return sendJson(response, 200, {
           ok: true,
           message: "远端发布 mock 服务可访问。",
@@ -38,14 +39,14 @@ function createRemotePublishMockServer(options = {}) {
           contract: createContract(),
           receiptCount: state.received.length,
           latestReceipt,
-          publishLock: latestReceipt
+          publishLock: latestPublishReceipt
             ? {
                 locked: true,
                 source: "latestReceipt",
-                sceneId: latestReceipt.sceneId,
-                releaseId: latestReceipt.releaseId,
-                packageDigest: latestReceipt.packageDigest,
-                lockedAt: latestReceipt.acceptedAt,
+                sceneId: latestPublishReceipt.sceneId,
+                releaseId: latestPublishReceipt.releaseId,
+                packageDigest: latestPublishReceipt.packageDigest,
+                lockedAt: latestPublishReceipt.acceptedAt,
                 reason: "远端 mock 已接收最近发布包，相同 release 或 packageDigest 会被拒绝。"
               }
             : { locked: false }
@@ -94,9 +95,49 @@ function createRemotePublishMockServer(options = {}) {
         });
       }
 
+      if (request.method === "DELETE") {
+        const revokePackage = await readJsonBody(request);
+        const validation = validateRemotePublishRevokePackage(revokePackage);
+        if (!validation.ok) {
+          return sendJson(response, 422, {
+            ok: false,
+            message: validation.message,
+            errors: validation.errors,
+            remoteVersion: "mr-calligraphy-remote-publish-mock-v1"
+          });
+        }
+        const matchedReceipt = findReceiptToRevoke(state, revokePackage);
+        if (!matchedReceipt) {
+          return sendJson(response, 404, {
+            ok: false,
+            message: "远端发布 mock 未找到可撤销的发布包。",
+            sourcePackageId: revokePackage.sourcePackageId || revokePackage.packageId || "",
+            releaseId: revokePackage.releaseId || "",
+            packageDigest: revokePackage.packageDigest || "",
+            remoteVersion: "mr-calligraphy-remote-publish-mock-v1"
+          });
+        }
+        const receipt = createRevokeReceipt(revokePackage, matchedReceipt);
+        matchedReceipt.remoteRevokedAt = receipt.revokedAt;
+        matchedReceipt.cdnPurgeSummary = receipt.cdnPurgeSummary;
+        state.byDigest.delete(matchedReceipt.packageDigest);
+        state.received.unshift(receipt);
+        return sendJson(response, 200, {
+          ok: true,
+          message: `${matchedReceipt.sceneId}远端发布 mock 已撤销，并返回 CDN purge 回执。`,
+          packageId: receipt.packageId,
+          sourcePackageId: receipt.sourcePackageId,
+          releaseId: receipt.releaseId,
+          packageDigest: receipt.packageDigest,
+          remoteVersion: receipt.remoteVersion,
+          cdnPurgeSummary: receipt.cdnPurgeSummary,
+          receipt
+        });
+      }
+
       return sendJson(response, 405, {
         ok: false,
-        message: "远端发布 mock 只支持 GET 检查和 POST 发布包。"
+        message: "远端发布 mock 只支持 GET 检查、POST 发布包和 DELETE 撤销发布。"
       });
     } catch (error) {
       return sendJson(response, 500, {
@@ -196,12 +237,14 @@ function createContract() {
     accepts: {
       check: "GET /api/remote-publish",
       publish: "POST /api/remote-publish",
+      revoke: "DELETE /api/remote-publish",
       authorization: "optional Bearer token"
     },
     packageKind: PACKAGE_KIND,
     manifestKind: MANIFEST_KIND,
+    revokeKind: "mr-calligraphy-remote-publish-revoke-v1",
     requiredTopLevelFields: ["kind", "version", "packageId", "sceneId", "release", "record", "releaseLayout", "assetManifest", "manifest"],
-    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt", "receipt.assetSignatures"],
+    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt", "receipt.assetSignatures", "receipt.cdnPurgeSummary"],
     lockFields: ["publishLock.locked", "publishLock.sceneId", "publishLock.releaseId", "publishLock.packageDigest", "latestReceipt"]
   };
 }
@@ -259,6 +302,47 @@ function validateRemotePublishPackage(payload) {
     warnings,
     message: errors.length ? `远端发布包校验失败：${errors.join("；")}。` : "远端发布包校验通过。"
   };
+}
+
+function validateRemotePublishRevokePackage(payload) {
+  const errors = [];
+  if (!payload || typeof payload !== "object") {
+    return {
+      ok: false,
+      errors: ["撤销包为空"],
+      message: "远端发布撤销包为空。"
+    };
+  }
+  if (payload.kind !== "mr-calligraphy-remote-publish-revoke-v1") errors.push("撤销包 kind 不匹配");
+  if (Number(payload.version) !== VERSION) errors.push("撤销包版本不匹配");
+  if (!payload.revokeId) errors.push("缺少 revokeId");
+  if (!payload.sceneId) errors.push("缺少 sceneId");
+  if (!payload.sourcePackageId && !payload.packageId && !payload.packageDigest && !payload.releaseId) {
+    errors.push("缺少可定位原发布包的 sourcePackageId/packageDigest/releaseId");
+  }
+  const packageDigest = normalizeSha256(payload.packageDigest);
+  if (payload.packageDigest && !packageDigest) {
+    errors.push("packageDigest 必须是 64 位 SHA-256");
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+    message: errors.length ? `远端发布撤销包校验失败：${errors.join("；")}。` : "远端发布撤销包校验通过。"
+  };
+}
+
+function findReceiptToRevoke(state, revokePackage = {}) {
+  const sceneId = normalizeSceneId(revokePackage.sceneId);
+  const sourcePackageId = String(revokePackage.sourcePackageId || revokePackage.packageId || "");
+  const releaseId = String(revokePackage.releaseId || "");
+  const packageDigest = normalizeSha256(revokePackage.packageDigest);
+  return state.received.find((receipt) => {
+    if (!receipt || receipt.direction === "revoke" || receipt.remoteRevokedAt) return false;
+    if (normalizeSceneId(receipt.sceneId) !== sceneId) return false;
+    if (packageDigest && receipt.packageDigest === packageDigest) return true;
+    if (sourcePackageId && receipt.packageId === sourcePackageId) return true;
+    return Boolean(releaseId && receipt.releaseId === releaseId);
+  }) || null;
 }
 
 function createExpectedManifest(payload) {
@@ -375,6 +459,7 @@ function createReceipt(payload, validation, signingSecret) {
   const assetSignatureSummary = createAssetSignatureSummary(payload, assetSignatures, acceptedAt);
   return {
     receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
+    direction: "publish",
     remoteVersion: "mr-calligraphy-remote-publish-mock-v1",
     packageId: `mock-${payload.sceneId}-${packageDigest.slice(0, 12)}`,
     releaseId: String(payload.release?.id || ""),
@@ -394,6 +479,51 @@ function createReceipt(payload, validation, signingSecret) {
       acceptedAt,
       assetSignatureSummary
     })
+  };
+}
+
+function createRevokeReceipt(revokePackage, matchedReceipt) {
+  const acceptedAt = new Date().toISOString();
+  const purgedAssetCount = Math.max(
+    normalizeCount(matchedReceipt.assetSignatureSummary?.signedAssetCount),
+    Array.isArray(matchedReceipt.assetSignatures) ? matchedReceipt.assetSignatures.length : 0
+  );
+  const cdnPurgeSummary = {
+    kind: "mr-calligraphy-remote-publish-cdn-purge-summary-v1",
+    status: "accepted",
+    cdnProvider: "mock-cdn",
+    purgeRequestId: `purge-${matchedReceipt.packageDigest.slice(0, 12)}`,
+    purgedAssetCount,
+    purgedUrlCount: Math.max(1, purgedAssetCount),
+    requestedAt: revokePackage.requestedAt || "",
+    completedAt: acceptedAt
+  };
+  const packageId = `mock-revoke-${matchedReceipt.sceneId}-${matchedReceipt.packageDigest.slice(0, 12)}`;
+  const receiptDigest = sha256StableJson({
+    direction: "revoke",
+    sceneId: matchedReceipt.sceneId,
+    packageId,
+    sourcePackageId: matchedReceipt.packageId,
+    releaseId: matchedReceipt.releaseId,
+    packageDigest: matchedReceipt.packageDigest,
+    acceptedAt,
+    revokedAt: acceptedAt,
+    cdnPurgeSummary
+  });
+  return {
+    receiptKind: "mr-calligraphy-remote-publish-revoke-receipt-v1",
+    direction: "revoke",
+    remoteVersion: "mr-calligraphy-remote-publish-mock-v1",
+    packageId,
+    sourcePackageId: matchedReceipt.packageId,
+    releaseId: matchedReceipt.releaseId,
+    sceneId: matchedReceipt.sceneId,
+    packageDigest: matchedReceipt.packageDigest,
+    acceptedAt,
+    revokedAt: acceptedAt,
+    cdnPurgeSummary,
+    reason: String(revokePackage.reason || "").slice(0, 160),
+    receiptDigest
   };
 }
 
@@ -476,6 +606,11 @@ function normalizeSceneId(sceneId) {
 function normalizeSha256(value) {
   const hash = String(value || "").trim().toLowerCase();
   return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
+}
+
+function normalizeCount(value, max = 9999) {
+  const count = Math.max(0, Math.round(Number(value || 0)));
+  return Math.min(count, max);
 }
 
 async function runCli() {

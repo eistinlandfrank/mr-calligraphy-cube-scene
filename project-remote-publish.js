@@ -1,6 +1,7 @@
 (function () {
   const STORAGE_KEY = "mr-calligraphy-remote-publish-v1";
   const PACKAGE_KIND = "mr-calligraphy-remote-publish-package-v1";
+  const REVOKE_KIND = "mr-calligraphy-remote-publish-revoke-v1";
   const VERSION = 1;
   const MAX_RECEIPTS = 12;
   const BOUNDARY = "远端发布 API adapter 会真实发送当前本机发布包；它不是账号权限、审核流、CDN 部署或服务器托管本身。";
@@ -37,6 +38,8 @@
       token: typeof source.token === "string" ? source.token.trim() : "",
       lastCheckedAt: normalizeDate(source.lastCheckedAt),
       lastPushedAt: normalizeDate(source.lastPushedAt),
+      lastRevokedAt: normalizeDate(source.lastRevokedAt),
+      lastRemoteDirection: ["publish", "revoke", "check"].includes(source.lastRemoteDirection) ? source.lastRemoteDirection : "",
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : "",
       lastReleaseId: source.lastReleaseId ? String(source.lastReleaseId) : "",
       lastRemoteVersion: source.lastRemoteVersion ? String(source.lastRemoteVersion).slice(0, 120) : "",
@@ -60,16 +63,21 @@
     const packageDigest = normalizeSha256(source.packageDigest || receipt.packageDigest);
     const acceptedAt = normalizeDate(source.acceptedAt || receipt.acceptedAt);
     const pushedAt = normalizeDate(source.pushedAt);
+    const revokedAt = normalizeDate(source.revokedAt || receipt.revokedAt);
+    const direction = normalizeReceiptDirection(source.direction || receipt.direction || receipt.receiptKind);
+    const sourcePackageId = String(source.sourcePackageId || receipt.sourcePackageId || "").slice(0, 160);
+    const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || receipt.cdnPurgeSummary || receipt.cdnPurge);
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
     const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, assetSignatureSummary });
+      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, revokedAt, direction, sourcePackageId, assetSignatureSummary, cdnPurgeSummary });
     const warnings = normalizeWarningList(source.warnings || receipt.warnings);
     return {
       id: String(source.id || `receipt-${sceneId}-${receiptDigest.slice(0, 16)}`).slice(0, 180),
       sceneId,
       sceneLabel: String(source.sceneLabel || receipt.sceneLabel || sceneLabelFromId(sceneId)).slice(0, 80),
       packageId,
+      sourcePackageId,
       releaseId,
       packageDigest,
       receiptDigest,
@@ -77,9 +85,12 @@
       endpoint: String(source.endpoint || "").slice(0, 240),
       acceptedAt,
       pushedAt,
+      revokedAt,
+      direction,
       message: String(source.message || "").slice(0, 180),
       warningCount: normalizeCount(source.warningCount ?? receipt.warningCount ?? warnings.length),
       warnings,
+      cdnPurgeSummary,
       assetSignatureSummary,
       assetSignatures,
       receiptKind: String(source.receiptKind || receipt.receiptKind || "").slice(0, 120),
@@ -189,6 +200,7 @@
     const scene = readState().scenes[normalizedId];
     const workflow = getWorkflow(normalizedId, options);
     const remoteConfigured = Boolean(scene.endpoint);
+    const latestRevocableReceipt = getLatestRevocableReceipt(scene);
     let tone = "idle";
     let message = remoteConfigured
       ? `远端发布 API 已配置：${scene.endpoint}。`
@@ -224,6 +236,8 @@
       boundary: BOUNDARY,
       lastCheckedAt: scene.lastCheckedAt,
       lastPushedAt: scene.lastPushedAt,
+      lastRevokedAt: scene.lastRevokedAt,
+      lastRemoteDirection: scene.lastRemoteDirection,
       lastPackageId: scene.lastPackageId,
       lastReleaseId: scene.lastReleaseId,
       lastRemoteVersion: scene.lastRemoteVersion,
@@ -233,6 +247,8 @@
       review: scene.review,
       lock: scene.lock,
       latestReceipt: scene.receipts[0] || null,
+      latestRevocableReceipt,
+      canRevoke: Boolean(remoteConfigured && latestRevocableReceipt),
       receiptCount: scene.receipts.length,
       receipts: scene.receipts,
       workflow
@@ -893,6 +909,7 @@
         lastReleaseId: releaseId,
         lastRemoteVersion: receipt.remoteVersion || parsed.remoteVersion,
         lastRemoteStatus: parsed.message,
+        lastRemoteDirection: "publish",
         lastPackageDigest: packaged.package.manifest?.packageDigest,
         lock: {
           lockedAt: lock.lockedAt,
@@ -919,6 +936,61 @@
     } catch (error) {
       releasePublishLock(normalizedId, packaged.package);
       return saveRemoteError(normalizedId, `远端发布 API 推送失败：${error?.message || "网络请求异常"}。`);
+    }
+  }
+
+  async function revoke(sceneId, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const state = readState();
+    const scene = state.scenes[normalizedId];
+    if (!scene.endpoint) {
+      return saveRemoteError(normalizedId, "尚未配置远端发布 API。");
+    }
+    if (typeof fetch !== "function") {
+      return saveRemoteError(normalizedId, "当前运行环境不支持 fetch，无法撤销远端发布。");
+    }
+    const latestReceipt = getLatestRevocableReceipt(scene);
+    if (!latestReceipt) {
+      return saveRemoteError(normalizedId, "没有可撤销的最近远端发布回执。");
+    }
+    const revokePackage = createRemoteRevokePackage(normalizedId, latestReceipt, options);
+    try {
+      const response = await fetch(scene.endpoint, createRequest(scene, {
+        method: "DELETE",
+        body: revokePackage
+      }));
+      const parsed = await parseResponse(response, "远端发布 API 已接收撤销请求。");
+      if (!parsed.ok) {
+        return saveRemoteError(normalizedId, parsed.message);
+      }
+      const now = new Date().toISOString();
+      const receipt = createRemoteRevokeReceiptRecord(normalizedId, revokePackage, parsed, scene.endpoint, now);
+      const nextState = readState();
+      nextState.scenes[normalizedId] = normalizeSceneState({
+        ...nextState.scenes[normalizedId],
+        lastCheckedAt: now,
+        lastRevokedAt: now,
+        lastRemoteDirection: "revoke",
+        lastRemoteVersion: receipt.remoteVersion || parsed.remoteVersion,
+        lastRemoteStatus: parsed.message,
+        lock: {},
+        receipts: [receipt, ...nextState.scenes[normalizedId].receipts].slice(0, MAX_RECEIPTS),
+        lastError: ""
+      });
+      writeState(nextState);
+      return {
+        ok: true,
+        status: getStatus(normalizedId),
+        packageId: receipt.packageId || revokePackage.revokeId,
+        sourcePackageId: receipt.sourcePackageId || revokePackage.sourcePackageId,
+        releaseId: receipt.releaseId || revokePackage.releaseId,
+        packageDigest: receipt.packageDigest || revokePackage.packageDigest,
+        remoteVersion: receipt.remoteVersion || parsed.remoteVersion,
+        receipt,
+        message: `${parsed.message} ${BOUNDARY}`
+      };
+    } catch (error) {
+      return saveRemoteError(normalizedId, `远端发布 API 撤销失败：${error?.message || "网络请求异常"}。`);
     }
   }
 
@@ -1018,11 +1090,13 @@
     const receipt = source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : null;
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt?.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt?.assetSignatureSummary, assetSignatures);
+    const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || receipt?.cdnPurgeSummary || source.cdnPurge || receipt?.cdnPurge);
     return {
       ok,
       status,
       message,
       packageId: source.packageId ? String(source.packageId) : "",
+      sourcePackageId: source.sourcePackageId || receipt?.sourcePackageId ? String(source.sourcePackageId || receipt?.sourcePackageId).slice(0, 160) : "",
       releaseId: source.releaseId ? String(source.releaseId).slice(0, 160) : "",
       packageDigest: normalizeSha256(source.packageDigest || receipt?.packageDigest),
       receiptDigest: normalizeSha256(source.receiptDigest || receipt?.receiptDigest),
@@ -1033,7 +1107,8 @@
       receiptCount: normalizeCount(source.receiptCount),
       warnings: normalizeWarningList(source.warnings || receipt?.warnings),
       assetSignatureSummary,
-      assetSignatures
+      assetSignatures,
+      cdnPurgeSummary
     };
   }
 
@@ -1078,7 +1153,7 @@
     }
 
     const latestReceipt = parsed.latestReceipt;
-    if (latestReceipt && remoteLockMatches(sceneId, summary, latestReceipt, false)) {
+    if (latestReceipt && latestReceipt.direction !== "revoke" && remoteLockMatches(sceneId, summary, latestReceipt, false)) {
       return {
         source: "latestReceipt",
         packageDigest: latestReceipt.packageDigest || summary.packageDigest,
@@ -1165,15 +1240,21 @@
     }
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary, assetSignatures);
+    const direction = normalizeReceiptDirection(source.direction || source.receiptKind);
+    const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || source.cdnPurge);
     return {
       sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
       packageId,
+      sourcePackageId: source.sourcePackageId ? String(source.sourcePackageId).slice(0, 160) : "",
       releaseId,
       packageDigest,
       acceptedAt: normalizeDate(source.acceptedAt),
       pushedAt: normalizeDate(source.pushedAt),
+      revokedAt: normalizeDate(source.revokedAt),
+      direction,
       remoteVersion: source.remoteVersion ? String(source.remoteVersion).slice(0, 120) : "",
       reason: source.reason ? String(source.reason).slice(0, 160) : "",
+      cdnPurgeSummary,
       assetSignatureSummary,
       assetSignatures
     };
@@ -1235,6 +1316,7 @@
       acceptedAt,
       pushedAt,
       message: parsed.message || "",
+      direction: "publish",
       warningCount: warnings.length,
       warnings,
       assetSignatureSummary,
@@ -1242,6 +1324,80 @@
       receiptKind: receipt.receiptKind || "",
       receipt
     });
+  }
+
+  function createRemoteRevokePackage(sceneId, latestReceipt, options = {}) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const requestedAt = new Date().toISOString();
+    return {
+      kind: REVOKE_KIND,
+      version: VERSION,
+      revokeId: `remote-revoke-${normalizedId}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      requestedAt,
+      sceneId: normalizedId,
+      sceneLabel: String(options.sceneLabel || sceneLabelFromId(normalizedId)).slice(0, 80),
+      sourcePackageId: String(latestReceipt.packageId || "").slice(0, 160),
+      releaseId: String(latestReceipt.releaseId || "").slice(0, 160),
+      packageDigest: normalizeSha256(latestReceipt.packageDigest),
+      receiptDigest: normalizeSha256(latestReceipt.receiptDigest),
+      reason: String(options.reason || "local-user-revoked-remote-publish").slice(0, 160),
+      boundary: BOUNDARY
+    };
+  }
+
+  function createRemoteRevokeReceiptRecord(sceneId, revokePackage, parsed, endpoint, revokedAt) {
+    const normalizedId = normalizeSceneId(sceneId);
+    const receipt = parsed.receipt && typeof parsed.receipt === "object" ? clone(parsed.receipt) : {};
+    const packageId = String(parsed.packageId || receipt.packageId || revokePackage.revokeId || "").slice(0, 160);
+    const sourcePackageId = String(receipt.sourcePackageId || parsed.sourcePackageId || revokePackage.sourcePackageId || "").slice(0, 160);
+    const releaseId = String(parsed.releaseId || receipt.releaseId || revokePackage.releaseId || "").slice(0, 160);
+    const packageDigest = normalizeSha256(parsed.packageDigest || receipt.packageDigest || revokePackage.packageDigest);
+    const acceptedAt = normalizeDate(receipt.acceptedAt) || revokedAt;
+    const cdnPurgeSummary = normalizeCdnPurgeSummary(parsed.cdnPurgeSummary || receipt.cdnPurgeSummary || parsed.cdnPurge || receipt.cdnPurge);
+    const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
+      || sha256StableJson({
+        sceneId: normalizedId,
+        packageId,
+        sourcePackageId,
+        releaseId,
+        packageDigest,
+        acceptedAt,
+        revokedAt,
+        cdnPurgeSummary,
+        direction: "revoke"
+      });
+    const warnings = normalizeWarningList(parsed.warnings || receipt.warnings);
+    return normalizeRemoteReceipt({
+      id: `remote-revoke-receipt-${normalizedId}-${receiptDigest.slice(0, 16)}`,
+      sceneId: normalizedId,
+      sceneLabel: revokePackage.sceneLabel || sceneLabelFromId(normalizedId),
+      packageId,
+      sourcePackageId,
+      releaseId,
+      packageDigest,
+      receiptDigest,
+      remoteVersion: parsed.remoteVersion || receipt.remoteVersion || "",
+      endpoint,
+      acceptedAt,
+      pushedAt: "",
+      revokedAt: normalizeDate(receipt.revokedAt) || revokedAt,
+      direction: "revoke",
+      message: parsed.message || "",
+      warningCount: warnings.length,
+      warnings,
+      cdnPurgeSummary,
+      receiptKind: receipt.receiptKind || "mr-calligraphy-remote-publish-revoke-receipt-v1",
+      receipt
+    });
+  }
+
+  function getLatestRevocableReceipt(scene = {}) {
+    const receipts = Array.isArray(scene.receipts) ? scene.receipts : [];
+    const latest = receipts[0] || null;
+    if (!latest || latest.direction === "revoke") {
+      return null;
+    }
+    return latest.packageDigest || latest.releaseId || latest.packageId ? latest : null;
   }
 
   function saveRemoteError(sceneId, message) {
@@ -1403,6 +1559,27 @@
     return warnings.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 8);
   }
 
+  function normalizeReceiptDirection(value) {
+    const direction = String(value || "").toLowerCase();
+    return direction.includes("revoke") || direction === "delete" ? "revoke" : "publish";
+  }
+
+  function normalizeCdnPurgeSummary(value = {}) {
+    const source = value && typeof value === "object" ? value : {};
+    const purgedAssetCount = normalizeCount(source.purgedAssetCount ?? source.assetCount);
+    const purgedUrlCount = normalizeCount(source.purgedUrlCount ?? source.urlCount);
+    return {
+      kind: String(source.kind || "mr-calligraphy-remote-publish-cdn-purge-summary-v1").slice(0, 120),
+      status: String(source.status || source.purgeStatus || "").slice(0, 80),
+      cdnProvider: String(source.cdnProvider || source.provider || "").slice(0, 120),
+      purgeRequestId: String(source.purgeRequestId || source.requestId || "").slice(0, 160),
+      purgedAssetCount,
+      purgedUrlCount,
+      requestedAt: normalizeDate(source.requestedAt),
+      completedAt: normalizeDate(source.completedAt)
+    };
+  }
+
   function normalizeAssetSignatures(value) {
     const signatures = Array.isArray(value) ? value : [];
     return signatures.map((record, index) => {
@@ -1462,20 +1639,25 @@
     const rows = audit.receipts.map((receipt) => {
       const warnings = receipt.warnings.length ? receipt.warnings.join("；") : "无";
       const assetSignatureText = formatAssetSignatureSummary(receipt.assetSignatureSummary);
+      const cdnPurgeText = formatCdnPurgeSummary(receipt.cdnPurgeSummary);
       return `
         <section class="receipt">
           <h2>${escapeHtml(receipt.packageId || "packageId 未知")}</h2>
           <dl>
+            <dt>Direction</dt><dd>${escapeHtml(formatReceiptDirection(receipt.direction))}</dd>
             <dt>Release</dt><dd>${escapeHtml(receipt.releaseId || "未知")}</dd>
+            <dt>Source Package</dt><dd>${escapeHtml(receipt.sourcePackageId || "无")}</dd>
             <dt>Package Digest</dt><dd>${escapeHtml(receipt.packageDigest || "未知")}</dd>
             <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
             <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
             <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
             <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
             <dt>Pushed At</dt><dd>${escapeHtml(receipt.pushedAt || "未知")}</dd>
+            <dt>Revoked At</dt><dd>${escapeHtml(receipt.revokedAt || "无")}</dd>
             <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
             <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
             <dt>Asset Signatures</dt><dd>${escapeHtml(assetSignatureText)}</dd>
+            <dt>CDN Purge</dt><dd>${escapeHtml(cdnPurgeText)}</dd>
           </dl>
           <pre>${escapeHtml(JSON.stringify(receipt.receipt || {}, null, 2))}</pre>
         </section>`;
@@ -1520,6 +1702,22 @@
     return `${signedCount} 个资产签名 · ${algorithm} · ${signingKeyId}${missing}`;
   }
 
+  function formatCdnPurgeSummary(summary = {}) {
+    const purgedAssetCount = normalizeCount(summary.purgedAssetCount);
+    const purgedUrlCount = normalizeCount(summary.purgedUrlCount);
+    if (!purgedAssetCount && !purgedUrlCount && !summary.status) {
+      return "无 CDN purge 回执";
+    }
+    const status = summary.status || "状态未知";
+    const provider = summary.cdnProvider || "CDN 未知";
+    const requestId = summary.purgeRequestId ? ` · ${summary.purgeRequestId}` : "";
+    return `${status} · ${provider} · ${purgedAssetCount} 个资产 / ${purgedUrlCount} 个 URL${requestId}`;
+  }
+
+  function formatReceiptDirection(direction) {
+    return direction === "revoke" ? "撤销" : "发布";
+  }
+
   function escapeHtml(value) {
     return String(value ?? "")
       .replace(/&/g, "&amp;")
@@ -1536,6 +1734,7 @@
   window.MRProjectRemotePublish = {
     storageKey: STORAGE_KEY,
     packageKind: PACKAGE_KIND,
+    revokeKind: REVOKE_KIND,
     boundary: BOUNDARY,
     configure,
     getStatus,
@@ -1552,6 +1751,7 @@
     rejectReview,
     unlock,
     check,
-    push
+    push,
+    revoke
   };
 })();

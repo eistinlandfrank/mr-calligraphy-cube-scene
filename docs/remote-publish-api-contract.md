@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | `GET` | 检查服务可访问性，并在推送前读取服务端最近回执 / 发布锁 | 无 |
 | `POST` | 推送当前发布包 | `mr-calligraphy-remote-publish-package-v1` |
+| `DELETE` | 撤销最近远端发布，并返回 CDN purge 回执 | `mr-calligraphy-remote-publish-revoke-v1` |
 
 如配置 token，请求会携带：
 
@@ -100,6 +101,7 @@ Authorization: Bearer <token>
 
 - 如果 `publishLock.packageDigest` 或 `publishLock.releaseId` 命中当前发布包，会阻止 `POST`。
 - 如果 `latestReceipt.packageDigest` 或 `latestReceipt.releaseId` 命中当前发布包，会阻止重复 `POST`。
+- 如果 `latestReceipt.direction` 为 `revoke`，前端不会把它当作重复发布锁。
 - 命中服务端锁时，会把远端锁写入本机 `mr-calligraphy-remote-publish-v1.scenes[sceneId].lock`，并显示“远端发布锁校验阻止推送”。
 - 如果 `GET` 本身失败，前端不会继续推送，避免绕过服务端发布锁。
 
@@ -155,7 +157,72 @@ Authorization: Bearer <token>
 
 主后台和写实后台会显示最近回执和资产签名数量，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。当前 mock 服务的资产签名是 HMAC-SHA256 开发验收回执，不是生产证书签名或不可抵赖签章。
 
-## 6. 失败响应
+## 6. 撤销发布与 CDN purge 回执
+
+后台“撤销远端”按钮会使用当前本机最近一条可撤销发布回执生成 `DELETE` body：
+
+```json
+{
+  "kind": "mr-calligraphy-remote-publish-revoke-v1",
+  "version": 1,
+  "revokeId": "remote-revoke-mainScene-...",
+  "requestedAt": "2026-06-12T00:05:00.000Z",
+  "sceneId": "mainScene",
+  "sceneLabel": "主场景",
+  "sourcePackageId": "remote-package-id",
+  "releaseId": "main-release-1",
+  "packageDigest": "64位sha256",
+  "receiptDigest": "64位sha256",
+  "reason": "local-user-revoked-remote-publish"
+}
+```
+
+成功响应建议返回：
+
+```json
+{
+  "ok": true,
+  "message": "主场景远端发布已撤销。",
+  "packageId": "remote-revoke-package-id",
+  "sourcePackageId": "remote-package-id",
+  "releaseId": "main-release-1",
+  "packageDigest": "64位sha256",
+  "remoteVersion": "remote-v1",
+  "cdnPurgeSummary": {
+    "kind": "mr-calligraphy-remote-publish-cdn-purge-summary-v1",
+    "status": "accepted",
+    "cdnProvider": "mock-cdn",
+    "purgeRequestId": "purge-...",
+    "purgedAssetCount": 2,
+    "purgedUrlCount": 2,
+    "requestedAt": "2026-06-12T00:05:00.000Z",
+    "completedAt": "2026-06-12T00:05:01.000Z"
+  },
+  "receipt": {
+    "receiptKind": "mr-calligraphy-remote-publish-revoke-receipt-v1",
+    "direction": "revoke",
+    "packageId": "remote-revoke-package-id",
+    "sourcePackageId": "remote-package-id",
+    "releaseId": "main-release-1",
+    "sceneId": "mainScene",
+    "packageDigest": "64位sha256",
+    "acceptedAt": "2026-06-12T00:05:01.000Z",
+    "revokedAt": "2026-06-12T00:05:01.000Z",
+    "cdnPurgeSummary": {
+      "status": "accepted",
+      "cdnProvider": "mock-cdn",
+      "purgedUrlCount": 2
+    },
+    "receiptDigest": "64位sha256"
+  }
+}
+```
+
+前端 adapter 会把撤销回执作为最新审计记录写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].receipts[0]`，设置 `lastRemoteDirection = "revoke"`、`lastRevokedAt`，并清空本机发布锁。最新回执为撤销方向时，“撤销远端”按钮会禁用，后续相同 `packageDigest` 可重新发布。
+
+生产服务端应把 CDN purge 的实际请求 ID、状态、URL 数量和完成时间写入回执；当前本机 mock 服务只生成开发验收用的 `mock-cdn` 摘要，不代表生产 CDN 已经失效。
+
+## 7. 失败响应
 
 失败响应建议返回：
 
@@ -179,7 +246,7 @@ Authorization: Bearer <token>
 
 如果 `POST` 返回 `409` 且响应中带有 `packageDigest` 或 `releaseId`，前端会把它当作服务端发布锁冲突处理；普通 `422` 或网络异常会释放本机“正在推送”临时锁，避免失败后误锁住当前发布包。
 
-## 7. 本机 mock 服务
+## 8. 本机 mock 服务
 
 启动 mock server：
 
@@ -208,8 +275,11 @@ mock 服务会：
 - 拒绝重复 `packageDigest`。
 - 对每个带 SHA-256 的模型 / 贴图资产返回 `assetSignatures[*]` HMAC 开发签名；缺哈希资产只返回 warning，不伪造签名。
 - 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执和资产签名摘要写入本机审计列表。
+- `DELETE` 校验 `mr-calligraphy-remote-publish-revoke-v1`，按 `sourcePackageId` / `releaseId` / `packageDigest` 匹配可撤销发布回执。
+- `DELETE` 成功后删除 mock 内存中的重复 `packageDigest` 锁，返回 `mr-calligraphy-remote-publish-revoke-receipt-v1` 和 `cdnPurgeSummary`。
+- 撤销后 `GET` 的最近回执仍可见，但不再返回发布锁；相同发布包可重新 POST。
 
-## 8. 验收
+## 9. 验收
 
 脚本验收：
 
@@ -218,4 +288,4 @@ node scripts/remote-publish-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、模型/贴图资产清单、远端资产签名回执、发布包回执、回执审计导出、服务端锁预检、重复摘要拒绝、远端拒收释放临时锁和远端发布状态持久化。
+`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` / `DELETE` 验证 endpoint、Bearer token、模型/贴图资产清单、远端资产签名回执、发布包回执、撤销回执、CDN purge 摘要、回执审计导出、服务端锁预检、重复摘要拒绝、撤销后重新发布、远端拒收释放临时锁和远端发布状态持久化。

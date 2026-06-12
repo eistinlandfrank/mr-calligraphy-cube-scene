@@ -1584,17 +1584,29 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const remoteRequests = [];
   const projectRepositoryRequests = [];
   const remoteProjectRepositoryVersions = [];
+  let latestRemotePublishReceipt = null;
 
   await page.route(`**${remoteEndpointPath}`, async (route) => {
     const request = route.request();
     const method = request.method();
-    const body = method === "POST" ? request.postDataJSON() : null;
+    const body = method === "POST" || method === "DELETE" ? request.postDataJSON() : null;
     remoteRequests.push({
       method,
       authorization: request.headers().authorization || "",
       body
     });
     if (method === "POST") {
+      latestRemotePublishReceipt = {
+        receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
+        direction: "publish",
+        packageId: `e2e-${body.sceneId}`,
+        releaseId: body.release.id,
+        sceneId: body.sceneId,
+        packageDigest: body.manifest.packageDigest,
+        acceptedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString(),
+        remoteVersion: "e2e-remote-v1",
+        message: "主场景远端 E2E 回执。"
+      };
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -1605,24 +1617,73 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
           releaseId: body.release.id,
           packageDigest: body.manifest.packageDigest,
           remoteVersion: "e2e-remote-v1",
-          receipt: {
-            packageId: `e2e-${body.sceneId}`,
-            releaseId: body.release.id,
-            packageDigest: body.manifest.packageDigest,
-            remoteVersion: "e2e-remote-v1",
-            message: "主场景远端 E2E 回执。"
-          }
+          receipt: latestRemotePublishReceipt
         })
       });
       return;
     }
+    if (method === "DELETE") {
+      const cdnPurgeSummary = {
+        kind: "mr-calligraphy-remote-publish-cdn-purge-summary-v1",
+        status: "accepted",
+        cdnProvider: "e2e-cdn",
+        purgeRequestId: "purge-e2e-mainScene",
+        purgedAssetCount: 1,
+        purgedUrlCount: 1,
+        requestedAt: body.requestedAt,
+        completedAt: new Date(Date.UTC(2026, 5, 12, 8, 25, 0)).toISOString()
+      };
+      latestRemotePublishReceipt = {
+        receiptKind: "mr-calligraphy-remote-publish-revoke-receipt-v1",
+        direction: "revoke",
+        packageId: `e2e-revoke-${body.sceneId}`,
+        sourcePackageId: body.sourcePackageId,
+        releaseId: body.releaseId,
+        sceneId: body.sceneId,
+        packageDigest: body.packageDigest,
+        acceptedAt: cdnPurgeSummary.completedAt,
+        revokedAt: cdnPurgeSummary.completedAt,
+        remoteVersion: "e2e-remote-v1",
+        cdnPurgeSummary,
+        receiptDigest: "f".repeat(64),
+        message: "主场景远端 E2E 已撤销。"
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: "主场景远端 E2E 已撤销。",
+          packageId: latestRemotePublishReceipt.packageId,
+          sourcePackageId: latestRemotePublishReceipt.sourcePackageId,
+          releaseId: latestRemotePublishReceipt.releaseId,
+          packageDigest: latestRemotePublishReceipt.packageDigest,
+          remoteVersion: "e2e-remote-v1",
+          cdnPurgeSummary,
+          receipt: latestRemotePublishReceipt
+        })
+      });
+      return;
+    }
+    const activePublishReceipt = latestRemotePublishReceipt?.direction === "revoke" ? null : latestRemotePublishReceipt;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
         message: "主场景远端 E2E 可访问。",
-        remoteVersion: "e2e-check-v1"
+        remoteVersion: "e2e-check-v1",
+        latestReceipt: latestRemotePublishReceipt,
+        publishLock: activePublishReceipt
+          ? {
+              locked: true,
+              sceneId: activePublishReceipt.sceneId,
+              releaseId: activePublishReceipt.releaseId,
+              packageDigest: activePublishReceipt.packageDigest,
+              lockedAt: activePublishReceipt.acceptedAt,
+              reason: "E2E 已有发布包。"
+            }
+          : { locked: false }
       })
     });
   });
@@ -1923,6 +1984,23 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(remoteState.scenes.mainScene.lastPackageId).toBe("e2e-mainScene");
   expect(remoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-remote-v1");
   expect(remoteState.scenes.mainScene.receipts[0].packageId).toBe("e2e-mainScene");
+
+  await expect(page.locator("#mainRemotePublishRevoke")).toBeEnabled();
+  await page.locator("#mainRemotePublishRevoke").click();
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 已撤销");
+  await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("2 条");
+  await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("撤销");
+  await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("purge 1");
+  const deleteRequest = remoteRequests.find((item) => item.method === "DELETE");
+  expect(deleteRequest.authorization).toBe("Bearer e2e-token");
+  expect(deleteRequest.body.kind).toBe("mr-calligraphy-remote-publish-revoke-v1");
+  expect(deleteRequest.body.sourcePackageId).toBe("e2e-mainScene");
+  const revokedRemoteState = await readJsonLocalStorage(page, REMOTE_PUBLISH_KEY);
+  expect(revokedRemoteState.scenes.mainScene.lastRemoteDirection).toBe("revoke");
+  expect(revokedRemoteState.scenes.mainScene.receipts[0].direction).toBe("revoke");
+  expect(revokedRemoteState.scenes.mainScene.receipts[0].cdnPurgeSummary.purgedUrlCount).toBe(1);
+  expect(revokedRemoteState.scenes.mainScene.receipts[1].packageId).toBe("e2e-mainScene");
+  await expect(page.locator("#mainRemotePublishRevoke")).toBeDisabled();
 
   const receiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#mainRemotePublishReceiptExport").click();
