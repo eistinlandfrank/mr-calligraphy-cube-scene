@@ -283,12 +283,13 @@ npm run test:e2e
 - 追加报告教师批注审计记录：保存和清除教师批注会写入 `mr-calligraphy-learning-state-v1.reportTeacherReviewAudits`，前台报告详情可查看最近审计并导出 HTML；数据层和 E2E 已验证 `save/clear`、SHA-256 摘要、预览、下载文件和刷新持久化。
 - 追加项目档案恢复审计摘要记录：恢复成功后会写入 `archiveDigest`、`selectionDigest` 和 `recordDigest`，主后台恢复审计列表显示摘要短码，HTML 导出包含完整摘要和原始 JSON；数据层和 E2E 已验证真实恢复、刷新持久化和下载文件。
 - 追加书写视频封面和导出记录：前台复盘页导出 WebM 后会生成 PNG 封面，写入 `mr-calligraphy-learning-state-v1.videoExportService.records`，复盘面板显示导出摘要并可下载封面；数据层和 E2E 已验证 WebM 下载、封面记录、PNG 下载和刷新后持久化。
+- 追加书写视频导出队列和失败重试：每次导出会写入 `videoExportService.jobs`，状态覆盖排队、生成中、已完成和失败；失败任务在复盘页显示错误和重试按钮，E2E 已验证禁用 `MediaRecorder` 后失败、恢复录制能力后重试下载 WebM。
 
 已知限制：
 
-- 当前新增的是浏览器端 WebM 视频封面和本机导出记录，不是 MP4/GIF 转码、服务端压缩、后台异步队列或公网分享链路。
+- 当前新增的是页面打开期间的本机视频队列和失败重试，不是 MP4/GIF 转码、服务端压缩、Service Worker 后台队列或公网分享链路。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `新增书写视频封面导出记录`
+- `新增书写视频导出队列重试`

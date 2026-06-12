@@ -62,7 +62,7 @@ node scripts/control-inventory.js --check
 | 模块 | 当前可用 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
-| 视频导出 | 可从真实笔迹导出 WebM 回放，生成 PNG 封面、本机导出记录和封面下载入口 | 不是 MP4/GIF，没有压缩、云端转码和异步队列 | 增加转码 adapter、压缩、导出队列和失败重试 |
+| 视频导出 | 可从真实笔迹导出 WebM 回放，生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码和页面关闭后的后台队列 | 增加转码 adapter、压缩、Service Worker/服务端导出队列 |
 | 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，签名回执审计还是本机列表和 mock/HMAC 开发验收，还没有账号教师端、生产证书签名、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、生产证书验真和服务端 PDF 渲染验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
@@ -1432,3 +1432,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增书写视频封面导出记录`
+
+## 45. 2026-06-12 新增书写视频导出队列和失败重试
+
+本次把前台视频导出从“成功后留记录”推进为“每次导出都有队列任务，可失败、可重试、可追踪”。
+
+完成内容：
+
+- `videoExportService.jobs` 保存本机视频导出队列。
+- 队列任务包含来源、作品/练习 ID、笔画数、采样点、状态、错误原因和重试来源。
+- WebM 导出前先排队，生成中更新为 `running`，成功后更新为 `succeeded` 并关联产物记录。
+- 浏览器不支持录制或生成失败时更新为 `failed`，复盘页显示错误原因。
+- 失败任务可在复盘页点击“重试”，并从原练习 strokes 重新执行导出。
+- 刷新中断的运行中任务会恢复为失败态，避免假运行中。
+
+真实化说明：
+
+- 数据来源：真实 strokes、浏览器 `MediaRecorder` 能力和本机队列状态。
+- 写入状态：`mr-calligraphy-learning-state-v1.videoExportService.jobs`。
+- 成功反馈：队列显示已完成，WebM 和 PNG 封面仍可下载。
+- 失败反馈：队列显示失败原因，并提供真实重试入口。
+- 刷新后复现方式：队列和错误状态保存在 localStorage。
+
+仍待补：
+
+- 当前不是页面关闭后的后台导出、Service Worker 队列、服务端压缩转码或 MP4/GIF 输出。
+
+验收：
+
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增书写视频导出队列重试`

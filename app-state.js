@@ -6,6 +6,7 @@
   const MAX_ARTWORK_TAGS = 8;
   const MAX_SHARE_RECORDS = 24;
   const MAX_VIDEO_EXPORT_RECORDS = 18;
+  const MAX_VIDEO_EXPORT_JOBS = 24;
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
@@ -595,6 +596,11 @@
       records: Array.isArray(source.records)
         ? source.records.map(normalizeVideoExportRecord).filter(Boolean).slice(0, MAX_VIDEO_EXPORT_RECORDS)
         : [],
+      jobs: Array.isArray(source.jobs)
+        ? source.jobs.map((job) => normalizeVideoExportJob(job, { recoverRunning: true })).filter(Boolean).slice(0, MAX_VIDEO_EXPORT_JOBS)
+        : [],
+      lastQueuedAt: normalizePlanDate(source.lastQueuedAt),
+      lastStartedAt: normalizePlanDate(source.lastStartedAt),
       lastExportedAt: normalizePlanDate(source.lastExportedAt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
@@ -628,6 +634,45 @@
       coverDataUrl,
       createdAt,
       message: String(record.message || "").trim().slice(0, 220)
+    };
+  }
+
+  function normalizeVideoExportJob(record, options = {}) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    if (!id) return null;
+    const rawStatus = ["queued", "running", "succeeded", "failed"].includes(record.status)
+      ? record.status
+      : "queued";
+    const interrupted = options.recoverRunning === true && rawStatus === "running" && !normalizePlanDate(record.finishedAt);
+    const status = interrupted ? "failed" : rawStatus;
+    const createdAt = normalizePlanDate(record.createdAt) || new Date().toISOString();
+    const updatedAt = normalizePlanDate(record.updatedAt) || createdAt;
+    const source = ["当前练习", "最近作品"].includes(record.source) ? record.source : "当前练习";
+    return {
+      id,
+      status,
+      source,
+      sourceId: String(record.sourceId || "").trim().slice(0, 120),
+      artworkId: String(record.artworkId || "").trim().slice(0, 120),
+      sessionId: String(record.sessionId || "").trim().slice(0, 120),
+      glyph: String(record.glyph || "永").trim().slice(0, 12) || "永",
+      title: String(record.title || "书写回放视频").trim().slice(0, 140) || "书写回放视频",
+      strokeCount: normalizeInteger(record.strokeCount, 0, 0, 9999),
+      pointCount: normalizeInteger(record.pointCount, 0, 0, 999999),
+      retryOf: String(record.retryOf || "").trim().slice(0, 120),
+      retryCount: normalizeInteger(record.retryCount, 0, 0, 99),
+      recordId: String(record.recordId || "").trim().slice(0, 120),
+      videoFilename: String(record.videoFilename || "").trim().slice(0, 180),
+      coverFilename: String(record.coverFilename || "").trim().slice(0, 180),
+      error: interrupted
+        ? "页面刷新或关闭中断了这次视频导出，请重试。"
+        : String(record.error || "").trim().slice(0, 180),
+      createdAt,
+      queuedAt: normalizePlanDate(record.queuedAt) || createdAt,
+      startedAt: normalizePlanDate(record.startedAt),
+      finishedAt: normalizePlanDate(record.finishedAt),
+      updatedAt
     };
   }
 
@@ -7403,6 +7448,7 @@
       .slice(0, MAX_VIDEO_EXPORT_RECORDS);
     state.videoExportService.lastExportedAt = createdAt;
     state.videoExportService.lastError = "";
+    completePracticeVideoExportJob(payload.jobId, record, { save: false });
     addEvent("video-export", `导出书写回放视频：${record.title}`);
     saveState();
     return {
@@ -7418,14 +7464,138 @@
     };
   }
 
-  function recordPracticeVideoExportError(message = "") {
+  function recordPracticeVideoExportError(message = "", options = {}) {
     const text = String(message || "书写回放视频导出失败。").trim().slice(0, 180);
     state.videoExportService.lastError = text;
+    failPracticeVideoExportJob(options.jobId, text, { save: false });
     saveState();
     return {
       ok: false,
+      status: getPracticeVideoExportStatus(options),
       boundary: VIDEO_EXPORT_BOUNDARY,
       message: text
+    };
+  }
+
+  function queuePracticeVideoExportJob(payload = {}) {
+    const now = new Date().toISOString();
+    const job = normalizeVideoExportJob({
+      id: payload.id || makeId("video-job"),
+      status: "queued",
+      source: payload.source,
+      sourceId: payload.sourceId,
+      artworkId: payload.artworkId,
+      sessionId: payload.sessionId,
+      glyph: payload.glyph || state.selectedGlyph,
+      title: payload.title || "书写回放视频",
+      strokeCount: payload.strokeCount,
+      pointCount: payload.pointCount,
+      retryOf: payload.retryOf,
+      retryCount: payload.retryCount,
+      createdAt: now,
+      queuedAt: now,
+      updatedAt: now
+    });
+    if (!job) {
+      return { ok: false, message: "视频导出任务缺少必要信息，未加入队列。" };
+    }
+    state.videoExportService.jobs = [job, ...state.videoExportService.jobs]
+      .filter(Boolean)
+      .slice(0, MAX_VIDEO_EXPORT_JOBS);
+    state.videoExportService.lastQueuedAt = now;
+    addEvent("video-export-queued", `加入书写视频导出队列：${job.title}`);
+    saveState();
+    return {
+      ok: true,
+      job: decorateVideoExportJob(job),
+      status: getPracticeVideoExportStatus({
+        artworkId: job.artworkId,
+        sessionId: job.sessionId,
+        sourceId: job.sourceId
+      }),
+      boundary: VIDEO_EXPORT_BOUNDARY,
+      message: `已加入本机视频导出队列：${job.title}。`
+    };
+  }
+
+  function startPracticeVideoExportJob(jobId) {
+    const job = findVideoExportJob(jobId);
+    if (!job) {
+      return { ok: false, message: "未找到这条视频导出任务。" };
+    }
+    const now = new Date().toISOString();
+    job.status = "running";
+    job.startedAt = now;
+    job.updatedAt = now;
+    job.error = "";
+    state.videoExportService.lastStartedAt = now;
+    saveState();
+    return {
+      ok: true,
+      job: decorateVideoExportJob(job),
+      status: getPracticeVideoExportStatus({
+        artworkId: job.artworkId,
+        sessionId: job.sessionId,
+        sourceId: job.sourceId
+      }),
+      message: `正在生成视频：${job.title}。`
+    };
+  }
+
+  function retryPracticeVideoExportJob(jobId) {
+    const job = findVideoExportJob(jobId);
+    if (!job) {
+      return { ok: false, message: "未找到可重试的视频导出任务。" };
+    }
+    if (job.status !== "failed") {
+      return { ok: false, message: "只有失败的视频导出任务可以重试。" };
+    }
+    return queuePracticeVideoExportJob({
+      source: job.source,
+      sourceId: job.sourceId,
+      artworkId: job.artworkId,
+      sessionId: job.sessionId,
+      glyph: job.glyph,
+      title: job.title,
+      strokeCount: job.strokeCount,
+      pointCount: job.pointCount,
+      retryOf: job.id,
+      retryCount: job.retryCount + 1
+    });
+  }
+
+  function getPracticeVideoRetrySource(jobId) {
+    const job = findVideoExportJob(jobId);
+    if (!job) {
+      return { ok: false, message: "未找到这条视频导出任务。" };
+    }
+    if (job.status !== "failed") {
+      return { ok: false, job: decorateVideoExportJob(job), message: "只有失败的视频导出任务可以重试。" };
+    }
+    const session = findVideoExportJobSession(job);
+    if (!session?.strokes?.length) {
+      return {
+        ok: false,
+        job: decorateVideoExportJob(job),
+        message: "这条任务对应的笔迹记录已不存在，无法重试。"
+      };
+    }
+    const artwork = job.artworkId
+      ? state.artworks.find((item) => item.id === job.artworkId) || null
+      : null;
+    return {
+      ok: true,
+      job: decorateVideoExportJob(job),
+      source: {
+        source: job.source,
+        sourceId: job.sourceId || artwork?.id || session.id,
+        artworkId: artwork?.id || job.artworkId,
+        sessionId: session.id,
+        glyph: job.glyph || session.glyph || state.selectedGlyph,
+        title: job.title || artwork?.title || session.title || `${session.glyph || state.selectedGlyph}字视频回放`,
+        strokes: clone(session.strokes || [])
+      },
+      message: `已找到“${job.title}”的可重试笔迹。`
     };
   }
 
@@ -7443,21 +7613,45 @@
       (sessionId && record.sessionId === sessionId) ||
       (sourceId && record.sourceId === sourceId)
     )) || records[0] || null;
+    const jobs = state.videoExportService.jobs
+      .map(decorateVideoExportJob)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0));
+    const currentJob = jobs.find((job) => (
+      (artworkId && job.artworkId === artworkId) ||
+      (sessionId && job.sessionId === sessionId) ||
+      (sourceId && job.sourceId === sourceId)
+    )) || jobs[0] || null;
+    const queuedCount = jobs.filter((job) => job.status === "queued").length;
+    const runningCount = jobs.filter((job) => job.status === "running").length;
+    const succeededCount = jobs.filter((job) => job.status === "succeeded").length;
+    const failedCount = jobs.filter((job) => job.status === "failed").length;
 
     return {
       ok: true,
       boundary: VIDEO_EXPORT_BOUNDARY,
       total: records.length,
+      queueTotal: jobs.length,
+      queuedCount,
+      runningCount,
+      succeededCount,
+      failedCount,
+      retryableCount: failedCount,
       latestRecord: records[0] || null,
       currentRecord,
+      latestJob: jobs[0] || null,
+      currentJob,
       records,
+      jobs,
       lastExportedAt: state.videoExportService.lastExportedAt,
       lastError: state.videoExportService.lastError,
       message: records.length
-        ? `本机已有 ${records.length} 条书写视频导出记录，最近一次 ${formatDateTime(records[0].createdAt)}。`
+        ? `本机已有 ${records.length} 条书写视频导出记录；导出队列 ${jobs.length} 条，失败 ${failedCount} 条。`
         : state.videoExportService.lastError
           ? `最近导出失败：${state.videoExportService.lastError}`
-          : "还没有书写视频导出记录。生成视频后会保存 WebM、PNG 封面和本机记录。"
+          : jobs.length
+            ? `本机视频导出队列 ${jobs.length} 条，失败 ${failedCount} 条。`
+            : "还没有书写视频导出记录。生成视频后会保存 WebM、PNG 封面和本机队列记录。"
     };
   }
 
@@ -7481,6 +7675,80 @@
       sourceLabel: normalized.source === "最近作品" ? "最近作品" : "当前练习",
       boundary: VIDEO_EXPORT_BOUNDARY
     };
+  }
+
+  function decorateVideoExportJob(job) {
+    const normalized = normalizeVideoExportJob(job);
+    if (!normalized) return null;
+    return {
+      ...clone(normalized),
+      sourceLabel: normalized.source === "最近作品" ? "最近作品" : "当前练习",
+      statusLabel: getVideoExportJobStatusLabel(normalized.status),
+      canRetry: normalized.status === "failed",
+      createdLabel: formatDateTime(normalized.createdAt),
+      updatedLabel: formatDateTime(normalized.updatedAt),
+      boundary: VIDEO_EXPORT_BOUNDARY
+    };
+  }
+
+  function completePracticeVideoExportJob(jobId, record, options = {}) {
+    const job = findVideoExportJob(jobId);
+    if (!job) return null;
+    const now = new Date().toISOString();
+    job.status = "succeeded";
+    job.recordId = record.id;
+    job.videoFilename = record.videoFilename;
+    job.coverFilename = record.coverFilename;
+    job.finishedAt = now;
+    job.updatedAt = now;
+    job.error = "";
+    if (options.save !== false) {
+      saveState();
+    }
+    return decorateVideoExportJob(job);
+  }
+
+  function failPracticeVideoExportJob(jobId, message, options = {}) {
+    const job = findVideoExportJob(jobId);
+    if (!job) return null;
+    const now = new Date().toISOString();
+    job.status = "failed";
+    job.error = String(message || "视频导出失败。").trim().slice(0, 180);
+    job.finishedAt = now;
+    job.updatedAt = now;
+    if (options.save !== false) {
+      saveState();
+    }
+    return decorateVideoExportJob(job);
+  }
+
+  function findVideoExportJob(jobId) {
+    const id = String(jobId || "").trim();
+    if (!id) return null;
+    return state.videoExportService.jobs.find((job) => job.id === id) || null;
+  }
+
+  function findVideoExportJobSession(job) {
+    if (!job) return null;
+    if (job.sessionId) {
+      const session = state.sessions.find((item) => item.id === job.sessionId);
+      if (session) return session;
+    }
+    if (job.artworkId) {
+      const artwork = state.artworks.find((item) => item.id === job.artworkId);
+      if (artwork?.sessionId) {
+        return state.sessions.find((item) => item.id === artwork.sessionId) || null;
+      }
+    }
+    return null;
+  }
+
+  function getVideoExportJobStatusLabel(status) {
+    if (status === "queued") return "排队中";
+    if (status === "running") return "生成中";
+    if (status === "succeeded") return "已完成";
+    if (status === "failed") return "失败";
+    return "未知";
   }
 
   function formatDurationMs(value) {
@@ -11030,6 +11298,7 @@
     getArtworkSharePackage,
     getShareServiceStatus,
     getPracticeVideoExportStatus,
+    getPracticeVideoRetrySource,
     getLatestReview,
     getHistory,
     getHistoryDetail,
@@ -11105,6 +11374,9 @@
     openArtworkShareLink,
     markArtworkShareLinkCopied,
     revokeArtworkShareLink,
+    queuePracticeVideoExportJob,
+    startPracticeVideoExportJob,
+    retryPracticeVideoExportJob,
     recordPracticeVideoExport,
     recordPracticeVideoExportError,
     downloadPlan,

@@ -4558,6 +4558,12 @@ body.is-model-view .notice-panel {
   background: rgba(47, 111, 104, 0.24);
 }
 
+.video-export-summary[data-video-tone="running"] {
+  border-color: rgba(160, 197, 255, 0.34);
+  color: #edf4ff;
+  background: rgba(49, 74, 122, 0.28);
+}
+
 .video-export-summary[data-video-tone="warning"],
 .share-service-summary[data-share-tone="warning"] {
   border-color: rgba(247, 215, 139, 0.42);
@@ -4621,6 +4627,41 @@ body.is-model-view .notice-panel {
 
 .video-export-records li {
   grid-template-columns: minmax(0, 1fr);
+}
+
+.video-export-records li[data-video-job-status="failed"] {
+  grid-template-columns: minmax(0, 1fr) auto;
+  border-color: rgba(247, 215, 139, 0.32);
+  background: rgba(122, 91, 35, 0.14);
+}
+
+.video-export-record-actions {
+  display: flex;
+  justify-content: end;
+}
+
+.video-export-record-actions button {
+  min-height: 28px;
+  border: 1px solid rgba(247, 215, 139, 0.44);
+  border-radius: 6px;
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.28);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.video-export-record-actions button:hover,
+.video-export-record-actions button:focus-visible {
+  border-color: rgba(247, 215, 139, 0.72);
+  outline: none;
+  background: rgba(122, 91, 35, 0.44);
+}
+
+.video-export-record-actions button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 240, 189, 0.46);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 .video-export-records strong,

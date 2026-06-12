@@ -48,7 +48,7 @@
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
 | 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、生产证书签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
-| 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
+| 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放，并有 PNG 封面、本机队列和失败重试 | 还没有社交平台分享、MP4/GIF、公开作品集、后台转码队列和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
 ### 2.3 明显缺失
@@ -6941,3 +6941,59 @@
 提交：
 
 - 中文 commit message：`新增书写视频封面导出记录`
+
+### 2026-06-12：新增书写视频导出队列和失败重试
+
+功能名：前台书写视频导出本机队列。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- `videoExportService.jobs` 新增导出任务队列。
+- 导出任务支持 `queued`、`running`、`succeeded`、`failed` 状态。
+- WebM 导出前会排队，成功后将任务与导出记录关联。
+- 失败任务保留错误原因并在复盘页显示“重试”按钮。
+- 重试会读取失败任务关联练习的真实 strokes，重新加入队列并再次生成 WebM。
+- 持久化恢复时，未完成的运行中任务会转为失败态并提示页面中断。
+- E2E 覆盖成功导出、禁用 `MediaRecorder` 失败、恢复后重试下载。
+
+真实化说明：
+
+- 数据来源：真实书写笔迹、作品/练习关联、浏览器录制能力和本机队列任务。
+- 写入状态：`mr-calligraphy-learning-state-v1.videoExportService.jobs[*]`。
+- 成功反馈：任务状态显示已完成，WebM/封面记录可继续使用。
+- 失败反馈：任务状态显示失败和错误原因，可点击重试。
+- 刷新后复现方式：队列状态保存在本机 localStorage。
+
+已知限制：
+
+- 当前是页面打开期间的本机队列，不是 Service Worker 后台队列、服务端转码、压缩队列、MP4/GIF 或公网分享服务。
+
+验收方式：
+
+- 脚本验收：`node scripts/learning-state-check.js`。
+- 浏览器验收：`npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+
+提交：
+
+- 中文 commit message：`新增书写视频导出队列重试`

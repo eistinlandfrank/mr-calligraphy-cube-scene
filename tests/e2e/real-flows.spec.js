@@ -214,6 +214,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
       }
     }
 
+    Object.defineProperty(window, "__MR_E2E_MediaRecorder", {
+      configurable: true,
+      value: FakeMediaRecorder
+    });
     Object.defineProperty(window, "MediaRecorder", {
       configurable: true,
       value: FakeMediaRecorder
@@ -274,6 +278,34 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.locator("#reviewDownloadVideoCover").click();
   const coverDownload = await coverDownloadPromise;
   expect(coverDownload.suggestedFilename()).toMatch(/^mr-calligraphy-replay-cover-.*\.png$/);
+
+  await page.evaluate(() => {
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: undefined
+    });
+  });
+  await page.locator("#reviewDownloadVideo").click();
+  await expect(page.locator("#actionFeedback")).toContainText("当前浏览器不支持 Canvas 视频录制", { timeout: 6000 });
+  await expect(page.locator("#videoExportRecords")).toContainText("失败");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const failedVideoJob = learningState.videoExportService.jobs.find((job) => job.status === "failed");
+  expect(failedVideoJob).toBeTruthy();
+  expect(failedVideoJob.error).toContain("当前浏览器不支持 Canvas 视频录制");
+
+  await page.evaluate(() => {
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: window.__MR_E2E_MediaRecorder
+    });
+  });
+  const retryVideoDownloadPromise = page.waitForEvent("download");
+  await page.locator("[data-video-export-retry]").first().click();
+  const retryVideoDownload = await retryVideoDownloadPromise;
+  expect(retryVideoDownload.suggestedFilename()).toMatch(/^mr-calligraphy-replay-.*\.webm$/);
+  await expect(page.locator("#videoExportRecords")).toContainText("已完成");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.videoExportService.jobs.some((job) => job.retryOf === failedVideoJob.id && job.status === "succeeded")).toBe(true);
 
   await page.locator("#reviewCreateShareLink").click();
   await expect(page.locator("#shareServiceSummary")).toContainText("1 条有效链接");

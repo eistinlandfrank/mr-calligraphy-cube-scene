@@ -3675,6 +3675,7 @@ function bindReviewControls() {
   els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
   els.reviewDownloadShare?.addEventListener("click", downloadLatestArtworkSharePage);
+  els.videoExportRecords?.addEventListener("click", handleVideoExportAction);
   els.reviewCreateShareLink?.addEventListener("click", createLatestArtworkShareLink);
   els.reviewCopyShareLink?.addEventListener("click", () => copyActiveArtworkShareLink());
   els.reviewRevokeShareLink?.addEventListener("click", () => revokeActiveArtworkShareLink());
@@ -4471,16 +4472,21 @@ function renderVideoExportPanel(artwork, session) {
     els.videoExportSummary.textContent = status
       ? `${status.message} ${status.boundary}`
       : "本机视频导出服务尚未初始化。";
-    els.videoExportSummary.dataset.videoTone = currentRecord?.coverDataUrl
-      ? "ready"
-      : status?.lastError
-        ? "warning"
-        : "idle";
+    const tone = status?.failedCount
+      ? "warning"
+      : status?.runningCount
+        ? "running"
+        : currentRecord?.coverDataUrl
+          ? "ready"
+          : status?.lastError
+            ? "warning"
+            : "idle";
+    els.videoExportSummary.dataset.videoTone = tone;
   }
   if (!els.videoExportRecords) return;
   els.videoExportRecords.innerHTML = "";
-  const records = (status?.records || []).slice(0, 3);
-  if (!records.length) {
+  const jobs = (status?.jobs || []).slice(0, 4);
+  if (!jobs.length) {
     const item = document.createElement("li");
     const body = document.createElement("span");
     body.textContent = status?.lastError
@@ -4491,15 +4497,39 @@ function renderVideoExportPanel(artwork, session) {
     return;
   }
 
-  records.forEach((record) => {
+  jobs.forEach((job) => {
     const item = document.createElement("li");
+    item.dataset.videoJobStatus = job.status;
     const title = document.createElement("strong");
-    title.textContent = `${record.title} · ${record.durationLabel}`;
+    title.textContent = `${job.title} · ${job.statusLabel}`;
     const detail = document.createElement("span");
-    detail.textContent = `${record.sourceLabel} / ${record.strokeCount} 笔 / ${record.pointCount} 点 / ${record.videoSizeLabel} / ${record.createdLabel}`;
+    const errorText = job.error ? ` / ${job.error}` : "";
+    detail.textContent = `${job.sourceLabel} / ${job.strokeCount} 笔 / ${job.pointCount} 点 / ${job.updatedLabel}${errorText}`;
     item.append(title, detail);
+    if (job.canRetry) {
+      const actions = document.createElement("div");
+      actions.className = "video-export-record-actions";
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.dataset.videoExportRetry = job.id;
+      retry.textContent = "重试";
+      actions.appendChild(retry);
+      item.appendChild(actions);
+    }
     els.videoExportRecords.appendChild(item);
   });
+}
+
+async function handleVideoExportAction(event) {
+  const retryButton = event.target?.closest?.("[data-video-export-retry]");
+  if (!retryButton) return;
+  const jobId = retryButton.dataset.videoExportRetry || "";
+  retryButton.disabled = true;
+  try {
+    await retryPracticeVideoExport(jobId);
+  } finally {
+    retryButton.disabled = false;
+  }
 }
 
 function replayLatestArtwork() {
@@ -6116,16 +6146,38 @@ async function exportPracticeReplayVideo(options = {}) {
     return { ok: false, message: "请先在练习格中书写，或保存一条带笔迹的作品后再生成视频。" };
   }
 
+  if (source.source === "当前练习" && !source.sessionId) {
+    const recorded = recordLivePracticeIfAvailable({ allowCreate: true });
+    if (recorded?.session?.id) {
+      source.sessionId = recorded.session.id;
+      source.sourceId = recorded.session.id;
+      source.title = recorded.session.title || `${source.glyph}字当前练习`;
+    }
+  }
+
+  const queuedJob = options.jobId
+    ? { ok: true, job: { id: options.jobId } }
+    : window.MRAppState?.queuePracticeVideoExportJob?.({
+        source: source.source,
+        sourceId: source.sourceId,
+        artworkId: source.artworkId,
+        sessionId: source.sessionId,
+        glyph: source.glyph,
+        title: source.title,
+        strokeCount: source.strokes.length,
+        pointCount: countVideoSourcePoints(source.strokes),
+        retryOf: options.retryOf,
+        retryCount: options.retryCount
+      });
+  if (!queuedJob?.ok) {
+    return { ok: false, message: queuedJob?.message || "视频导出任务无法加入队列。" };
+  }
+  const jobId = queuedJob.job?.id || options.jobId || "";
+
   isReplayVideoExporting = true;
   try {
-    if (source.source === "当前练习") {
-      const recorded = recordLivePracticeIfAvailable({ allowCreate: true });
-      if (recorded?.session?.id) {
-        source.sessionId = recorded.session.id;
-        source.sourceId = recorded.session.id;
-        source.title = recorded.session.title || `${source.glyph}字当前练习`;
-      }
-    } else {
+    window.MRAppState?.startPracticeVideoExportJob?.(jobId);
+    if (source.source !== "当前练习") {
       window.MRPracticeCanvas.loadStrokes?.(source.strokes);
     }
 
@@ -6135,7 +6187,12 @@ async function exportPracticeReplayVideo(options = {}) {
     });
     if (!coverResult?.ok || !coverResult.dataUrl) {
       const message = coverResult?.message || "视频封面生成失败。";
-      window.MRAppState?.recordPracticeVideoExportError?.(message);
+      window.MRAppState?.recordPracticeVideoExportError?.(message, {
+        jobId,
+        artworkId: source.artworkId,
+        sessionId: source.sessionId,
+        sourceId: source.sourceId
+      });
       return { ok: false, message };
     }
 
@@ -6145,7 +6202,12 @@ async function exportPracticeReplayVideo(options = {}) {
     });
     if (!result?.ok || !result.blob) {
       const message = result?.message || "视频导出失败。";
-      window.MRAppState?.recordPracticeVideoExportError?.(message);
+      window.MRAppState?.recordPracticeVideoExportError?.(message, {
+        jobId,
+        artworkId: source.artworkId,
+        sessionId: source.sessionId,
+        sourceId: source.sourceId
+      });
       return result || { ok: false, message };
     }
 
@@ -6153,6 +6215,7 @@ async function exportPracticeReplayVideo(options = {}) {
     const filename = `mr-calligraphy-replay-${sanitizeFilename(source.glyph)}-${timestamp}.webm`;
     const coverFilename = `mr-calligraphy-replay-cover-${sanitizeFilename(source.glyph)}-${timestamp}.png`;
     const recordResult = window.MRAppState?.recordPracticeVideoExport?.({
+      jobId,
       source: source.source,
       sourceId: source.sourceId,
       artworkId: source.artworkId,
@@ -6191,6 +6254,10 @@ async function exportPracticeReplayVideo(options = {}) {
 }
 
 function getPracticeVideoSource(options = {}) {
+  if (options.source?.strokes?.length) {
+    return options.source;
+  }
+
   const liveStrokes = window.MRPracticeCanvas?.getStrokes?.() || [];
   const stats = window.MRAppState?.getStats?.();
   const review = window.MRAppState?.getLatestReview?.();
@@ -6243,6 +6310,29 @@ async function downloadLatestPracticeVideo() {
     els.actionFeedback.textContent = "正在生成真实书写回放视频，请稍候...";
   }
   const result = await exportPracticeReplayVideo({ preferReview: true });
+  applyActionResult(result, { label: "生成视频" });
+}
+
+async function retryPracticeVideoExport(jobId) {
+  const sourceResult = window.MRAppState?.getPracticeVideoRetrySource?.(jobId);
+  if (!sourceResult?.ok) {
+    showNotice(sourceResult?.message || "这条视频导出任务暂时不能重试。");
+    renderReviewPanel(currentIndex);
+    return;
+  }
+  const queued = window.MRAppState?.retryPracticeVideoExportJob?.(jobId);
+  if (!queued?.ok) {
+    showNotice(queued?.message || "视频导出重试任务无法加入队列。");
+    renderReviewPanel(currentIndex);
+    return;
+  }
+  if (els.actionFeedback) {
+    els.actionFeedback.textContent = "正在重试书写回放视频，请稍候...";
+  }
+  const result = await exportPracticeReplayVideo({
+    source: sourceResult.source,
+    jobId: queued.job.id
+  });
   applyActionResult(result, { label: "生成视频" });
 }
 

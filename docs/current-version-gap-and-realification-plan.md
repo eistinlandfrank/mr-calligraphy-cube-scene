@@ -56,7 +56,7 @@ node scripts/control-inventory.js
 | 模块 | 当前可用内容 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
-| 生成视频 | 能用真实笔迹导出 WebM 回放，并生成 PNG 封面、本机导出记录和封面下载入口 | 不是 MP4/GIF，没有压缩、云端转码、异步队列和分享链路 | UI 写明 WebM；后续加格式转换、压缩和异步导出队列 |
+| 生成视频 | 能用真实笔迹导出 WebM 回放，并生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码、页面关闭后的后台队列和分享链路 | UI 写明 WebM；后续加格式转换、压缩和 Service Worker/服务端异步导出队列 |
 | 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前签名回执审计是本机列表和 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
@@ -2063,3 +2063,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增书写视频封面导出记录`
+
+### 2026-06-12：新增书写视频导出队列和失败重试
+
+完成内容：
+
+- `videoExportService` 新增 `jobs` 本机导出队列，记录排队、生成中、已完成、失败四种状态。
+- WebM 导出会先写入队列任务，再进入生成中，成功后关联视频记录和封面记录。
+- 导出失败会写入失败任务、错误原因和最近失败状态，不会只在页面提示里一闪而过。
+- 复盘面板的视频导出记录列表改为展示队列状态；失败任务显示“重试”按钮。
+- 重试会从失败任务关联的练习/作品中读取原始 strokes，重新加入队列并再次执行真实 WebM 导出。
+- 刷新时发现未完成的生成中任务会标为失败并提示页面中断，避免永远停在“生成中”。
+- Playwright 覆盖成功导出、禁用 `MediaRecorder` 触发失败、恢复录制能力后点击“重试”并下载 WebM。
+
+真实化说明：
+
+- 数据来源：真实书写笔迹、最近作品关联练习、本机队列任务和浏览器录制能力。
+- 写入状态：`mr-calligraphy-learning-state-v1.videoExportService.jobs[*]` 和 `videoExportService.records[*]`。
+- 成功反馈：队列显示“已完成”，下载 WebM，并保留可下载封面。
+- 失败反馈：队列显示“失败”和错误原因，提供可执行的重试按钮。
+- 刷新后复现方式：队列任务和失败原因保存在 localStorage；刷新时未完成任务会转为可重试失败态。
+
+仍待补：
+
+- 当前是页面打开期间的本机队列，不是 Service Worker 后台队列、服务端压缩转码队列、MP4/GIF 转码或公网分享链路。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增书写视频导出队列重试`

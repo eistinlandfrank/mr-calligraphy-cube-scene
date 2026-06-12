@@ -217,7 +217,23 @@ const emptyVideoStatus = window.MRAppState.getPracticeVideoExportStatus({
 assert(emptyVideoStatus.total === 0, "初始视频导出服务不应伪造已有记录。");
 assert(emptyVideoStatus.boundary.includes("WebM"), "视频导出服务应说明 WebM 和本机记录边界。");
 
+const queuedVideoJob = window.MRAppState.queuePracticeVideoExportJob({
+  source: "最近作品",
+  sourceId: "artwork-2",
+  artworkId: "artwork-2",
+  sessionId: "session-2",
+  glyph: "永",
+  title: "永字视频回放",
+  strokeCount: 2,
+  pointCount: 80
+});
+assert(queuedVideoJob.ok && queuedVideoJob.job.status === "queued", "视频导出应先写入本机队列任务。");
+
+const runningVideoJob = window.MRAppState.startPracticeVideoExportJob(queuedVideoJob.job.id);
+assert(runningVideoJob.ok && runningVideoJob.job.status === "running", "视频导出任务应能进入生成中状态。");
+
 const videoRecord = window.MRAppState.recordPracticeVideoExport({
+  jobId: queuedVideoJob.job.id,
   source: "最近作品",
   sourceId: "artwork-2",
   artworkId: "artwork-2",
@@ -234,6 +250,7 @@ const videoRecord = window.MRAppState.recordPracticeVideoExport({
   coverDataUrl: "data:image/png;base64,iVBORw0KGgo="
 });
 assert(videoRecord.ok, "视频导出成功后应能写入本机记录。");
+assert(videoRecord.status.currentJob.status === "succeeded", "视频导出成功后队列任务应标为已完成。");
 assert(videoRecord.record.coverFilename.endsWith(".png"), "视频导出记录应包含封面文件名。");
 assert(videoRecord.record.videoSizeLabel === "4 KB", "视频导出记录应显示真实视频大小。");
 assert(videoRecord.record.durationLabel.includes("秒"), "视频导出记录应显示导出时长。");
@@ -243,12 +260,42 @@ const videoStatus = window.MRAppState.getPracticeVideoExportStatus({
   sessionId: "session-2"
 });
 assert(videoStatus.total === 1, "视频导出服务应统计本机导出记录。");
+assert(videoStatus.queueTotal === 1 && videoStatus.succeededCount === 1, "视频导出服务应统计本机队列完成数量。");
 assert(videoStatus.currentRecord.coverDataUrl.startsWith("data:image/png"), "视频导出服务应保留封面数据。");
 assert(videoStatus.message.includes("书写视频导出记录"), "视频导出服务应返回可读摘要。");
+
+const failedVideoJob = window.MRAppState.queuePracticeVideoExportJob({
+  source: "最近作品",
+  sourceId: "artwork-2",
+  artworkId: "artwork-2",
+  sessionId: "session-2",
+  glyph: "永",
+  title: "失败后可重试的视频",
+  strokeCount: 2,
+  pointCount: 80
+});
+window.MRAppState.startPracticeVideoExportJob(failedVideoJob.job.id);
+const failedVideo = window.MRAppState.recordPracticeVideoExportError("浏览器不支持 Canvas 视频录制。", {
+  jobId: failedVideoJob.job.id,
+  artworkId: "artwork-2",
+  sessionId: "session-2",
+  sourceId: "artwork-2"
+});
+assert(!failedVideo.ok && failedVideo.status.currentJob.status === "failed", "视频导出失败应写回队列任务。");
+assert(failedVideo.status.currentJob.canRetry, "失败的视频导出任务应允许重试。");
+const retrySource = window.MRAppState.getPracticeVideoRetrySource(failedVideoJob.job.id);
+assert(retrySource.ok && retrySource.source.strokes.length, "失败任务应能找到原始笔迹用于重试。");
+const retryJob = window.MRAppState.retryPracticeVideoExportJob(failedVideoJob.job.id);
+assert(retryJob.ok && retryJob.job.retryOf === failedVideoJob.job.id, "重试应创建新的队列任务并关联原失败任务。");
+
 const persistedVideoState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 assert(
   persistedVideoState.videoExportService.records[0].videoFilename === "mr-calligraphy-replay-yong.webm",
   "视频导出记录应持久化到 localStorage。"
+);
+assert(
+  persistedVideoState.videoExportService.jobs.some((job) => job.status === "failed" && job.error.includes("浏览器不支持")),
+  "视频导出失败任务应持久化错误原因。"
 );
 
 const shareLink = window.MRAppState.createArtworkShareLink("artwork-2", { expiresInDays: 3 });
@@ -874,7 +921,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、书写视频导出记录和封面、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {
@@ -1157,7 +1204,16 @@ function createSession(id, glyph, score, time, metrics = {}) {
     pointCount: id === "session-2" ? 120 : 80,
     metrics,
     feedback: [`${glyph}字反馈`],
-    strokes: []
+    strokes: [
+      [
+        { x: 0.42, y: 0.18, t: 0, p: 0.45 },
+        { x: 0.5, y: 0.48, t: 160, p: 0.6 }
+      ],
+      [
+        { x: 0.28, y: 0.42, t: 260, p: 0.48 },
+        { x: 0.72, y: 0.43, t: 350, p: 0.56 }
+      ]
+    ]
   };
 }
 
