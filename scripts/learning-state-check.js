@@ -500,7 +500,11 @@ assert(!window.MRAppState.getReportSeries("report-1").ok, "第一份报告不应
 const practiceScoreEvidence = window.MRAppState.recordPracticeResult(createPracticeResult());
 assert(practiceScoreEvidence.ok, "带评分证据的练习结果应可写入本机状态。");
 assert(practiceScoreEvidence.practice.scoreEvidence.label === "基础练习评分", "练习结果应保留基础评分类型。");
+assert(practiceScoreEvidence.practice.scoreEvidence.algorithmVersion === "local-heuristic-v2.0.0", "练习结果应保留评分算法版本。");
+assert(practiceScoreEvidence.practice.scoreEvidence.copybook === "永字八法", "练习结果应保留范字来源。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.targetStrokeNames.includes("侧点"), "练习结果应保留范字笔顺。");
 assert(practiceScoreEvidence.practice.scoreEvidence.evidence.coveragePercent === 58, "练习结果应保留覆盖范围证据。");
+assert(practiceScoreEvidence.practice.scoreEvidence.evidence.pressurePointCount === 4, "练习结果应保留压感采样点数。");
 assert(
   practiceScoreEvidence.practice.scoreEvidence.reasons.some((reason) => reason.key === "structure" && reason.evidence.includes("重心")),
   "练习结果应保留结构评分解释。"
@@ -510,12 +514,17 @@ assert(stateAfterPractice.sessions.at(-1).scoreEvidence.reasons.length === 5, "�
 const scoreServiceAfterPractice = window.MRAppState.getScoreServiceStatus();
 assert(scoreServiceAfterPractice.status === "scored", "评分服务应记录已评分状态。");
 assert(scoreServiceAfterPractice.lastScore === 78, "评分服务应记录最近一次真实练习分数。");
+assert(scoreServiceAfterPractice.algorithmVersion === "local-heuristic-v2.0.0", "评分服务应记录最近算法版本。");
 assert(scoreServiceAfterPractice.scoredSessionCount === 4, "评分服务应累计新增评分次数。");
 assert(scoreServiceAfterPractice.totalPointCount === 287, "评分服务应累计新增采样点。");
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("覆盖58%"), "评分服务应摘要最近一次证据。");
+assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("范字永字八法"), "评分服务摘要应包含范字来源。");
+assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("压感4点"), "评分服务摘要应包含压感采样。");
 assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
+assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.0.0"), "评分服务状态消息应显示算法版本。");
 const persistedScoreService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).scoreService;
 assert(persistedScoreService.lastScore === 78, "评分服务状态应持久化最近分数。");
+assert(persistedScoreService.algorithmVersion === "local-heuristic-v2.0.0", "评分服务状态应持久化算法版本。");
 assert(persistedScoreService.lastEvidenceSummary.includes("覆盖58%"), "评分服务证据摘要应持久化。");
 
 const lockedLibraryBeforeStages = window.MRAppState.getTaskLibrary("single");
@@ -1730,30 +1739,41 @@ function createPracticeResult() {
     },
     score: 78,
     scoreEvidence: {
-      kind: "local-heuristic-v1",
+      kind: "local-heuristic-v2.0.0",
+      algorithmVersion: "local-heuristic-v2.0.0",
       label: "基础练习评分",
       disclaimer: "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。",
       glyph: "永",
+      copybook: "永字八法",
+      targetStrokeNames: ["侧点", "横勒", "竖弩", "钩趯", "提策", "撇掠", "短撇啄", "捺磔"],
       weights: { structure: 0.26, stroke: 0.24, technique: 0.2, fluency: 0.18, force: 0.12 },
       evidence: {
+        copybook: "永字八法",
         targetStrokeCount: 8,
+        targetStrokeNames: ["侧点", "横勒", "竖弩", "钩趯", "提策", "撇掠", "短撇啄", "捺磔"],
         strokeCount: 3,
+        strokeCountDelta: 5,
         pointCount: 7,
         coveragePercent: 58,
         centerOffsetPercent: 6,
         totalLength: 1.42,
         segmentVariationPercent: 35,
         longBreaks: 1,
+        pressureAvailable: true,
+        pressurePointCount: 4,
         pressureSpreadPercent: 17,
+        pressureAveragePercent: 54,
+        pressureMinPercent: 45,
+        pressureMaxPercent: 62,
         boundsWidthPercent: 44,
         boundsHeightPercent: 60
       },
       reasons: [
         { key: "structure", label: "结构", score: 82, evidence: "重心偏移约 6%，书写覆盖约 58%。" },
-        { key: "stroke", label: "笔画", score: 74, evidence: "当前 3 笔，目标约 8 笔。" },
+        { key: "stroke", label: "笔画", score: 74, evidence: "当前 3 笔，目标约 8 笔；范字笔顺：侧点、横勒、竖弩、钩趯、提策、撇掠。" },
         { key: "technique", label: "笔法", score: 79, evidence: "笔迹总长度 1.42，采样点 7 个。" },
         { key: "fluency", label: "流畅", score: 76, evidence: "线段变化 35%，长停顿 1 次。" },
-        { key: "force", label: "力度", score: 81, evidence: "压感跨度约 17%，笔画差 5。" }
+        { key: "force", label: "力度", score: 81, evidence: "压感采样 4 点，平均约 54%，跨度约 17%，笔画差 5。" }
       ]
     },
     feedback: ["评分证据测试"]

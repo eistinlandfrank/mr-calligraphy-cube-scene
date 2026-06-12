@@ -1,8 +1,50 @@
 (function () {
+  const SCORE_ALGORITHM_VERSION = "local-heuristic-v2.0.0";
+  const COPYBOOK_STROKE_LIBRARY = {
+    "永": {
+      copybook: "永字八法",
+      targetStrokeCount: 8,
+      strokeOrder: ["侧点", "横勒", "竖弩", "钩趯", "提策", "撇掠", "短撇啄", "捺磔"]
+    },
+    "仁": {
+      copybook: "欧体楷书",
+      targetStrokeCount: 4,
+      strokeOrder: ["单人旁撇", "单人旁竖", "右上横", "右下长横"]
+    },
+    "和": {
+      copybook: "颜体楷书",
+      targetStrokeCount: 8,
+      strokeOrder: ["禾撇", "禾横", "禾竖", "禾撇捺", "口竖", "口横折", "口短横", "收势"]
+    },
+    "礼": {
+      copybook: "欧体楷书",
+      targetStrokeCount: 5,
+      strokeOrder: ["礼点", "横撇", "竖点", "右横", "竖弯钩"]
+    },
+    "雅": {
+      copybook: "赵体行书",
+      targetStrokeCount: 12,
+      strokeOrder: ["牙横", "牙撇折", "牙竖钩", "牙撇", "隹撇", "隹竖", "隹点", "隹横", "隹短横", "隹中横", "隹竖", "隹底横"]
+    },
+    "静": {
+      copybook: "赵体行书",
+      targetStrokeCount: 14,
+      strokeOrder: ["青横", "青横", "青竖", "青横", "青月撇", "青月横折", "青月横", "青月横", "争撇", "争横撇", "争横", "争横", "争竖钩", "收势"]
+    },
+    "心": {
+      copybook: "颜体楷书",
+      targetStrokeCount: 4,
+      strokeOrder: ["左点", "卧钩", "中点", "右点"]
+    }
+  };
   const TARGET_STROKE_COUNTS = {
     "永": 8,
+    "仁": 4,
     "和": 8,
-    "雅": 12
+    "礼": 5,
+    "雅": 12,
+    "静": 14,
+    "心": 4
   };
   const SCORE_WEIGHTS = {
     structure: 0.26,
@@ -489,7 +531,8 @@
   function analyzeStrokes(strokes, options = {}) {
     const glyph = String(options.glyph || "永");
     const allPoints = strokes.flat();
-    const targetCount = TARGET_STROKE_COUNTS[glyph] || 8;
+    const copybookProfile = getCopybookProfile(glyph);
+    const targetCount = copybookProfile.targetStrokeCount;
 
     if (!allPoints.length) {
       return {
@@ -574,17 +617,25 @@
   }
 
   function buildScoreEvidence({ glyph, targetCount, strokeCount, pointCount, metrics, coverage, centerOffset, totalLength, segmentStats, bounds }) {
+    const copybookProfile = getCopybookProfile(glyph);
     const coveragePercent = Math.round(clamp(coverage, 0, 1) * 100);
     const centerOffsetPercent = Math.round(clamp(centerOffset, 0, 1) * 100);
     const variationPercent = Math.round(clamp(segmentStats.variation || 0, 0, 3) * 100);
     const pressureSpreadPercent = Math.round(clamp(segmentStats.pressureSpread || 0, 0, 1) * 100);
+    const pressureAveragePercent = Math.round(clamp(segmentStats.averagePressure || 0, 0, 1) * 100);
+    const pressureMinPercent = Math.round(clamp(segmentStats.minPressure || 0, 0, 1) * 100);
+    const pressureMaxPercent = Math.round(clamp(segmentStats.maxPressure || 0, 0, 1) * 100);
+    const strokeCountDelta = Math.abs(strokeCount - targetCount);
     const widthPercent = bounds ? Math.round(clamp(bounds.maxX - bounds.minX, 0, 1) * 100) : 0;
     const heightPercent = bounds ? Math.round(clamp(bounds.maxY - bounds.minY, 0, 1) * 100) : 0;
     return {
-      kind: "local-heuristic-v1",
+      kind: SCORE_ALGORITHM_VERSION,
+      algorithmVersion: SCORE_ALGORITHM_VERSION,
       label: "基础练习评分",
       disclaimer: "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。",
       glyph,
+      copybook: copybookProfile.copybook,
+      targetStrokeNames: [...copybookProfile.strokeOrder],
       weights: {
         structure: SCORE_WEIGHTS.structure,
         stroke: SCORE_WEIGHTS.stroke,
@@ -594,14 +645,22 @@
       },
       evidence: {
         targetStrokeCount: targetCount,
+        targetStrokeNames: [...copybookProfile.strokeOrder],
+        copybook: copybookProfile.copybook,
         strokeCount,
+        strokeCountDelta,
         pointCount,
         coveragePercent,
         centerOffsetPercent,
         totalLength: Number((totalLength || 0).toFixed(3)),
         segmentVariationPercent: variationPercent,
         longBreaks: segmentStats.longBreaks || 0,
+        pressureAvailable: (segmentStats.pressurePointCount || 0) > 0,
+        pressurePointCount: segmentStats.pressurePointCount || 0,
         pressureSpreadPercent,
+        pressureAveragePercent,
+        pressureMinPercent,
+        pressureMaxPercent,
         boundsWidthPercent: widthPercent,
         boundsHeightPercent: heightPercent
       },
@@ -616,7 +675,7 @@
           key: "stroke",
           label: "笔画",
           score: metrics.stroke || 0,
-          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔。`
+          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔；范字笔顺：${copybookProfile.strokeOrder.slice(0, 6).join("、")}。`
         },
         {
           key: "technique",
@@ -634,9 +693,26 @@
           key: "force",
           label: "力度",
           score: metrics.force || 0,
-          evidence: `压感跨度约 ${pressureSpreadPercent}%，笔画差 ${Math.abs(strokeCount - targetCount)}。`
+          evidence: `压感采样 ${segmentStats.pressurePointCount || 0} 点，平均约 ${pressureAveragePercent}%，跨度约 ${pressureSpreadPercent}%，笔画差 ${strokeCountDelta}。`
         }
       ]
+    };
+  }
+
+  function getCopybookProfile(glyph) {
+    const profile = COPYBOOK_STROKE_LIBRARY[glyph] || null;
+    if (profile) {
+      return {
+        copybook: profile.copybook,
+        targetStrokeCount: profile.targetStrokeCount,
+        strokeOrder: [...profile.strokeOrder]
+      };
+    }
+    const fallbackCount = TARGET_STROKE_COUNTS[glyph] || 8;
+    return {
+      copybook: "通用范字",
+      targetStrokeCount: fallbackCount,
+      strokeOrder: Array.from({ length: fallbackCount }, (_, index) => `第${index + 1}笔`)
     };
   }
 
@@ -676,16 +752,29 @@
     });
 
     if (!lengths.length) {
-      return { variation: 1, pressureSpread: 0, longBreaks };
+      return {
+        variation: 1,
+        pressureSpread: 0,
+        averagePressure: 0,
+        minPressure: 0,
+        maxPressure: 0,
+        pressurePointCount: pressures.length,
+        longBreaks
+      };
     }
 
     const averageLength = lengths.reduce((sum, value) => sum + value, 0) / lengths.length;
     const variance = lengths.reduce((sum, value) => sum + Math.abs(value - averageLength), 0) / lengths.length;
     const minPressure = Math.min(...pressures);
     const maxPressure = Math.max(...pressures);
+    const averagePressure = pressures.reduce((sum, value) => sum + value, 0) / pressures.length;
     return {
       variation: averageLength ? variance / averageLength : 1,
       pressureSpread: maxPressure - minPressure,
+      averagePressure,
+      minPressure,
+      maxPressure,
+      pressurePointCount: pressures.length,
       longBreaks
     };
   }

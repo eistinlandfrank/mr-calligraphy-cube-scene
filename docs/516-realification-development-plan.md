@@ -8808,3 +8808,45 @@
 提交：
 
 - 中文 commit message：`扩展后四步学习路径热点状态`
+
+### 2026-06-12：新增评分版本与笔顺压感证据
+
+功能名：基础评分证据 v2。
+
+完成内容：
+
+- `practice-canvas.js` 新增 `local-heuristic-v2.0.0` 评分算法版本。
+- 新增第一版本机范字笔顺库，覆盖永、仁、和、礼、雅、静、心。
+- 评分证据新增 `algorithmVersion`、`copybook`、`targetStrokeNames`、`strokeCountDelta`、`pressurePointCount`、压感平均值和压感范围。
+- `app-state.js` 保存和归一化新评分证据，旧评分记录仍兼容。
+- `MRAppState.getScoreServiceStatus()` 的摘要显示最近评分算法版本，并把范字与压感证据纳入最近证据摘要。
+- 前台“查看笔画分析”详情展示算法版本、范字来源、完整笔顺参考和压感证据。
+- `scripts/learning-state-check.js` 新增评分版本、范字来源、笔顺和压感采样断言。
+- `tests/e2e/real-flows.spec.js` 在前台真实书写保存流程中验证 localStorage 的评分版本、笔顺和压感字段。
+
+真实化说明：
+
+- 数据来源：真实笔迹点位、PointerEvent pressure、本机时间间隔和本机范字笔顺库。
+- 写入状态：`mr-calligraphy-learning-state-v1.sessions[*].scoreEvidence`、作品评分证据和 `scoreService`。
+- 成功反馈：评分卡、笔画分析和评分服务摘要显示同一套算法版本、范字、笔顺和压感证据。
+- 失败反馈：无笔迹不生成假评分；旧记录缺少新字段时只显示旧证据，不伪造笔顺或压感。
+- 刷新后复现方式：保存练习或作品后刷新，评分摘要与分析详情继续读取持久化证据。
+
+仍待补：
+
+- 该能力仍是本机启发式评分，不是专业书法评级、云端识别模型、硬件压感校准或教师评分标定。
+- 第一版笔顺库只提供文本参考，还没有逐笔轨迹匹配、错序判定、笔锋路径分析和服务端模型校验。
+
+验收：
+
+- `node --check practice-canvas.js`
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增评分版本与笔顺压感证据`

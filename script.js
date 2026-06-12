@@ -10835,10 +10835,13 @@ function getScoreEvidenceMetrics(scoreEvidence) {
   const evidence = scoreEvidence.evidence;
   return [
     { label: "评分类型", value: scoreEvidence.label || "基础练习评分" },
+    { label: "算法版本", value: scoreEvidence.algorithmVersion || scoreEvidence.kind || "local-heuristic-v2.0.0" },
+    { label: "范字来源", value: scoreEvidence.copybook || evidence.copybook || "通用范字" },
     { label: "目标笔画", value: `${evidence.targetStrokeCount || 0}笔` },
     { label: "覆盖范围", value: `${evidence.coveragePercent || 0}%` },
     { label: "重心偏移", value: `${evidence.centerOffsetPercent || 0}%` },
     { label: "长停顿", value: `${evidence.longBreaks || 0}次` },
+    { label: "压感采样", value: `${evidence.pressurePointCount || 0}点` },
     { label: "压感跨度", value: `${evidence.pressureSpreadPercent || 0}%` }
   ];
 }
@@ -10847,13 +10850,29 @@ function getScoreEvidenceItems(scoreEvidence) {
   if (!scoreEvidence) {
     return ["本记录缺少早期评分证据，后续新书写会保存完整评分依据。"];
   }
+  const evidence = scoreEvidence.evidence || {};
+  const targetStrokeNames = Array.isArray(evidence.targetStrokeNames)
+    ? evidence.targetStrokeNames
+    : Array.isArray(scoreEvidence.targetStrokeNames)
+      ? scoreEvidence.targetStrokeNames
+      : [];
+  const strokeOrderText = targetStrokeNames.length
+    ? `范字笔顺：${targetStrokeNames.join("、")}。`
+    : "";
+  const pressureText = evidence.pressurePointCount
+    ? `压感证据：${evidence.pressurePointCount} 个采样点，平均约 ${evidence.pressureAveragePercent || 0}%，范围 ${evidence.pressureMinPercent || 0}% - ${evidence.pressureMaxPercent || 0}%。`
+    : "";
   const reasons = Array.isArray(scoreEvidence.reasons)
     ? scoreEvidence.reasons.map((reason) => `${reason.label} ${reason.score}分：${reason.evidence}`)
     : [];
   return [
     scoreEvidence.disclaimer || "本评分为浏览器本机基础练习评分，不等同于专业评级。",
+    scoreEvidence.algorithmVersion || scoreEvidence.kind ? `算法版本：${scoreEvidence.algorithmVersion || scoreEvidence.kind}。` : "",
+    scoreEvidence.copybook || evidence.copybook ? `范字来源：${scoreEvidence.copybook || evidence.copybook}。` : "",
+    strokeOrderText,
+    pressureText,
     ...reasons
-  ];
+  ].filter(Boolean);
 }
 
 function buildAchievementDetail() {

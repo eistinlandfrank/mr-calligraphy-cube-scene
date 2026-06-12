@@ -12,6 +12,7 @@
   const MAX_STAGE_RECORDS = 80;
   const LEARNING_PATH_BOUNDARY = "学习路径服务由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是云端课程编排、教师下发任务或跨设备学习进度。";
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
+  const DEFAULT_SCORE_ALGORITHM_VERSION = "local-heuristic-v2.0.0";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
   const SHARE_REPOSITORY_KIND = "mr-calligraphy-share-repository-v1";
@@ -2221,33 +2222,51 @@
     const source = evidence && typeof evidence === "object" ? evidence : {};
     const metrics = normalizeMetrics(record.metrics || source.metrics);
     const rawEvidence = source.evidence && typeof source.evidence === "object" ? source.evidence : {};
+    const glyph = String(source.glyph || record.glyph || "永").slice(0, 16);
     const strokeCount = normalizeInteger(rawEvidence.strokeCount ?? record.strokeCount, 0, 0, 999);
     const pointCount = normalizeInteger(rawEvidence.pointCount ?? record.pointCount, 0, 0, 99999);
-    const targetStrokeCount = normalizeInteger(rawEvidence.targetStrokeCount, Math.max(1, strokeCount || 8), 1, 80);
+    const targetStrokeNames = normalizeStrokeNameList(rawEvidence.targetStrokeNames || source.targetStrokeNames);
+    const targetStrokeCount = normalizeInteger(rawEvidence.targetStrokeCount, Math.max(1, targetStrokeNames.length || strokeCount || 8), 1, 80);
     const fallbackCoverage = getBoundsCoveragePercent(record.bounds);
+    const algorithmVersion = String(source.algorithmVersion || source.kind || DEFAULT_SCORE_ALGORITHM_VERSION).slice(0, 80);
+    const copybook = String(source.copybook || rawEvidence.copybook || record.copybook || "").slice(0, 32);
+    const pressurePointCount = normalizeInteger(rawEvidence.pressurePointCount, 0, 0, 99999);
     const normalized = {
-      kind: String(source.kind || "local-heuristic-v1"),
+      kind: String(source.kind || algorithmVersion || DEFAULT_SCORE_ALGORITHM_VERSION).slice(0, 80),
+      algorithmVersion,
       label: String(source.label || "基础练习评分"),
       disclaimer: String(source.disclaimer || "该分数来自浏览器本机启发式算法，用于练习复盘，不等同于专业书法评级。"),
-      glyph: String(source.glyph || record.glyph || "永"),
+      glyph,
+      copybook,
+      targetStrokeNames,
       weights: normalizeScoreWeights(source.weights),
       evidence: {
+        copybook,
         targetStrokeCount,
+        targetStrokeNames,
         strokeCount,
+        strokeCountDelta: normalizeInteger(rawEvidence.strokeCountDelta, Math.abs(strokeCount - targetStrokeCount), 0, 999),
         pointCount,
         coveragePercent: normalizeInteger(rawEvidence.coveragePercent, fallbackCoverage, 0, 100),
         centerOffsetPercent: normalizeInteger(rawEvidence.centerOffsetPercent, getBoundsCenterOffsetPercent(record.bounds), 0, 100),
         totalLength: normalizeNumber(rawEvidence.totalLength, 0, 0, 999),
         segmentVariationPercent: normalizeInteger(rawEvidence.segmentVariationPercent, 0, 0, 300),
         longBreaks: normalizeInteger(rawEvidence.longBreaks, 0, 0, 999),
+        pressureAvailable: Boolean(rawEvidence.pressureAvailable) || pressurePointCount > 0,
+        pressurePointCount,
         pressureSpreadPercent: normalizeInteger(rawEvidence.pressureSpreadPercent, 0, 0, 100),
+        pressureAveragePercent: normalizeInteger(rawEvidence.pressureAveragePercent, 0, 0, 100),
+        pressureMinPercent: normalizeInteger(rawEvidence.pressureMinPercent, 0, 0, 100),
+        pressureMaxPercent: normalizeInteger(rawEvidence.pressureMaxPercent, 0, 0, 100),
         boundsWidthPercent: normalizeInteger(rawEvidence.boundsWidthPercent, getBoundsWidthPercent(record.bounds), 0, 100),
         boundsHeightPercent: normalizeInteger(rawEvidence.boundsHeightPercent, getBoundsHeightPercent(record.bounds), 0, 100)
       },
       reasons: normalizeScoreReasons(source.reasons, metrics, {
         targetStrokeCount,
+        targetStrokeNames,
         strokeCount,
-        pointCount
+        pointCount,
+        pressurePointCount
       })
     };
     return normalized;
@@ -2277,7 +2296,7 @@
     return {
       mode,
       status,
-      algorithmVersion: String(source.algorithmVersion || latestEvidence?.kind || "local-heuristic-v1").slice(0, 80),
+      algorithmVersion: String(source.algorithmVersion || latestEvidence?.algorithmVersion || latestEvidence?.kind || DEFAULT_SCORE_ALGORITHM_VERSION).slice(0, 80),
       lastScore,
       lastGlyph: String(source.lastGlyph || latestRecord?.glyph || "").slice(0, 16),
       lastEvidenceSummary: String(source.lastEvidenceSummary || latestSummary).slice(0, 220),
@@ -2301,12 +2320,19 @@
   function summarizeScoreEvidence(evidence = {}) {
     const source = evidence && typeof evidence === "object" ? evidence : {};
     const detail = source.evidence && typeof source.evidence === "object" ? source.evidence : {};
+    const targetStrokeNames = normalizeStrokeNameList(detail.targetStrokeNames || source.targetStrokeNames);
     const reasons = Array.isArray(source.reasons) ? source.reasons : [];
     const weakest = reasons
       .filter((reason) => reason && Number.isFinite(Number(reason.score)))
       .sort((a, b) => Number(a.score) - Number(b.score))[0];
     const weakText = weakest ? `，最低项：${weakest.label || weakest.key}${normalizeScore(weakest.score, 0)}分` : "";
-    return `采样${normalizeInteger(detail.pointCount, 0, 0, 99999)}点，${normalizeInteger(detail.strokeCount, 0, 0, 999)}笔，覆盖${normalizeInteger(detail.coveragePercent, 0, 0, 100)}%，重心偏移${normalizeInteger(detail.centerOffsetPercent, 0, 0, 100)}%${weakText}`;
+    const copybookText = source.copybook || detail.copybook
+      ? `，范字${source.copybook || detail.copybook}${targetStrokeNames.length ? `${targetStrokeNames.length}步` : ""}`
+      : "";
+    const pressureText = normalizeInteger(detail.pressurePointCount, 0, 0, 99999)
+      ? `，压感${normalizeInteger(detail.pressurePointCount, 0, 0, 99999)}点`
+      : "";
+    return `采样${normalizeInteger(detail.pointCount, 0, 0, 99999)}点，${normalizeInteger(detail.strokeCount, 0, 0, 999)}笔，覆盖${normalizeInteger(detail.coveragePercent, 0, 0, 100)}%，重心偏移${normalizeInteger(detail.centerOffsetPercent, 0, 0, 100)}%${copybookText}${pressureText}${weakText}`;
   }
 
   function normalizeScoreWeights(weights = {}) {
@@ -2329,10 +2355,10 @@
     };
     const defaults = {
       structure: "依据重心偏移、书写覆盖和字形范围估算。",
-      stroke: `依据 ${fallback.strokeCount || 0} 笔和目标 ${fallback.targetStrokeCount || 0} 笔的接近程度估算。`,
+      stroke: `依据 ${fallback.strokeCount || 0} 笔、目标 ${fallback.targetStrokeCount || 0} 笔${fallback.targetStrokeNames?.length ? `和范字笔顺 ${fallback.targetStrokeNames.slice(0, 6).join("、")}` : ""}的接近程度估算。`,
       technique: `依据笔迹长度和 ${fallback.pointCount || 0} 个采样点估算。`,
       fluency: "依据线段变化和长停顿次数估算。",
-      force: "依据压感跨度和笔画数量差估算。"
+      force: `依据压感跨度、${fallback.pressurePointCount || 0} 个压感采样和笔画数量差估算。`
     };
     const byKey = new Map(
       (Array.isArray(reasons) ? reasons : [])
@@ -2426,6 +2452,12 @@
 
   function normalizeStringList(value) {
     return Array.isArray(value) ? value.map(String).filter(Boolean).slice(0, 8) : [];
+  }
+
+  function normalizeStrokeNameList(value) {
+    return Array.isArray(value)
+      ? value.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 24)
+      : [];
   }
 
   function normalizeArtworkTags(value) {
@@ -3068,12 +3100,13 @@
     const modeLabel = getScoreServiceModeLabel(service.mode);
     const statusLabel = getScoreServiceStatusLabel(service.status);
     const scoreText = service.lastScore ? `，最近 ${service.lastGlyph || state.selectedGlyph} 字 ${service.lastScore} 分` : "";
+    const algorithmText = service.algorithmVersion ? `算法 ${service.algorithmVersion}。` : "";
     return {
       ...clone(service),
       modeLabel,
       statusLabel,
       boundary: SCORE_SERVICE_BOUNDARY,
-      message: `${modeLabel} / ${statusLabel}${scoreText}。累计评分 ${service.scoredSessionCount} 次，采样 ${service.totalPointCount} 点。${service.lastEvidenceSummary || "等待真实笔迹采样。"}`.trim()
+      message: `${modeLabel} / ${statusLabel}${scoreText}。${algorithmText}累计评分 ${service.scoredSessionCount} 次，采样 ${service.totalPointCount} 点。${service.lastEvidenceSummary || "等待真实笔迹采样。"}`.trim()
     };
   }
 
