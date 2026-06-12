@@ -8067,3 +8067,48 @@
 提交：
 
 - 中文 commit message：`新增项目仓库空间隔离`
+
+### 2026-06-12：新增远端发布空间隔离
+
+功能名：后台远端发布 Workspace 空间隔离第一版。
+
+完成内容：
+
+- 主后台和写实后台“远端发布 API”配置区新增 `Workspace` 输入，和 endpoint/token 一起保存到 `mr-calligraphy-remote-publish-v1.scenes[sceneId]`。
+- `MRProjectRemotePublish.configure()` 支持 `workspaceId` / `remoteWorkspaceId` / `accountId`，切换 endpoint 或 workspace 时会清空旧空间的远端回执、审核状态和发布锁，避免跨空间误读。
+- 远端发布 `GET` / `POST` / `DELETE` 请求统一携带 `X-MR-Workspace-Id` header。
+- 发布包、manifest、撤销包、发布回执、撤销回执、发布锁、回执审计 HTML 和本机状态都保留 `workspaceId`。
+- 服务端返回的 `latestReceipt` 或 `publishLock` 若属于其他 workspace，前端不会当作当前空间的重复发布锁。
+- `scripts/remote-publish-mock-server.js` 新增 `workspaces` 状态，以 workspace 维度保存发布回执和重复摘要锁，撤销也只匹配当前 workspace。
+- `scripts/remote-publish-check.js` 覆盖主后台、写实后台、fake fetch 和真实 mock server 的 Workspace header、包字段、回执持久化和撤销空间。
+- 主后台 E2E 验证 Workspace 输入、GET/POST/DELETE 请求头、发布包字段、回执持久化和撤销回执。
+- `docs/remote-publish-api-contract.md` 和 `docs/smoke-test.md` 同步 Workspace header、包字段、mock 隔离和验收范围。
+
+真实化说明：
+
+- 数据来源：主后台/写实后台远端发布配置、本机已审核发布版本、资产清单、远端 API 返回回执和 mock server workspace 分桶。
+- 写入状态：写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].workspaceId`、远端发布包、远端回执、发布锁和回执审计导出。
+- 成功反馈：远端状态显示空间，回执列表显示 workspace，mock server 能在同 endpoint 下分别保存不同空间的发布状态。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON、摘要不匹配、未审核或跨空间锁都不会伪造发布成功。
+- 刷新后复现方式：刷新后台后 Workspace 输入恢复，检查、推送和撤销继续携带同一空间。
+
+仍待补：
+
+- 当前是账号化前的远端发布空间隔离 adapter；真正账号登录、角色权限、生产 CDN 上传、生产证书签名、远端审批和不可篡改服务端审计仍未完成。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端发布空间隔离`

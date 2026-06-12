@@ -2493,3 +2493,46 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增项目仓库空间隔离`
+
+## 72. 2026-06-12 远端发布 Workspace 空间隔离
+
+本次把主后台和写实后台 `RemotePublish` 从“同 endpoint 只按发布包摘要判断重复”推进到“同 endpoint 下可按 Workspace 隔离发布包、发布锁、撤销和回执”。这仍不是生产账号系统，但已经避免不同班级、项目空间或调试环境共用一个远端发布 mock 时互相锁住。
+
+完成内容：
+
+- 主后台和写实后台“远端发布 API”新增 `Workspace` 输入，保存 endpoint/token 时一并保存空间 ID。
+- `MRProjectRemotePublish.configure()` 支持 workspace 配置，切换 endpoint 或 workspace 时清空旧空间的回执、审核状态和发布锁。
+- 远端发布 GET / POST / DELETE 请求统一携带 `X-MR-Workspace-Id` header。
+- 发布包、manifest、撤销包、发布回执、撤销回执、发布锁、回执列表和回执审计 HTML 都保留 `workspaceId`。
+- `scripts/remote-publish-mock-server.js` 改为按 workspace 分桶保存回执和重复摘要锁，撤销只匹配当前空间的发布回执。
+- Playwright 主后台用例验证 Workspace 输入、请求头、发布包字段、回执持久化和撤销空间。
+- `docs/remote-publish-api-contract.md` 与 `docs/smoke-test.md` 同步 Workspace header、包字段、mock 隔离和验收范围。
+
+真实化说明：
+
+- 数据来源：后台用户配置的远端发布 endpoint/token/workspace、本机已审核发布版本、模型/贴图资产清单和远端 API 返回。
+- 写入状态：`mr-calligraphy-remote-publish-v1.scenes[sceneId].workspaceId`、发布包 `workspaceId`、远端回执 `workspaceId` 和 mock server workspace 分桶。
+- 成功反馈：远端状态显示空间，回执列表显示 workspace，mock 服务能分别保存不同空间的发布/撤销状态。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON、摘要不匹配、未审核、重复发布或跨空间锁都走明确失败状态，不伪造发布成功。
+- 刷新后复现方式：Workspace 保存在本机远端发布状态，刷新后台后仍会继续用同一空间检查、推送和撤销。
+
+仍待补：
+
+- 当前是账号化前的空间隔离 adapter；真正账号登录、角色权限、生产 CDN 上传、远端审批、生产证书签名和不可篡改审计仍未完成。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端发布空间隔离`

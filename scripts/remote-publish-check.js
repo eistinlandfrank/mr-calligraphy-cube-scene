@@ -31,15 +31,19 @@ async function run() {
 
   const configuredMain = adapter.configure("mainScene", {
     endpoint: "https://example.test/main-publish",
-    token: "main-token"
+    token: "main-token",
+    workspaceId: "main-remote-test"
   });
   assert(configuredMain.ok && configuredMain.status.remoteConfigured, "主场景远端发布 API 应可保存配置。");
+  assert(configuredMain.status.workspaceId === "main-remote-test", "主场景远端发布配置应保存 workspace。");
 
   const configuredRealistic = adapter.configure("realisticScene", {
     endpoint: "https://example.test/realistic-publish",
-    token: "realistic-token"
+    token: "realistic-token",
+    workspaceId: "realistic-remote-test"
   });
   assert(configuredRealistic.ok && configuredRealistic.status.remoteConfigured, "写实场景远端发布 API 应可保存配置。");
+  assert(configuredRealistic.status.workspaceId === "realistic-remote-test", "写实场景远端发布配置应保存 workspace。");
 
   const mainRecord = createPublishedRecord("main-release-1", "主场景课堂版");
   const mainPackage = adapter.createPackage("mainScene", {
@@ -50,6 +54,8 @@ async function run() {
   });
   assert(mainPackage.ok, "主场景本机发布记录应能生成远端发布包。");
   assert(mainPackage.package.sceneId === "mainScene", "主场景发布包应保留 sceneId。");
+  assert(mainPackage.package.workspaceId === "main-remote-test", "主场景发布包应保留 workspaceId。");
+  assert(mainPackage.package.manifest.workspaceId === "main-remote-test", "主场景 manifest 应保留 workspaceId。");
   assert(mainPackage.package.release.id === "main-release-1", "发布包应包含当前 release ID。");
   assert(mainPackage.package.record.layout.objects.table.visible, "发布包应包含本机发布布局。");
   assert(
@@ -133,6 +139,7 @@ async function run() {
       return jsonResponse({
         ok: true,
         message: `${body.sceneLabel}远端发布已接收。`,
+        workspaceId: body.workspaceId,
         packageId: `accepted-${body.sceneId}`,
         releaseId: body.release.id,
         packageDigest: body.manifest.packageDigest,
@@ -146,6 +153,7 @@ async function run() {
       return jsonResponse({
         ok: true,
         message: `${body.sceneLabel}远端发布已撤销。`,
+        workspaceId: body.workspaceId,
         packageId: fakeRemoteLatestReceipt.packageId,
         sourcePackageId: fakeRemoteLatestReceipt.sourcePackageId,
         releaseId: fakeRemoteLatestReceipt.releaseId,
@@ -159,11 +167,13 @@ async function run() {
     return jsonResponse({
       ok: true,
       message: "远端发布 API 可访问。",
+      workspaceId: fetchCalls[fetchCalls.length - 1]?.options?.headers?.["X-MR-Workspace-Id"] || "",
       remoteVersion: "remote-check-v1",
       latestReceipt: fakeRemoteLatestReceipt,
       publishLock: activePublishReceipt
         ? {
             locked: true,
+            workspaceId: activePublishReceipt.workspaceId,
             sceneId: activePublishReceipt.sceneId,
             releaseId: activePublishReceipt.releaseId,
             packageDigest: activePublishReceipt.packageDigest,
@@ -178,6 +188,7 @@ async function run() {
   assert(mainCheck.ok, "主场景远端发布 API 检查应真实调用 fetch。");
   assert(fetchCalls[0].url === "https://example.test/main-publish", "主场景检查应请求已保存 endpoint。");
   assert(fetchCalls[0].options.headers.Authorization === "Bearer main-token", "主场景检查应携带 token。");
+  assert(fetchCalls[0].options.headers["X-MR-Workspace-Id"] === "main-remote-test", "主场景检查应携带 workspace header。");
 
   const blockedBeforeReview = await adapter.push("mainScene", {
     sceneLabel: "主场景",
@@ -221,6 +232,7 @@ async function run() {
   });
   assert(mainPush.ok, "主场景发布包应能推送到远端 API。");
   assert(pushedMainPackage.kind === "mr-calligraphy-remote-publish-package-v1", "推送 body 应是远端发布包。");
+  assert(pushedMainPackage.workspaceId === "main-remote-test", "推送 body 应带 workspaceId。");
   assert(pushedMainPackage.manifest.packageDigest === mainPackage.package.manifest.packageDigest, "推送 body 应携带同一 manifest 摘要。");
   assert(pushedMainPackage.assetManifest.assets.some((asset) => asset.sha256 === "a".repeat(64)), "推送 body 应携带模型资产 SHA-256。");
   assert(pushedMainPackage.assetManifest.assets.some((asset) => asset.sha256 === "c".repeat(64)), "推送 body 应携带贴图资产 SHA-256。");
@@ -228,6 +240,7 @@ async function run() {
   assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
   assert(mainPush.validation.ok, "主场景推送结果应包含通过的预检结果。");
   assert(mainPush.receipt && mainPush.receipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本机回执审计记录。");
+  assert(mainPush.receipt.workspaceId === "main-remote-test", "主场景回执审计记录应包含 workspace。");
   assert(mainPush.receipt.receiptDigest, "主场景回执审计记录应包含 receiptDigest。");
   assert(mainPush.receipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执应保存远端资产签名数量。");
   assert(mainPush.receipt.assetSignatures.length === 2, "主场景回执应保存每个资产的签名明细。");
@@ -236,6 +249,7 @@ async function run() {
   assert(mainPush.status.canRevoke, "主场景推送成功后应允许撤销最近远端发布。");
   const mainAudit = adapter.getReceiptAudit("mainScene");
   assert(mainAudit.total === 1, "主场景推送成功后应保存一条远端回执审计。");
+  assert(mainAudit.workspaceId === "main-remote-test", "主场景回执审计应保留 workspace。");
   assert(mainAudit.latestReceipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景回执审计应保留 packageDigest。");
   assert(mainAudit.latestReceipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执审计应保留资产签名摘要。");
   assert(mainAudit.latestReceipt.cdnUploadSummary.uploadedUrlCount === 2, "主场景回执审计应保留 CDN 上传摘要。");
@@ -244,6 +258,7 @@ async function run() {
   assert(mainAuditExport.html.includes("accepted-mainScene"), "主场景回执审计导出应包含远端 packageId。");
   assert(mainAuditExport.html.includes("Asset Signatures"), "主场景回执审计导出应包含资产签名摘要字段。");
   assert(mainAuditExport.html.includes("CDN Upload"), "主场景回执审计导出应包含 CDN 上传摘要字段。");
+  assert(mainAuditExport.html.includes("main-remote-test"), "主场景回执审计导出应包含 workspace。");
   const lockedWorkflow = adapter.getWorkflow("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -384,12 +399,15 @@ async function run() {
     release: realisticRecord.releases[0]
   });
   assert(realisticPush.ok, "写实场景发布包应能推送到远端 API。");
+  assert(realisticPush.receipt.workspaceId === "realistic-remote-test", "写实场景回执应保留 workspace。");
   const realisticAudit = adapter.getReceiptAudit("realisticScene");
   assert(realisticAudit.total === 1, "写实场景推送成功后应保存远端回执审计。");
+  assert(realisticAudit.workspaceId === "realistic-remote-test", "写实场景回执审计应保留 workspace。");
   assert(realisticAudit.latestReceipt.packageId === "accepted-realisticScene", "写实场景回执审计应保留远端 packageId。");
 
   const persisted = JSON.parse(storage.get("mr-calligraphy-remote-publish-v1"));
   assert(persisted.scenes.mainScene.endpoint === "https://example.test/main-publish", "主场景远端 endpoint 应持久化。");
+  assert(persisted.scenes.mainScene.workspaceId === "main-remote-test", "主场景远端 workspace 应持久化。");
   assert(persisted.scenes.mainScene.lastPackageId === "accepted-mainScene", "主场景远端 packageId 应持久化。");
   assert(persisted.scenes.mainScene.lastPackageDigest === mainPackage.package.manifest.packageDigest, "主场景远端 packageDigest 应持久化。");
   assert(persisted.scenes.mainScene.lastReleaseId === "main-release-1", "主场景远端 releaseId 应持久化。");
@@ -398,15 +416,18 @@ async function run() {
   assert(persisted.scenes.mainScene.lastRevokedAt, "主场景最近远端撤销时间应持久化。");
   assert(persisted.scenes.mainScene.receipts.length === 2, "主场景发布和撤销回执审计应持久化。");
   assert(persisted.scenes.mainScene.receipts[0].receiptDigest, "主场景持久化回执应包含 receiptDigest。");
+  assert(persisted.scenes.mainScene.receipts[0].workspaceId === "main-remote-test", "主场景撤销回执应持久化 workspace。");
   assert(persisted.scenes.mainScene.receipts[0].direction === "revoke", "主场景最新持久化回执应为撤销方向。");
   assert(persisted.scenes.mainScene.receipts[0].cdnPurgeSummary.purgedUrlCount > 0, "主场景撤销回执应持久化 CDN purge 摘要。");
   assert(persisted.scenes.mainScene.receipts[1].assetSignatureSummary.signedAssetCount === 2, "主场景发布回执应继续包含资产签名摘要。");
   assert(persisted.scenes.mainScene.receipts[1].cdnUploadSummary.uploadedUrlCount === 2, "主场景发布回执应继续包含 CDN 上传摘要。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
+  assert(persisted.scenes.realisticScene.workspaceId === "realistic-remote-test", "写实场景远端 workspace 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
   assert(persisted.scenes.realisticScene.lock.packageDigest, "写实场景推送成功后应持久化发布锁。");
   assert(persisted.scenes.realisticScene.receipts.length === 1, "写实场景回执审计应持久化。");
+  assert(persisted.scenes.realisticScene.receipts[0].workspaceId === "realistic-remote-test", "写实场景回执应持久化 workspace。");
   assert(persisted.scenes.realisticScene.receipts[0].assetSignatures.length === 2, "写实场景持久化回执应包含资产签名明细。");
 
   await runMockServerChecks(adapter, nativeFetch);
@@ -422,12 +443,14 @@ async function runMockServerChecks(adapter, fetchApi) {
     const endpoint = mock.endpoint;
     const configured = adapter.configure("mainScene", {
       endpoint,
-      token: "mock-token"
+      token: "mock-token",
+      workspaceId: "remote-mock-alpha"
     });
     assert(configured.ok, "远端发布 mock endpoint 应可写入配置。");
 
     const check = await adapter.check("mainScene");
     assert(check.ok && check.status.lastRemoteVersion === "mr-calligraphy-remote-publish-mock-v1", "远端发布 mock 服务应可被真实 GET 检查。");
+    assert(check.status.workspaceId === "remote-mock-alpha", "远端发布 mock 检查应保留 workspace。");
 
     const record = createPublishedRecord("main-release-mock", "mock 服务验收版");
     const options = {
@@ -445,10 +468,11 @@ async function runMockServerChecks(adapter, fetchApi) {
 
     const pushed = await adapter.push("mainScene", options);
     assert(pushed.ok, "远端发布 mock 服务应接收真实 POST 发布包。");
-    assert(pushed.packageId.startsWith("mock-mainScene-"), "mock 服务应返回稳定 packageId 前缀。");
+    assert(pushed.packageId.startsWith("mock-remote-mock-alpha-mainScene-"), "mock 服务应返回带 workspace 的稳定 packageId 前缀。");
     assert(pushed.remoteVersion === "mr-calligraphy-remote-publish-mock-v1", "mock 服务应返回远端版本。");
     assert(pushed.receipt && pushed.receipt.receiptDigest, "adapter 应保存 mock 服务返回的回执摘要。");
     assert(mock.state.received.length === 1, "mock 服务应记录一条发布回执。");
+    assert(mock.state.received[0].workspaceId === "remote-mock-alpha", "mock 回执应保留 workspace。");
     assert(mock.state.received[0].packageDigest === mockPackage.package.manifest.packageDigest, "mock 回执应保留 packageDigest。");
     assert(mock.state.received[0].receiptDigest, "mock 回执应生成 receiptDigest。");
     assert(mock.state.received[0].assetSignatureSummary.signedAssetCount === 2, "mock 回执应统计模型和贴图资产签名。");
@@ -460,6 +484,7 @@ async function runMockServerChecks(adapter, fetchApi) {
     assert(pushed.receipt.cdnUploadSummary.uploadedUrlCount === 2, "adapter 应暴露 mock 服务 CDN 上传摘要。");
     const mockAudit = adapter.getReceiptAudit("mainScene");
     assert(mockAudit.latestReceipt.receiptDigest === mock.state.received[0].receiptDigest, "mock 服务回执应进入本机审计列表。");
+    assert(mockAudit.latestReceipt.workspaceId === "remote-mock-alpha", "mock 服务回执审计应保留 workspace。");
     assert(mockAudit.latestReceipt.assetSignatures.length === 2, "mock 服务资产签名明细应进入本机审计列表。");
     assert(mockAudit.latestReceipt.cdnUploadSummary.uploadedUrlCount === 2, "mock 服务 CDN 上传摘要应进入本机审计列表。");
     const mockUnlocked = adapter.unlock("mainScene", options);
@@ -472,7 +497,8 @@ async function runMockServerChecks(adapter, fetchApi) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer mock-token"
+        Authorization: "Bearer mock-token",
+        "X-MR-Workspace-Id": "remote-mock-alpha"
       },
       body: JSON.stringify(mockPackage.package)
     });
@@ -486,6 +512,7 @@ async function runMockServerChecks(adapter, fetchApi) {
     });
     assert(revoked.ok, "远端发布 mock 服务应接收真实 DELETE 撤销包。");
     assert(revoked.receipt.direction === "revoke", "adapter 应保存 mock 服务撤销回执。");
+    assert(revoked.receipt.workspaceId === "remote-mock-alpha", "adapter 应保存 mock 服务撤销 workspace。");
     assert(revoked.receipt.sourcePackageId === pushed.packageId, "mock 撤销回执应保留原发布 packageId。");
     assert(revoked.receipt.cdnPurgeSummary.cdnProvider === "mock-cdn", "mock 撤销回执应返回 CDN provider。");
     assert(revoked.receipt.cdnPurgeSummary.purgedUrlCount > 0, "mock 撤销回执应返回 purge URL 数量。");
@@ -498,7 +525,8 @@ async function runMockServerChecks(adapter, fetchApi) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: "Bearer mock-token"
+        Authorization: "Bearer mock-token",
+        "X-MR-Workspace-Id": "remote-mock-alpha"
       },
       body: JSON.stringify(mockPackage.package)
     });
@@ -571,6 +599,7 @@ function createFakeRemotePublishReceipt(body, acceptedAt) {
     packageId: `accepted-${body.sceneId}`,
     releaseId: body.release.id,
     sceneId: body.sceneId,
+    workspaceId: body.workspaceId,
     packageDigest: body.manifest.packageDigest,
     acceptedAt,
     remoteVersion: `${body.sceneId}-remote-v1`,
@@ -625,6 +654,7 @@ function createFakeRemoteRevokeReceipt(body, sourceReceipt, acceptedAt) {
     sourcePackageId: body.sourcePackageId || source.packageId || "",
     releaseId: body.releaseId || source.releaseId || "",
     sceneId: body.sceneId,
+    workspaceId: body.workspaceId,
     packageDigest: body.packageDigest || source.packageDigest || "",
     acceptedAt,
     revokedAt: acceptedAt,
@@ -645,6 +675,7 @@ function createFakeAssetSignatures(body, acceptedAt) {
     sha256: asset.sha256,
     packageDigest: body.manifest.packageDigest,
     assetDigest: body.manifest.assetDigest,
+    workspaceId: body.workspaceId,
     signatureAlgorithm: "HMAC-SHA256",
     signingKeyId: "remote-publish-e2e-hmac-v1",
     signature: `${(index + 1).toString(16)}`.repeat(64).slice(0, 64),

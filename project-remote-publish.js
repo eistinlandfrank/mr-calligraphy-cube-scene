@@ -3,8 +3,9 @@
   const PACKAGE_KIND = "mr-calligraphy-remote-publish-package-v1";
   const REVOKE_KIND = "mr-calligraphy-remote-publish-revoke-v1";
   const VERSION = 1;
+  const DEFAULT_WORKSPACE_ID = "local-browser";
   const MAX_RECEIPTS = 12;
-  const BOUNDARY = "远端发布 API adapter 会真实发送当前本机发布包；它不是账号权限、审核流、CDN 部署或服务器托管本身。";
+  const BOUNDARY = "远端发布 API adapter 会真实发送当前本机发布包，并携带 Workspace 空间 ID 做服务端隔离第一版；它不是账号权限、审核流、CDN 部署或服务器托管本身。";
 
   function readState() {
     try {
@@ -36,6 +37,7 @@
     return {
       endpoint: typeof source.endpoint === "string" ? source.endpoint.trim() : "",
       token: typeof source.token === "string" ? source.token.trim() : "",
+      workspaceId: normalizeWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId),
       lastCheckedAt: normalizeDate(source.lastCheckedAt),
       lastPushedAt: normalizeDate(source.lastPushedAt),
       lastRevokedAt: normalizeDate(source.lastRevokedAt),
@@ -58,6 +60,7 @@
     const source = record && typeof record === "object" ? record : {};
     const receipt = source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : {};
     const sceneId = normalizeSceneId(source.sceneId || receipt.sceneId);
+    const workspaceId = normalizeWorkspaceId(source.workspaceId || receipt.workspaceId || source.remoteWorkspaceId || receipt.remoteWorkspaceId || source.accountId || receipt.accountId);
     const packageId = String(source.packageId || receipt.packageId || "").slice(0, 160);
     const releaseId = String(source.releaseId || receipt.releaseId || "").slice(0, 160);
     const packageDigest = normalizeSha256(source.packageDigest || receipt.packageDigest);
@@ -71,11 +74,12 @@
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
     const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, revokedAt, direction, sourcePackageId, assetSignatureSummary, cdnUploadSummary, cdnPurgeSummary });
+      || sha256StableJson({ sceneId, workspaceId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, revokedAt, direction, sourcePackageId, assetSignatureSummary, cdnUploadSummary, cdnPurgeSummary });
     const warnings = normalizeWarningList(source.warnings || receipt.warnings);
     return {
       id: String(source.id || `receipt-${sceneId}-${receiptDigest.slice(0, 16)}`).slice(0, 180),
       sceneId,
+      workspaceId,
       sceneLabel: String(source.sceneLabel || receipt.sceneLabel || sceneLabelFromId(sceneId)).slice(0, 80),
       packageId,
       sourcePackageId,
@@ -136,6 +140,15 @@
     return Number.isFinite(time) ? new Date(time).toISOString() : "";
   }
 
+  function normalizeWorkspaceId(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_.:-]/g, "")
+      .slice(0, 64);
+    return normalized || DEFAULT_WORKSPACE_ID;
+  }
+
   function validateEndpoint(endpoint) {
     try {
       const base = typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
@@ -156,17 +169,33 @@
     const endpointInput = String(config.endpoint ?? config.remoteEndpoint ?? "").trim();
     const tokenInput = config.token ?? config.remoteToken;
     const token = tokenInput === undefined ? current.token : String(tokenInput || "").trim();
+    const workspaceId = normalizeWorkspaceId(config.workspaceId ?? config.remoteWorkspaceId ?? config.accountId ?? current.workspaceId);
 
     if (!endpointInput) {
       state.scenes[normalizedId] = normalizeSceneState({
+        ...current,
+        endpoint: "",
+        token: "",
+        workspaceId,
+        lastPushedAt: "",
+        lastRevokedAt: "",
+        lastRemoteDirection: "",
+        lastPackageId: "",
+        lastReleaseId: "",
+        lastRemoteVersion: "",
+        lastPackageDigest: "",
+        review: {},
+        lock: {},
+        receipts: [],
         lastCheckedAt: new Date().toISOString(),
-        lastRemoteStatus: "已清除远端发布 API 配置。"
+        lastRemoteStatus: `已清除远端发布 API 配置，空间 ${workspaceId} 回到本机发布。`,
+        lastError: ""
       });
       writeState(state);
       return {
         ok: true,
         status: getStatus(normalizedId),
-        message: "已清除远端发布 API 配置，当前只保留本机发布。"
+        message: `已清除远端发布 API 配置，当前只保留本机发布，空间 ${workspaceId}。`
       };
     }
 
@@ -174,6 +203,7 @@
     if (!validation.ok) {
       state.scenes[normalizedId] = normalizeSceneState({
         ...current,
+        workspaceId,
         lastCheckedAt: new Date().toISOString(),
         lastError: validation.message
       });
@@ -181,19 +211,31 @@
       return { ok: false, status: getStatus(normalizedId), message: validation.message };
     }
 
+    const sameRemoteSpace = validation.endpoint === current.endpoint && workspaceId === current.workspaceId;
     state.scenes[normalizedId] = normalizeSceneState({
       ...current,
       endpoint: validation.endpoint,
       token,
+      workspaceId,
+      lastPushedAt: sameRemoteSpace ? current.lastPushedAt : "",
+      lastRevokedAt: sameRemoteSpace ? current.lastRevokedAt : "",
+      lastRemoteDirection: sameRemoteSpace ? current.lastRemoteDirection : "",
+      lastPackageId: sameRemoteSpace ? current.lastPackageId : "",
+      lastReleaseId: sameRemoteSpace ? current.lastReleaseId : "",
+      lastRemoteVersion: sameRemoteSpace ? current.lastRemoteVersion : "",
+      lastPackageDigest: sameRemoteSpace ? current.lastPackageDigest : "",
+      review: sameRemoteSpace ? current.review : {},
+      lock: sameRemoteSpace ? current.lock : {},
+      receipts: sameRemoteSpace ? current.receipts : [],
       lastCheckedAt: new Date().toISOString(),
-      lastRemoteStatus: "远端发布 API 配置已保存，尚未检查服务可用性。",
+      lastRemoteStatus: `远端发布 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
     writeState(state);
     return {
       ok: true,
       status: getStatus(normalizedId),
-      message: "已保存远端发布 API 配置。"
+      message: `已保存远端发布 API 配置，空间 ${workspaceId}。`
     };
   }
 
@@ -205,8 +247,8 @@
     const latestRevocableReceipt = getLatestRevocableReceipt(scene);
     let tone = "idle";
     let message = remoteConfigured
-      ? `远端发布 API 已配置：${scene.endpoint}。`
-      : "尚未配置远端发布 API，当前只是本机发布快照。";
+      ? `远端发布 API 已配置：${scene.endpoint}，空间 ${scene.workspaceId}。`
+      : `尚未配置远端发布 API，当前只是本机发布快照，空间 ${scene.workspaceId}。`;
 
     if (scene.lastPushedAt) {
       tone = "ready";
@@ -232,6 +274,7 @@
       remoteConfigured,
       endpoint: remoteConfigured ? scene.endpoint : "",
       hasToken: Boolean(scene.token),
+      workspaceId: scene.workspaceId,
       fetchSupported: typeof fetch === "function",
       tone,
       message,
@@ -266,6 +309,7 @@
       endpoint: scene.endpoint,
       token: scene.token,
       hasToken: Boolean(scene.token),
+      workspaceId: scene.workspaceId,
       boundary: BOUNDARY
     };
   }
@@ -278,12 +322,13 @@
       ok: true,
       sceneId: normalizedId,
       sceneLabel: sceneLabelFromId(normalizedId),
+      workspaceId: scene.workspaceId,
       total: receipts.length,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条远端发布回执，最近一次：${formatDateTime(receipts[0].acceptedAt || receipts[0].pushedAt)}。`
+        ? `已保存 ${receipts.length} 条远端发布回执，当前空间 ${scene.workspaceId}，最近一次：${formatDateTime(receipts[0].acceptedAt || receipts[0].pushedAt)}。`
         : "暂无远端发布回执。"
     };
   }
@@ -507,6 +552,7 @@
 
   function createPackage(sceneId, options = {}) {
     const normalizedId = normalizeSceneId(sceneId);
+    const workspaceId = readState().scenes[normalizedId].workspaceId;
     const record = clone(options.record || {});
     const release = clone(options.release || getCurrentRelease(record));
     if (!record || typeof record !== "object" || !record.layout) {
@@ -526,6 +572,7 @@
       packageId,
       createdAt,
       sceneId: normalizedId,
+      workspaceId,
       sceneLabel: String(options.sceneLabel || normalizedId),
       storageKey: String(options.storageKey || ""),
       boundary: BOUNDARY,
@@ -561,6 +608,7 @@
       kind: "mr-calligraphy-remote-publish-manifest-v1",
       version: VERSION,
       sceneId: payload.sceneId || "",
+      workspaceId: normalizeWorkspaceId(payload.workspaceId),
       releaseId: payload.release?.id || "",
       releaseNumber: Number(payload.release?.releaseNumber || 0),
       storageKey: payload.storageKey || "",
@@ -570,6 +618,7 @@
         kind: payload.kind,
         version: payload.version,
         sceneId: payload.sceneId,
+        workspaceId: normalizeWorkspaceId(payload.workspaceId),
         sceneLabel: payload.sceneLabel,
         storageKey: payload.storageKey,
         release: payload.release,
@@ -709,6 +758,9 @@
     if (!payload.sceneId) {
       errors.push("缺少 sceneId");
     }
+    if (!payload.workspaceId) {
+      errors.push("缺少 workspaceId");
+    }
     if (!payload.release?.id) {
       errors.push("缺少 release.id");
     }
@@ -740,6 +792,9 @@
       }
       if (payload.manifest.sceneId !== expectedManifest.sceneId) {
         errors.push("manifest sceneId 不匹配");
+      }
+      if (payload.manifest.workspaceId !== expectedManifest.workspaceId) {
+        errors.push("manifest workspaceId 不匹配");
       }
       if (payload.manifest.releaseId !== expectedManifest.releaseId) {
         errors.push("manifest releaseId 不匹配");
@@ -806,6 +861,7 @@
   function createCurrentPackageSummary(payload = {}) {
     return {
       releaseId: payload.release?.id ? String(payload.release.id) : "",
+      workspaceId: normalizeWorkspaceId(payload.workspaceId),
       packageDigest: normalizeSha256(payload.manifest?.packageDigest),
       validation: validatePackage(payload)
     };
@@ -840,11 +896,11 @@
         ...nextState.scenes[normalizedId],
         lastCheckedAt: new Date().toISOString(),
         lastRemoteVersion: parsed.remoteVersion,
-        lastRemoteStatus: parsed.message,
+        lastRemoteStatus: `${parsed.message} 空间：${scene.workspaceId}。`,
         lastError: ""
       });
       writeState(nextState);
-      return { ok: true, status: getStatus(normalizedId), message: `${parsed.message} ${BOUNDARY}` };
+      return { ok: true, status: getStatus(normalizedId), message: `${parsed.message} 空间 ${scene.workspaceId}。${BOUNDARY}` };
     } catch (error) {
       return saveRemoteError(normalizedId, `远端发布 API 检查失败：${error?.message || "网络请求异常"}。`);
     }
@@ -910,7 +966,7 @@
         lastPackageId: receipt.packageId || packaged.package.packageId,
         lastReleaseId: releaseId,
         lastRemoteVersion: receipt.remoteVersion || parsed.remoteVersion,
-        lastRemoteStatus: parsed.message,
+        lastRemoteStatus: `${parsed.message} 空间：${scene.workspaceId}。`,
         lastRemoteDirection: "publish",
         lastPackageDigest: packaged.package.manifest?.packageDigest,
         lock: {
@@ -933,7 +989,7 @@
         validation,
         remoteVersion: receipt.remoteVersion || parsed.remoteVersion,
         receipt,
-        message: `${parsed.message} ${BOUNDARY}`
+        message: `${parsed.message} 空间 ${scene.workspaceId}。${BOUNDARY}`
       };
     } catch (error) {
       releasePublishLock(normalizedId, packaged.package);
@@ -974,7 +1030,7 @@
         lastRevokedAt: now,
         lastRemoteDirection: "revoke",
         lastRemoteVersion: receipt.remoteVersion || parsed.remoteVersion,
-        lastRemoteStatus: parsed.message,
+        lastRemoteStatus: `${parsed.message} 空间：${scene.workspaceId}。`,
         lock: {},
         receipts: [receipt, ...nextState.scenes[normalizedId].receipts].slice(0, MAX_RECEIPTS),
         lastError: ""
@@ -989,7 +1045,7 @@
         packageDigest: receipt.packageDigest || revokePackage.packageDigest,
         remoteVersion: receipt.remoteVersion || parsed.remoteVersion,
         receipt,
-        message: `${parsed.message} ${BOUNDARY}`
+        message: `${parsed.message} 空间 ${scene.workspaceId}。${BOUNDARY}`
       };
     } catch (error) {
       return saveRemoteError(normalizedId, `远端发布 API 撤销失败：${error?.message || "网络请求异常"}。`);
@@ -1056,6 +1112,7 @@
     if (scene.token) {
       headers.Authorization = `Bearer ${scene.token}`;
     }
+    headers["X-MR-Workspace-Id"] = normalizeWorkspaceId(scene.workspaceId);
     return {
       method: options.method || "GET",
       headers,
@@ -1099,6 +1156,7 @@
       status,
       message,
       packageId: source.packageId ? String(source.packageId) : "",
+      workspaceId: normalizeWorkspaceId(source.workspaceId || receipt?.workspaceId),
       sourcePackageId: source.sourcePackageId || receipt?.sourcePackageId ? String(source.sourcePackageId || receipt?.sourcePackageId).slice(0, 160) : "",
       releaseId: source.releaseId ? String(source.releaseId).slice(0, 160) : "",
       packageDigest: normalizeSha256(source.packageDigest || receipt?.packageDigest),
@@ -1132,7 +1190,7 @@
         ...state.scenes[sceneId],
         lastCheckedAt: new Date().toISOString(),
         lastRemoteVersion: parsed.remoteVersion || state.scenes[sceneId].lastRemoteVersion,
-        lastRemoteStatus: `远端发布锁校验通过：${parsed.message}`,
+        lastRemoteStatus: `远端发布锁校验通过：${parsed.message} 空间：${scene.workspaceId}。`,
         lastError: ""
       });
       writeState(state);
@@ -1185,6 +1243,10 @@
   function remoteLockMatches(sceneId, summary, remote = {}, allowSceneWideLock = false) {
     const remoteSceneId = remote.sceneId ? normalizeSceneId(remote.sceneId) : sceneId;
     if (remoteSceneId !== sceneId) {
+      return false;
+    }
+    const remoteWorkspaceId = remote.workspaceId ? normalizeWorkspaceId(remote.workspaceId) : "";
+    if (remoteWorkspaceId && remoteWorkspaceId !== summary.workspaceId) {
       return false;
     }
     const remoteDigest = normalizeSha256(remote.packageDigest);
@@ -1249,6 +1311,7 @@
     const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || source.cdnPurge);
     return {
       sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
+      workspaceId: source.workspaceId ? normalizeWorkspaceId(source.workspaceId) : "",
       packageId,
       sourcePackageId: source.sourcePackageId ? String(source.sourcePackageId).slice(0, 160) : "",
       releaseId,
@@ -1281,6 +1344,7 @@
     return {
       locked: true,
       sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
+      workspaceId: source.workspaceId ? normalizeWorkspaceId(source.workspaceId) : "",
       packageDigest,
       releaseId,
       lockedAt,
@@ -1290,6 +1354,7 @@
 
   function createRemoteReceiptRecord(sceneId, packagePayload, parsed, endpoint, pushedAt) {
     const normalizedId = normalizeSceneId(sceneId);
+    const workspaceId = normalizeWorkspaceId(packagePayload.workspaceId);
     const receipt = parsed.receipt && typeof parsed.receipt === "object" ? clone(parsed.receipt) : {};
     const releaseId = String(parsed.releaseId || receipt.releaseId || packagePayload.release?.id || "").slice(0, 160);
     const packageId = String(parsed.packageId || receipt.packageId || packagePayload.packageId || "").slice(0, 160);
@@ -1301,6 +1366,7 @@
     const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
       || sha256StableJson({
         sceneId: normalizedId,
+        workspaceId,
         packageId,
         releaseId,
         packageDigest,
@@ -1314,6 +1380,7 @@
     return normalizeRemoteReceipt({
       id: `remote-receipt-${normalizedId}-${receiptDigest.slice(0, 16)}`,
       sceneId: normalizedId,
+      workspaceId,
       sceneLabel: packagePayload.sceneLabel || sceneLabelFromId(normalizedId),
       packageId,
       releaseId,
@@ -1338,12 +1405,14 @@
   function createRemoteRevokePackage(sceneId, latestReceipt, options = {}) {
     const normalizedId = normalizeSceneId(sceneId);
     const requestedAt = new Date().toISOString();
+    const workspaceId = normalizeWorkspaceId(latestReceipt.workspaceId);
     return {
       kind: REVOKE_KIND,
       version: VERSION,
       revokeId: `remote-revoke-${normalizedId}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
       requestedAt,
       sceneId: normalizedId,
+      workspaceId,
       sceneLabel: String(options.sceneLabel || sceneLabelFromId(normalizedId)).slice(0, 80),
       sourcePackageId: String(latestReceipt.packageId || "").slice(0, 160),
       releaseId: String(latestReceipt.releaseId || "").slice(0, 160),
@@ -1356,6 +1425,7 @@
 
   function createRemoteRevokeReceiptRecord(sceneId, revokePackage, parsed, endpoint, revokedAt) {
     const normalizedId = normalizeSceneId(sceneId);
+    const workspaceId = normalizeWorkspaceId(revokePackage.workspaceId);
     const receipt = parsed.receipt && typeof parsed.receipt === "object" ? clone(parsed.receipt) : {};
     const packageId = String(parsed.packageId || receipt.packageId || revokePackage.revokeId || "").slice(0, 160);
     const sourcePackageId = String(receipt.sourcePackageId || parsed.sourcePackageId || revokePackage.sourcePackageId || "").slice(0, 160);
@@ -1366,6 +1436,7 @@
     const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
       || sha256StableJson({
         sceneId: normalizedId,
+        workspaceId,
         packageId,
         sourcePackageId,
         releaseId,
@@ -1379,6 +1450,7 @@
     return normalizeRemoteReceipt({
       id: `remote-revoke-receipt-${normalizedId}-${receiptDigest.slice(0, 16)}`,
       sceneId: normalizedId,
+      workspaceId,
       sceneLabel: revokePackage.sceneLabel || sceneLabelFromId(normalizedId),
       packageId,
       sourcePackageId,
@@ -1673,6 +1745,7 @@
           <h2>${escapeHtml(receipt.packageId || "packageId 未知")}</h2>
           <dl>
             <dt>Direction</dt><dd>${escapeHtml(formatReceiptDirection(receipt.direction))}</dd>
+            <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || audit.workspaceId || DEFAULT_WORKSPACE_ID)}</dd>
             <dt>Release</dt><dd>${escapeHtml(receipt.releaseId || "未知")}</dd>
             <dt>Source Package</dt><dd>${escapeHtml(receipt.sourcePackageId || "无")}</dd>
             <dt>Package Digest</dt><dd>${escapeHtml(receipt.packageDigest || "未知")}</dd>
@@ -1712,7 +1785,7 @@
 <body>
   <main>
     <h1>MR 书法远端发布回执审计</h1>
-    <p class="meta">场景：${escapeHtml(audit.sceneLabel)} · 导出时间：${escapeHtml(generatedAt)} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    <p class="meta">场景：${escapeHtml(audit.sceneLabel)} · Workspace：${escapeHtml(audit.workspaceId || DEFAULT_WORKSPACE_ID)} · 导出时间：${escapeHtml(generatedAt)} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
     ${rows}
   </main>
 </body>

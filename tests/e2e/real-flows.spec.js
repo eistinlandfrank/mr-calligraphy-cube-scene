@@ -1636,6 +1636,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
     remoteRequests.push({
       method,
       authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
       body
     });
     if (method === "POST") {
@@ -1654,6 +1655,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       latestRemotePublishReceipt = {
         receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
         direction: "publish",
+        workspaceId: body.workspaceId,
         packageId: `e2e-${body.sceneId}`,
         releaseId: body.release.id,
         sceneId: body.sceneId,
@@ -1669,6 +1671,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         body: JSON.stringify({
           ok: true,
           message: "主场景远端 E2E 已接收。",
+          workspaceId: body.workspaceId,
           packageId: `e2e-${body.sceneId}`,
           releaseId: body.release.id,
           packageDigest: body.manifest.packageDigest,
@@ -1693,6 +1696,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       latestRemotePublishReceipt = {
         receiptKind: "mr-calligraphy-remote-publish-revoke-receipt-v1",
         direction: "revoke",
+        workspaceId: body.workspaceId,
         packageId: `e2e-revoke-${body.sceneId}`,
         sourcePackageId: body.sourcePackageId,
         releaseId: body.releaseId,
@@ -1711,6 +1715,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         body: JSON.stringify({
           ok: true,
           message: "主场景远端 E2E 已撤销。",
+          workspaceId: body.workspaceId,
           packageId: latestRemotePublishReceipt.packageId,
           sourcePackageId: latestRemotePublishReceipt.sourcePackageId,
           releaseId: latestRemotePublishReceipt.releaseId,
@@ -1729,11 +1734,13 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       body: JSON.stringify({
         ok: true,
         message: "主场景远端 E2E 可访问。",
+        workspaceId: request.headers()["x-mr-workspace-id"] || "",
         remoteVersion: "e2e-check-v1",
         latestReceipt: latestRemotePublishReceipt,
         publishLock: activePublishReceipt
           ? {
               locked: true,
+              workspaceId: activePublishReceipt.workspaceId,
               sceneId: activePublishReceipt.sceneId,
               releaseId: activePublishReceipt.releaseId,
               packageDigest: activePublishReceipt.packageDigest,
@@ -2036,13 +2043,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();
   await page.locator("#mainRemotePublishEndpoint").fill(remoteEndpoint);
   await page.locator("#mainRemotePublishToken").fill("e2e-token");
+  await page.locator("#mainRemotePublishWorkspace").fill("main-remote-e2e");
   await page.locator("#mainRemotePublishSave").click();
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("远端发布 API 配置已保存");
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("main-remote-e2e");
 
   await page.locator("#mainRemotePublishCheck").click();
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 可访问");
+  await expect(page.locator("#mainRemotePublishStatus")).toContainText("main-remote-e2e");
   const checkedRemoteState = await readJsonLocalStorage(page, REMOTE_PUBLISH_KEY);
   expect(checkedRemoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-check-v1");
+  expect(checkedRemoteState.scenes.mainScene.workspaceId).toBe("main-remote-e2e");
 
   await page.locator("#mainRemotePublishRequestReview").click();
   await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("待审核");
@@ -2056,17 +2067,22 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("e2e-mainScene");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("CDN 1");
 
-  expect(remoteRequests.some((item) => item.method === "GET" && item.authorization === "Bearer e2e-token")).toBe(true);
+  expect(remoteRequests.some((item) => item.method === "GET" && item.authorization === "Bearer e2e-token" && item.workspaceId === "main-remote-e2e")).toBe(true);
   const postRequest = remoteRequests.find((item) => item.method === "POST");
   expect(postRequest.authorization).toBe("Bearer e2e-token");
+  expect(postRequest.workspaceId).toBe("main-remote-e2e");
   expect(postRequest.body.kind).toBe("mr-calligraphy-remote-publish-package-v1");
   expect(postRequest.body.sceneId).toBe("mainScene");
+  expect(postRequest.body.workspaceId).toBe("main-remote-e2e");
+  expect(postRequest.body.manifest.workspaceId).toBe("main-remote-e2e");
   expect(postRequest.body.manifest.packageDigest).toBeTruthy();
 
   const remoteState = await readJsonLocalStorage(page, REMOTE_PUBLISH_KEY);
   expect(remoteState.scenes.mainScene.lastPackageId).toBe("e2e-mainScene");
+  expect(remoteState.scenes.mainScene.workspaceId).toBe("main-remote-e2e");
   expect(remoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-remote-v1");
   expect(remoteState.scenes.mainScene.receipts[0].packageId).toBe("e2e-mainScene");
+  expect(remoteState.scenes.mainScene.receipts[0].workspaceId).toBe("main-remote-e2e");
   expect(remoteState.scenes.mainScene.receipts[0].cdnUploadSummary.uploadedUrlCount).toBe(1);
   expect(remoteState.scenes.mainScene.receipts[0].cdnUploadSummary.cdnProvider).toBe("e2e-cdn");
 
@@ -2078,11 +2094,14 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("purge 1");
   const deleteRequest = remoteRequests.find((item) => item.method === "DELETE");
   expect(deleteRequest.authorization).toBe("Bearer e2e-token");
+  expect(deleteRequest.workspaceId).toBe("main-remote-e2e");
   expect(deleteRequest.body.kind).toBe("mr-calligraphy-remote-publish-revoke-v1");
+  expect(deleteRequest.body.workspaceId).toBe("main-remote-e2e");
   expect(deleteRequest.body.sourcePackageId).toBe("e2e-mainScene");
   const revokedRemoteState = await readJsonLocalStorage(page, REMOTE_PUBLISH_KEY);
   expect(revokedRemoteState.scenes.mainScene.lastRemoteDirection).toBe("revoke");
   expect(revokedRemoteState.scenes.mainScene.receipts[0].direction).toBe("revoke");
+  expect(revokedRemoteState.scenes.mainScene.receipts[0].workspaceId).toBe("main-remote-e2e");
   expect(revokedRemoteState.scenes.mainScene.receipts[0].cdnPurgeSummary.purgedUrlCount).toBe(1);
   expect(revokedRemoteState.scenes.mainScene.receipts[1].packageId).toBe("e2e-mainScene");
   await expect(page.locator("#mainRemotePublishRevoke")).toBeDisabled();

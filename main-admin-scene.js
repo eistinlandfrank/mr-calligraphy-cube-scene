@@ -110,6 +110,7 @@ const publishHistoryList = document.getElementById("mainPublishHistoryList");
 const remotePublishStatus = document.getElementById("mainRemotePublishStatus");
 const remotePublishEndpointInput = document.getElementById("mainRemotePublishEndpoint");
 const remotePublishTokenInput = document.getElementById("mainRemotePublishToken");
+const remotePublishWorkspaceInput = document.getElementById("mainRemotePublishWorkspace");
 const remotePublishSaveButton = document.getElementById("mainRemotePublishSave");
 const remotePublishCheckButton = document.getElementById("mainRemotePublishCheck");
 const remotePublishPushButton = document.getElementById("mainRemotePublishPush");
@@ -1443,6 +1444,9 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
   if (remotePublishTokenInput && document.activeElement !== remotePublishTokenInput) {
     remotePublishTokenInput.value = config?.token || "";
   }
+  if (remotePublishWorkspaceInput && document.activeElement !== remotePublishWorkspaceInput) {
+    remotePublishWorkspaceInput.value = config?.workspaceId || "local-browser";
+  }
   if (remotePublishSaveButton) {
     remotePublishSaveButton.disabled = !adapter;
   }
@@ -1495,7 +1499,7 @@ function renderRemotePublishReceipts(audit) {
     const uploadMeta = uploadCount ? ` · CDN ${uploadCount}` : "";
     const purgeCount = Number(receipt.cdnPurgeSummary?.purgedUrlCount || 0);
     const purgeMeta = purgeCount ? ` · purge ${purgeCount}` : "";
-    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}${uploadMeta}${purgeMeta}`;
+    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · 空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}${uploadMeta}${purgeMeta}`;
     const message = document.createElement("small");
     message.textContent = receipt.message || receipt.remoteVersion || "远端已接收。";
     item.append(title, meta, message);
@@ -1517,7 +1521,8 @@ function createRemotePublishContext(record = loadPublishedLayoutRecord()) {
 function saveRemotePublishConfig() {
   const result = window.MRProjectRemotePublish?.configure?.("mainScene", {
     endpoint: remotePublishEndpointInput?.value || "",
-    token: remotePublishTokenInput?.value || ""
+    token: remotePublishTokenInput?.value || "",
+    workspaceId: remotePublishWorkspaceInput?.value || ""
   });
   renderRemotePublishPanel();
   showNotice(result?.message || "远端发布配置保存失败。");
@@ -1632,6 +1637,7 @@ function downloadHtmlFile(html, filename) {
 function setRemotePublishBusy(isBusy) {
   [
     remotePublishSaveButton,
+    remotePublishWorkspaceInput,
     remotePublishCheckButton,
     remotePublishPushButton,
     remotePublishRevokeButton,
