@@ -967,6 +967,7 @@ const els = {
   planRepositoryImportButton: document.getElementById("planRepositoryImportButton"),
   planRepositoryEndpointInput: document.getElementById("planRepositoryEndpointInput"),
   planRepositoryTokenInput: document.getElementById("planRepositoryTokenInput"),
+  planRepositoryWorkspaceInput: document.getElementById("planRepositoryWorkspaceInput"),
   planRepositorySaveRemoteButton: document.getElementById("planRepositorySaveRemoteButton"),
   planRepositoryRemoteButton: document.getElementById("planRepositoryRemoteButton"),
   planRepositoryPushButton: document.getElementById("planRepositoryPushButton"),
@@ -7490,6 +7491,9 @@ function renderPlanRepositoryStatus(planHistory = []) {
   if (els.planRepositoryTokenInput && document.activeElement !== els.planRepositoryTokenInput) {
     els.planRepositoryTokenInput.value = config?.remoteToken || "";
   }
+  if (els.planRepositoryWorkspaceInput && document.activeElement !== els.planRepositoryWorkspaceInput) {
+    els.planRepositoryWorkspaceInput.value = config?.workspaceId || "";
+  }
   if (els.planRepositorySaveRemoteButton) {
     els.planRepositorySaveRemoteButton.disabled = false;
   }
@@ -7529,7 +7533,7 @@ function renderPlanRepositoryReceipts() {
     const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
     meta.textContent = `${formatPlanRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
     const detail = document.createElement("small");
-    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.planCount || 0} 份计划`;
+    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.workspaceId || "local-browser"} / ${receipt.planCount || 0} 份计划`;
     item.append(title, meta, detail);
     els.planRepositoryReceiptList.appendChild(item);
   });
@@ -7974,9 +7978,11 @@ function importPlanRepositoryFile(event) {
 function savePlanRepositoryRemoteConfig() {
   const endpoint = els.planRepositoryEndpointInput?.value || "";
   const token = els.planRepositoryTokenInput?.value || "";
+  const workspaceId = els.planRepositoryWorkspaceInput?.value || "";
   const result = window.MRAppState?.configurePlanRepositoryRemote?.({
     remoteEndpoint: endpoint,
-    remoteToken: token
+    remoteToken: token,
+    workspaceId
   });
   if (result?.message) {
     showNotice(result.message);

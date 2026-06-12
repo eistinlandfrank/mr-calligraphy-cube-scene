@@ -725,10 +725,12 @@ async function runRemoteRepositoryChecks() {
 
   const configuredRemote = window.MRAppState.configurePlanRepositoryRemote({
     remoteEndpoint: "https://example.test/plan-repository",
-    remoteToken: "test-token"
+    remoteToken: "test-token",
+    workspaceId: "class-alpha"
   });
   assert(configuredRemote.ok, "远端计划 API 配置应可写入本机状态。");
   assert(configuredRemote.status.remoteConfigured, "保存远端配置后应显示已配置。");
+  assert(configuredRemote.status.workspaceId === "class-alpha", "保存远端配置后应持久化计划仓库 workspace。");
   assert(configuredRemote.status.autoSyncEnabled, "保存远端配置后应默认开启自动同步队列。");
 
   const remotePlan = {
@@ -770,10 +772,12 @@ async function runRemoteRepositoryChecks() {
   assert(checkedRemote.package.plans.length === 1, "远端检查应解析计划包。");
   assert(fetchCalls[0].url === "https://example.test/plan-repository", "远端检查应请求已保存的 endpoint。");
   assert(fetchCalls[0].options.headers.Authorization === "Bearer test-token", "远端请求应携带本机保存的 Bearer token。");
+  assert(fetchCalls[0].options.headers["X-MR-Workspace-Id"] === "class-alpha", "远端请求应携带计划仓库 workspace header。");
 
   const pushedRemote = await window.MRAppState.pushPlanRepositoryToRemote();
   assert(pushedRemote.ok, "推送计划应真实调用远端 PUT。");
   assert(capturedPushPackage.kind === "mr-calligraphy-plan-repository-v1", "远端推送应发送稳定计划仓库包。");
+  assert(capturedPushPackage.workspaceId === "class-alpha", "远端推送包应包含计划仓库 workspaceId。");
   assert(capturedPushPackage.plans.length >= 3, "远端推送应包含当前本机计划列表。");
   assert(pushedRemote.packageId === "remote-accepted-package", "推送结果应记录远端接收的 packageId。");
   assert(!pushedRemote.status.pendingAutoSync, "推送成功后应清空待自动同步队列。");
@@ -923,6 +927,7 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
   assert(persistedPlanState.planRepository.mode === "remote-api", "计划 repository 应持久化远端 API 模式。");
   assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
+  assert(persistedPlanState.planRepository.workspaceId === "class-alpha", "计划 repository 应持久化远端 workspace。");
   assert(persistedPlanState.planRepository.lastImportedPlanCount === remotePackage.plans.length, "计划 repository 导入状态应持久化到 localStorage。");
   assert(persistedPlanState.planRepository.lastPackageId === "remote-accepted-package", "字段合并前的远端基线推送 packageId 应持久化。");
   assert(persistedPlanState.planRepository.lastRemoteDirection === "push", "字段级合并后最近远端方向应保留为基线推送。");
@@ -1235,9 +1240,11 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     global.fetch = fetchApi;
     const configuredMock = window.MRAppState.configurePlanRepositoryRemote({
       remoteEndpoint: mock.endpoint,
-      remoteToken: "plan-token"
+      remoteToken: "plan-token",
+      workspaceId: "alpha-class"
     });
     assert(configuredMock.ok, "计划仓库 mock endpoint 应可保存为远端配置。");
+    assert(configuredMock.status.workspaceId === "alpha-class", "计划仓库 mock 配置应保存 workspace。");
 
     const checkedBeforePush = await window.MRAppState.checkRemotePlanRepository();
     assert(checkedBeforePush.ok, "计划仓库 mock GET 检查应真实可访问。");
@@ -1245,13 +1252,18 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
 
     const pushedMock = await window.MRAppState.pushPlanRepositoryToRemote();
     assert(pushedMock.ok, "计划仓库 mock 应接收真实 PUT 推送。");
-    assert(pushedMock.packageId.startsWith("mock-plan-repository-"), "计划仓库 mock 应返回服务端 packageId。");
+    assert(pushedMock.packageId.startsWith("mock-plan-repository-alpha-class-"), "计划仓库 mock 应返回包含 workspace 的服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "计划仓库 mock 应在内存中保存最近计划包。");
+    assert(mock.state.package.workspaceId === "alpha-class", "计划仓库 mock 应把计划包保存到 alpha workspace。");
+    assert(mock.state.workspaces["alpha-class"].package.packageId === pushedMock.packageId, "计划仓库 mock 应按 workspace 隔离保存 alpha 包。");
     assert(mock.state.receipts[0].repositoryDigest, "计划仓库 mock 应返回 repositoryDigest 回执。");
+    assert(mock.state.receipts[0].workspaceId === "alpha-class", "计划仓库 mock 回执应包含 workspace。");
     assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].receiptDigest), "计划仓库 mock 应返回 64 位 receiptDigest。");
     assert(pushedMock.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库推送结果应暴露服务端回执。");
+    assert(pushedMock.receipt.workspaceId === "alpha-class", "计划仓库推送结果应暴露 workspace 回执。");
     const receiptStatus = window.MRAppState.getPlanRepositoryStatus();
     assert(receiptStatus.lastReceipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库状态应持久化最近回执。");
+    assert(receiptStatus.lastReceipt.workspaceId === "alpha-class", "计划仓库状态应持久化回执 workspace。");
     assert(receiptStatus.receiptCount === 1, "计划仓库状态应统计最近回执数量。");
     assert(receiptStatus.receipts[0].direction === "push", "计划仓库回执应记录同步方向。");
     const receiptAudit = window.MRAppState.getPlanRepositoryReceiptAudit();
@@ -1260,6 +1272,7 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     const receiptExport = window.MRAppState.getPlanRepositoryReceiptAuditExport();
     assert(receiptExport.ok && receiptExport.html.includes("MR 书法计划仓库回执审计"), "计划仓库回执审计应可导出 HTML。");
     assert(receiptExport.html.includes(mock.state.receipts[0].repositoryDigest), "计划仓库回执审计 HTML 应包含仓库摘要。");
+    assert(receiptExport.html.includes("alpha-class"), "计划仓库回执审计 HTML 应包含 workspace。");
 
     const checkedAfterPush = await window.MRAppState.checkRemotePlanRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.plans.length === mock.state.package.plans.length, "计划仓库 mock GET 应返回最近 PUT 保存的计划包。");
@@ -1270,9 +1283,31 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     assert(pulledMock.pulledPlanCount === mock.state.package.plans.length, "计划仓库 mock 拉取结果应保留远端计划数量。");
     assert(pulledMock.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库拉取结果应保留远端回执。");
 
+    const configuredBeta = window.MRAppState.configurePlanRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "plan-token",
+      workspaceId: "beta-class"
+    });
+    assert(configuredBeta.ok && configuredBeta.status.receiptCount === 0, "切换计划仓库 workspace 应清空本机回执视图。");
+    const betaBeforePush = await window.MRAppState.checkRemotePlanRepository();
+    assert(betaBeforePush.ok && betaBeforePush.package === null, "计划仓库 mock 新 workspace 初始不应读取 alpha 包。");
+    const betaPush = await window.MRAppState.pushPlanRepositoryToRemote();
+    assert(betaPush.ok && betaPush.packageId.startsWith("mock-plan-repository-beta-class-"), "计划仓库 mock beta workspace 应可单独推送。");
+    assert(mock.state.workspaces["beta-class"].package.packageId === betaPush.packageId, "计划仓库 mock 应按 workspace 隔离保存 beta 包。");
+    assert(mock.state.workspaces["alpha-class"].package.packageId === pushedMock.packageId, "计划仓库 mock beta 推送不应覆盖 alpha 包。");
+    const configuredAlphaAgain = window.MRAppState.configurePlanRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "plan-token",
+      workspaceId: "alpha-class"
+    });
+    assert(configuredAlphaAgain.ok, "计划仓库 mock 应可切回 alpha workspace。");
+    const alphaAgain = await window.MRAppState.checkRemotePlanRepository();
+    assert(alphaAgain.ok && alphaAgain.package.packageId === pushedMock.packageId, "切回 alpha workspace 应读取 alpha 包。");
+
     const badTokenConfig = window.MRAppState.configurePlanRepositoryRemote({
       remoteEndpoint: mock.endpoint,
-      remoteToken: "bad-token"
+      remoteToken: "bad-token",
+      workspaceId: "alpha-class"
     });
     assert(badTokenConfig.ok, "计划仓库 mock 错误 token 配置应仍可保存以便检查失败态。");
     const rejected = await window.MRAppState.checkRemotePlanRepository();

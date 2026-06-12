@@ -1140,6 +1140,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
     planRequests.push({
       method,
       authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
       body
     });
 
@@ -1152,6 +1153,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
       latestPlanReceipt = {
         receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
         remoteVersion: "e2e-plan-v1",
+        workspaceId: body.workspaceId,
         packageId: remotePlanPackage.packageId,
         sourcePackageId: body.packageId,
         repositoryDigest: "d".repeat(64),
@@ -1210,6 +1212,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   await page.locator(".plan-repository-remote summary").click();
   await page.locator("#planRepositoryEndpointInput").fill(planEndpoint);
   await page.locator("#planRepositoryTokenInput").fill("plan-token");
+  await page.locator("#planRepositoryWorkspaceInput").fill("class-e2e");
   await page.locator("#planRepositorySaveRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
 
@@ -1217,6 +1220,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
     window.MRAppState.configurePlanRepositoryRemote({
       remoteEndpoint: endpoint,
       remoteToken: "plan-token",
+      workspaceId: "class-e2e",
       autoSyncEnabled: false
     });
   }, planEndpoint);
@@ -1232,7 +1236,9 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
 
   const putRequest = planRequests.find((item) => item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer plan-token");
+  expect(putRequest.workspaceId).toBe("class-e2e");
   expect(putRequest.body.kind).toBe("mr-calligraphy-plan-repository-v1");
+  expect(putRequest.body.workspaceId).toBe("class-e2e");
   expect(putRequest.body.summary.planCount).toBe(1);
   expect(putRequest.body.plans[0].id).toBe(seedPlan.id);
 
@@ -1240,6 +1246,8 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(learningState.planRepository.receipts).toHaveLength(1);
   expect(learningState.planRepository.receipts[0].receiptDigest).toBe("e".repeat(64));
   expect(learningState.planRepository.receipts[0].direction).toBe("push");
+  expect(learningState.planRepository.receipts[0].workspaceId).toBe("class-e2e");
+  expect(learningState.planRepository.workspaceId).toBe("class-e2e");
 
   const planReceiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#planRepositoryReceiptExportButton").click();
@@ -2780,9 +2788,10 @@ async function configureProjectRepositoryRemoteInUi(page, endpoint, token = "") 
   await expect(page.locator("#projectArchiveStatus")).toContainText("已保存远端项目仓库 API 配置");
 }
 
-async function configurePlanRepositoryRemoteInUi(page, endpoint, token = "") {
+async function configurePlanRepositoryRemoteInUi(page, endpoint, token = "", workspaceId = "local-browser") {
   await page.locator("#planRepositoryEndpointInput").fill(endpoint);
   await page.locator("#planRepositoryTokenInput").fill(token);
+  await page.locator("#planRepositoryWorkspaceInput").fill(workspaceId);
   await page.locator("#planRepositorySaveRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
 }

@@ -49,7 +49,7 @@ node scripts/control-inventory.js
 | AI 讲解 | 浏览器本机语音合成能朗读本机讲解段落；已新增本机 `LectureService` adapter，记录语音能力、播放段落、降级、失败和完成状态 | 不是云端 AI 音频，也不是根据真实笔迹动态生成 | UI 保持“本机语音讲解”定位；后续扩展云端生成和音频资源 |
 | 书写练习 | 支持鼠标/触控笔迹、撤销、清空、回放和本机保存 | 缺压感、笔锋、笔画顺序模型和硬件适配 | 增加范字路径库、笔画顺序校验、压感字段、专业评分接口和离线 fallback |
 | 评分反馈 | 能从本机笔迹计算结构、笔画、笔法、力度、流畅度；已新增本机 `ScoreService` adapter，记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点 | 仍是启发式评分，容易被误解为专业识别模型 | 继续保持“基础练习评分”边界；后续扩展范字路径库、笔顺模型、硬件压感和服务端专业评分来源 |
-| 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单和 `.ics` 日历提醒；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本和字段级合并入口；推送 422 或网络中断时会保留待同步队列；远端计划仓库 API 合同、本机 mock 服务和回执审计导出已完成第一版 | 缺真正账号登录、后台托管仓库、远端提醒、教师端通知和服务端不可篡改审计 | 继续增加账号同步、后台计划仓库、教师端通知、远端提醒和服务端审计 |
+| 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint/token/Workspace 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单和 `.ics` 日历提醒；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本和字段级合并入口；推送 422 或网络中断时会保留待同步队列；远端计划仓库 API 合同、本机 mock 服务、Workspace 空间隔离和回执审计导出已完成第一版 | 缺真正账号登录、后台托管仓库、远端提醒、教师端通知和服务端不可篡改审计 | 继续增加账号同步、后台计划仓库、教师端通知、远端提醒和服务端审计 |
 
 ### 3.2 作品、报告和分享
 
@@ -222,7 +222,7 @@ node scripts/control-inventory.js
 
 | 优先级 | 功能 | 原因 | 交付物 |
 | --- | --- | --- | --- |
-| P0 | 账号化计划仓库和跨设备提醒 | 远端 API adapter、服务端 repository 合同、mock 服务、自动同步队列、冲突检测、前端冲突解决入口和本机回执审计第一版已完成，学习计划也可导出标准 `.ics` 日历提醒；但还没有账号登录、后台托管仓库、教师端通知或后台推送 | 账号同步状态、托管 repository、跨设备提醒策略 |
+| P0 | 账号化计划仓库和跨设备提醒 | 远端 API adapter、服务端 repository 合同、mock 服务、Workspace 空间隔离、自动同步队列、冲突检测、前端冲突解决入口和本机回执审计第一版已完成，学习计划也可导出标准 `.ics` 日历提醒；但还没有账号登录、后台托管仓库、教师端通知或后台推送 | 账号同步状态、托管 repository、跨设备提醒策略 |
 | P0 | 剩余 `demo-content` 动作治理 | 用户最容易觉得“按钮是假的” | 四个入口 HTML 静态控件和前台动态热点已清零；后续持续审计新增控件 |
 | P1 | 评分解释层 | 评分是核心信任点 | 第一版已完成：基础评分证据、缺数据状态、本机 `ScoreService` adapter 和模型替换接口 |
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
@@ -2905,3 +2905,43 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`真实化远端发布CDN上传回执`
+
+### 2026-06-12：新增计划仓库空间隔离
+
+完成内容：
+
+- 前台“远端 API 同步”新增 `Workspace` 输入，保存 endpoint/token 时一并保存空间 ID。
+- 计划仓库同步包新增顶层 `workspaceId` 和 `source.workspaceId`，远端请求统一携带 `X-MR-Workspace-Id`。
+- 计划仓库状态、远端检查、推送、拉取、回执审计和导出 HTML 都会显示当前 workspace。
+- `scripts/plan-repository-mock-server.js` 改为按 workspace 分桶保存计划包和回执，`class-a` 与 `class-b` 不再互相覆盖。
+- 数据层、mock server 和 E2E 验收补充 Workspace header、包字段、回执持久化和空间切换回读。
+
+真实化说明：
+
+- 数据来源：用户配置的远端计划仓库 endpoint/token/workspace、本机计划同步包和远端返回回执。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.planRepository.workspaceId`、远端包 `workspaceId`、最近回执和回执列表。
+- 成功反馈：计划同步状态会显示空间，回执列表显示 workspace，mock 服务能分别读取不同空间最近包。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON 或推送失败仍会写入本机错误，不清空本机计划。
+- 刷新后复现方式：Workspace 保存在本机学习状态，刷新后仍会继续用同一空间推送和拉取。
+
+仍待补：
+
+- 当前是账号化前的空间隔离 adapter，不是完整登录、角色权限、教师端排课、后台推送提醒或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/plan-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front plan repository detects remote conflicts and saves a remote copy"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库空间隔离`

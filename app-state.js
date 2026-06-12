@@ -21,7 +21,8 @@
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
-  const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
+  const PLAN_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
+  const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，并携带 Workspace 空间 ID 做服务端隔离第一版，但仍不包含完整账号权限、教师端排课或后台推送。";
   const PLAN_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-plan-repository-receipt-v1";
   const PLAN_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
@@ -975,6 +976,7 @@
     const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
       ? source.lastRemoteDirection
       : "";
+    const workspaceId = normalizePlanRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
     const receipts = normalizePlanRepositoryReceipts(source);
     const lastReceipt = normalizePlanRepositoryReceipt(source.lastReceipt || source.latestReceipt || source.receipt || null)
       || receipts[0]
@@ -983,6 +985,7 @@
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
       remoteToken: typeof source.remoteToken === "string" ? source.remoteToken.trim() : "",
+      workspaceId,
       lastExportedAt: normalizePlanDate(source.lastExportedAt),
       lastImportedAt: normalizePlanDate(source.lastImportedAt),
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
@@ -1016,6 +1019,15 @@
       receipts: appendPlanRepositoryReceipt({ receipts }, lastReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
+  }
+
+  function normalizePlanRepositoryWorkspaceId(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_.:-]/g, "")
+      .slice(0, 64);
+    return normalized || PLAN_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
   function normalizePlanRepositoryReceipts(source = {}) {
@@ -1055,6 +1067,7 @@
       remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
       packageId: String(record.packageId || "").trim().slice(0, 120),
       sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      workspaceId: normalizePlanRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId),
       direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
       endpoint: String(record.endpoint || "").trim().slice(0, 240),
       receivedAt: normalizePlanDate(record.receivedAt),
@@ -1073,6 +1086,7 @@
       ...receipt,
       direction: context.direction || receipt?.direction,
       endpoint: context.endpoint || receipt?.endpoint,
+      workspaceId: context.workspaceId || receipt?.workspaceId,
       receivedAt: context.receivedAt || receipt?.receivedAt,
       message: context.message || receipt?.message
     });
@@ -2838,7 +2852,7 @@
     const remoteConfigured = Boolean(repository.remoteEndpoint);
     let tone = "idle";
     let message = remoteConfigured
-      ? `远端计划 API 已配置：${repository.remoteEndpoint}。`
+      ? `远端计划 API 已配置：${repository.remoteEndpoint}，空间 ${repository.workspaceId}。`
       : planCount
         ? `本机同步仓库有 ${planCount} 份计划，可导出 JSON 同步包。`
         : "还没有可同步的学习计划。";
@@ -2885,6 +2899,7 @@
       remoteConfigured,
       remoteEndpoint: remoteConfigured ? repository.remoteEndpoint : "",
       hasRemoteToken: Boolean(repository.remoteToken),
+      workspaceId: repository.workspaceId,
       fetchSupported: typeof fetch === "function",
       planCount,
       tone,
@@ -2989,6 +3004,7 @@
             <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
             <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
             <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
+            <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || PLAN_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
             <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
             <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
             <dt>Received At</dt><dd>${escapeHtml(receipt.receivedAt || "未知")}</dd>
@@ -9085,10 +9101,12 @@
         kind: PLAN_REPOSITORY_KIND,
         version: VERSION,
         packageId,
+        workspaceId: repository.workspaceId,
         exportedAt,
         storageKey: STORAGE_KEY,
         source: {
           mode: repository.mode,
+          workspaceId: repository.workspaceId,
           boundary: PLAN_REPOSITORY_BOUNDARY
         },
         summary: {
@@ -9438,6 +9456,7 @@
       remoteEndpoint: repository.remoteEndpoint,
       remoteToken: repository.remoteToken,
       hasRemoteToken: Boolean(repository.remoteToken),
+      workspaceId: repository.workspaceId,
       boundary: PLAN_REPOSITORY_BOUNDARY
     };
   }
@@ -9446,10 +9465,12 @@
     const repository = normalizePlanRepository(state.planRepository);
     const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
     const tokenInput = config.remoteToken ?? config.token;
+    const workspaceInput = config.workspaceId ?? config.remoteWorkspaceId ?? config.accountId ?? repository.workspaceId;
     const remoteEndpoint = String(endpointInput || "").trim();
     const remoteToken = tokenInput === undefined
       ? repository.remoteToken
       : String(tokenInput || "").trim();
+    const workspaceId = normalizePlanRepositoryWorkspaceId(workspaceInput);
 
     if (!remoteEndpoint) {
       state.planRepository = normalizePlanRepository({
@@ -9457,6 +9478,7 @@
         mode: "local-json",
         remoteEndpoint: "",
         remoteToken: "",
+        workspaceId,
         autoSyncEnabled: false,
         pendingAutoSync: false,
         pendingSince: null,
@@ -9496,19 +9518,20 @@
       mode: "remote-api",
       remoteEndpoint: validation.endpoint,
       remoteToken,
+      workspaceId,
       autoSyncEnabled: config.autoSyncEnabled === false ? false : true,
-      lastReceipt: validation.endpoint === repository.remoteEndpoint ? repository.lastReceipt : null,
-      receipts: validation.endpoint === repository.remoteEndpoint ? repository.receipts : [],
+      lastReceipt: validation.endpoint === repository.remoteEndpoint && workspaceId === repository.workspaceId ? repository.lastReceipt : null,
+      receipts: validation.endpoint === repository.remoteEndpoint && workspaceId === repository.workspaceId ? repository.receipts : [],
       lastCheckedAt: new Date().toISOString(),
-      lastRemoteStatus: "远端计划 API 配置已保存，尚未检查服务可用性。",
+      lastRemoteStatus: `远端计划 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
-    addEvent("plan-repository-remote", `配置远端计划 API：${validation.endpoint}`);
+    addEvent("plan-repository-remote", `配置远端计划 API：${validation.endpoint} / ${workspaceId}`);
     saveState();
     return {
       ok: true,
       status: getPlanRepositoryStatus(),
-      message: "已保存远端计划 API 配置。请点击“检查远端”确认服务可用。"
+      message: `已保存远端计划 API 配置，空间 ${workspaceId}。请点击“检查远端”确认服务可用。`
     };
   }
 
@@ -9537,6 +9560,7 @@
     if (repository.remoteToken) {
       headers.Authorization = `Bearer ${repository.remoteToken}`;
     }
+    headers["X-MR-Workspace-Id"] = normalizePlanRepositoryWorkspaceId(repository.workspaceId);
     return {
       method: options.method || "GET",
       headers,
@@ -9648,6 +9672,7 @@
         ? decoratePlanRepositoryReceipt(parsed.receipt, {
           direction: "check",
           endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -9663,7 +9688,7 @@
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
         lastReceipt: receipt,
         receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
-        lastRemoteStatus: parsed.message,
+        lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
         lastError: ""
       });
       addEvent("plan-repository-remote-check", `检查远端计划 API：${remotePlanCount} 份计划`);
@@ -9727,13 +9752,14 @@
         ? decoratePlanRepositoryReceipt(parsed.receipt, {
           direction: "push",
           endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
         : null;
       const remoteStatus = receipt
-        ? `已推送 ${planCount} 份计划到远端 API，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
-        : `已推送 ${planCount} 份计划到远端 API，远端未返回完整回执。`;
+        ? `已推送 ${planCount} 份计划到远端 API 空间 ${repository.workspaceId}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
+        : `已推送 ${planCount} 份计划到远端 API 空间 ${repository.workspaceId}，远端未返回完整回执。`;
       state.planRepository = normalizePlanRepository({
         ...repository,
         mode: "remote-api",
@@ -9812,6 +9838,7 @@
         ? decoratePlanRepositoryReceipt(parsed.receipt, {
           direction: "pull",
           endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -9863,6 +9890,7 @@
         mode: "remote-api",
         remoteEndpoint: repository.remoteEndpoint,
         remoteToken: repository.remoteToken,
+        workspaceId: repository.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
         lastRemoteDirection: "pull",
@@ -9879,7 +9907,7 @@
         lastSyncConflictPlans: [],
         lastReceipt: receipt,
         receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
-        lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
+        lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，空间 ${repository.workspaceId}，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
         lastError: ""
       });
       addEvent("plan-repository-remote-pull", `从远端 API 拉取计划：${planCount} 份计划`);
@@ -9891,7 +9919,7 @@
         updatedCount: imported.updatedCount,
         pulledPlanCount: planCount,
         receipt: receipt ? clone(receipt) : null,
-        message: `已从远端 API 拉取计划：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
+        message: `已从远端 API 拉取计划，空间 ${repository.workspaceId}：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatPlanRepositoryNetworkError("拉取", error);

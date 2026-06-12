@@ -54,7 +54,7 @@ node scripts/control-inventory.js --check
 | 学习路径 | 步骤导航、热点路由、阶段记录、本机任务进度已有第一版；本机 `LearningPathService` 已用任务、练习、作品、报告和计划推导 10 步标题、说明、完成状态、证据和下一步动作 | 还不是云端课程编排、教师下发任务或跨设备学习进度；视觉场景仍保留静态兜底 | 后续扩展课程包、教师端排课、班级进度和跨设备同步 |
 | AI 讲解 | 浏览器本机语音能朗读讲解段落；本机 `LectureService` 会记录语音能力、播放段落、文本降级、失败和完成状态 | 不是云端 AI 音频，也不是按真实笔迹实时生成 | 保留本机语音 fallback，后续在同一讲解服务接口扩展云端 AI 音频/文本 |
 | 书写练习 | 鼠标/触控笔迹、撤销、清空、回放、保存和基础评分可用；本机 `ScoreService` 会记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点 | 缺压感、笔锋、笔画顺序模型、硬件适配和专业评分模型 | 继续扩展范字路径库、笔画顺序校验、压感字段和服务端评分来源 |
-| 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、`.ics` 日历导出、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、远端回执审计、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒、教师端通知和服务端不可篡改审计 | 做账号化 repository、服务端合并策略、跨设备提醒、教师端视图和生产审计 |
+| 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、`.ics` 日历导出、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、Workspace 空间隔离、远端回执审计、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒、教师端通知和服务端不可篡改审计 | 做账号化 repository、服务端合并策略、跨设备提醒、教师端视图和生产审计 |
 | 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、`nextPageUrl` 分页自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、生产级分页查询、长期归档和服务端教师批注审计 | 做账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 
 ### 4.2 作品、报告和分享
@@ -2318,3 +2318,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化远端发布CDN上传回执`
+
+## 68. 2026-06-12 计划仓库 Workspace 空间隔离
+
+本次把计划仓库从“同一个 endpoint 只有一个最近包”推进到“同一个 endpoint 下可按 Workspace 隔离”。这不是完整账号系统，但已经能让班级、账号或项目空间作为第一层同步边界。
+
+完成内容：
+
+- 前台计划仓库远端配置新增 `Workspace` 输入，刷新后会从 `planRepository.workspaceId` 恢复。
+- `MRAppState.configurePlanRepositoryRemote()` 支持 `workspaceId` / `remoteWorkspaceId` / `accountId`，切换 endpoint 或 workspace 时清空当前回执视图，避免跨空间误读。
+- `getPlanRepositoryPackage()` 输出顶层 `workspaceId` 和 `source.workspaceId`。
+- 远端 GET / PUT 请求统一携带 `X-MR-Workspace-Id` header，回执审计和状态文案显示当前 workspace。
+- `scripts/plan-repository-mock-server.js` 支持按 workspace 分桶保存 package 和 receipts，并保留最近 workspace 兼容状态。
+- 数据层和 E2E 补充 Workspace header、包字段、回执持久化、mock server 空间隔离和切回原空间读取。
+- `docs/plan-repository-api-contract.md` 补充 Workspace header、包字段、回执字段和生产边界。
+
+真实化说明：
+
+- 数据来源：前台用户配置的 endpoint/token/workspace、本机计划同步包和远端计划仓库响应。
+- 写入状态：`mr-calligraphy-learning-state-v1.planRepository.workspaceId`、计划仓库包 `workspaceId`、最近回执 `workspaceId` 和 mock server `state.workspaces`。
+- 成功反馈：远端状态显示空间，回执列表显示 workspace，mock 服务能分别保存 `alpha-class` 和 `beta-class`。
+- 失败反馈：远端未配置、token 错误、HTTP 错误、非 JSON、PUT 422 或网络中断仍走现有错误状态，不伪造同步成功。
+- 刷新后复现方式：刷新前台后 Workspace 输入会恢复，后续检查/推送/拉取继续使用同一空间。
+
+仍待补：
+
+- 当前只是账号化 repository 前的空间隔离 adapter；真正登录态、角色权限、token 刷新、教师端通知、后台推送和服务端不可篡改审计仍未完成。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/plan-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front plan repository detects remote conflicts and saves a remote copy"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库空间隔离`

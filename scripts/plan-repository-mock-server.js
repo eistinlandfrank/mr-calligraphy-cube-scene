@@ -5,11 +5,14 @@ const http = require("http");
 
 const PACKAGE_KIND = "mr-calligraphy-plan-repository-v1";
 const VERSION = 1;
+const DEFAULT_WORKSPACE_ID = "local-browser";
 
 function createPlanRepositoryMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.PLAN_REPOSITORY_MOCK_TOKEN || "").trim();
   const state = {
     startedAt: new Date().toISOString(),
+    latestWorkspaceId: DEFAULT_WORKSPACE_ID,
+    workspaces: {},
     package: null,
     receipts: []
   };
@@ -37,48 +40,59 @@ function createPlanRepositoryMockServer(options = {}) {
       }
 
       if (request.method === "GET") {
+        const workspaceId = getRequestWorkspaceId(request);
+        const workspace = getWorkspaceState(state, workspaceId);
         return sendJson(response, 200, {
           ok: true,
-          message: state.package
-            ? `远端计划仓库 mock 可读，当前包含 ${state.package.plans.length} 份计划。`
-            : "远端计划仓库 mock 服务可访问，当前尚未接收计划包。",
+          message: workspace.package
+            ? `远端计划仓库 mock 可读，空间 ${workspaceId} 当前包含 ${workspace.package.plans.length} 份计划。`
+            : `远端计划仓库 mock 服务可访问，空间 ${workspaceId} 当前尚未接收计划包。`,
           remoteVersion: "mr-calligraphy-plan-repository-mock-v1",
+          workspaceId,
           contract: createContract(),
-          package: state.package,
-          receiptCount: state.receipts.length,
-          latestReceipt: state.receipts[0] || null
+          package: workspace.package,
+          receiptCount: workspace.receipts.length,
+          latestReceipt: workspace.receipts[0] || null
         });
       }
 
       if (request.method === "PUT") {
         const payload = await readJsonBody(request);
-        const validation = validatePlanRepositoryPackage(payload);
+        const workspaceId = getRequestWorkspaceId(request, payload.workspaceId);
+        const validation = validatePlanRepositoryPackage(payload, { workspaceId });
         if (!validation.ok) {
           return sendJson(response, 422, {
             ok: false,
             message: validation.message,
             errors: validation.errors,
             warnings: validation.warnings,
+            workspaceId,
             remoteVersion: "mr-calligraphy-plan-repository-mock-v1"
           });
         }
 
-        const receipt = createReceipt(payload, validation);
-        state.package = {
+        const receipt = createReceipt(payload, validation, workspaceId);
+        const workspace = getWorkspaceState(state, workspaceId);
+        workspace.package = {
           ...clone(payload),
+          workspaceId,
           packageId: receipt.packageId,
           acceptedAt: receipt.acceptedAt,
           repositoryDigest: receipt.repositoryDigest
         };
-        state.receipts.unshift(receipt);
+        workspace.receipts.unshift(receipt);
+        state.latestWorkspaceId = workspaceId;
+        state.package = workspace.package;
+        state.receipts = workspace.receipts;
 
         return sendJson(response, 201, {
           ok: true,
-          message: `远端计划仓库 mock 已接收 ${payload.plans.length} 份计划。`,
+          message: `远端计划仓库 mock 已接收空间 ${workspaceId} 的 ${payload.plans.length} 份计划。`,
           remoteVersion: receipt.remoteVersion,
+          workspaceId,
           packageId: receipt.packageId,
           repositoryDigest: receipt.repositoryDigest,
-          package: state.package,
+          package: workspace.package,
           receipt,
           warnings: validation.warnings
         });
@@ -164,6 +178,38 @@ function validateAuth(request, requiredToken) {
   return { ok: false, message: "计划仓库 mock 拒绝请求：Authorization token 不匹配。" };
 }
 
+function getRequestWorkspaceId(request, fallback = "") {
+  let queryWorkspace = "";
+  try {
+    const parsed = new URL(request.url || "/", "http://localhost");
+    queryWorkspace = parsed.searchParams.get("workspaceId") || "";
+  } catch (error) {
+    queryWorkspace = "";
+  }
+  return normalizeWorkspaceId(request.headers["x-mr-workspace-id"] || queryWorkspace || fallback);
+}
+
+function getWorkspaceState(state, workspaceId) {
+  const normalizedId = normalizeWorkspaceId(workspaceId);
+  if (!state.workspaces[normalizedId]) {
+    state.workspaces[normalizedId] = {
+      workspaceId: normalizedId,
+      package: null,
+      receipts: []
+    };
+  }
+  return state.workspaces[normalizedId];
+}
+
+function normalizeWorkspaceId(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "")
+    .slice(0, 64);
+  return normalized || DEFAULT_WORKSPACE_ID;
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -197,7 +243,7 @@ function createResponseHeaders(extra = {}) {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-MR-Workspace-Id",
     "Access-Control-Max-Age": "600",
     "Cache-Control": "no-store",
     ...extra
@@ -212,17 +258,19 @@ function createContract() {
       push: "PUT /api/plan-repository",
       pull: "GET /api/plan-repository",
       authorization: "optional Bearer token",
+      workspaceHeader: "optional X-MR-Workspace-Id",
       cors: "GET, PUT, OPTIONS"
     },
     packageKind: PACKAGE_KIND,
-    requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "storageKey", "summary", "plans"],
-    receiptFields: ["ok", "message", "packageId", "repositoryDigest", "remoteVersion", "receipt"]
+    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "plans"],
+    receiptFields: ["ok", "message", "workspaceId", "packageId", "repositoryDigest", "remoteVersion", "receipt"]
   };
 }
 
-function validatePlanRepositoryPackage(payload) {
+function validatePlanRepositoryPackage(payload, options = {}) {
   const errors = [];
   const warnings = [];
+  const workspaceId = normalizeWorkspaceId(options.workspaceId);
   if (!payload || typeof payload !== "object") {
     return {
       ok: false,
@@ -235,6 +283,10 @@ function validatePlanRepositoryPackage(payload) {
   if (payload.kind !== PACKAGE_KIND) errors.push("计划仓库包 kind 不匹配");
   if (Number(payload.version) !== VERSION) errors.push("计划仓库包版本不匹配");
   if (!payload.packageId) errors.push("缺少 packageId");
+  if (!payload.workspaceId) warnings.push("缺少 workspaceId，mock 会使用请求头或默认空间。");
+  if (payload.workspaceId && normalizeWorkspaceId(payload.workspaceId) !== workspaceId) {
+    warnings.push(`body.workspaceId 为 ${payload.workspaceId}，mock 按请求空间 ${workspaceId} 保存。`);
+  }
   if (!payload.exportedAt) errors.push("缺少 exportedAt");
   if (!payload.storageKey) errors.push("缺少 storageKey");
   if (!payload.summary || typeof payload.summary !== "object") errors.push("缺少 summary");
@@ -288,10 +340,12 @@ function validatePlan(plan, index, errors, warnings) {
   });
 }
 
-function createReceipt(payload, validation) {
+function createReceipt(payload, validation, workspaceId = DEFAULT_WORKSPACE_ID) {
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
   const repositoryDigest = sha256StableJson({
     kind: payload.kind,
     version: payload.version,
+    workspaceId: normalizedWorkspaceId,
     storageKey: payload.storageKey,
     summary: payload.summary,
     plans: payload.plans
@@ -300,7 +354,8 @@ function createReceipt(payload, validation) {
   return {
     receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
     remoteVersion: "mr-calligraphy-plan-repository-mock-v1",
-    packageId: `mock-plan-repository-${repositoryDigest.slice(0, 12)}`,
+    workspaceId: normalizedWorkspaceId,
+    packageId: `mock-plan-repository-${normalizedWorkspaceId}-${repositoryDigest.slice(0, 12)}`,
     sourcePackageId: String(payload.packageId || ""),
     repositoryDigest,
     acceptedAt,
@@ -309,6 +364,7 @@ function createReceipt(payload, validation) {
     warnings: validation.warnings,
     receiptDigest: sha256StableJson({
       sourcePackageId: payload.packageId,
+      workspaceId: normalizedWorkspaceId,
       repositoryDigest,
       acceptedAt
     })

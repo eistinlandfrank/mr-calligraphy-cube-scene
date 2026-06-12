@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端计划仓库 API 接收的是浏览器本机学习计划同步包，用来验证跨设备计划同步的真实 HTTP 闭环。它不是账号系统、教师端排课、后台推送提醒或云端权限模型。
+远端计划仓库 API 接收的是浏览器本机学习计划同步包，用来验证跨设备计划同步的真实 HTTP 闭环。当前 adapter 已支持 `Workspace` 空间 ID：前端会把空间写入请求头和同步包，mock 服务会按空间隔离最近计划包。它仍不是完整账号系统、教师端排课、后台推送提醒或云端权限模型。
 
 生产服务端必须重新校验计划包结构，并在账号、空间、权限和数据版本上做服务端隔离；前端本机校验只能作为提交前保护。
 
@@ -25,6 +25,14 @@
 Authorization: Bearer <token>
 ```
 
+如配置 Workspace，请求会携带：
+
+```http
+X-MR-Workspace-Id: <workspaceId>
+```
+
+未填写时前端会使用 `local-browser`。生产服务端应把该值映射到真实账号 / 班级 / 项目空间，并继续在服务端鉴权，不能只信任前端 header。
+
 ## 3. 计划仓库包
 
 `PUT` body 顶层字段：
@@ -34,6 +42,7 @@ Authorization: Bearer <token>
 | `kind` | 固定为 `mr-calligraphy-plan-repository-v1` |
 | `version` | 当前为 `1` |
 | `packageId` | 本机生成的提交 ID |
+| `workspaceId` | 前端配置的计划仓库空间 ID，默认 `local-browser` |
 | `exportedAt` | 本机生成时间 |
 | `storageKey` | 本机学习状态来源 key |
 | `source` | 当前同步模式和边界说明 |
@@ -42,7 +51,7 @@ Authorization: Bearer <token>
 
 服务端应至少校验：
 
-- `kind`、`version`、`packageId`、`exportedAt` 和 `storageKey`。
+- `kind`、`version`、`packageId`、`workspaceId`、`exportedAt` 和 `storageKey`。
 - `plans` 必须是非空数组。
 - 每个计划必须包含 `id`、`title` 和 `items` 数组。
 - 每个计划项必须包含 `id` 和 `title`。
@@ -62,10 +71,12 @@ Authorization: Bearer <token>
     "kind": "mr-calligraphy-plan-repository-v1",
     "version": 1,
     "packageId": "remote-plan-package-id",
+    "workspaceId": "class-a",
     "plans": []
   },
   "receipt": {
     "receiptKind": "mr-calligraphy-plan-repository-receipt-v1",
+    "workspaceId": "class-a",
     "packageId": "remote-plan-package-id",
     "sourcePackageId": "local-plan-package-id",
     "repositoryDigest": "64位sha256",
@@ -76,11 +87,12 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.plans`、`receipt` 和 `latestReceipt`，并把远端计划数量、最近 packageId、同步方向、冲突状态、自动同步队列状态和最近 12 条回执审计写回 `mr-calligraphy-learning-state-v1`。
+前端 adapter 当前会读取 `message`、`workspaceId`、`package.packageId`、`package.plans`、`receipt` 和 `latestReceipt`，并把远端 workspace、计划数量、最近 packageId、同步方向、冲突状态、自动同步队列状态和最近 12 条回执审计写回 `mr-calligraphy-learning-state-v1`。
 
 前端只会保存字段完整的 `mr-calligraphy-plan-repository-receipt-v1`：
 
 - `repositoryDigest` 和 `receiptDigest` 必须是 64 位十六进制摘要。
+- 回执里的 `workspaceId` 会进入本机回执审计；切换 workspace 会清空当前 endpoint 下的本机回执视图，避免误把其他空间的回执当成当前空间。
 - 回执会补充本机收到方向、endpoint 和收到时间。
 - 回执审计可从前台“远端 API 同步 / 回执审计”导出 HTML。
 - 这仍是本机审计留存，不是服务端不可篡改日志或账号化权限审计。
@@ -130,8 +142,9 @@ http://127.0.0.1:8788/api/plan-repository
 
 mock 服务会：
 
-- `GET` 返回合同、远端版本和最近一次保存的计划包。
-- `PUT` 校验 `mr-calligraphy-plan-repository-v1` 结构并保存到内存。
+- `GET` 返回合同、远端版本和当前 workspace 最近一次保存的计划包。
+- `GET` / `PUT` 都会读取 `X-MR-Workspace-Id`，按 workspace 保存和返回对应空间的最近计划包。
+- `PUT` 校验 `mr-calligraphy-plan-repository-v1` 结构并保存到对应 workspace 的内存槽。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
 - 返回 `mr-calligraphy-plan-repository-receipt-v1` 回执和 `repositoryDigest`。
@@ -145,4 +158,4 @@ node scripts/learning-state-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、计划仓库回执、拉取最近计划包和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、Workspace header、计划仓库回执、按空间隔离拉取最近计划包和错误 token 拒绝。
