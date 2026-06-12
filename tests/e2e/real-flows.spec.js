@@ -32,6 +32,13 @@ function sha256StableJson(value) {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
+function withArtworkRepositoryPackageDigest(packageRecord) {
+  const next = JSON.parse(JSON.stringify(packageRecord));
+  delete next.packageDigest;
+  next.packageDigest = sha256StableJson(next);
+  return next;
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(({ keys, accessSessionKey }) => {
     const markerKey = "__mr_calligraphy_e2e_storage_cleared__";
@@ -1446,6 +1453,11 @@ test("front artwork repository exports and imports local artwork package", async
   expect(repositoryPackage.summary.total).toBe(2);
   expect(repositoryPackage.summary.linkedSessionCount).toBe(2);
   expect(repositoryPackage.source.boundary).toContain("不是账号化公开作品集");
+  expect(repositoryPackage.digestAlgorithm).toBe("sha256-stable-json");
+  expect(repositoryPackage.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  const repositoryDigestPayload = JSON.parse(JSON.stringify(repositoryPackage));
+  delete repositoryDigestPayload.packageDigest;
+  expect(repositoryPackage.packageDigest).toBe(sha256StableJson(repositoryDigestPayload));
   expect(repositoryPackage.artworks.map((item) => item.id)).toEqual(expect.arrayContaining(seed.artworkIds));
 
   await page.evaluate((key) => {
@@ -1454,6 +1466,23 @@ test("front artwork repository exports and imports local artwork package", async
   await page.goto("/?step=7", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#historyPanel")).toBeVisible();
   await expect(page.locator("#artworkGalleryStatus")).toContainText("暂无作品");
+
+  const tamperedPackage = JSON.parse(JSON.stringify(repositoryPackage));
+  tamperedPackage.artworks[0].title = "E2E 被篡改但摘要未更新";
+  tamperedPackage.records.artworks = tamperedPackage.artworks;
+  const tamperedFileChooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#artworkRepositoryImportButton").click();
+  const tamperedFileChooser = await tamperedFileChooserPromise;
+  await tamperedFileChooser.setFiles({
+    name: "artwork-repository-tampered.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(tamperedPackage))
+  });
+
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("摘要校验失败");
+  await expect(page.locator("#artworkGalleryStatus")).toContainText("暂无作品");
+  const rejectedState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(rejectedState.artworks || []).toHaveLength(0);
 
   const fileChooserPromise = page.waitForEvent("filechooser");
   await page.locator("#artworkRepositoryImportButton").click();
@@ -1474,8 +1503,9 @@ test("front artwork repository exports and imports local artwork package", async
   expect(importedState.artworkRepository.lastImportedArtworkCount).toBe(2);
   expect(importedState.artworkRepository.lastImportedSessionCount).toBe(2);
   expect(importedState.artworkRepository.lastPackageId).toBe(repositoryPackage.packageId);
+  expect(importedState.artworkRepository.lastPackageDigest).toBe(repositoryPackage.packageDigest);
 
-  const conflictPackage = {
+  let conflictPackage = {
     ...repositoryPackage,
     packageId: "e2e-artwork-conflict-package",
     artworks: [
@@ -1499,6 +1529,7 @@ test("front artwork repository exports and imports local artwork package", async
     linkedSessionCount: 0,
     latestArtworkId: conflictPackage.artworks[0].id
   };
+  conflictPackage = withArtworkRepositoryPackageDigest(conflictPackage);
 
   const conflictFileChooserPromise = page.waitForEvent("filechooser");
   await page.locator("#artworkRepositoryImportButton").click();

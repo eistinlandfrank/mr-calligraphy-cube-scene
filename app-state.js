@@ -28,6 +28,7 @@
   const ARTWORK_REPOSITORY_KIND = "mr-calligraphy-artwork-repository-v1";
   const ARTWORK_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const ARTWORK_REPOSITORY_BOUNDARY = "作品仓库导出当前浏览器中的 ArtworkRecord、关联练习摘要和评分证据，便于本机备份、迁移或课堂收集后手动导入；它不是账号化公开作品集、课堂作品墙或云端存储。";
+  const ARTWORK_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
   const ARTWORK_COLLECTION_KIND = "mr-calligraphy-artwork-collection-v1";
   const ARTWORK_COLLECTION_BOUNDARY = "作品集 HTML 导出会把当前浏览器里的多幅 ArtworkRecord 渲染成可离线打开、打印或手动分享的静态作品集；它不是云端公开链接、课堂作品墙、账号权限或生产 CDN。";
   const ARTWORK_CLASSROOM_REVIEW_KIND = "mr-calligraphy-classroom-review-v1";
@@ -2110,8 +2111,14 @@
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : null,
+      lastPackageDigest: normalizeArtworkRepositoryHex(source.lastPackageDigest || source.packageDigest || source.repositoryDigest),
       lastError: source.lastError ? String(source.lastError).slice(0, 220) : ""
     };
+  }
+
+  function normalizeArtworkRepositoryHex(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(normalized) ? normalized : "";
   }
 
   function normalizeArtworkRepositoryWorkspaceId(value) {
@@ -12734,13 +12741,13 @@
       repository.lastImportedAt
         ? {
             at: repository.lastImportedAt,
-            message: `最近导入 ${repository.lastImportedArtworkCount} 幅作品、${repository.lastImportedSessionCount} 条关联练习：${formatPlanDate(repository.lastImportedAt)}。`
+            message: `最近导入 ${repository.lastImportedArtworkCount} 幅作品、${repository.lastImportedSessionCount} 条关联练习：${formatPlanDate(repository.lastImportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`
           }
         : null,
       repository.lastExportedAt
         ? {
             at: repository.lastExportedAt,
-            message: `最近导出 ${repository.lastExportedArtworkCount} 幅作品、${repository.lastExportedSessionCount} 条关联练习：${formatPlanDate(repository.lastExportedAt)}。`
+            message: `最近导出 ${repository.lastExportedArtworkCount} 幅作品、${repository.lastExportedSessionCount} 条关联练习：${formatPlanDate(repository.lastExportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`
           }
         : null,
       repository.lastCollectionExportedAt
@@ -12813,6 +12820,7 @@
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
+      lastPackageDigest: repository.lastPackageDigest,
       lastError: repository.lastError
     };
   }
@@ -12867,14 +12875,22 @@
       records: {
         artworks: clone(artworks),
         sessions: clone(linkedSessions)
-      }
+      },
+      digestAlgorithm: ARTWORK_REPOSITORY_DIGEST_ALGORITHM
     };
+    packageRecord.packageDigest = createArtworkRepositoryPackageDigest(packageRecord);
     return {
       ok: true,
       filename: `mr-calligraphy-artwork-repository-${Date.now()}.json`,
       package: packageRecord,
-      message: `已生成 ${artworks.length} 幅作品的本机作品仓库包。${ARTWORK_REPOSITORY_BOUNDARY}`
+      message: `已生成 ${artworks.length} 幅作品的本机作品仓库包，摘要 ${packageRecord.packageDigest.slice(0, 12)}。${ARTWORK_REPOSITORY_BOUNDARY}`
     };
+  }
+
+  function createArtworkRepositoryPackageDigest(packageRecord = {}) {
+    const payload = clone(packageRecord || {});
+    delete payload.packageDigest;
+    return sha256StableJson(payload);
   }
 
   function downloadArtworkRepository(options = {}) {
@@ -12895,6 +12911,7 @@
       lastSkippedConflictCount: 0,
       lastConflictRecords: [],
       lastPackageId: result.package.packageId,
+      lastPackageDigest: result.package.packageDigest,
       lastError: ""
     });
     addEvent("artwork-repository-export", `导出作品仓库包：${result.package.artworks.length} 幅作品`);
@@ -12905,7 +12922,7 @@
       exportedArtworkCount: result.package.artworks.length,
       exportedSessionCount: result.package.linkedSessions.length,
       status: getArtworkRepositoryStatus(),
-      message: `已下载作品仓库 JSON 包：${result.filename}。${ARTWORK_REPOSITORY_BOUNDARY}`
+      message: `已下载作品仓库 JSON 包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${ARTWORK_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -13769,6 +13786,13 @@
     if (source.kind !== ARTWORK_REPOSITORY_KIND) {
       return { ok: false, message: "这不是 MR 书法作品仓库包。" };
     }
+    const digestVerification = verifyArtworkRepositoryPackageDigest(source);
+    if (!digestVerification.ok) {
+      return {
+        ok: false,
+        message: digestVerification.message
+      };
+    }
     const artworks = Array.isArray(source.artworks)
       ? source.artworks
       : Array.isArray(source.records?.artworks)
@@ -13789,8 +13813,40 @@
       package: {
         ...source,
         artworks,
-        linkedSessions
-      }
+        linkedSessions,
+        packageDigest: digestVerification.packageDigest || normalizeArtworkRepositoryHex(source.packageDigest),
+        digestAlgorithm: source.digestAlgorithm || (digestVerification.packageDigest ? ARTWORK_REPOSITORY_DIGEST_ALGORITHM : "")
+      },
+      digestVerification
+    };
+  }
+
+  function verifyArtworkRepositoryPackageDigest(packageRecord = {}) {
+    const claimedDigest = normalizeArtworkRepositoryHex(packageRecord.packageDigest);
+    if (!claimedDigest) {
+      return {
+        ok: true,
+        status: "missing",
+        packageDigest: "",
+        message: "作品仓库包未声明摘要，按旧版本机包导入。"
+      };
+    }
+    const actualDigest = createArtworkRepositoryPackageDigest(packageRecord);
+    if (actualDigest !== claimedDigest) {
+      return {
+        ok: false,
+        status: "digest-mismatch",
+        packageDigest: claimedDigest,
+        actualDigest,
+        message: `作品仓库包摘要校验失败：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}。未导入任何作品。`
+      };
+    }
+    return {
+      ok: true,
+      status: "verified",
+      packageDigest: claimedDigest,
+      actualDigest,
+      message: `作品仓库包摘要校验通过：${claimedDigest.slice(0, 12)}。`
     };
   }
 
@@ -13910,6 +13966,7 @@
       lastSkippedConflictCount: skippedConflictCount,
       lastConflictRecords: conflictRecords,
       lastPackageId: parsed.package.packageId || null,
+      lastPackageDigest: parsed.package.packageDigest || "",
       lastError: skippedConflictCount
         ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机作品。`
         : ""
@@ -13925,8 +13982,8 @@
       totalArtworkCount: state.artworks.length,
       status: getArtworkRepositoryStatus(),
       message: skippedConflictCount
-        ? `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习，跳过 ${skippedConflictCount} 条同 ID 差异记录。${ARTWORK_REPOSITORY_BOUNDARY}`
-        : `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习。${ARTWORK_REPOSITORY_BOUNDARY}`
+        ? `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习，跳过 ${skippedConflictCount} 条同 ID 差异记录。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${ARTWORK_REPOSITORY_BOUNDARY}`
+        : `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${ARTWORK_REPOSITORY_BOUNDARY}`
     };
   }
 

@@ -4797,3 +4797,43 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增导入模型孤立贴图清理`
+
+## 117. 2026-06-13 新增作品仓库包摘要验真
+
+本次回到前台作品仓库，把“导出 JSON / 导入 JSON”从可迁移推进到可验真。此前作品仓库包能导出 ArtworkRecord 和关联练习，也能导入并处理同 ID 冲突，但如果 JSON 文件被手工篡改，导入流程只能按内容处理，缺少包级摘要校验。
+
+完成内容：
+
+- 作品仓库 JSON 包新增 `digestAlgorithm: "sha256-stable-json"`。
+- 作品仓库 JSON 包新增顶层 `packageDigest`，导出时按稳定 JSON 计算 SHA-256。
+- `getArtworkRepositoryStatus()` 会在最近导出/导入状态中显示摘要短码，方便人工核对包版本。
+- `parseArtworkRepositoryPackage()` 导入时会校验 `packageDigest`；若声明摘要与实际内容不匹配，直接返回失败，不导入任何作品或关联练习。
+- 旧版没有 `packageDigest` 的作品仓库包仍可按旧包导入，避免破坏已有本机备份。
+- Playwright 作品仓库用例新增篡改包场景：修改作品标题但保留旧摘要，确认状态显示“摘要校验失败”，作品集仍为空；随后导入原始包成功。
+- 冲突包测试会在修改内容后重新计算摘要，确认同 ID 差异处理仍可用。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机 `ArtworkRecord`、关联 `PracticeSession` 和导出的 JSON 包。
+- 写入状态：导出/导入会记录 `lastPackageDigest`；摘要不匹配时只写入错误状态，不写入作品、练习或冲突副本。
+- 成功反馈：状态栏显示最近导出/导入数量、时间和摘要短码。
+- 失败反馈：篡改包显示声明摘要和实际摘要短码，并明确“未导入任何作品”。
+- 刷新后复现方式：导入成功的摘要写入 `mr-calligraphy-learning-state-v1.artworkRepository.lastPackageDigest`，失败不会污染作品列表。
+
+仍待补：
+
+- 当前是本机 SHA-256 包验真，不是服务端签名、公钥证书链、账号化作品仓库、课堂作品墙或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库包摘要验真`

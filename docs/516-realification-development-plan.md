@@ -9966,3 +9966,47 @@
 提交：
 
 - 中文 commit message：`新增导入模型孤立贴图清理`
+
+### 2026-06-13：新增作品仓库包摘要验真
+
+功能名：前台作品仓库 JSON 包 SHA-256 摘要验真。
+
+开发原因：
+
+- 作品仓库已经能导出/导入本机作品和关联练习，但 JSON 文件被手工改动后，导入流程缺少包级完整性校验。
+- 课堂收集或本机迁移时，用户需要知道“这个包是不是导出后原样导入”，至少要有当前浏览器可重算的摘要证据。
+
+完成内容：
+
+- `getArtworkRepositoryPackage()` 导出的 `mr-calligraphy-artwork-repository-v1` 新增 `digestAlgorithm: "sha256-stable-json"`。
+- 导出包新增 `packageDigest`，按稳定 JSON 计算 SHA-256。
+- 作品仓库状态新增 `lastPackageDigest`，最近导出/导入状态显示摘要短码。
+- `parseArtworkRepositoryPackage()` 导入时验证 `packageDigest`；摘要不匹配时返回失败，不写入任何作品、练习或冲突副本。
+- 无摘要的旧版作品仓库包仍可兼容导入。
+- Playwright 作品仓库用例新增篡改包验收：修改作品标题但保留旧摘要，确认导入失败且作品集仍为空；再导入原包成功。
+- 修改后的同 ID 冲突包会重新计算摘要，确认冲突审计和另存副本仍正常。
+
+验收方式：
+
+- 导出作品仓库 JSON，确认顶层包含 `digestAlgorithm` 和 64 位 `packageDigest`。
+- 修改 JSON 任意作品字段但不更新 `packageDigest`，重新导入应显示“摘要校验失败”，且作品列表不新增记录。
+- 导入未篡改原包应成功，状态栏显示最近导入和摘要短码。
+
+真实边界：
+
+- 数据来源：当前浏览器本机作品仓库和导出的 JSON 文件。
+- 这是本机 SHA-256 完整性校验，不是生产私钥签名、公钥证书链、账号化作品仓库、课堂作品墙或不可篡改审计。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库包摘要验真`

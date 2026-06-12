@@ -4327,3 +4327,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增导入模型孤立贴图清理`
+
+## 117. 2026-06-13 新增作品仓库包摘要验真
+
+本次加强前台作品仓库 JSON 包的可信度。导出的作品仓库包现在带稳定 SHA-256 摘要，导入时如果摘要与内容不一致，会拒绝导入，避免被篡改的 JSON 悄悄写入本机作品集。
+
+完成内容：
+
+- 作品仓库导出包新增 `digestAlgorithm` 和 `packageDigest`。
+- `packageDigest` 按去除自身后的稳定 JSON 计算，覆盖作品、关联练习、summary、records、workspace 和来源边界。
+- 最近导出/导入状态会显示摘要短码，并把完整摘要写入 `artworkRepository.lastPackageDigest`。
+- 导入时如果包声明了 `packageDigest`，会重新计算并比对；不匹配时返回“摘要校验失败”并不写入作品。
+- 未带摘要的旧版作品仓库包仍可导入，兼容此前导出的本机备份。
+- Playwright 用例覆盖导出摘要、篡改包拒绝、原包导入、摘要持久化和修改冲突包后重新签摘要再导入。
+
+真实化说明：
+
+- 数据来源：导出 JSON 包自身和当前浏览器本机作品仓库。
+- 写入状态：成功导入才写入作品、关联练习和 `lastPackageDigest`；摘要失败只写入错误提示。
+- 成功反馈：作品仓库状态显示导出/导入数量与摘要短码。
+- 失败反馈：摘要不匹配时显示声明摘要和实际摘要短码，明确不导入。
+- 刷新后复现方式：成功导入摘要随学习状态持久化；失败不会创建作品记录。
+
+仍待补：
+
+- 当前不是生产签名、服务端验签、账号化远端作品仓库、课堂作品墙或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库包摘要验真`
