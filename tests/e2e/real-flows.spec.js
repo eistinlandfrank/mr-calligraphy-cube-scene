@@ -4103,6 +4103,7 @@ test("main admin records imported model deletion audit", async ({ page }) => {
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expect(page.locator("#mainImportAuditStatus")).toContainText("尚无导入模型删除记录");
+  await expect(page.locator("#mainImportAuditCleanup")).toBeDisabled();
   await expect(page.locator("#mainImportAuditExport")).toBeDisabled();
   await unlockMainAdmin(page);
 
@@ -4123,6 +4124,7 @@ test("main admin records imported model deletion audit", async ({ page }) => {
   await expect(page.locator("#mainImportAuditStatus")).toContainText("已记录 1 条导入模型删除审计", { timeout: 10_000 });
   await expect(page.locator("#mainImportAuditList")).toContainText(importLabel);
   await expect(page.locator("#mainImportAuditList")).toContainText("历史保留");
+  await expect(page.locator("#mainImportAuditCleanup")).toBeEnabled();
   await expect(page.locator("#mainImportAuditExport")).toBeEnabled();
 
   layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
@@ -4134,14 +4136,32 @@ test("main admin records imported model deletion audit", async ({ page }) => {
   expect(auditLog.records[0].cleanupStatus).toBe("retained-for-history");
   expect(auditLog.records[0].referencedByHistory).toBe(true);
   expect(auditLog.records[0].sha256).toBe(importedRecord.sha256);
+  const storedBeforeCleanup = await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", importedRecord.dbKey || importedObjectId);
+  expect(storedBeforeCleanup).toBe(true);
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainImportAuditList")).toContainText(importLabel);
+  await expect(page.locator("#mainImportAuditCleanup")).toBeEnabled();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#mainImportAuditCleanup").click();
+  await expect(page.locator("#mainImportStatus")).toContainText("已清理 1 个主场景历史导入模型文件", { timeout: 30_000 });
+  await expect(page.locator("#mainImportAuditList")).toContainText("文件已清理");
+  await expect(page.locator("#mainImportAuditCleanup")).toBeDisabled();
+
+  const cleanedAuditLog = await readJsonLocalStorage(page, MAIN_IMPORT_AUDIT_KEY);
+  expect(cleanedAuditLog.records).toHaveLength(1);
+  expect(cleanedAuditLog.records[0].modelId).toBe(importedObjectId);
+  expect(cleanedAuditLog.records[0].cleanupStatus).toBe("storage-deleted");
+  expect(cleanedAuditLog.records[0].sha256).toBe(importedRecord.sha256);
+  const storedAfterCleanup = await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", importedRecord.dbKey || importedObjectId);
+  expect(storedAfterCleanup).toBe(false);
+
   const exportResult = await page.evaluate(() => window.MRMainImportAudit.getAuditExport());
   expect(exportResult.ok).toBe(true);
   expect(exportResult.html).toContain("MR 书法主场景导入模型删除审计");
   expect(exportResult.html).toContain(importLabel);
   expect(exportResult.html).toContain(importedRecord.sha256);
+  expect(exportResult.html).toContain("文件已清理");
 
   const auditDownloadPromise = page.waitForEvent("download");
   await page.locator("#mainImportAuditExport").click();
@@ -4152,6 +4172,7 @@ test("main admin records imported model deletion audit", async ({ page }) => {
   expect(auditHtml).toContain("MR 书法主场景导入模型删除审计");
   expect(auditHtml).toContain(importLabel);
   expect(auditHtml).toContain(importedRecord.sha256);
+  expect(auditHtml).toContain("文件已清理");
 });
 
 test("main admin project repository keeps local data on remote failures", async ({ page }) => {

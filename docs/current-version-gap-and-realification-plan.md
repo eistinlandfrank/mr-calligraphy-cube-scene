@@ -4714,3 +4714,42 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增课堂评阅汇总导出`
+
+## 115. 2026-06-13 新增主后台导入模型历史文件清理
+
+本次回到后台场景编辑，把主后台导入模型删除审计从“只能说明为什么保留文件”推进到“用户可手动清理历史保留资产”。此前写实后台已经有“清理已删除文件”，主后台在导入模型被历史快照引用时会保留 IndexedDB 文件，但缺少后续清理入口，容易让后台资产管理闭环不完整。
+
+完成内容：
+
+- 主后台导入模型删除审计区新增 `mainImportAuditCleanup`，按钮文案为“清理历史文件”。
+- `main-admin-scene.js` 新增 `getRetainedImportAuditRecords()`，只筛选审计状态为 `retained-for-history` 且不在当前布局中的导入资产。
+- 新增 `cleanupRetainedImportedModelFiles()`，点击后确认风险，逐条删除 `mr-calligraphy-main-model-store/models` 中的历史保留模型文件。
+- 清理成功会把对应审计记录更新为 `storage-deleted`，审计列表和 HTML 导出显示“文件已清理”。
+- 清理按钮受本机后台 `delete` 权限门控；无可清理记录或权限不足时保持禁用。
+- Playwright 主后台导入删除审计用例扩展为验证清理按钮、确认弹窗、IndexedDB 资产删除、审计状态更新和 HTML 导出内容。
+- smoke test 新增主后台清理按钮静态标记。
+
+真实化说明：
+
+- 数据来源：主后台本机导入模型删除审计 `mr-calligraphy-main-import-audit-v1` 与 IndexedDB 模型仓库 `mr-calligraphy-main-model-store/models`。
+- 写入状态：清理后更新同一条审计记录的 `cleanupStatus`、`action` 和说明；不会伪造新的场景对象。
+- 成功反馈：状态区显示实际清理数量，审计列表显示“文件已清理”，测试会读取 IndexedDB 确认资产不存在。
+- 失败反馈：无历史保留记录、用户取消、权限不足或删除失败都有明确提示，不返回虚假成功。
+- 刷新后复现方式：清理结果写入 localStorage 审计记录，刷新主后台仍显示“文件已清理”。
+
+仍待补：
+
+- 这是主后台本机 IndexedDB 文件清理，不是服务端资产回收、生产 CDN purge、账号权限审计或不可篡改日志。清理后，依赖该导入资产的旧本机快照可能无法完整恢复对应模型文件。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin records imported model deletion audit"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增主后台导入模型历史文件清理`

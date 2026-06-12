@@ -72,6 +72,7 @@ const importModelMaterialUpdateButton = document.getElementById("mainImportModel
 const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
 const importAuditStatus = document.getElementById("mainImportAuditStatus");
 const importAuditList = document.getElementById("mainImportAuditList");
+const importAuditCleanupButton = document.getElementById("mainImportAuditCleanup");
 const importAuditExportButton = document.getElementById("mainImportAuditExport");
 const ambientLightInput = document.getElementById("mainAmbientLight");
 const envLightInput = document.getElementById("mainEnvLight");
@@ -302,7 +303,8 @@ animate();
 
 window.MRMainImportAudit = {
   getAuditLog: loadImportAuditLog,
-  getAuditExport: getImportAuditExport
+  getAuditExport: getImportAuditExport,
+  getRetainedRecords: getRetainedImportAuditRecords
 };
 window.MRMainAdminBoundary = {
   render: renderAdminBoundaryPanel
@@ -1773,6 +1775,7 @@ function getAdminPermissionControls() {
     { element: importModelTextureInput, permission: "import" },
     { element: importModelTextureClearButton, permission: "import" },
     { element: importModelMaterialUpdateButton, permission: "edit" },
+    { element: importAuditCleanupButton, permission: "delete" },
     { element: lightResetButton, permission: "edit" },
     { element: layerBatchHideButton, permission: "edit" },
     { element: layerBatchShowButton, permission: "edit" },
@@ -2863,6 +2866,29 @@ function recordImportAudit(record) {
   return normalized;
 }
 
+function getRetainedImportAuditRecords() {
+  const currentImported = new Set(layout.importedModels.flatMap((record) => [
+    String(record.id || ""),
+    String(record.dbKey || "")
+  ]).filter(Boolean));
+  const seen = new Set();
+
+  return loadImportAuditLog().records.filter((record) => {
+    if (record.cleanupStatus !== "retained-for-history") {
+      return false;
+    }
+    const key = record.dbKey || record.modelId;
+    if (!key || seen.has(key)) {
+      return false;
+    }
+    if (currentImported.has(record.modelId) || currentImported.has(record.dbKey)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+}
+
 function createImportDeleteAuditBase(record = {}, options = {}) {
   const metrics = normalizeImportMetrics(record.metrics);
   return {
@@ -2881,13 +2907,17 @@ function createImportDeleteAuditBase(record = {}, options = {}) {
 function renderImportAuditPanel() {
   const log = loadImportAuditLog();
   const records = log.records;
+  const retainedRecords = getRetainedImportAuditRecords();
 
   if (importAuditExportButton) {
     importAuditExportButton.disabled = !records.length;
   }
+  if (importAuditCleanupButton) {
+    importAuditCleanupButton.disabled = !retainedRecords.length || !adminCanPerform("delete");
+  }
   if (importAuditStatus) {
     importAuditStatus.textContent = records.length
-      ? `已记录 ${records.length} 条导入模型删除审计。最近：${records[0].message}`
+      ? `已记录 ${records.length} 条导入模型删除审计。${retainedRecords.length ? `可清理 ${retainedRecords.length} 个历史保留文件。` : "暂无可清理历史文件。"}最近：${records[0].message}`
       : "尚无导入模型删除记录。";
   }
   if (!importAuditList) {
@@ -2918,6 +2948,73 @@ function exportImportAudit() {
   }
   downloadHtmlFile(result.html, result.filename);
   showNotice(result.message);
+}
+
+async function cleanupRetainedImportedModelFiles() {
+  if (!ensureAdminPermission("delete", "清理主场景历史导入模型文件")) {
+    return;
+  }
+
+  const retainedRecords = getRetainedImportAuditRecords();
+  if (!retainedRecords.length) {
+    showImportStatus("没有可清理的主场景历史导入模型文件。");
+    renderImportAuditPanel();
+    return;
+  }
+
+  const confirmed = window.confirm(`将永久清理 ${retainedRecords.length} 个主场景历史保留导入模型文件。历史快照可能无法恢复这些导入资产，继续？`);
+  if (!confirmed) {
+    showImportStatus("已取消清理主场景历史导入模型文件。");
+    return;
+  }
+
+  if (importAuditCleanupButton) {
+    importAuditCleanupButton.disabled = true;
+  }
+
+  let cleaned = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const record of retainedRecords) {
+    if (layout.importedModels.some((item) => item.id === record.modelId || item.dbKey === record.dbKey)) {
+      skipped += 1;
+      continue;
+    }
+
+    try {
+      await deleteImportedModelData({
+        id: record.modelId,
+        dbKey: record.dbKey || record.modelId,
+        label: record.label,
+        fileName: record.fileName,
+        type: "glb"
+      });
+      cleaned += 1;
+      recordImportAudit({
+        ...record,
+        action: "cleanup",
+        cleanupStatus: "storage-deleted",
+        referencedByHistory: true,
+        message: `已永久清理主场景历史保留导入模型文件：${record.label}`
+      });
+    } catch (error) {
+      console.warn("Main imported model retained file could not be cleaned.", error);
+      failed += 1;
+      recordImportAudit({
+        ...record,
+        action: "cleanup",
+        cleanupStatus: "delete-failed",
+        referencedByHistory: true,
+        message: `主场景历史保留导入模型文件清理失败：${record.label}`,
+        error: error?.message || String(error || "")
+      });
+    }
+  }
+
+  renderImportAuditPanel();
+  const failedText = failed ? `，${failed} 个清理失败` : "";
+  const skippedText = skipped ? `，${skipped} 个仍在当前布局中已跳过` : "";
+  showImportStatus(`已清理 ${cleaned} 个主场景历史导入模型文件${failedText}${skippedText}。`);
 }
 
 function getImportAuditExport() {
@@ -4913,6 +5010,7 @@ function bindUi() {
   importModelTextureInput?.addEventListener("change", replaceSelectedImportedModelTexture);
   importModelTextureClearButton?.addEventListener("click", clearSelectedImportedModelTexture);
   importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
+  importAuditCleanupButton?.addEventListener("click", cleanupRetainedImportedModelFiles);
   importAuditExportButton?.addEventListener("click", exportImportAudit);
   renderImportAuditPanel();
   [ambientLightInput, envLightInput, keyLightInput, rimLightInput, exposureInput].forEach((input) => {
