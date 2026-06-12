@@ -4400,3 +4400,37 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告仓库重试恢复`
+
+### 2026-06-13：新增学习阶段动作详情
+
+完成内容：
+
+- 前台“进入笔画拆解 / 进入创作 / 复习巩固”三类阶段动作详情新增阶段记录 ID 和目标步骤。
+- 阶段动作详情列表显示记录 ID、写入时间和阶段完成清单。
+- 前台真实流程 E2E 不再只手动跳步骤，而是真实点击“进入笔画拆解”和“进入创作”按钮。
+- E2E 验证 `stageRecords` 包含 `strokeBreakdown`、`creation` 和 `review` 三条阶段记录。
+- 学习档案阶段筛选、批量导出包和远端学习档案同步包都验证三条阶段记录进入真实数据。
+
+真实化说明：
+
+- 数据来源：`MRAppState.recordLearningStage()` 写入的本机阶段记录、当前任务和阶段进度。
+- 写入状态：`mr-calligraphy-learning-state-v1.stageRecords`。
+- 成功反馈：动作详情卡显示具体阶段记录 ID、目标步骤、任务、字帖和进度。
+- 失败反馈：未知阶段不写入成功记录，也不会展示假阶段。
+- 刷新后复现方式：阶段记录会在学习档案列表、批量导出包和远端学习档案包中继续存在。
+
+仍待补：
+
+- 当前是浏览器本机阶段记录闭环，不是教师端课堂任务流、云端阶段审批、多端协同或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习阶段动作详情`

@@ -3927,3 +3927,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告仓库重试恢复`
+
+## 107. 2026-06-13 新增学习阶段动作详情
+
+本次把前台“进入笔画拆解 / 进入创作 / 复习巩固”三类阶段跳转从“只写阶段记录和跳页”推进到“写入记录后能在动作详情卡、学习档案和远端学习档案包里完整追踪”。用户点击阶段按钮后，会看到阶段记录 ID、目标步骤、任务、字帖和阶段进度，不再像普通跳转按钮。
+
+完成内容：
+
+- `app-state.js` 扩展 `getStageActionDetail()`，阶段动作详情新增“阶段记录 ID”和“目标步骤”指标。
+- 阶段详情列表新增记录 ID、写入时间和当前阶段完成清单。
+- 前台主流程 E2E 改为真实点击“进入笔画拆解”和“进入创作”，并继续覆盖“复习巩固”。
+- E2E 验证三条阶段记录都写入 `stageRecords`，并出现在学习档案阶段筛选里。
+- 学习档案批量导出和远端学习档案推送同步更新断言，验证 3 条阶段记录进入本机导出包和远端同步包。
+
+真实化说明：
+
+- 数据来源：`MRAppState.recordLearningStage()` 写入的真实阶段记录、当前任务和学习阶段进度。
+- 写入状态：`mr-calligraphy-learning-state-v1.stageRecords`。
+- 成功反馈：动作详情卡展示具体阶段记录 ID、目标步骤和进度。
+- 失败反馈：未知阶段仍返回真实失败，不写入假记录。
+- 刷新后复现方式：阶段记录会进入学习档案列表、批量导出包和远端学习档案同步包。
+
+仍待补：
+
+- 当前是浏览器本机阶段记录详情，不是教师端课堂任务流、云端阶段审批、多端协同或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习阶段动作详情`

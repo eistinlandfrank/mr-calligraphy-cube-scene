@@ -5063,11 +5063,17 @@
       status: `阶段 ${stageProgress.done}/${stageProgress.total}`,
       summary: record.note || config.summary,
       metrics: [
+        { label: "阶段记录 ID", value: record.id || "未保存" },
         { label: "任务", value: task?.taskTitle || `${record.glyph}字学习` },
         { label: "字帖", value: record.copybook },
+        { label: "目标步骤", value: `第 ${normalizeInteger(record.targetStep, config.targetStep, 0, 9) + 1} 步` },
         { label: "阶段进度", value: `${stageProgress.percent}%` }
       ],
-      items: stageProgress.stages.map((stage) => `${stage.done ? "已完成" : "待完成"}：${stage.label}`)
+      items: [
+        `阶段记录 ID：${record.id || "未保存"}。`,
+        `写入时间：${formatPlanDate(record.completedAt || record.createdAt)}。`,
+        ...stageProgress.stages.map((stage) => `${stage.done ? "已完成" : "待完成"}：${stage.label}`)
+      ]
     };
   }
 
