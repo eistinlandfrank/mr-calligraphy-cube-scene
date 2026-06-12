@@ -4753,3 +4753,47 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增主后台导入模型历史文件清理`
+
+## 116. 2026-06-13 新增导入模型孤立贴图清理
+
+本次继续完善后台场景编辑的导入模型资产管理。此前主后台和写实后台已经支持替换、移除导入模型贴图，但“移除引用”不会立刻删除贴图二进制，这是为了保护历史快照和已发布版本；缺口在于用户缺少一个可确认、可审计、可验证的后续清理入口。
+
+完成内容：
+
+- `model-import-utils.js` 的 IndexedDB 模型仓库新增 `list()`，用于真实枚举本机已保存的模型/贴图资产。
+- 主后台导入模型材质区新增 `mainImportModelTextureCleanup`，按钮文案为“清理孤立贴图”。
+- 写实后台导入模型材质区新增 `realisticImportModelTextureCleanup`，按钮文案为“清理孤立贴图”。
+- 主后台和写实后台分别扫描当前草稿、保存历史、当前发布版本和发布版本历史，只把未被任何版本引用的 PNG/JPG/WebP 贴图判定为孤立贴图。
+- 清理动作受本机后台 `delete` 权限门控，并在执行前弹出确认，避免误删仍有业务含义的资产。
+- 清理成功后删除对应 IndexedDB 贴图记录，并写入导入模型审计；审计列表和 HTML 导出继续显示“文件已清理”。
+- Playwright 主后台/写实后台材质发布用例扩展为手动写入一个真实 IndexedDB 孤立贴图，点击清理后确认孤立贴图消失，同时确认当前草稿贴图和已发布版本贴图仍保留。
+- smoke test 新增主后台和写实后台贴图输入、移除、孤立清理按钮标记。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-main-model-store/models`、`mr-calligraphy-model-store/models`、当前 localStorage 草稿、保存历史和发布版本历史。
+- 写入状态：清理只删除没有任何布局引用的贴图资产，并把结果写入对应导入模型审计，不会伪造场景对象或删除仍被发布版本引用的贴图。
+- 成功反馈：状态区显示实际清理数量，材质状态显示清理完成，审计列表显示“文件已清理”。
+- 失败反馈：无孤立贴图、用户取消、权限不足、扫描失败或删除失败都会返回明确提示。
+- 刷新后复现方式：清理结果保存在 IndexedDB 删除状态和 localStorage 审计记录里，刷新后台后仍可查看审计。
+
+仍待补：
+
+- 当前是本机浏览器 IndexedDB 贴图清理，不是服务端对象存储回收、生产 CDN purge、多人账号权限、不可篡改审计或跨设备资产回收。
+
+验收：
+
+- `node --input-type=module --check < model-import-utils.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin updates imported model material and publishes it"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "realistic admin updates imported model material and publishes it"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增导入模型孤立贴图清理`

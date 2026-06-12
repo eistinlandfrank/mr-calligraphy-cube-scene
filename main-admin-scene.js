@@ -68,6 +68,7 @@ const importModelMetalnessValue = document.getElementById("mainImportModelMetaln
 const importModelReplaceInput = document.getElementById("mainImportModelReplace");
 const importModelTextureInput = document.getElementById("mainImportModelTexture");
 const importModelTextureClearButton = document.getElementById("mainImportModelTextureClear");
+const importModelTextureCleanupButton = document.getElementById("mainImportModelTextureCleanup");
 const importModelMaterialUpdateButton = document.getElementById("mainImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
 const importAuditStatus = document.getElementById("mainImportAuditStatus");
@@ -240,6 +241,7 @@ const DECOR_SPECS = [
 
 const layout = loadLayout();
 let layoutHistory = loadLayoutHistory();
+let importTextureCleanupRefreshToken = 0;
 let lighting = normalizeLighting(layout.lighting);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x11100e);
@@ -305,6 +307,10 @@ window.MRMainImportAudit = {
   getAuditLog: loadImportAuditLog,
   getAuditExport: getImportAuditExport,
   getRetainedRecords: getRetainedImportAuditRecords
+};
+window.MRMainImportTextureCleanup = {
+  getOrphanRecords: getOrphanImportedTextureRecords,
+  refresh: refreshImportTextureCleanupState
 };
 window.MRMainAdminBoundary = {
   render: renderAdminBoundaryPanel
@@ -1774,6 +1780,7 @@ function getAdminPermissionControls() {
     { element: importModelReplaceInput, permission: "import" },
     { element: importModelTextureInput, permission: "import" },
     { element: importModelTextureClearButton, permission: "import" },
+    { element: importModelTextureCleanupButton, permission: "delete" },
     { element: importModelMaterialUpdateButton, permission: "edit" },
     { element: importAuditCleanupButton, permission: "delete" },
     { element: lightResetButton, permission: "edit" },
@@ -2753,6 +2760,164 @@ async function readImportedModelTexture(record) {
   return createThreeTextureFromArrayBuffer(stored.arrayBuffer, textureRecord);
 }
 
+function normalizeStoredTextureAsset(record = {}) {
+  const dbKey = String(record.key || record.dbKey || record.id || "").trim();
+  const fileName = String(record.fileName || record.label || dbKey || "导入贴图").trim();
+  const type = getImportTextureType(fileName, record.mimeType || record.type);
+
+  if (!dbKey || (!["png", "jpg", "webp"].includes(type) && !dbKey.includes(":texture-"))) {
+    return null;
+  }
+
+  return {
+    dbKey,
+    fileName: fileName.slice(0, 160),
+    type: type || String(record.type || "").trim(),
+    sha256: normalizeSha256(record.sha256),
+    fileBytes: Math.max(0, Math.round(readNumber(record.metrics?.fileBytes ?? record.fileBytes, 0)))
+  };
+}
+
+function collectTextureKeysFromImportedModels(importedModels, keys) {
+  if (!Array.isArray(importedModels)) {
+    return;
+  }
+
+  importedModels.forEach((record) => {
+    const texture = normalizeImportTextureRecord(record?.texture);
+    if (texture?.dbKey) {
+      keys.add(texture.dbKey);
+    }
+  });
+}
+
+function collectTextureKeysFromMainLayout(layoutValue, keys) {
+  const normalized = normalizeSnapshotLayout(layoutValue || {});
+  collectTextureKeysFromImportedModels(normalized.importedModels, keys);
+}
+
+function getReferencedImportedTextureKeys() {
+  const keys = new Set();
+  collectTextureKeysFromMainLayout(layout, keys);
+  layoutHistory.forEach((snapshot) => collectTextureKeysFromMainLayout(snapshot.layout, keys));
+
+  const published = loadPublishedLayoutRecord();
+  if (published?.layout) {
+    collectTextureKeysFromMainLayout(published.layout, keys);
+  }
+  published?.releases?.forEach((release) => collectTextureKeysFromMainLayout(release.layout, keys));
+  return keys;
+}
+
+async function getOrphanImportedTextureRecords() {
+  const referencedKeys = getReferencedImportedTextureKeys();
+  const storedRecords = await importedModelStore.list();
+  const seen = new Set();
+
+  return storedRecords
+    .map(normalizeStoredTextureAsset)
+    .filter(Boolean)
+    .filter((record) => {
+      if (seen.has(record.dbKey) || referencedKeys.has(record.dbKey)) {
+        return false;
+      }
+      seen.add(record.dbKey);
+      return true;
+    });
+}
+
+async function refreshImportTextureCleanupState() {
+  if (!importModelTextureCleanupButton) {
+    return [];
+  }
+
+  const refreshToken = ++importTextureCleanupRefreshToken;
+  importModelTextureCleanupButton.disabled = true;
+  try {
+    const orphanRecords = await getOrphanImportedTextureRecords();
+    if (refreshToken !== importTextureCleanupRefreshToken) {
+      return orphanRecords;
+    }
+    importModelTextureCleanupButton.dataset.orphanTextureCount = String(orphanRecords.length);
+    importModelTextureCleanupButton.title = orphanRecords.length
+      ? `可清理 ${orphanRecords.length} 个未被草稿、快照或发布版本引用的贴图。`
+      : "没有可清理的孤立贴图。";
+    importModelTextureCleanupButton.disabled = !orphanRecords.length || !adminCanPerform("delete");
+    return orphanRecords;
+  } catch (error) {
+    if (refreshToken !== importTextureCleanupRefreshToken) {
+      return [];
+    }
+    console.warn("Main orphan texture assets could not be scanned.", error);
+    importModelTextureCleanupButton.dataset.orphanTextureCount = "0";
+    importModelTextureCleanupButton.title = "孤立贴图扫描失败，请查看控制台。";
+    importModelTextureCleanupButton.disabled = true;
+    return [];
+  }
+}
+
+async function cleanupOrphanImportedTextures() {
+  if (!ensureAdminPermission("delete", "清理主后台孤立贴图")) {
+    return;
+  }
+
+  const orphanRecords = await getOrphanImportedTextureRecords();
+  if (!orphanRecords.length) {
+    showImportStatus("没有可清理的主后台孤立贴图。");
+    await refreshImportTextureCleanupState();
+    return;
+  }
+
+  const confirmed = window.confirm(`将永久清理 ${orphanRecords.length} 个未被主场景草稿、保存历史或发布版本引用的贴图文件。继续？`);
+  if (!confirmed) {
+    showImportStatus("已取消清理主后台孤立贴图。");
+    return;
+  }
+
+  importModelTextureCleanupButton.disabled = true;
+  importTextureCleanupRefreshToken += 1;
+  let cleaned = 0;
+  let failed = 0;
+  for (const record of orphanRecords) {
+    try {
+      await deleteImportedModelData({ id: record.dbKey, dbKey: record.dbKey });
+      cleaned += 1;
+      recordImportAudit({
+        action: "texture-cleanup",
+        modelId: "",
+        dbKey: record.dbKey,
+        label: record.fileName || "孤立贴图",
+        fileName: record.fileName,
+        sha256: record.sha256,
+        fileBytes: record.fileBytes,
+        cleanupStatus: "storage-deleted",
+        message: `已清理主后台孤立贴图文件：${record.fileName || record.dbKey}`
+      });
+    } catch (error) {
+      console.warn("Main orphan texture asset could not be cleaned.", error);
+      failed += 1;
+      recordImportAudit({
+        action: "texture-cleanup",
+        modelId: "",
+        dbKey: record.dbKey,
+        label: record.fileName || "孤立贴图",
+        fileName: record.fileName,
+        sha256: record.sha256,
+        fileBytes: record.fileBytes,
+        cleanupStatus: "delete-failed",
+        message: `主后台孤立贴图文件清理失败：${record.fileName || record.dbKey}`,
+        error: error?.message || String(error || "")
+      });
+    }
+  }
+
+  await refreshImportTextureCleanupState();
+  renderImportAuditPanel();
+  const failedText = failed ? `，${failed} 个清理失败` : "";
+  showImportStatus(`已清理 ${cleaned} 个主后台孤立贴图文件${failedText}。`);
+  showImportMaterialStatus(`已清理 ${cleaned} 个未被草稿、快照或发布版本引用的主后台贴图文件${failedText}。`);
+}
+
 function createThreeTextureFromArrayBuffer(arrayBuffer, textureRecord) {
   const normalized = normalizeImportTextureRecord(textureRecord);
   if (!normalized) {
@@ -3676,6 +3841,7 @@ function updateUiState() {
     importModelTextureClearButton.disabled = !isImported || deleted || hidden || locked || !textureRecord;
   }
   applyAdminPermissionState();
+  refreshImportTextureCleanupState();
 }
 
 function snapshot(entry) {
@@ -4394,6 +4560,7 @@ async function replaceSelectedImportedModelTexture(event) {
     saveEntry(entry);
     selectObject(entry.id);
     createLayoutSnapshot(`贴图：${entry.label}`, { notice: false });
+    refreshImportTextureCleanupState();
     showImportMaterialStatus(`已替换贴图：${entry.label} · ${textureRecord.fileName} · SHA ${textureRecord.sha256.slice(0, 12)}。`);
     showImportStatus(`已替换导入模型贴图：${entry.label}。贴图文件保存在本机 IndexedDB，并会随发布版本引用。`);
     showNotice(`已替换导入贴图：${entry.label}`);
@@ -4440,6 +4607,7 @@ function clearSelectedImportedModelTexture() {
     saveEntry(entry);
     selectObject(entry.id);
     createLayoutSnapshot(`移除贴图：${entry.label}`, { notice: false });
+    refreshImportTextureCleanupState();
     showImportMaterialStatus(`已移除贴图：${entry.label} · ${previousTexture.fileName}。当前模型已恢复为颜色/PBR 材质。`);
     showImportStatus(`已移除导入模型贴图引用：${entry.label}。原贴图文件仍保留给历史快照或已发布版本读取。`);
     showNotice(`已移除导入贴图：${entry.label}`);
@@ -5009,6 +5177,7 @@ function bindUi() {
   importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
   importModelTextureInput?.addEventListener("change", replaceSelectedImportedModelTexture);
   importModelTextureClearButton?.addEventListener("click", clearSelectedImportedModelTexture);
+  importModelTextureCleanupButton?.addEventListener("click", cleanupOrphanImportedTextures);
   importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
   importAuditCleanupButton?.addEventListener("click", cleanupRetainedImportedModelFiles);
   importAuditExportButton?.addEventListener("click", exportImportAudit);

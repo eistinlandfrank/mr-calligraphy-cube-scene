@@ -4283,3 +4283,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增主后台导入模型历史文件清理`
+
+## 116. 2026-06-13 新增导入模型孤立贴图清理
+
+本次把主后台和写实后台的导入模型贴图管理补成可回收闭环。用户替换或移除贴图后，旧贴图会先保留给草稿、历史快照和发布版本；现在后台可以扫描真正无人引用的贴图，并由用户确认后清理。
+
+完成内容：
+
+- IndexedDB 模型仓库新增真实列表读取能力，后台可枚举本机保存的导入模型和贴图文件。
+- 主后台“导入模型材质”新增“清理孤立贴图”按钮。
+- 写实后台“导入模型材质”新增“清理孤立贴图”按钮。
+- 清理前会收集当前草稿、保存历史、当前发布版本和发布版本历史中的贴图 `dbKey`，只清理未被引用的 PNG/JPG/WebP 贴图。
+- 清理入口受本机后台删除权限控制，且必须经过确认弹窗。
+- 清理结果写入对应导入模型审计，列表和导出 HTML 可看到“文件已清理”。
+- Playwright 覆盖主后台与写实后台：构造真实 IndexedDB 孤立贴图、执行清理、确认孤立贴图删除，并确认当前和已发布贴图仍保留。
+- smoke test 覆盖新增按钮和贴图输入/移除控件标记。
+
+真实化说明：
+
+- 数据来源：后台本机 IndexedDB 模型仓库和 localStorage 草稿/历史/发布记录。
+- 写入状态：只删除孤立贴图二进制，保留仍被任何版本引用的贴图，审计写入 localStorage。
+- 成功反馈：状态栏显示真实清理数量，审计列表显示清理状态。
+- 失败反馈：没有孤立贴图、权限不足、用户取消、扫描失败或删除失败都不会显示假成功。
+- 刷新后复现方式：IndexedDB 中孤立贴图已删除，审计记录持久化。
+
+仍待补：
+
+- 当前不是服务端资产回收、CDN purge、生产账号权限、多人协作后台或不可篡改资产审计。
+
+验收：
+
+- `node --input-type=module --check < model-import-utils.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin updates imported model material and publishes it"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "realistic admin updates imported model material and publishes it"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增导入模型孤立贴图清理`

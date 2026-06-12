@@ -337,6 +337,16 @@ export function createModelStore(options = {}) {
         request.onerror = () => reject(request.error || new Error("Could not read imported model."));
       });
     },
+    async list() {
+      const db = await open();
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, "readonly");
+        const store = transaction.objectStore(storeName);
+        const request = store.getAll();
+        request.onsuccess = () => resolve(Array.isArray(request.result) ? request.result : []);
+        request.onerror = () => reject(request.error || new Error("Could not list imported models."));
+      });
+    },
     async delete(record) {
       const key = getKey(record);
       if (!key) {

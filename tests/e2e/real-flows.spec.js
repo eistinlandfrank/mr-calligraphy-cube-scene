@@ -3935,7 +3935,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
 });
 
 test("main admin updates imported model material and publishes it", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   const importLabel = `E2E 导入外观 ${Date.now()}`;
   const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
   const texturePath = path.resolve(__dirname, "../../assets/cube/floor.png");
@@ -4018,6 +4018,32 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(importedRecord.texture.sha256).toMatch(/^[a-f0-9]{64}$/);
   expect(importedRecord.texture.fileBytes).toBeGreaterThan(0);
   expect(await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", importedRecord.texture.dbKey)).toBe(true);
+  const currentTextureKey = importedRecord.texture.dbKey;
+  const orphanTextureKey = `e2e-main-orphan-texture-${Date.now()}`;
+  await storeImportedAsset(page, "mr-calligraphy-main-model-store", "models", orphanTextureKey, {
+    fileName: "e2e-main-orphan-texture.png",
+    type: "png",
+    mimeType: "image/png",
+    sha256: "b".repeat(64),
+    fileBytes: 4,
+    metrics: { fileBytes: 4 }
+  });
+  await page.evaluate(() => window.MRMainImportTextureCleanup.refresh());
+  await expect(page.locator("#mainImportModelTextureCleanup")).toBeEnabled();
+  const mainOrphanRecords = await page.evaluate(() => window.MRMainImportTextureCleanup.getOrphanRecords());
+  const mainOrphanKeys = mainOrphanRecords.map((record) => record.dbKey);
+  expect(mainOrphanKeys).toContain(orphanTextureKey);
+  expect(mainOrphanKeys).not.toContain(firstTextureKey);
+  expect(mainOrphanKeys).not.toContain(currentTextureKey);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#mainImportModelTextureCleanup").click();
+  await expect(page.locator("#mainImportStatus")).toContainText(`已清理 ${mainOrphanRecords.length} 个主后台孤立贴图文件`, { timeout: 30_000 });
+  await expect(page.locator("#mainImportAuditList")).toContainText("文件已清理");
+  await expect(page.locator("#mainImportModelTextureCleanup")).toBeDisabled();
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", orphanTextureKey)).toBe(false);
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", firstTextureKey)).toBe(true);
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", currentTextureKey)).toBe(true);
 
   await setRangeValue(page, "#mainImportModelRoughness", "0.82");
   await page.locator("#mainImportModelMaterialUpdate").click();
@@ -4538,7 +4564,7 @@ test("realistic admin keeps local publish releases and rollback history", async 
 });
 
 test("realistic admin updates imported model material and publishes it", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
   const texturePath = path.resolve(__dirname, "../../assets/cube/wall-wood-front.png");
 
@@ -4619,6 +4645,32 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(importedRecord.texture.sha256).toMatch(/^[a-f0-9]{64}$/);
   expect(importedRecord.texture.fileBytes).toBeGreaterThan(0);
   expect(await hasStoredImportedAsset(page, "mr-calligraphy-model-store", "models", importedRecord.texture.dbKey)).toBe(true);
+  const currentTextureKey = importedRecord.texture.dbKey;
+  const orphanTextureKey = `e2e-realistic-orphan-texture-${Date.now()}`;
+  await storeImportedAsset(page, "mr-calligraphy-model-store", "models", orphanTextureKey, {
+    fileName: "e2e-realistic-orphan-texture.png",
+    type: "png",
+    mimeType: "image/png",
+    sha256: "c".repeat(64),
+    fileBytes: 4,
+    metrics: { fileBytes: 4 }
+  });
+  await page.evaluate(() => window.MRRealisticImportTextureCleanup.refresh());
+  await expect(page.locator("#realisticImportModelTextureCleanup")).toBeEnabled();
+  const realisticOrphanRecords = await page.evaluate(() => window.MRRealisticImportTextureCleanup.getOrphanRecords());
+  const realisticOrphanKeys = realisticOrphanRecords.map((record) => record.dbKey);
+  expect(realisticOrphanKeys).toContain(orphanTextureKey);
+  expect(realisticOrphanKeys).not.toContain(firstTextureKey);
+  expect(realisticOrphanKeys).not.toContain(currentTextureKey);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#realisticImportModelTextureCleanup").click();
+  await expect(page.locator("#importStatus")).toContainText(`已清理 ${realisticOrphanRecords.length} 个写实孤立贴图文件`, { timeout: 30_000 });
+  await expect(page.locator("#realisticImportAuditList")).toContainText("文件已清理");
+  await expect(page.locator("#realisticImportModelTextureCleanup")).toBeDisabled();
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-model-store", "models", orphanTextureKey)).toBe(false);
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-model-store", "models", firstTextureKey)).toBe(true);
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-model-store", "models", currentTextureKey)).toBe(true);
 
   await setRangeValue(page, "#realisticImportModelMetalness", "0.25");
   await page.locator("#realisticImportModelMaterialUpdate").click();
@@ -4855,6 +4907,50 @@ async function hasStoredImportedAsset(page, dbName, storeName, dbKey) {
       };
     });
   }, { name: dbName, store: storeName, key: dbKey });
+}
+
+async function storeImportedAsset(page, dbName, storeName, dbKey, record = {}) {
+  return page.evaluate(({ name, store, key, record }) => {
+    return new Promise((resolve, reject) => {
+      const openRequest = window.indexedDB.open(name, 1);
+      openRequest.onupgradeneeded = () => {
+        const db = openRequest.result;
+        if (!db.objectStoreNames.contains(store)) {
+          db.createObjectStore(store, { keyPath: "key" });
+        }
+      };
+      openRequest.onerror = () => reject(openRequest.error);
+      openRequest.onsuccess = () => {
+        const db = openRequest.result;
+        if (!db.objectStoreNames.contains(store)) {
+          db.close();
+          reject(new Error(`IndexedDB store not found: ${store}`));
+          return;
+        }
+        const transaction = db.transaction(store, "readwrite");
+        const arrayBuffer = new Uint8Array([1, 2, 3, 4]).buffer;
+        const request = transaction.objectStore(store).put({
+          key,
+          id: key,
+          dbKey: key,
+          fileName: record.fileName || "orphan-texture.png",
+          type: record.type || "png",
+          mimeType: record.mimeType || "image/png",
+          sha256: record.sha256 || "a".repeat(64),
+          metrics: record.metrics || { fileBytes: 4 },
+          fileBytes: record.fileBytes || 4,
+          arrayBuffer,
+          ...record
+        });
+        request.onerror = () => reject(request.error);
+        transaction.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        transaction.onerror = () => reject(transaction.error);
+      };
+    });
+  }, { name: dbName, store: storeName, key: dbKey, record });
 }
 
 async function getSameOriginEndpoint(page, path) {
