@@ -10093,3 +10093,48 @@
 提交：
 
 - 中文 commit message：`新增学习路径动作覆盖验收`
+
+### 2026-06-13：新增学习档案包摘要验真
+
+功能名：前台学习档案 JSON 同步包 SHA-256 摘要验真。
+
+开发原因：
+
+- 学习档案仓库已经支持本机 JSON 导出、远端推送、远端拉取和冲突审计，但包内容缺少完整性校验。
+- 用户关注前端功能是否真实可用；同步包被手工修改后仍能导入，会让“可导入”停留在流程层而不是可信数据层。
+
+完成内容：
+
+- `MRAppState.getHistoryRepositoryPackage()` 输出 `digestAlgorithm: "sha256-stable-json"` 和 64 位 `packageDigest`。
+- 摘要覆盖练习、作品、报告、阶段记录、详情快照、summary、Workspace 和来源边界。
+- `parseHistoryRepositoryPackage()` 会在导入前验证 `packageDigest`；不匹配时拒绝导入并保留本机档案不变。
+- 无摘要旧包继续兼容导入。
+- `downloadHistoryRepository()`、`importHistoryRepositoryPackage()`、`checkRemoteHistoryRepository()`、`pushHistoryRepositoryToRemote()` 和 `pullHistoryRepositoryFromRemote()` 都会持久化最近包摘要。
+- 远端失败历史会记录当前推送包摘要，便于排查失败请求。
+- Node 状态层脚本和 Playwright 用例新增摘要字段、篡改拒绝、远端持久化和分页冲突包重算验收。
+
+验收方式：
+
+- 导出学习档案 JSON，确认顶层包含 `digestAlgorithm` 和 64 位 `packageDigest`。
+- 修改 JSON 任意练习标题但不更新摘要，重新导入应提示“学习档案同步包摘要校验失败”，且本机档案不新增、不覆盖。
+- 配置远端学习档案 API 后推送，服务端收到的 PUT body 应包含本机包摘要；如果远端返回带服务端 `packageId` 的接受包，localStorage 的 `historyRepository.lastPackageDigest` 应持久化远端接受包摘要。
+- 拉取带摘要的远端包后，状态栏显示摘要短码并保留冲突审计。
+
+真实边界：
+
+- 这是本机 SHA-256 完整性校验，不是账号签名、证书链、云端审计、班级权限或多人协同自动合并。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案包摘要验真`

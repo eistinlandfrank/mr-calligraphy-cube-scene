@@ -96,6 +96,7 @@ node scripts/learning-state-check.js
 本轮新增作品分享远端 Workspace 验收：前台远端分享 API 面板新增 `shareRemoteWorkspaceInput`；分享包、撤销包、分享记录远端状态、回执和回执审计均保留 `workspaceId`；GET / PUT / DELETE 携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存分享包、回执和撤销记录；切换 workspace 后不会读到其他空间的分享包。
 本轮新增作品分享回执本机校验验收：发布回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest`、`publicUrl` 和 `acceptedAt` 重算摘要；撤销回执会额外带 `action: revoke` 与 `shareId` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，篡改 `receiptDigest` 会被标记为摘要不匹配。
 本轮新增学习档案仓库回执本机校验验收：学习档案回执会按 `workspaceId`、`sourcePackageId`、`repositoryDigest` 和 `acceptedAt` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，篡改 `receiptDigest` 会被标记为摘要不匹配。
+本轮新增学习档案包摘要验真验收：`getHistoryRepositoryPackage()` 会生成 `digestAlgorithm` 和 64 位 `packageDigest`；篡改学习档案 JSON 但保留旧摘要会被导入层拒绝；远端推送、检查和拉取会把 `historyRepository.lastPackageDigest` 持久化到 localStorage。
 本轮新增前台服务边界状态验收：前台新增 `serviceBoundaryPanel`，页面静态 smoke 会检查 `serviceBoundaryPanel`、`serviceBoundaryStatus` 和 `serviceBoundaryList`；Playwright 手机视口会确认面板可见，并显示“本机真实 / 远端 Adapter / 生产云端”三层边界。
 本轮新增后台服务边界状态验收：主后台新增 `mainAdminBoundaryPanel`，写实后台新增 `realisticAdminBoundaryPanel`；页面静态 smoke 会检查两个后台的边界状态和列表，Playwright 手机视口会确认显示“本机编辑 / 前台或演示发布 / 远端 Adapter / 生产后台”。
 本轮新增本机后台操作者审计验收：新增 `admin-audit.js`，主后台检查 `mainAdminOperatorPanel`、`mainAdminOperatorName`、`mainAdminOperatorRole`、`mainAdminAuditList` 和 `mainAdminAuditExport`，写实后台检查 `realisticAdminOperatorPanel`、`realisticAdminOperatorName`、`realisticAdminOperatorRole`、`realisticAdminAuditList` 和 `realisticAdminAuditExport`；Playwright 发布用例会读取 `mr-calligraphy-admin-operator-audit-v1`，确认 `snapshot` 与 `publish-local` 记录写入保存后的操作者。
@@ -126,7 +127,7 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 站内报告点击“导出同步包”会产生报告仓库 JSON 下载；点击“导入同步包”会通过文件选择器导入 JSON 包，并把报告和教师批注写入本机学习状态。
 - 站内报告填写本机教师批注并选择角色后，确认批注人、角色、内容、批注摘要和本机签名摘要写入 `ReportRecord`，审计 HTML 和 PDF 注释保留同一份签名摘要，刷新页面后仍能复现，并可清除回到空批注状态。
 - 站内报告配置远端 endpoint/token/Workspace 后，用浏览器路由模拟报告仓库 API，覆盖检查远端、推送带 `workspaceId` 的报告包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId、签名回执 workspace 持久化、回执审计 HTML 导出、拉取当前空间远端包、教师批注和本机验真摘要随包同步，并验证同 ID 差异报告会出现冲突审计且可按字段合并。
-- 前台学习档案配置远端 endpoint/token/Workspace 后，用浏览器路由模拟学习档案仓库，覆盖检查远端、推送带 `workspaceId` 的档案包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId 持久化、拉取远端包、分页第二页自动追取、冲突审计面板、字段级合并表单和 `historyRepository` 状态更新。
+- 前台学习档案配置远端 endpoint/token/Workspace 后，用浏览器路由模拟学习档案仓库，覆盖检查远端、推送带 `workspaceId`、`digestAlgorithm` 和 `packageDigest` 的档案包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId 和 `lastPackageDigest` 持久化、拉取远端包后摘要保留、分页第二页自动追取、冲突审计面板、字段级合并表单和 `historyRepository` 状态更新。
 - 前台生成学习计划后点击“导出日历”，确认下载 `.ics` 文件，并读取内容确认包含 `VCALENDAR`、`VEVENT`、`VALARM` 和计划任务标题。
 - 前台计划仓库配置远端 endpoint/token/Workspace 后，用浏览器路由模拟计划仓库 API，覆盖推送带 `workspaceId` 的计划包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId、回执持久化、回执本机校验、回执审计 HTML 导出和冲突拉取不覆盖本机计划。
 - 主后台新增基础物体前会保存本机编辑角色操作者，新增后检查发布差异，点击“发布到前台”，确认草稿、发布快照、差异归零、前台读取来源和 `mr-calligraphy-admin-operator-audit-v1.scopes.mainScene` 里的 `snapshot` / `publish-local` 审计都是真实本机状态；另有复核只读用例确认主后台写入控件会被禁用。

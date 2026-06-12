@@ -1431,10 +1431,16 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
   assert(packageResult.package.records.stages.length >= 3, "学习档案同步包应包含阶段记录。");
   assert(packageResult.package.history.some((item) => item.type === "stage"), "学习档案详情快照应包含阶段记录。");
   assert(packageResult.package.summary.teacherReviewedReportCount === 1, "学习档案同步包应统计带教师批注报告数量。");
+  assert(packageResult.package.digestAlgorithm === "sha256-stable-json", "学习档案同步包应声明稳定 JSON 摘要算法。");
+  assert(/^[a-f0-9]{64}$/.test(packageResult.package.packageDigest), "学习档案同步包应包含 64 位 packageDigest。");
   const reviewedReportPackage = packageResult.package.records.reports.find((item) => item.id === "report-2");
   assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "学习档案同步包应保留报告教师批注内容。");
   const reviewedHistoryDetail = packageResult.package.history.find((item) => item.id === "report-2");
   assert(reviewedHistoryDetail.teacherReview.note.includes("结构更稳"), "学习档案详情快照应保留教师批注。");
+  const tamperedHistoryPackage = JSON.parse(JSON.stringify(packageResult.package));
+  tamperedHistoryPackage.records.sessions[0].title = "被篡改的学习档案";
+  const tamperedHistoryImport = window.MRAppState.importHistoryRepositoryPackage(tamperedHistoryPackage);
+  assert(!tamperedHistoryImport.ok && tamperedHistoryImport.message.includes("摘要校验失败"), "篡改学习档案同步包应被摘要校验拒绝。");
 
   const previousFetch = global.fetch;
   const mock = await startHistoryRepositoryMockServer({ token: "history-token" });
@@ -1457,6 +1463,9 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.packageId.startsWith("mock-history-repository-history-alpha-"), "学习档案仓库 mock 应返回包含 workspace 的服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "学习档案仓库 mock 应在内存中保存最近档案包。");
     assert(mock.state.package.workspaceId === "history-alpha", "学习档案仓库 mock 应把档案包保存到 alpha workspace。");
+    assert(mock.state.package.digestAlgorithm === "sha256-stable-json", "学习档案仓库 mock 应保存摘要算法。");
+    assert(/^[a-f0-9]{64}$/.test(mock.state.package.packageDigest), "学习档案仓库 mock 应保存 64 位包摘要。");
+    assert(pushedMock.packageDigest === mock.state.package.packageDigest, "学习档案仓库推送结果应返回本机包摘要。");
     assert(mock.state.workspaces["history-alpha"].package.packageId === pushedMock.packageId, "学习档案仓库 mock 应按 workspace 隔离保存 alpha 包。");
     assert(mock.state.package.summary.teacherReviewedReportCount === 1, "学习档案仓库 mock 应保存带教师批注报告计数。");
     assert(mock.state.package.records.reports.find((item) => item.id === "report-2").teacherReview.note.includes("竖钩"), "学习档案仓库 mock 应保存教师批注内容。");
@@ -1465,6 +1474,7 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.receipt.verificationStatus === "verified", "学习档案仓库回执应标记本机校验通过。");
     assert(pushedMock.receipt.verificationExpectedDigest === pushedMock.receipt.receiptDigest, "学习档案仓库回执应保留重算摘要。");
     const historyStatusAfterPush = window.MRAppState.getHistoryRepositoryStatus();
+    assert(historyStatusAfterPush.lastPackageDigest === mock.state.package.packageDigest, "学习档案仓库状态应持久化推送包摘要。");
     assert(historyStatusAfterPush.lastReceipt.verificationStatus === "verified", "学习档案仓库状态应持久化回执校验。");
     assert(historyStatusAfterPush.receiptCount === 1, "学习档案仓库状态应统计回执数量。");
     const historyReceiptAudit = window.MRAppState.getHistoryRepositoryReceiptAudit();
@@ -1484,6 +1494,7 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
 
     const checkedAfterPush = await window.MRAppState.checkRemoteHistoryRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.summary.total === mock.state.package.summary.total, "学习档案仓库 mock GET 应返回最近 PUT 保存的档案包。");
+    assert(checkedAfterPush.package.packageDigest === mock.state.package.packageDigest, "学习档案仓库 GET 应返回同一个包摘要。");
     assert(checkedAfterPush.package.summary.teacherReviewedReportCount === 1, "学习档案仓库 mock GET 应返回教师批注摘要。");
 
     const pulledMock = await window.MRAppState.pullHistoryRepositoryFromRemote();
@@ -1518,6 +1529,7 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
       ...alphaWorkspace.package.records.sessions[0],
       title: "远端改名但不覆盖本机"
     };
+    refreshPackageDigestInPlace(alphaWorkspace.package);
     const conflictPull = await window.MRAppState.pullHistoryRepositoryFromRemote();
     assert(conflictPull.ok && conflictPull.skippedConflictCount >= 1, "同 ID 差异学习档案应被跳过而不是静默覆盖。");
     assert(window.MRAppState.getState().sessions[0].title === localTitle, "同 ID 差异拉取不应覆盖本机练习标题。");
@@ -1536,6 +1548,7 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
       ...alphaWorkspace.package.records.sessions[0],
       feedback: ["远端副本冲突反馈"]
     };
+    refreshPackageDigestInPlace(alphaWorkspace.package);
     const copyConflictPull = await window.MRAppState.pullHistoryRepositoryFromRemote();
     assert(copyConflictPull.ok && copyConflictPull.skippedConflictCount >= 1, "第二次同 ID 差异应继续写入冲突审计。");
     const copyConflicts = window.MRAppState.getHistoryRepositoryConflicts();
@@ -1679,6 +1692,13 @@ function createJsonResponse(payload, ok = true, status = 200) {
 
 function sha256StableJson(value) {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function refreshPackageDigestInPlace(packageRecord) {
+  if (!packageRecord || typeof packageRecord !== "object") return packageRecord;
+  delete packageRecord.packageDigest;
+  packageRecord.packageDigest = sha256StableJson(packageRecord);
+  return packageRecord;
 }
 
 function stableStringify(value) {

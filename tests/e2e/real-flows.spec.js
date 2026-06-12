@@ -332,13 +332,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     if (method === "PUT") {
       const acceptedAt = new Date().toISOString();
       const repositoryDigest = "9".repeat(64);
-      remoteHistoryPackage = {
+      remoteHistoryPackage = withPackageDigest({
         ...body,
         workspaceId: body.workspaceId,
         packageId: "e2e-history-package",
         acceptedAt,
         repositoryDigest
-      };
+      });
       latestHistoryReceipt = {
         receiptKind: "mr-calligraphy-history-repository-receipt-v1",
         remoteVersion: "e2e-history-v1",
@@ -1260,6 +1260,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
   expect(putRequest.body.workspaceId).toBe("history-e2e");
   expect(putRequest.body.source.workspaceId).toBe("history-e2e");
+  expect(putRequest.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(putRequest.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(putRequest.body.summary.total).toBe(6);
   expect(putRequest.body.records.reports).toHaveLength(1);
   expect(putRequest.body.records.stages).toHaveLength(3);
@@ -1268,6 +1270,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("push");
   expect(learningState.historyRepository.lastPackageId).toBe("e2e-history-package");
+  expect(remoteHistoryPackage.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.historyRepository.lastPackageDigest).toBe(remoteHistoryPackage.packageDigest);
   expect(learningState.historyRepository.workspaceId).toBe("history-e2e");
   expect(learningState.historyRepository.lastReceipt.receiptDigest).toBe(latestHistoryReceipt.receiptDigest);
   expect(learningState.historyRepository.lastReceipt.verificationStatus).toBe("verified");
@@ -1294,6 +1298,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
   expect(learningState.historyRepository.lastRemoteRecordCount).toBe(6);
+  expect(learningState.historyRepository.lastPackageDigest).toBe(remoteHistoryPackage.packageDigest);
   expect(learningState.stageRecords.some((record) => record.stage === "review")).toBe(true);
   expect(learningState.historyRepository.lastReceipt.verificationStatus).toBe("verified");
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token" && item.workspaceId === "history-e2e")).toBe(true);
@@ -5273,7 +5278,10 @@ function createPagedHistoryConflictPackages(basePackage, sessionId) {
     reports: []
   };
   pageTwo.history = [];
-  return { pageOne, pageTwo };
+  return {
+    pageOne: withPackageDigest(pageOne),
+    pageTwo: withPackageDigest(pageTwo)
+  };
 }
 
 function toProjectRepositoryVersionSummary(version) {

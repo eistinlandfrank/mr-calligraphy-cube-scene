@@ -6,6 +6,7 @@ const http = require("http");
 const PACKAGE_KIND = "mr-calligraphy-history-repository-v1";
 const VERSION = 1;
 const DEFAULT_WORKSPACE_ID = "local-browser";
+const PACKAGE_DIGEST_ALGORITHM = "sha256-stable-json";
 
 function createHistoryRepositoryMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.HISTORY_REPOSITORY_MOCK_TOKEN || "").trim();
@@ -74,13 +75,13 @@ function createHistoryRepositoryMockServer(options = {}) {
 
         const receipt = createReceipt(payload, validation, workspaceId);
         const workspace = getWorkspaceState(state, workspaceId);
-        workspace.package = {
+        workspace.package = withPackageDigest({
           ...clone(payload),
           workspaceId,
           packageId: receipt.packageId,
           acceptedAt: receipt.acceptedAt,
           repositoryDigest: receipt.repositoryDigest
-        };
+        });
         workspace.receipts.unshift(receipt);
         state.latestWorkspaceId = workspaceId;
         state.package = workspace.package;
@@ -289,6 +290,7 @@ function validateHistoryRepositoryPackage(payload, options = {}) {
 
   if (payload.kind !== PACKAGE_KIND) errors.push("学习档案仓库包 kind 不匹配");
   if (Number(payload.version) !== VERSION) errors.push("学习档案仓库包版本不匹配");
+  validatePackageDigest(payload, errors, warnings);
   if (!payload.packageId) errors.push("缺少 packageId");
   if (!payload.workspaceId) warnings.push("缺少 workspaceId，mock 会使用请求头或默认空间。");
   if (payload.workspaceId && normalizeWorkspaceId(payload.workspaceId) !== workspaceId) {
@@ -372,6 +374,45 @@ function createReceipt(payload, validation, workspaceId = DEFAULT_WORKSPACE_ID) 
       acceptedAt
     })
   };
+}
+
+function validatePackageDigest(payload, errors, warnings) {
+  const claimedDigest = normalizeHex(payload.packageDigest);
+  const algorithm = String(payload.digestAlgorithm || "").trim();
+  if (claimedDigest && algorithm && algorithm !== PACKAGE_DIGEST_ALGORITHM) {
+    errors.push(`学习档案仓库包摘要算法不受支持：${algorithm}`);
+    return;
+  }
+  if (!claimedDigest) {
+    warnings.push("缺少 packageDigest，mock 按旧版学习档案仓库包接收。");
+    return;
+  }
+  const actualDigest = createPackageDigest(payload);
+  if (actualDigest !== claimedDigest) {
+    errors.push(`学习档案仓库包摘要不匹配：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}`);
+  }
+}
+
+function withPackageDigest(packageRecord) {
+  if (!packageRecord || typeof packageRecord !== "object") return packageRecord;
+  if (!packageRecord.packageDigest && !packageRecord.digestAlgorithm) {
+    return packageRecord;
+  }
+  const next = clone(packageRecord);
+  next.digestAlgorithm = PACKAGE_DIGEST_ALGORITHM;
+  next.packageDigest = createPackageDigest(next);
+  return next;
+}
+
+function createPackageDigest(packageRecord) {
+  const payload = clone(packageRecord || {});
+  delete payload.packageDigest;
+  return sha256StableJson(payload);
+}
+
+function normalizeHex(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : "";
 }
 
 function getRecordCount(payload) {

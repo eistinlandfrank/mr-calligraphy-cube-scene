@@ -4441,3 +4441,44 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习路径动作覆盖验收`
+
+## 120. 2026-06-13 新增学习档案包摘要验真
+
+本次把前台学习档案仓库从“可同步”推进到“可验真”。学习档案 JSON 包现在会携带稳定 SHA-256 摘要，导入和远端拉取都会先校验摘要，避免被改动的练习、作品、报告或阶段记录静默写入本机状态。
+
+完成内容：
+
+- `mr-calligraphy-history-repository-v1` 新增 `digestAlgorithm: "sha256-stable-json"`。
+- 导出包新增 `packageDigest`，按稳定 JSON 计算 SHA-256。
+- 导入时如果包声明了 `packageDigest`，会重新计算并比对；不匹配时返回“摘要校验失败”并不写入任何学习档案。
+- 无摘要的旧版学习档案包仍可导入。
+- `historyRepository` 新增最近包摘要持久化路径，导出、导入、推送、检查和拉取都会保留 `lastPackageDigest`。
+- 远端失败历史记录保存当前推送包摘要，便于把 401 / 422 / 网络失败与具体包关联。
+- E2E 断言推送 body 包含摘要字段，localStorage 保存摘要，拉取后摘要不丢失。
+
+真实化说明：
+
+- 数据来源：当前本机学习档案集合、JSON 同步包和远端 API 返回包。
+- 写入状态：摘要通过后才写入本机 `sessions`、`artworks`、`reports`、`stageRecords` 与 `historyRepository`。
+- 成功反馈：学习档案仓库摘要显示记录数、Workspace 和摘要短码。
+- 失败反馈：篡改包会显示声明摘要与实际摘要短码，并阻止导入。
+- 刷新后复现方式：`mr-calligraphy-learning-state-v1.historyRepository.lastPackageDigest` 会保留最近成功同步摘要。
+
+仍待补：
+
+- 摘要只能证明包内容没有在导出后被改动，不能证明作者身份、教师权限、远端服务可信或跨设备冲突自动合并正确性。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案包摘要验真`

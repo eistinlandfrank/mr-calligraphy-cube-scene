@@ -52,6 +52,7 @@
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品、报告和阶段记录；配置远端 API 后会通过 fetch 同步档案包、携带 Workspace 空间 ID 并按 nextPageUrl 追取分页，但仍不包含完整账号权限、教师批注审计或公开作品墙。";
+  const HISTORY_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
   const HISTORY_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-history-repository-receipt-v1";
   const HISTORY_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
@@ -1776,6 +1777,7 @@
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastPackageDigest: normalizeHistoryRepositoryHex(source.lastPackageDigest || source.packageDigest || source.repositoryDigest),
       lastReceipt,
       receipts: appendHistoryRepositoryReceipt({ receipts, workspaceId }, lastReceipt),
       lastRemoteFailureAt: normalizePlanDate(source.lastRemoteFailureAt),
@@ -15050,10 +15052,10 @@
         || `最近${directionLabel}远端学习档案：${formatPlanDate(repository.lastRemoteSyncAt)}，${repository.lastRemoteRecordCount} 条记录。`;
     } else if (repository.lastImportedAt) {
       tone = "ready";
-      message = `最近导入 ${repository.lastImportedRecordCount} 条学习档案：${formatPlanDate(repository.lastImportedAt)}。`;
+      message = `最近导入 ${repository.lastImportedRecordCount} 条学习档案：${formatPlanDate(repository.lastImportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`;
     } else if (repository.lastExportedAt) {
       tone = "ready";
-      message = `最近导出 ${repository.lastExportedRecordCount} 条学习档案：${formatPlanDate(repository.lastExportedAt)}。`;
+      message = `最近导出 ${repository.lastExportedRecordCount} 条学习档案：${formatPlanDate(repository.lastExportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`;
     }
     if (repository.lastSkippedConflictCount > 0) {
       tone = "warning";
@@ -15103,6 +15105,7 @@
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
+      lastPackageDigest: repository.lastPackageDigest,
       lastReceipt: repository.lastReceipt ? clone(repository.lastReceipt) : null,
       receiptCount: repository.receipts.length,
       receipts: clone(repository.receipts),
@@ -15300,32 +15303,41 @@
     const exportedAt = new Date().toISOString();
     const packageId = `history-repository-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const repository = getHistoryRepositoryStatus();
+    const packageRecord = {
+      kind: HISTORY_REPOSITORY_KIND,
+      version: VERSION,
+      packageId,
+      workspaceId: repository.workspaceId,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      source: {
+        mode: repository.mode,
+        workspaceId: repository.workspaceId,
+        boundary: HISTORY_REPOSITORY_BOUNDARY
+      },
+      summary: getHistorySummary(history),
+      records: {
+        sessions: clone(sessions),
+        artworks: clone(artworks),
+        reports: clone(reports),
+        stages: clone(stages)
+      },
+      history: history.map((entry) => getHistoryDetail(entry.id)).filter(Boolean),
+      digestAlgorithm: HISTORY_REPOSITORY_DIGEST_ALGORITHM
+    };
+    packageRecord.packageDigest = createHistoryRepositoryPackageDigest(packageRecord);
     return {
       ok: true,
       filename: `mr-calligraphy-history-repository-${Date.now()}.json`,
-      package: {
-        kind: HISTORY_REPOSITORY_KIND,
-        version: VERSION,
-        packageId,
-        workspaceId: repository.workspaceId,
-        exportedAt,
-        storageKey: STORAGE_KEY,
-        source: {
-          mode: repository.mode,
-          workspaceId: repository.workspaceId,
-          boundary: HISTORY_REPOSITORY_BOUNDARY
-        },
-        summary: getHistorySummary(history),
-        records: {
-          sessions: clone(sessions),
-          artworks: clone(artworks),
-          reports: clone(reports),
-          stages: clone(stages)
-        },
-        history: history.map((entry) => getHistoryDetail(entry.id)).filter(Boolean)
-      },
-      message: `已生成 ${recordCount} 条学习档案的本机 JSON 同步包。${HISTORY_REPOSITORY_BOUNDARY}`
+      package: packageRecord,
+      message: `已生成 ${recordCount} 条学习档案的本机 JSON 同步包，摘要 ${packageRecord.packageDigest.slice(0, 12)}。${HISTORY_REPOSITORY_BOUNDARY}`
     };
+  }
+
+  function createHistoryRepositoryPackageDigest(packageRecord = {}) {
+    const payload = clone(packageRecord || {});
+    delete payload.packageDigest;
+    return sha256StableJson(payload);
   }
 
   function downloadHistoryRepository(options = {}) {
@@ -15342,6 +15354,7 @@
       lastCheckedAt: now,
       lastExportedRecordCount: result.package.summary.total,
       lastPackageId: result.package.packageId,
+      lastPackageDigest: result.package.packageDigest,
       lastSkippedConflictCount: 0,
       lastReceipt: null,
       receipts: [],
@@ -15354,7 +15367,7 @@
       ok: true,
       filename: result.filename,
       status: getHistoryRepositoryStatus(),
-      message: `已下载学习档案 JSON 同步包：${result.filename}。${HISTORY_REPOSITORY_BOUNDARY}`
+      message: `已下载学习档案 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${HISTORY_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -15373,6 +15386,13 @@
     if (source.kind !== HISTORY_REPOSITORY_KIND) {
       return { ok: false, message: "这不是 MR 书法学习档案同步包。" };
     }
+    const digestVerification = verifyHistoryRepositoryPackageDigest(source);
+    if (!digestVerification.ok) {
+      return {
+        ok: false,
+        message: digestVerification.message
+      };
+    }
     if (!source.records || typeof source.records !== "object") {
       return { ok: false, message: "学习档案同步包缺少 records 对象。" };
     }
@@ -15382,7 +15402,53 @@
     if (source.records.stages !== undefined && !Array.isArray(source.records.stages)) {
       return { ok: false, message: "学习档案同步包的 stages 字段必须是数组。" };
     }
-    return { ok: true, package: source };
+    return {
+      ok: true,
+      package: {
+        ...source,
+        packageDigest: digestVerification.packageDigest || normalizeHistoryRepositoryHex(source.packageDigest),
+        digestAlgorithm: source.digestAlgorithm || (digestVerification.packageDigest ? HISTORY_REPOSITORY_DIGEST_ALGORITHM : "")
+      },
+      digestVerification
+    };
+  }
+
+  function verifyHistoryRepositoryPackageDigest(packageRecord = {}) {
+    const claimedDigest = normalizeHistoryRepositoryHex(packageRecord.packageDigest);
+    const algorithm = String(packageRecord.digestAlgorithm || "").trim();
+    if (claimedDigest && algorithm && algorithm !== HISTORY_REPOSITORY_DIGEST_ALGORITHM) {
+      return {
+        ok: false,
+        status: "unsupported-algorithm",
+        packageDigest: claimedDigest,
+        message: `学习档案同步包摘要算法不受支持：${algorithm}。未导入任何学习档案。`
+      };
+    }
+    if (!claimedDigest) {
+      return {
+        ok: true,
+        status: "missing",
+        packageDigest: "",
+        message: "学习档案同步包未声明摘要，按旧版同步包导入。"
+      };
+    }
+    const actualDigest = createHistoryRepositoryPackageDigest(packageRecord);
+    if (actualDigest !== claimedDigest) {
+      return {
+        ok: false,
+        status: "digest-mismatch",
+        packageDigest: claimedDigest,
+        actualDigest,
+        message: `学习档案同步包摘要校验失败：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}。未导入任何学习档案。`
+      };
+    }
+    return {
+      ok: true,
+      status: "verified",
+      packageDigest: claimedDigest,
+      actualDigest,
+      message: `学习档案同步包摘要校验通过：${claimedDigest.slice(0, 12)}。`
+    };
   }
 
   function recordHistoryRepositoryError(message, options = {}) {
@@ -15560,6 +15626,7 @@
       lastSkippedConflictCount: skippedConflictCount,
       lastConflictRecords: conflictRecords,
       lastPackageId: parsed.package.packageId || null,
+      lastPackageDigest: parsed.package.packageDigest || "",
       lastReceipt: null,
       receipts: [],
       lastRemoteStatus: "",
@@ -15567,7 +15634,7 @@
         ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
         : ""
     });
-    addEvent("history-repository-import", `导入学习档案同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}`);
+    addEvent("history-repository-import", `导入学习档案同步包：新增 ${importedCount}，跳过冲突 ${skippedConflictCount}${parsed.package.packageDigest ? `，摘要 ${parsed.package.packageDigest.slice(0, 12)}` : ""}`);
     saveState();
     return {
       ok: true,
@@ -15577,8 +15644,8 @@
       totalRecordCount: getHistoryRepositoryRecordCount(),
       status: getHistoryRepositoryStatus(),
       message: skippedConflictCount
-        ? `已导入学习档案同步包：新增 ${importedCount} 条，跳过 ${skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${HISTORY_REPOSITORY_BOUNDARY}`
-        : `已导入学习档案同步包：新增 ${importedCount} 条。${HISTORY_REPOSITORY_BOUNDARY}`
+        ? `已导入学习档案同步包：新增 ${importedCount} 条，跳过 ${skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${HISTORY_REPOSITORY_BOUNDARY}`
+        : `已导入学习档案同步包：新增 ${importedCount} 条。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${HISTORY_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -15845,6 +15912,7 @@
         })
         : null;
       const receipt = parsedReceipt || repository.lastReceipt || null;
+      const checkedPackageDigest = parsed.package?.packageDigest || repository.lastPackageDigest || "";
       state.historyRepository = normalizeHistoryRepository({
         ...repository,
         mode: "remote-api",
@@ -15854,6 +15922,7 @@
         lastRemoteDirection: "check",
         lastRemoteRecordCount: recordCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastPackageDigest: checkedPackageDigest,
         lastReceipt: receipt,
         receipts: appendHistoryRepositoryReceipt(repository, parsedReceipt),
         lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
@@ -15912,9 +15981,11 @@
       const parsed = await parseRemoteHistoryRepositoryResponse(response, { requestUrl: repository.remoteEndpoint });
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const recordCount = repositoryPackage.summary.total;
+      const pushedPackageDigest = parsed.package?.packageDigest || repositoryPackage.packageDigest || createHistoryRepositoryPackageDigest(repositoryPackage);
+      const pushedPackageDigestText = pushedPackageDigest ? `，摘要 ${pushedPackageDigest.slice(0, 12)}` : "";
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        const packageDigest = sha256StableJson(repositoryPackage);
+        const packageDigest = repositoryPackage.packageDigest || createHistoryRepositoryPackageDigest(repositoryPackage);
         recordHistoryRepositoryError(parsed.message, {
           action: "push",
           packageId: repositoryPackage.packageId,
@@ -15947,13 +16018,14 @@
         lastExportedAt: now,
         lastExportedRecordCount: recordCount,
         lastPackageId: acceptedPackageId,
+        lastPackageDigest: pushedPackageDigest,
         lastSkippedConflictCount: 0,
         lastConflictRecords: [],
         lastReceipt: receipt || repository.lastReceipt,
         receipts: appendHistoryRepositoryReceipt(repository, receipt),
         lastRemoteStatus: receipt
-          ? `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
-          : `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}。`,
+          ? `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}${pushedPackageDigestText}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
+          : `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}${pushedPackageDigestText}。`,
         remoteRetryAfter: null,
         lastError: ""
       });
@@ -15963,13 +16035,14 @@
         ok: true,
         status: getHistoryRepositoryStatus(),
         packageId: acceptedPackageId,
+        packageDigest: pushedPackageDigest,
         pushedRecordCount: recordCount,
         receipt: receipt ? clone(receipt) : null,
-        message: `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}。${HISTORY_REPOSITORY_BOUNDARY}`
+        message: `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}${pushedPackageDigestText}。${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatHistoryRepositoryNetworkError("推送", error);
-      const packageDigest = sha256StableJson(repositoryPackage);
+      const packageDigest = repositoryPackage.packageDigest || createHistoryRepositoryPackageDigest(repositoryPackage);
       recordHistoryRepositoryError(message, {
         action: "push",
         packageId: repositoryPackage.packageId,
@@ -15999,6 +16072,7 @@
     let skippedConflictCount = 0;
     let processedRecordCount = 0;
     let latestPackageId = null;
+    let latestPackageDigest = "";
     const conflicts = [];
 
     repositoryPackages.forEach((repositoryPackage) => {
@@ -16010,6 +16084,9 @@
       processedRecordCount += sessions.length + artworks.length + reports.length + stages.length;
       if (repositoryPackage?.packageId) {
         latestPackageId = repositoryPackage.packageId;
+      }
+      if (repositoryPackage?.packageDigest) {
+        latestPackageDigest = repositoryPackage.packageDigest;
       }
 
       const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession, "session");
@@ -16029,6 +16106,7 @@
       processedRecordCount,
       conflicts: getHistoryRepositoryConflictRecords(conflicts),
       latestPackageId,
+      latestPackageDigest,
       totalRecordCount: getHistoryRepositoryRecordCount()
     };
   }
@@ -16128,6 +16206,8 @@
       const imported = mergeHistoryRepositoryPackages(repositoryPackages);
       const now = new Date().toISOString();
       const recordCount = repositoryPackages.reduce((total, repositoryPackage) => total + countHistoryRepositoryPackageRecords(repositoryPackage), 0);
+      const pulledPackageDigest = imported.latestPackageDigest || repository.lastPackageDigest || "";
+      const pulledPackageDigestText = pulledPackageDigest ? `，摘要 ${pulledPackageDigest.slice(0, 12)}` : "";
       const pageCountText = remotePages.pages.length > 1 ? `（${remotePages.pages.length} 页）` : "";
       const warningText = remotePages.warning ? ` ${remotePages.warning}` : "";
       const parsedReceipt = remotePages.pages.find((page) => page.receipt)?.receipt || null;
@@ -16153,11 +16233,12 @@
         lastImportedAt: now,
         lastImportedRecordCount: imported.importedCount + imported.updatedCount,
         lastPackageId: imported.latestPackageId || repository.lastPackageId || null,
+        lastPackageDigest: pulledPackageDigest,
         lastSkippedConflictCount: imported.skippedConflictCount,
         lastConflictRecords: imported.conflicts,
         lastReceipt: receipt || repository.lastReceipt,
         receipts: appendHistoryRepositoryReceipt(repository, receipt),
-        lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。${warningText}`,
+        lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}${pulledPackageDigestText}，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。${warningText}`,
         remoteRetryAfter: null,
         lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
@@ -16174,8 +16255,8 @@
         conflicts: imported.conflicts,
         receipt: receipt ? clone(receipt) : null,
         message: imported.skippedConflictCount
-          ? `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
-          : `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}：新增 ${imported.importedCount} 条记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
+          ? `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}${pulledPackageDigestText}：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
+          : `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}${pulledPackageDigestText}：新增 ${imported.importedCount} 条记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatHistoryRepositoryNetworkError("拉取", error);

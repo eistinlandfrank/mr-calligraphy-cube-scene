@@ -4913,3 +4913,45 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习路径动作覆盖验收`
+
+## 120. 2026-06-13 新增学习档案包摘要验真
+
+本次补齐前台学习档案仓库的包级完整性校验。此前学习档案 JSON 同步包能导出、导入、推送和拉取，但远端或本机文件被手工改动后仍可能进入导入流程，缺少和作品仓库、课堂评阅同级的摘要验真。
+
+完成内容：
+
+- `MRAppState.getHistoryRepositoryPackage()` 生成 `digestAlgorithm: "sha256-stable-json"` 和顶层 `packageDigest`。
+- `packageDigest` 按去除自身后的稳定 JSON 计算 SHA-256，覆盖 sessions、artworks、reports、stages、history、summary、workspace 和来源边界。
+- `parseHistoryRepositoryPackage()` 导入前校验摘要；声明摘要与实际内容不一致时拒绝导入，不写入任何学习档案。
+- 旧版没有 `packageDigest` 的学习档案包仍兼容导入，避免历史 JSON 包失效。
+- 本机导出、导入、远端检查、远端推送、远端拉取都会把最近 `lastPackageDigest` 写入 `historyRepository` 状态，并在状态提示中显示摘要短码。
+- 远端推送失败历史记录使用同一个包摘要，方便排查失败请求与本机 JSON 包是否一致。
+- Node 状态层脚本覆盖篡改包拒绝、mock server 保存摘要、推送结果返回摘要和状态持久化。
+- Playwright 前台用例覆盖远端推送 body 的 `digestAlgorithm` / `packageDigest`、localStorage 持久化、拉取后摘要保留，以及分页冲突包重算摘要。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机学习档案、远端学习档案 API 返回包和本机 JSON 同步包。
+- 写入状态：摘要通过后才导入 sessions、artworks、reports 和 stages；成功同步后写入 `mr-calligraphy-learning-state-v1.historyRepository.lastPackageDigest`。
+- 成功反馈：状态栏显示记录数、Workspace 和摘要短码。
+- 失败反馈：摘要校验失败会显示声明摘要和实际摘要短码，并明确“未导入任何学习档案”。
+- 刷新后复现方式：最近包摘要、远端状态和失败历史都持久化在 `mr-calligraphy-learning-state-v1.historyRepository`。
+
+仍待补：
+
+- 当前是本机 SHA-256 完整性校验，不是账号签名、公钥证书、云端不可篡改审计、远端权限或多人合并策略。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案包摘要验真`
