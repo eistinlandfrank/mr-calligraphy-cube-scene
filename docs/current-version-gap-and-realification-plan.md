@@ -5043,3 +5043,47 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划仓库包摘要验真`
+
+## 123. 2026-06-13 新增远端分享仓库包摘要验真
+
+本次补齐前台作品分享远端 API 的包级完整性校验。远端分享已经有真实 GET/PUT/DELETE、Workspace、publicUrl、发布/撤销回执、回执本机校验和失败恢复，但整个 `mr-calligraphy-share-repository-v1` 分享包此前缺少顶层 `packageDigest`，真实远端或 mock 返回被篡改的分享包时前端无法先验真再使用。
+
+完成内容：
+
+- `MRAppState.getArtworkShareRemotePackage()` 生成 `digestAlgorithm: "sha256-stable-json"` 和顶层 `packageDigest`。
+- `packageDigest` 按去除自身后的稳定 JSON 计算 SHA-256，覆盖分享记录、分享 HTML、summary、Workspace、storageKey 和远端接受元数据。
+- `parseShareRepositoryPackage()` 会先校验摘要；声明摘要与实际内容不一致时拒绝使用远端分享包，不写入最近远端包状态。
+- 旧版没有 `packageDigest` 的分享包仍兼容读取，避免历史 mock 或临时服务立即失效。
+- 远端检查和发布会把最近 `lastPackageDigest` 写入 `shareService` 状态，并在状态提示中显示摘要短码。
+- 发布失败历史会记录本次 PUT 请求包摘要，便于把 401、422、超时和网络中断关联到具体分享包。
+- `scripts/share-repository-mock-server.js` 会校验请求包摘要；服务端改写 `packageId/acceptedAt/repositoryDigest/publicUrl` 后会重新生成 `packageDigest`，撤销改写最近包后也会重新签摘要。
+- Node 状态层脚本覆盖本机包摘要、mock server 保存摘要、远端接受包摘要、篡改远端包拒绝、撤销后重签和状态持久化。
+- Playwright 前台用例覆盖远端分享 PUT body 摘要、远端接受包摘要、`shareService.lastPackageDigest` 持久化和失败恢复历史包摘要。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机分享记录、作品分享 HTML、远端分享 API 返回包和本机 mock server。
+- 写入状态：摘要通过后才使用远端分享包；成功发布或检查后写入 `mr-calligraphy-learning-state-v1.shareService.lastPackageDigest`。
+- 成功反馈：远端分享状态显示 Workspace、publicUrl、回执校验状态和摘要短码。
+- 失败反馈：摘要校验失败会显示声明摘要和实际摘要短码，并明确“未使用该分享包”。
+- 刷新后复现方式：最近包摘要、远端状态、回执和失败历史都持久化在 `mr-calligraphy-learning-state-v1.shareService`。
+
+仍待补：
+
+- 当前是本机 SHA-256 完整性校验，不是账号签名、公钥证书链、生产 CDN、微信公开链接、班级作品墙权限或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/share-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front share repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端分享仓库包摘要验真`

@@ -10232,3 +10232,50 @@
 提交：
 
 - 中文 commit message：`新增计划仓库包摘要验真`
+
+### 2026-06-13：新增远端分享仓库包摘要验真
+
+功能名：前台作品远端分享仓库包 SHA-256 摘要验真。
+
+开发原因：
+
+- 作品远端分享已经支持本机分享链接、远端发布、远端撤销、Workspace 隔离、publicUrl、回执审计、失败恢复和回执本机校验，但发布包本身还缺少包级完整性校验。
+- 真实可用的远端分享不能只信任 `kind/records/shares` 字段存在；如果分享 HTML、记录、Workspace 或远端接受元数据被手工改动，前端必须先识别并拒绝使用。
+
+完成内容：
+
+- `MRAppState.getArtworkShareRemotePackage()` 输出 `digestAlgorithm: "sha256-stable-json"` 和 64 位 `packageDigest`。
+- 摘要覆盖分享记录、分享 HTML、summary、Workspace、storageKey 和远端接受元数据。
+- `parseShareRepositoryPackage()` 会在使用远端包前验证 `packageDigest`；不匹配时拒绝该包并保留本机分享状态不变。
+- 无摘要旧包继续兼容读取。
+- `checkRemoteShareService()` 和 `pushArtworkShareToRemote()` 会持久化最近包摘要。
+- 发布失败历史会记录当前 PUT 包摘要，便于排查失败请求。
+- `scripts/share-repository-mock-server.js` 校验请求摘要，并在服务端改写接受包或撤销最近包后重新生成摘要。
+- Node 状态层脚本和 Playwright 用例新增摘要字段、篡改拒绝、远端持久化、撤销重签和失败历史摘要验收。
+
+验收方式：
+
+- 生成作品分享远端包，确认顶层包含 `digestAlgorithm` 和 64 位 `packageDigest`。
+- 修改远端包任意分享标题或 HTML 但不更新摘要，远端检查应提示“分享仓库包摘要校验失败”，且不使用该包。
+- 配置远端分享 API 后发布，服务端收到的 PUT body 应包含本机包摘要；如果远端返回带服务端 `packageId/publicUrl` 的接受包，localStorage 的 `shareService.lastPackageDigest` 应持久化远端接受包摘要。
+- 失败恢复历史应保留失败 PUT 包摘要，撤销后 mock 最近包应重新生成 `packageDigest`。
+
+真实边界：
+
+- 这是本机 SHA-256 完整性校验，不是账号签名、生产证书链、CDN 发布、微信公开链接、班级作品墙权限或服务端不可篡改审计。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check scripts/share-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front share repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端分享仓库包摘要验真`

@@ -47,6 +47,8 @@ X-MR-Workspace-Id: <workspaceId>
 | `summary` | 分享数量、分享 ID、作品 ID、HTML 大小和截图状态 |
 | `records` | 本机分享记录，包含创建、过期、撤销、复制和访问状态 |
 | `shares` | 可发布的分享内容，包含作品分享数据、HTML、文件名和摘要 |
+| `digestAlgorithm` | 当前为 `sha256-stable-json` |
+| `packageDigest` | 对去除自身后的顶层包内容计算出的 SHA-256 |
 
 服务端应至少校验：
 
@@ -55,6 +57,9 @@ X-MR-Workspace-Id: <workspaceId>
 - `records` 必须是非空数组，每条记录必须包含 `id` 和 `artworkId`。
 - `shares` 必须是非空数组，每条内容必须包含 `shareId`、`artworkId`、`share` 和 `html`。
 - 服务端应重新计算 HTML 或内容摘要，不应信任前端摘要。
+- 如果请求声明 `packageDigest`，服务端应按稳定 JSON 重算去除 `packageDigest` 后的包摘要；不匹配时拒绝接收。
+
+`shares[*].digest` 只描述单条分享内容核心摘要；顶层 `packageDigest` 描述整个仓库包。服务端若改写 `packageId`、`acceptedAt`、`repositoryDigest`、`publicUrl`、撤销状态或 `latestReceipt`，应在返回 `package` 前重新生成顶层 `packageDigest`。
 
 ## 4. 成功响应
 
@@ -72,11 +77,13 @@ X-MR-Workspace-Id: <workspaceId>
   "package": {
     "kind": "mr-calligraphy-share-repository-v1",
     "version": 1,
-    "workspaceId": "local-browser",
-    "packageId": "remote-share-package-id",
-    "records": [],
-    "shares": []
-  },
+	    "workspaceId": "local-browser",
+	    "packageId": "remote-share-package-id",
+	    "digestAlgorithm": "sha256-stable-json",
+	    "packageDigest": "64位sha256",
+	    "records": [],
+	    "shares": []
+	  },
   "receipt": {
     "receiptKind": "mr-calligraphy-share-repository-receipt-v1",
     "packageId": "remote-share-package-id",
@@ -94,7 +101,7 @@ X-MR-Workspace-Id: <workspaceId>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`workspaceId`、`publicUrl`、`package.packageId`、`receipt` 和 `latestReceipt`，并把当前空间、最近远端状态、最近 `publicUrl`、最近 packageId、最近回执和最近 12 条回执写回 `mr-calligraphy-learning-state-v1.shareService`。
+前端 adapter 当前会读取 `message`、`workspaceId`、`publicUrl`、`package.packageId`、`package.packageDigest`、`receipt` 和 `latestReceipt`。如果响应包含 `package`，前端会先校验 `packageDigest`，通过后再把当前空间、最近远端状态、最近 `publicUrl`、最近 packageId、最近 packageDigest、最近回执和最近 12 条回执写回 `mr-calligraphy-learning-state-v1.shareService`。
 
 前端只会保存字段完整的 `mr-calligraphy-share-repository-receipt-v1`：
 
@@ -193,11 +200,11 @@ http://127.0.0.1:8791/api/share-repository
 mock 服务会：
 
 - `GET` 读取 `X-MR-Workspace-Id` 或 `?workspaceId=`，返回当前空间的合同、远端版本、最近一次保存的分享包和最近回执。
-- `PUT` 校验 `mr-calligraphy-share-repository-v1` 结构和 `workspaceId`，并按 workspace 保存到内存。
-- `DELETE` 校验 `mr-calligraphy-share-repository-revoke-v1` 撤销请求和 `workspaceId`，只把当前空间最近包里的对应记录标记为远端撤销，并返回撤销回执。
+- `PUT` 校验 `mr-calligraphy-share-repository-v1` 结构、`workspaceId` 和 `packageDigest`，并按 workspace 保存重新签摘要后的接受包到内存。
+- `DELETE` 校验 `mr-calligraphy-share-repository-revoke-v1` 撤销请求和 `workspaceId`，只把当前空间最近包里的对应记录标记为远端撤销，重新生成最近包 `packageDigest`，并返回撤销回执。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
-- 返回 `mr-calligraphy-share-repository-receipt-v1` 回执、`repositoryDigest`、`publicUrl` 和可被前端重算匹配的 `receiptDigest`。
+- 返回 `mr-calligraphy-share-repository-receipt-v1` 回执、`repositoryDigest`、`packageDigest`、`publicUrl` 和可被前端重算匹配的 `receiptDigest`。
 
 ## 8. 远端撤销请求
 
@@ -253,4 +260,4 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 npm run test:e2e -- --grep "front practice saves real strokes and exports a report"
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` / `DELETE` 验证 endpoint、Bearer token、Workspace header、分享包 `workspaceId`、mock server 按空间隔离最近分享包、publicUrl、发布回执、撤销回执、回执本机一致性校验、篡改回执摘要不匹配、回执审计导出和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` / `DELETE` 验证 endpoint、Bearer token、Workspace header、分享包 `workspaceId`、`digestAlgorithm`、`packageDigest`、mock server 按空间隔离最近分享包、publicUrl、发布回执、撤销回执、撤销后包摘要重签、远端篡改包拒绝、回执本机一致性校验、篡改回执摘要不匹配、回执审计导出和错误 token 拒绝。

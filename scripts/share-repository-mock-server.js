@@ -7,6 +7,7 @@ const PACKAGE_KIND = "mr-calligraphy-share-repository-v1";
 const RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
 const VERSION = 1;
 const DEFAULT_WORKSPACE_ID = "local-browser";
+const PACKAGE_DIGEST_ALGORITHM = "sha256-stable-json";
 
 function createShareRepositoryMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.SHARE_REPOSITORY_MOCK_TOKEN || "").trim();
@@ -77,14 +78,14 @@ function createShareRepositoryMockServer(options = {}) {
 
         const workspace = getWorkspaceState(state, workspaceId);
         const receipt = createReceipt(payload, validation, publicBaseUrl, workspaceId);
-        workspace.package = {
+        workspace.package = withPackageDigest({
           ...clone(payload),
           workspaceId,
           packageId: receipt.packageId,
           acceptedAt: receipt.acceptedAt,
           repositoryDigest: receipt.repositoryDigest,
           publicUrl: receipt.publicUrl
-        };
+        });
         workspace.receipts.unshift(receipt);
         state.latestWorkspaceId = workspaceId;
         state.package = workspace.package;
@@ -339,7 +340,7 @@ function createContract() {
     packageKind: PACKAGE_KIND,
     revokeKind: "mr-calligraphy-share-repository-revoke-v1",
     defaultWorkspaceId: DEFAULT_WORKSPACE_ID,
-    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "records", "shares"],
+    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "records", "shares", "digestAlgorithm", "packageDigest"],
     receiptFields: ["ok", "message", "workspaceId", "packageId", "repositoryDigest", "publicUrl", "remoteVersion", "receipt"]
   };
 }
@@ -369,6 +370,7 @@ function validateShareRepositoryPackage(payload, options = {}) {
   if (!payload.summary || typeof payload.summary !== "object") warnings.push("缺少 summary 对象");
   if (!Array.isArray(payload.records) || !payload.records.length) errors.push("缺少 records 数组");
   if (!Array.isArray(payload.shares) || !payload.shares.length) errors.push("缺少 shares 数组");
+  validatePackageDigest(payload, errors, warnings);
 
   (payload.records || []).forEach((record, index) => {
     if (!record || typeof record !== "object") {
@@ -402,6 +404,23 @@ function validateShareRepositoryPackage(payload, options = {}) {
     warnings,
     message: errors.length ? `分享仓库包校验失败：${errors.join("；")}。` : "分享仓库包校验通过。"
   };
+}
+
+function validatePackageDigest(payload, errors, warnings) {
+  const claimedDigest = normalizeHex(payload.packageDigest);
+  const algorithm = String(payload.digestAlgorithm || "").trim();
+  if (claimedDigest && algorithm && algorithm !== PACKAGE_DIGEST_ALGORITHM) {
+    errors.push(`packageDigest 算法 ${algorithm} 不受支持`);
+    return;
+  }
+  if (!claimedDigest) {
+    warnings.push("缺少 packageDigest，mock 按旧版作品分享仓库包接收。");
+    return;
+  }
+  const actualDigest = createPackageDigest(payload);
+  if (actualDigest !== claimedDigest) {
+    errors.push(`作品分享仓库包摘要不匹配：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}`);
+  }
 }
 
 function validateShareRevokeRequest(payload, currentPackage = null, options = {}) {
@@ -552,7 +571,25 @@ function applyRevokeToPackage(currentPackage, receipt) {
     lastRevokedAt: receipt.acceptedAt
   };
   nextPackage.latestReceipt = receipt;
-  return nextPackage;
+  return withPackageDigest(nextPackage);
+}
+
+function withPackageDigest(packageRecord) {
+  const next = clone(packageRecord || {});
+  next.digestAlgorithm = PACKAGE_DIGEST_ALGORITHM;
+  next.packageDigest = createPackageDigest(next);
+  return next;
+}
+
+function createPackageDigest(packageRecord = {}) {
+  const payload = clone(packageRecord || {});
+  delete payload.packageDigest;
+  return sha256StableJson(payload);
+}
+
+function normalizeHex(value) {
+  const hex = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
 }
 
 function sha256StableJson(value) {
@@ -595,9 +632,11 @@ if (require.main === module) {
 
 module.exports = {
   PACKAGE_KIND,
+  PACKAGE_DIGEST_ALGORITHM,
   RECEIPT_KIND,
   VERSION,
   createContract,
+  createPackageDigest,
   createShareRepositoryMockServer,
   startShareRepositoryMockServer,
   validateShareRepositoryPackage,

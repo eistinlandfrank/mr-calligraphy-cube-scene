@@ -4568,3 +4568,46 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划仓库包摘要验真`
+
+## 123. 2026-06-13 新增远端分享仓库包摘要验真
+
+本次把前台远端分享从“能发布 publicUrl 和保存回执”推进到“整个分享仓库包可验真”。作品分享远端包现在会携带稳定 SHA-256 摘要，前端检查和发布返回包时会先校验摘要，避免分享 HTML、分享记录、Workspace 或远端接受元数据被改动后静默写入本机状态。
+
+完成内容：
+
+- `mr-calligraphy-share-repository-v1` 新增 `digestAlgorithm: "sha256-stable-json"`。
+- 发布包新增 `packageDigest`，按稳定 JSON 计算 SHA-256。
+- 远端返回包如果声明了 `packageDigest`，会重新计算并比对；不匹配时返回“摘要校验失败”并不使用该分享包。
+- 无摘要的旧版分享包仍可读取。
+- `shareService` 新增最近包摘要持久化路径，远端检查和发布都会保留 `lastPackageDigest`。
+- 发布失败历史会记录当前 PUT 分享包摘要，方便排查失败恢复。
+- 分享 mock server 会校验传入包摘要，并在服务端改写接受包或撤销改写最近包后重新签摘要。
+- E2E 断言远端分享 PUT body、远端接受包、localStorage 和失败历史都包含或保留摘要字段。
+
+真实化说明：
+
+- 数据来源：当前本机分享记录、作品分享 HTML、远端 API 返回包和回执。
+- 写入状态：摘要通过后才写入本机 `shareService.lastPackageDigest` 与最近远端状态。
+- 成功反馈：远端分享状态显示 Workspace、publicUrl、回执校验和摘要短码。
+- 失败反馈：篡改包会显示声明摘要与实际摘要短码，并阻止使用远端包。
+- 刷新后复现方式：`mr-calligraphy-learning-state-v1.shareService.lastPackageDigest` 和 `remoteFailureHistory[*].packageDigest` 会保留最近成功或失败的分享包摘要。
+
+仍待补：
+
+- 摘要只能证明包内容没有在导出后被改动，不能证明账号身份、公开 URL 权限、CDN 可信、班级作品墙权限或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/share-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front share repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端分享仓库包摘要验真`

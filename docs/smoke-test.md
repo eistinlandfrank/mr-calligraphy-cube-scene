@@ -96,6 +96,7 @@ node scripts/learning-state-check.js
 
 本轮新增作品分享远端 Workspace 验收：前台远端分享 API 面板新增 `shareRemoteWorkspaceInput`；分享包、撤销包、分享记录远端状态、回执和回执审计均保留 `workspaceId`；GET / PUT / DELETE 携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存分享包、回执和撤销记录；切换 workspace 后不会读到其他空间的分享包。
 本轮新增作品分享回执本机校验验收：发布回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest`、`publicUrl` 和 `acceptedAt` 重算摘要；撤销回执会额外带 `action: revoke` 与 `shareId` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，篡改 `receiptDigest` 会被标记为摘要不匹配。
+本轮新增作品分享仓库包摘要验真验收：`getArtworkShareRemotePackage()` 会生成 `digestAlgorithm` 和 64 位 `packageDigest`；远端返回被篡改的分享包会被检查层拒绝；远端推送和检查会把 `shareService.lastPackageDigest` 持久化到 localStorage，发布失败历史会记录失败 PUT 包摘要。
 本轮新增学习档案仓库回执本机校验验收：学习档案回执会按 `workspaceId`、`sourcePackageId`、`repositoryDigest` 和 `acceptedAt` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，篡改 `receiptDigest` 会被标记为摘要不匹配。
 本轮新增学习档案包摘要验真验收：`getHistoryRepositoryPackage()` 会生成 `digestAlgorithm` 和 64 位 `packageDigest`；篡改学习档案 JSON 但保留旧摘要会被导入层拒绝；远端推送、检查和拉取会把 `historyRepository.lastPackageDigest` 持久化到 localStorage。
 本轮新增计划仓库包摘要验真验收：`getPlanRepositoryPackage()` 会生成 `digestAlgorithm` 和 64 位 `packageDigest`；篡改计划 JSON 但保留旧摘要会被导入层拒绝；远端推送、检查、拉取和冲突检测会把 `planRepository.lastPackageDigest` 持久化到 localStorage，自动同步失败历史会记录待推送包摘要。
@@ -121,8 +122,8 @@ npm run test:e2e
 Playwright 会启动本地静态服务器，并覆盖以下闭环：
 
 - 前台主房间、主后台和写实后台会采样 WebGL canvas 像素，确认画布不是空白 DOM；手机视口还会检查前台服务边界面板、两个后台服务边界面板、本机操作者审计面板和权限摘要，显示本机真实、本机编辑、本机审计、远端 Adapter、生产云端/生产后台未接入状态。
-- 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习；随后导出 WebM 回放视频，确认写入本机视频队列、导出记录、生成 PNG 封面并可下载封面；再模拟浏览器不支持录制触发失败任务，恢复录制能力后点击“重试”并确认再次下载 WebM；生成本机分享链接后配置远端分享 API，确认真实 GET/PUT/DELETE、publicUrl、远端撤销、回执持久化、回执审计列表和 HTML 回执下载。
-- 前台远端分享失败恢复用例会模拟 401、非法 JSON、PUT 422、网络中断、页面内超时、恢复发布、DELETE 409 和恢复撤销，确认 `shareService.remoteFailureHistory`、`remoteRetryAfter`、发布/撤销包摘要、按钮“重试发布/重试撤销”和回执本机校验都是真实状态。
+- 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习；随后导出 WebM 回放视频，确认写入本机视频队列、导出记录、生成 PNG 封面并可下载封面；再模拟浏览器不支持录制触发失败任务，恢复录制能力后点击“重试”并确认再次下载 WebM；生成本机分享链接后配置远端分享 API，确认真实 GET/PUT/DELETE、带 `digestAlgorithm` 和 `packageDigest` 的分享包、`lastPackageDigest` 持久化、publicUrl、远端撤销、回执持久化、回执审计列表和 HTML 回执下载。
+- 前台远端分享失败恢复用例会模拟 401、非法 JSON、PUT 422、网络中断、页面内超时、恢复发布、DELETE 409 和恢复撤销，确认 `shareService.remoteFailureHistory`、`remoteRetryAfter`、发布/撤销包摘要、失败 PUT 包摘要、按钮“重试发布/重试撤销”和回执本机校验都是真实状态。
 - 前台作品仓库用例会从作品集 UI 点击“导出仓库”下载 `mr-calligraphy-artwork-repository-*.json`，确认包内包含作品、关联练习、评分证据、截图、边界说明、`digestAlgorithm` 和 `packageDigest`；随后篡改作品标题但保留旧摘要，确认“导入仓库”拒绝摘要不匹配包且本机作品仍为空；再通过文件选择器导入原包恢复作品和关联练习，确认 `artworkRepository` 状态、摘要、作品卡片和 localStorage 都真实更新；再次导入同 ID 差异包时会显示作品仓库冲突审计，点击“另存导入副本”后作品集新增副本且原作品不被覆盖；随后点击“导出作品集”下载 `mr-calligraphy-artwork-collection-*.html`，确认 HTML 包含真实作品内容、离线作品集边界和 `ArtworkCollection: yes` 标记；再点击“导出评阅表”下载 `mr-calligraphy-classroom-review-*.html`，确认 HTML 包含教师分数、评阅 JSON 导出、`digestAlgorithm`、`packageDigest`、本机课堂评阅边界和 `ClassroomReview: yes` 标记；最后通过“导入评阅”先选择被篡改但未重算摘要的 `mr-calligraphy-classroom-review-notes-v1` JSON，确认摘要校验失败且作品卡片未回写评阅，再导入原包确认评阅回写到作品卡片和 localStorage，并跳过不存在的作品 ID；导入后点击“评阅汇总”下载 `mr-calligraphy-classroom-review-summary-*.html`，确认汇总包含教师均分、批注、digest 和 `ClassroomReviewSummary: yes` 标记。
 - 前台点击“导出报告”，确认下载 HTML 报告、写入报告记录，并能通过 `?report=报告ID` 打开站内报告。
 - 站内报告点击“下载 PDF”会产生 PDF 下载，并读取文件确认包含能力雷达图标记、分数趋势图标记和最近作品截图 Image XObject。

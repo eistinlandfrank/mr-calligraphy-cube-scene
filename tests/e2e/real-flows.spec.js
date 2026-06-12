@@ -470,13 +470,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
       const publicUrl = `https://share.example.test/${shareId}.html`;
       const acceptedAt = new Date().toISOString();
       const repositoryDigest = "d".repeat(64);
-      remoteSharePackage = {
+      remoteSharePackage = withPackageDigest({
         ...body,
         workspaceId: body.workspaceId,
         packageId: "e2e-share-package",
         acceptedAt,
         publicUrl
-      };
+      });
       latestShareReceipt = {
         receiptKind: "mr-calligraphy-share-repository-receipt-v1",
         remoteVersion: "e2e-share-v1",
@@ -520,7 +520,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
       const revokedAt = new Date().toISOString();
       const repositoryDigest = "f".repeat(64);
       remoteSharePackage = remoteSharePackage
-        ? {
+        ? withPackageDigest({
           ...remoteSharePackage,
           workspaceId: body.workspaceId,
           records: remoteSharePackage.records.map((record) => (
@@ -535,7 +535,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
             lastRevokedShareId: body.shareId,
             lastRevokedAt: revokedAt
           }
-        }
+        })
         : null;
       latestShareReceipt = {
         receiptKind: "mr-calligraphy-share-repository-receipt-v1",
@@ -873,11 +873,15 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(sharePut.body.summary.scoreEvidence).toBe(true);
   expect(sharePut.body.summary.scoreEvidenceSource).toBeTruthy();
   expect(sharePut.body.records[0].id).toBe(shareRecordId);
+  expect(sharePut.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(sharePut.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(sharePut.body.shares[0].html).toContain("MR 书法作品分享");
   expect(sharePut.body.shares[0].html).toContain("评分证据");
   expect(sharePut.body.shares[0].html).toContain("路径误差热力");
   expect(sharePut.body.shares[0].html).toContain("逐笔路径贴合");
+  expect(remoteSharePackage.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.shareService.workspaceId).toBe("share-e2e");
+  expect(learningState.shareService.lastPackageDigest).toBe(remoteSharePackage.packageDigest);
   expect(learningState.shareService.lastRemotePublicUrl).toContain(shareRecordId);
   expect(learningState.shareService.lastReceipt.workspaceId).toBe("share-e2e");
   expect(learningState.shareService.lastReceipt.receiptDigest).toBe(latestShareReceipt.receiptDigest);
@@ -1779,13 +1783,13 @@ test("front share repository shows retryable remote failure recovery", async ({ 
       const publicUrl = `https://share.example.test/recovered/${shareId}.html`;
       const acceptedAt = new Date().toISOString();
       const repositoryDigest = sha256StableJson(body);
-      const remotePackage = {
+      const remotePackage = withPackageDigest({
         ...body,
         packageId: "e2e-share-recovered-package",
         repositoryDigest,
         acceptedAt,
         publicUrl
-      };
+      });
       latestPublishReceipt = {
         receiptKind: "mr-calligraphy-share-repository-receipt-v1",
         remoteVersion: "e2e-share-recovery-v1",
@@ -1971,8 +1975,11 @@ test("front share repository shows retryable remote failure recovery", async ({ 
   expect(rejectedPutRequest.authorization).toBe("Bearer share-rejected-push-token");
   expect(rejectedPutRequest.workspaceId).toBe("share-retry-e2e");
   expect(rejectedPutRequest.body.kind).toBe("mr-calligraphy-share-repository-v1");
+  expect(rejectedPutRequest.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(rejectedPutRequest.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(rejectedPutRequest.body.records[0].id).toBe(seed.shareId);
   expect(learningState.shareService.remoteFailureHistory[0].packageId).toBe(rejectedPutRequest.body.packageId);
+  expect(learningState.shareService.remoteFailureHistory[0].packageDigest).toBe(rejectedPutRequest.body.packageDigest);
 
   const networkPushEndpoint = await getSameOriginEndpoint(page, networkPushPath);
   await configureShareRemoteInUi(page, networkPushEndpoint, "share-network-push-token", "share-retry-e2e");
@@ -2041,6 +2048,10 @@ test("front share repository shows retryable remote failure recovery", async ({ 
   expect(recoveryPutRequest.authorization).toBe("Bearer share-recovery-token");
   expect(recoveryPutRequest.workspaceId).toBe("share-retry-e2e");
   expect(recoveryPutRequest.body.summary.workspaceId).toBe("share-retry-e2e");
+  expect(recoveryPutRequest.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(recoveryPutRequest.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.shareService.lastPackageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.shareService.lastPackageDigest).not.toBe(recoveryPutRequest.body.packageDigest);
 
   const rejectedRevokeEndpoint = await getSameOriginEndpoint(page, rejectedRevokePath);
   await configureShareRemoteInUi(page, rejectedRevokeEndpoint, "share-rejected-revoke-token", "share-retry-e2e");

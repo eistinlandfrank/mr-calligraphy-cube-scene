@@ -20,6 +20,7 @@
   const SHARE_REPOSITORY_KIND = "mr-calligraphy-share-repository-v1";
   const SHARE_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const SHARE_REPOSITORY_BOUNDARY = "作品分享远端 API adapter 会把当前分享包真实发送到用户配置的 endpoint，并携带 Workspace 空间 ID 保存 publicUrl 与回执；它仍不是内置账号系统、微信发布、班级作品墙或生产 CDN。";
+  const SHARE_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
   const SHARE_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
   const SHARE_REPOSITORY_MAX_RECEIPTS = 12;
   const SHARE_REPOSITORY_MAX_FAILURES = 12;
@@ -897,6 +898,7 @@
       lastRemoteDirection,
       lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).trim().slice(0, 260) : "",
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).trim().slice(0, 160) : "",
+      lastPackageDigest: normalizeShareRepositoryHex(source.lastPackageDigest || source.packageDigest || source.repositoryDigest),
       lastRemoteShareId: source.lastRemoteShareId ? String(source.lastRemoteShareId).trim().slice(0, 120) : "",
       lastRemotePublicUrl: normalizeSharePublicUrl(source.lastRemotePublicUrl),
       lastReceipt,
@@ -8983,15 +8985,23 @@
         html: packageResult.html,
         filename: packageResult.filename,
         digest: packageDigest
-      }]
+      }],
+      digestAlgorithm: SHARE_REPOSITORY_DIGEST_ALGORITHM
     };
+    repositoryPackage.packageDigest = createShareRepositoryPackageDigest(repositoryPackage);
     return {
       ok: true,
       package: repositoryPackage,
       record: decorated,
       boundary: SHARE_REPOSITORY_BOUNDARY,
-      message: `已生成“${decorated.artworkTitle || decorated.title}”的远端分享包。`
+      message: `已生成“${decorated.artworkTitle || decorated.title}”的远端分享包，摘要 ${repositoryPackage.packageDigest.slice(0, 12)}。`
     };
+  }
+
+  function createShareRepositoryPackageDigest(packageRecord = {}) {
+    const payload = clone(packageRecord || {});
+    delete payload.packageDigest;
+    return sha256StableJson(payload);
   }
 
   function findArtworkSession(artwork) {
@@ -9035,6 +9045,7 @@
       lastRemoteShareId: service.lastRemoteShareId,
       lastRemotePublicUrl: service.lastRemotePublicUrl,
       lastPackageId: service.lastPackageId,
+      lastPackageDigest: service.lastPackageDigest,
       lastRemoteFailureAt: service.lastRemoteFailureAt,
       lastFailureAction: service.lastFailureAction,
       remoteRetryAfter: service.remoteRetryAfter,
@@ -9373,7 +9384,9 @@
     }
     return {
       ok: false,
-      message: payload.message || parsed.message || "远端分享 API 返回格式无效。"
+      message: hasWrappedPackage
+        ? parsed.message || payload.message || "远端分享 API 返回格式无效。"
+        : payload.message || parsed.message || "远端分享 API 返回格式无效。"
     };
   }
 
@@ -9383,6 +9396,13 @@
     }
     if (payload.kind !== SHARE_REPOSITORY_KIND) {
       return { ok: false, message: "分享仓库包 kind 不匹配。" };
+    }
+    const digestVerification = verifyShareRepositoryPackageDigest(payload);
+    if (!digestVerification.ok) {
+      return {
+        ok: false,
+        message: digestVerification.message
+      };
     }
     const records = Array.isArray(payload.records)
       ? payload.records.map(normalizeShareRecord).filter(Boolean).slice(0, MAX_SHARE_RECORDS)
@@ -9402,10 +9422,50 @@
         exportedAt: normalizePlanDate(payload.exportedAt) || new Date().toISOString(),
         acceptedAt: normalizePlanDate(payload.acceptedAt),
         repositoryDigest: normalizeShareRepositoryHex(payload.repositoryDigest),
+        packageDigest: digestVerification.packageDigest || normalizeShareRepositoryHex(payload.packageDigest),
+        digestAlgorithm: payload.digestAlgorithm || (digestVerification.packageDigest ? SHARE_REPOSITORY_DIGEST_ALGORITHM : ""),
         summary: payload.summary && typeof payload.summary === "object" ? clone(payload.summary) : {},
         records,
         shares: shares.slice(0, MAX_SHARE_RECORDS)
       }
+    };
+  }
+
+  function verifyShareRepositoryPackageDigest(packageRecord = {}) {
+    const claimedDigest = normalizeShareRepositoryHex(packageRecord.packageDigest);
+    const algorithm = String(packageRecord.digestAlgorithm || "").trim();
+    if (claimedDigest && algorithm && algorithm !== SHARE_REPOSITORY_DIGEST_ALGORITHM) {
+      return {
+        ok: false,
+        status: "unsupported-algorithm",
+        packageDigest: claimedDigest,
+        message: `分享仓库包摘要算法不受支持：${algorithm}。未使用该分享包。`
+      };
+    }
+    if (!claimedDigest) {
+      return {
+        ok: true,
+        status: "missing",
+        packageDigest: "",
+        message: "分享仓库包未声明摘要，按旧版分享包读取。"
+      };
+    }
+    const actualDigest = createShareRepositoryPackageDigest(packageRecord);
+    if (actualDigest !== claimedDigest) {
+      return {
+        ok: false,
+        status: "digest-mismatch",
+        packageDigest: claimedDigest,
+        actualDigest,
+        message: `分享仓库包摘要校验失败：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}。未使用该分享包。`
+      };
+    }
+    return {
+      ok: true,
+      status: "verified",
+      packageDigest: claimedDigest,
+      actualDigest,
+      message: `分享仓库包摘要校验通过：${claimedDigest.slice(0, 12)}。`
     };
   }
 
@@ -9527,6 +9587,8 @@
           message: parsed.message
         })
         : null;
+      const checkedPackageDigest = parsed.package?.packageDigest || service.lastPackageDigest || "";
+      const checkedPackageDigestText = checkedPackageDigest ? ` 摘要：${checkedPackageDigest.slice(0, 12)}。` : "";
       state.shareService = normalizeShareService({
         ...service,
         mode: "remote-api",
@@ -9534,9 +9596,10 @@
         lastRemoteSyncAt: now,
         lastRemoteDirection: "check",
         lastPackageId: parsed.package?.packageId || service.lastPackageId,
+        lastPackageDigest: checkedPackageDigest,
         lastReceipt: receipt || service.lastReceipt,
         receipts: appendShareRepositoryReceipt(service, receipt),
-        lastRemoteStatus: `${parsed.message} 空间：${service.workspaceId}。`,
+        lastRemoteStatus: `${parsed.message} 空间：${service.workspaceId}。${checkedPackageDigestText}`,
         remoteRetryAfter: null,
         lastError: ""
       });
@@ -9593,7 +9656,7 @@
       const parsed = await parseRemoteShareRepositoryResponse(response);
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        const packageDigest = sha256StableJson(repositoryPackage);
+        const packageDigest = repositoryPackage.packageDigest || createShareRepositoryPackageDigest(repositoryPackage);
         recordShareRepositoryError(parsed.message, {
           action: "push",
           shareId: shareRecord.id,
@@ -9617,6 +9680,8 @@
         })
         : null;
       const acceptedPackageId = parsed.package?.packageId || receipt?.packageId || repositoryPackage.packageId;
+      const pushedPackageDigest = parsed.package?.packageDigest || repositoryPackage.packageDigest || createShareRepositoryPackageDigest(repositoryPackage);
+      const pushedPackageDigestText = pushedPackageDigest ? `，摘要 ${pushedPackageDigest.slice(0, 12)}` : "";
       const publicUrl = parsed.publicUrl || receipt?.publicUrl || "";
       const record = findShareRecord(shareRecord.id);
       if (record) {
@@ -9629,8 +9694,8 @@
         record.remoteRevokeReceiptDigest = "";
       }
       const remoteStatus = publicUrl
-        ? `已发布作品分享到远端 API 空间 ${service.workspaceId}：${publicUrl}`
-        : `已发布作品分享到远端 API 空间 ${service.workspaceId}，远端未返回 publicUrl。`;
+        ? `已发布作品分享到远端 API 空间 ${service.workspaceId}${pushedPackageDigestText}：${publicUrl}`
+        : `已发布作品分享到远端 API 空间 ${service.workspaceId}${pushedPackageDigestText}，远端未返回 publicUrl。`;
       state.shareService = normalizeShareService({
         ...state.shareService,
         mode: "remote-api",
@@ -9642,6 +9707,7 @@
         lastRemotePushAt: now,
         lastRemoteDirection: "push",
         lastPackageId: acceptedPackageId,
+        lastPackageDigest: pushedPackageDigest,
         lastRemoteShareId: shareRecord.id,
         lastRemotePublicUrl: publicUrl,
         lastReceipt: receipt || service.lastReceipt,
@@ -9656,13 +9722,14 @@
         ok: true,
         status: getShareServiceStatus(shareRecord.artworkId),
         packageId: acceptedPackageId,
+        packageDigest: pushedPackageDigest,
         publicUrl,
         receipt: receipt ? clone(receipt) : null,
         message: `${remoteStatus} ${SHARE_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatShareRepositoryNetworkError("发布", error);
-      const packageDigest = sha256StableJson(repositoryPackage);
+      const packageDigest = repositoryPackage.packageDigest || createShareRepositoryPackageDigest(repositoryPackage);
       recordShareRepositoryError(message, {
         action: "push",
         shareId: shareRecord.id,
