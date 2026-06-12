@@ -60,8 +60,10 @@
     const packageDigest = normalizeSha256(source.packageDigest || receipt.packageDigest);
     const acceptedAt = normalizeDate(source.acceptedAt || receipt.acceptedAt);
     const pushedAt = normalizeDate(source.pushedAt);
+    const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt.assetSignatures);
+    const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
     const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt });
+      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, assetSignatureSummary });
     const warnings = normalizeWarningList(source.warnings || receipt.warnings);
     return {
       id: String(source.id || `receipt-${sceneId}-${receiptDigest.slice(0, 16)}`).slice(0, 180),
@@ -78,6 +80,8 @@
       message: String(source.message || "").slice(0, 180),
       warningCount: normalizeCount(source.warningCount ?? receipt.warningCount ?? warnings.length),
       warnings,
+      assetSignatureSummary,
+      assetSignatures,
       receiptKind: String(source.receiptKind || receipt.receiptKind || "").slice(0, 120),
       receipt
     };
@@ -579,24 +583,46 @@
 
   function createReleaseAssetManifest(layout = {}, sceneId = "") {
     const importedModels = Array.isArray(layout.importedModels) ? layout.importedModels : [];
+    const assets = [];
+    importedModels.forEach((record, index) => {
+      const id = String(record?.id || record?.dbKey || record?.key || `asset-${index + 1}`);
+      const dbKey = String(record?.dbKey || record?.key || record?.id || id);
+      const sha256 = normalizeSha256(record?.sha256);
+      assets.push({
+        id,
+        dbKey,
+        modelId: id,
+        assetKind: "model",
+        label: String(record?.label || record?.fileName || id).slice(0, 120),
+        fileName: String(record?.fileName || "").slice(0, 160),
+        type: String(record?.type || "").slice(0, 16),
+        bytes: Math.max(0, Math.round(Number(record?.metrics?.fileBytes || record?.bytes || record?.size || 0))),
+        sha256,
+        hashStatus: sha256 ? "sha256" : "missing-hash"
+      });
+      const texture = record?.texture && typeof record.texture === "object" ? record.texture : null;
+      if (texture) {
+        const textureId = String(texture.id || texture.dbKey || texture.key || `${id}-texture-${index + 1}`);
+        const textureDbKey = String(texture.dbKey || texture.key || texture.id || textureId);
+        const textureSha256 = normalizeSha256(texture.sha256);
+        assets.push({
+          id: textureId,
+          dbKey: textureDbKey,
+          modelId: id,
+          assetKind: "texture",
+          label: String(texture.label || texture.fileName || `${record?.label || id} 贴图`).slice(0, 120),
+          fileName: String(texture.fileName || "").slice(0, 160),
+          type: String(texture.type || texture.mimeType || "texture").slice(0, 16),
+          bytes: Math.max(0, Math.round(Number(texture.fileBytes || texture.bytes || texture.size || 0))),
+          sha256: textureSha256,
+          hashStatus: textureSha256 ? "sha256" : "missing-hash"
+        });
+      }
+    });
     return normalizeAssetManifest({
       version: 1,
       sceneId: normalizeSceneId(sceneId),
-      assets: importedModels.map((record, index) => {
-        const id = String(record?.id || record?.dbKey || record?.key || `asset-${index + 1}`);
-        const dbKey = String(record?.dbKey || record?.key || record?.id || id);
-        const sha256 = normalizeSha256(record?.sha256);
-        return {
-          id,
-          dbKey,
-          label: String(record?.label || record?.fileName || id).slice(0, 120),
-          fileName: String(record?.fileName || "").slice(0, 160),
-          type: String(record?.type || "").slice(0, 16),
-          bytes: Math.max(0, Math.round(Number(record?.metrics?.fileBytes || record?.bytes || record?.size || 0))),
-          sha256,
-          hashStatus: sha256 ? "sha256" : "missing-hash"
-        };
-      })
+      assets
     });
   }
 
@@ -614,9 +640,12 @@
     const id = String(asset?.id || asset?.dbKey || asset?.key || `asset-${index + 1}`);
     const dbKey = String(asset?.dbKey || asset?.key || asset?.id || id);
     const sha256 = normalizeSha256(asset?.sha256);
+    const assetKind = asset?.assetKind === "texture" ? "texture" : "model";
     return {
       id,
       dbKey,
+      modelId: String(asset?.modelId || (assetKind === "model" ? id : "")).slice(0, 160),
+      assetKind,
       label: String(asset?.label || asset?.fileName || id).slice(0, 120),
       fileName: String(asset?.fileName || "").slice(0, 160),
       type: String(asset?.type || "").slice(0, 16),
@@ -629,8 +658,13 @@
   function summarizeAssetManifest(manifest = {}) {
     const normalized = normalizeAssetManifest(manifest);
     const assets = normalized.assets;
+    const modelAssets = assets.filter((asset) => asset.assetKind !== "texture");
+    const textureAssets = assets.filter((asset) => asset.assetKind === "texture");
     return {
-      importedModelCount: assets.length,
+      importedModelCount: modelAssets.length,
+      assetCount: assets.length,
+      modelAssetCount: modelAssets.length,
+      textureAssetCount: textureAssets.length,
       hashedAssetCount: assets.filter((asset) => Boolean(asset.sha256)).length,
       missingHashCount: assets.filter((asset) => !asset.sha256).length,
       totalBytes: assets.reduce((sum, asset) => sum + Math.max(0, Number(asset.bytes || 0)), 0)
@@ -728,14 +762,27 @@
   }
 
   function assetManifestMatchesLayout(assetManifest = {}, layout = {}) {
-    const layoutIds = new Set((Array.isArray(layout?.importedModels) ? layout.importedModels : []).map((record, index) => {
+    const importedModels = Array.isArray(layout?.importedModels) ? layout.importedModels : [];
+    const layoutIds = new Set(importedModels.map((record, index) => {
       return String(record?.id || record?.dbKey || record?.key || `asset-${index + 1}`);
     }));
-    const assetIds = new Set(normalizeAssetManifest(assetManifest).assets.map((asset) => asset.id));
-    if (layoutIds.size !== assetIds.size) {
+    const assets = normalizeAssetManifest(assetManifest).assets;
+    const modelAssetIds = new Set(assets.filter((asset) => asset.assetKind !== "texture").map((asset) => asset.id));
+    if (layoutIds.size !== modelAssetIds.size) {
       return false;
     }
-    return [...layoutIds].every((id) => assetIds.has(id));
+    if (![...layoutIds].every((id) => modelAssetIds.has(id))) {
+      return false;
+    }
+    const textureKeys = new Set(importedModels.map((record) => {
+      const texture = record?.texture && typeof record.texture === "object" ? record.texture : null;
+      return texture ? String(texture.dbKey || texture.key || texture.id || "") : "";
+    }).filter(Boolean));
+    const textureAssetKeys = new Set(assets.filter((asset) => asset.assetKind === "texture").map((asset) => asset.dbKey || asset.id).filter(Boolean));
+    if (textureKeys.size !== textureAssetKeys.size) {
+      return false;
+    }
+    return [...textureKeys].every((key) => textureAssetKeys.has(key));
   }
 
   function createCurrentPackageSummary(payload = {}) {
@@ -968,20 +1015,25 @@
 
   function normalizeParsedRemotePayload(payload = {}, ok, message, status = 0) {
     const source = payload && typeof payload === "object" ? payload : {};
+    const receipt = source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : null;
+    const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt?.assetSignatures);
+    const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt?.assetSignatureSummary, assetSignatures);
     return {
       ok,
       status,
       message,
       packageId: source.packageId ? String(source.packageId) : "",
       releaseId: source.releaseId ? String(source.releaseId).slice(0, 160) : "",
-      packageDigest: normalizeSha256(source.packageDigest || source.receipt?.packageDigest),
-      receiptDigest: normalizeSha256(source.receiptDigest || source.receipt?.receiptDigest),
+      packageDigest: normalizeSha256(source.packageDigest || receipt?.packageDigest),
+      receiptDigest: normalizeSha256(source.receiptDigest || receipt?.receiptDigest),
       remoteVersion: source.remoteVersion ? String(source.remoteVersion).slice(0, 120) : "",
-      receipt: source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : null,
+      receipt,
       latestReceipt: normalizeRemoteStatusReceipt(source.latestReceipt),
       publishLock: normalizeRemotePublishLock(source.publishLock || source.lock),
       receiptCount: normalizeCount(source.receiptCount),
-      warnings: normalizeWarningList(source.warnings || source.receipt?.warnings)
+      warnings: normalizeWarningList(source.warnings || receipt?.warnings),
+      assetSignatureSummary,
+      assetSignatures
     };
   }
 
@@ -1111,6 +1163,8 @@
     if (!packageDigest && !releaseId && !packageId) {
       return null;
     }
+    const assetSignatures = normalizeAssetSignatures(source.assetSignatures);
+    const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary, assetSignatures);
     return {
       sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
       packageId,
@@ -1119,7 +1173,9 @@
       acceptedAt: normalizeDate(source.acceptedAt),
       pushedAt: normalizeDate(source.pushedAt),
       remoteVersion: source.remoteVersion ? String(source.remoteVersion).slice(0, 120) : "",
-      reason: source.reason ? String(source.reason).slice(0, 160) : ""
+      reason: source.reason ? String(source.reason).slice(0, 160) : "",
+      assetSignatureSummary,
+      assetSignatures
     };
   }
 
@@ -1152,6 +1208,8 @@
     const packageId = String(parsed.packageId || receipt.packageId || packagePayload.packageId || "").slice(0, 160);
     const packageDigest = normalizeSha256(parsed.packageDigest || receipt.packageDigest || packagePayload.manifest?.packageDigest);
     const acceptedAt = normalizeDate(receipt.acceptedAt) || pushedAt;
+    const assetSignatures = normalizeAssetSignatures(parsed.assetSignatures || receipt.assetSignatures);
+    const assetSignatureSummary = normalizeAssetSignatureSummary(parsed.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
     const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
       || sha256StableJson({
         sceneId: normalizedId,
@@ -1160,7 +1218,8 @@
         packageDigest,
         remoteVersion: parsed.remoteVersion || receipt.remoteVersion || "",
         acceptedAt,
-        pushedAt
+        pushedAt,
+        assetSignatureSummary
       });
     const warnings = normalizeWarningList(parsed.warnings || receipt.warnings);
     return normalizeRemoteReceipt({
@@ -1178,6 +1237,8 @@
       message: parsed.message || "",
       warningCount: warnings.length,
       warnings,
+      assetSignatureSummary,
+      assetSignatures,
       receiptKind: receipt.receiptKind || "",
       receipt
     });
@@ -1342,6 +1403,49 @@
     return warnings.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 8);
   }
 
+  function normalizeAssetSignatures(value) {
+    const signatures = Array.isArray(value) ? value : [];
+    return signatures.map((record, index) => {
+      const source = record && typeof record === "object" ? record : {};
+      const assetId = String(source.assetId || source.id || source.dbKey || `asset-${index + 1}`).slice(0, 160);
+      const signature = normalizeSha256(source.signature);
+      const sha256 = normalizeSha256(source.sha256);
+      if (!assetId || !signature) {
+        return null;
+      }
+      return {
+        assetId,
+        dbKey: String(source.dbKey || source.key || source.assetId || assetId).slice(0, 180),
+        modelId: String(source.modelId || "").slice(0, 160),
+        assetKind: source.assetKind === "texture" ? "texture" : "model",
+        fileName: String(source.fileName || "").slice(0, 160),
+        bytes: Math.max(0, Math.round(Number(source.bytes || 0))),
+        sha256,
+        packageDigest: normalizeSha256(source.packageDigest),
+        assetDigest: normalizeSha256(source.assetDigest),
+        signatureAlgorithm: String(source.signatureAlgorithm || "HMAC-SHA256").slice(0, 80),
+        signingKeyId: String(source.signingKeyId || "").slice(0, 120),
+        signature,
+        signedAt: normalizeDate(source.signedAt)
+      };
+    }).filter(Boolean).slice(0, 80);
+  }
+
+  function normalizeAssetSignatureSummary(value = {}, signatures = []) {
+    const source = value && typeof value === "object" ? value : {};
+    const signedAssetCount = normalizeCount(source.signedAssetCount ?? signatures.length);
+    return {
+      kind: String(source.kind || "mr-calligraphy-remote-publish-asset-signature-summary-v1").slice(0, 120),
+      signedAssetCount,
+      unsignedAssetCount: normalizeCount(source.unsignedAssetCount),
+      missingHashCount: normalizeCount(source.missingHashCount),
+      signatureAlgorithm: String(source.signatureAlgorithm || signatures[0]?.signatureAlgorithm || "").slice(0, 80),
+      signingKeyId: String(source.signingKeyId || signatures[0]?.signingKeyId || "").slice(0, 120),
+      assetDigest: normalizeSha256(source.assetDigest || signatures[0]?.assetDigest),
+      signedAt: normalizeDate(source.signedAt || signatures[0]?.signedAt)
+    };
+  }
+
   function shortDigest(value) {
     const digest = normalizeSha256(value);
     return digest ? `${digest.slice(0, 10)}...` : "摘要未知";
@@ -1357,6 +1461,7 @@
   function renderReceiptAuditHtml(audit, generatedAt) {
     const rows = audit.receipts.map((receipt) => {
       const warnings = receipt.warnings.length ? receipt.warnings.join("；") : "无";
+      const assetSignatureText = formatAssetSignatureSummary(receipt.assetSignatureSummary);
       return `
         <section class="receipt">
           <h2>${escapeHtml(receipt.packageId || "packageId 未知")}</h2>
@@ -1370,6 +1475,7 @@
             <dt>Pushed At</dt><dd>${escapeHtml(receipt.pushedAt || "未知")}</dd>
             <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
             <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
+            <dt>Asset Signatures</dt><dd>${escapeHtml(assetSignatureText)}</dd>
           </dl>
           <pre>${escapeHtml(JSON.stringify(receipt.receipt || {}, null, 2))}</pre>
         </section>`;
@@ -1400,6 +1506,18 @@
   </main>
 </body>
 </html>`;
+  }
+
+  function formatAssetSignatureSummary(summary = {}) {
+    const signedCount = normalizeCount(summary.signedAssetCount);
+    const missingHashCount = normalizeCount(summary.missingHashCount);
+    if (!signedCount && !missingHashCount) {
+      return "无资产签名";
+    }
+    const algorithm = summary.signatureAlgorithm || "算法未知";
+    const signingKeyId = summary.signingKeyId || "key 未知";
+    const missing = missingHashCount ? `，${missingHashCount} 个资产缺哈希未签名` : "";
+    return `${signedCount} 个资产签名 · ${algorithm} · ${signingKeyId}${missing}`;
   }
 
   function escapeHtml(value) {

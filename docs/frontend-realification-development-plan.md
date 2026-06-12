@@ -38,9 +38,9 @@ node scripts/control-inventory.js --check
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 38 | 6 | 1 | 0 | 0 | 0 |
+| `main-admin.html` | 39 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 24 | 2 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 25 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
@@ -73,7 +73,7 @@ node scripts/control-inventory.js --check
 | 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用；主后台项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 真实 GET/PUT，支持拉取远端包进入恢复预览 | 保存范围主要是当前浏览器，远端 adapter 还不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 写实对象、相机、导入模型、快照、发布到演示可用；已纳入 `project-scene-repository-v1` 统一视图 | 和主后台对象 schema 仍有字段差异 | 继续统一字段迁移、完整 diff 和资产引用规则 |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史、差异、回滚 | 只是本机发布，不是线上部署 | UI 保持“本机发布”；线上发布必须走远端发布合同 |
-| 远端发布 | 可配置 endpoint/token，生成发布包、manifest、资产清单，预检、审核锁、POST 推送、服务端回执持久化和 HTML 审计导出已有第一版 | 还不是账号权限、CDN 托管、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、资产签名、CDN 回执和不可篡改审计日志 |
+| 远端发布 | 可配置 endpoint/token，生成发布包、manifest、模型/贴图资产清单，预检、审核锁、POST 推送、服务端回执持久化、HMAC 开发资产签名回执和 HTML 审计导出已有第一版 | 还不是账号权限、CDN 托管、生产证书签名、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、生产证书资产签名、CDN 回执和不可篡改审计日志 |
 | 项目档案 | JSON 导出/导入、schema、迁移、字段恢复、模型哈希、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、拉取预览、API 合同和本机 mock 服务可用 | 三方合并、完整 JSON 树、账号权限和远端资产校验仍弱 | 增加账号化服务端 repository、多人冲突解决和远端资产完整性校验 |
 | 后台权限 | 已显示“本机静态后台”风险提示 | 任何能打开页面的人都能编辑本机内容 | 后端版加入账号、角色、权限和操作审计 |
 
@@ -127,7 +127,7 @@ node scripts/control-inventory.js --check
 
 - `main-admin.html` 和 `realistic-admin.html` 保留本机权限风险提示。
 - “发布到前台/演示”继续标为本机发布。
-- 远端发布 API 面板已有服务端合同文档、mock endpoint、回执持久化和回执审计导出第一版；后续补账号权限和服务端签名。
+- 远端发布 API 面板已有服务端合同文档、mock endpoint、回执持久化、HMAC 开发资产签名回执和回执审计导出第一版；后续补账号权限、生产证书签名和服务端不可篡改审计。
 - 审核与发布锁从本机状态升级为远端校验状态。
 
 ### P1：把学习状态从本机原型升级为可同步业务
@@ -198,7 +198,7 @@ node scripts/control-inventory.js --check
 
 仍然不是生产能力的部分：
 
-- 服务端账号、远端审批、资产签名、CDN 托管和不可篡改审计仍未接入。
+- 服务端账号、远端审批、生产证书资产签名、CDN 托管和不可篡改审计仍未接入。
 - 本机“解除发布锁”只能清本机锁；如果服务端仍返回锁，下一次推送仍会被预检阻止。
 
 ## 10. 2026-06-12 报告教师批注真实化
@@ -2194,3 +2194,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化导入模型贴图移除`
+
+## 65. 2026-06-12 真实化远端发布资产签名回执
+
+本次把远端发布从“发送资产清单并保留普通回执”推进到“远端服务对已哈希资产返回可审计签名回执”：发布包现在会把导入模型文件和导入模型贴图都纳入 `assetManifest`，mock 服务会对每个有 SHA-256 的资产生成 HMAC-SHA256 开发签名，后台回执列表和审计导出都能看到签名数量。
+
+完成内容：
+
+- `project-remote-publish.js` 的资产清单新增 `assetKind: "model" | "texture"`、`modelId`、`assetCount`、`modelAssetCount` 和 `textureAssetCount`。
+- 导入模型贴图会跟随 `importedModels[*].texture` 进入远端发布资产清单，贴图 `dbKey` 与布局不一致时预检失败。
+- 远端回执规范化新增 `assetSignatureSummary` 和 `assetSignatures`，并随本机回执审计持久化。
+- 主后台和写实后台远端发布回执列表会显示“资产签名 N”。
+- 回执审计 HTML 新增 `Asset Signatures` 字段，原始 receipt JSON 保留签名明细。
+- `scripts/remote-publish-mock-server.js` 对每个带 SHA-256 的模型/贴图资产生成 HMAC-SHA256 开发签名；缺哈希资产只进入 warning。
+- `docs/remote-publish-api-contract.md` 补齐模型/贴图资产清单、签名回执结构和 mock/HMAC 边界。
+- `scripts/remote-publish-check.js` 验证模型/贴图资产清单、签名摘要、签名明细、mock 服务 HMAC、审计导出和状态持久化。
+
+真实化说明：
+
+- 数据来源：本机发布 layout、导入模型与贴图 SHA-256、远端 POST 响应和 mock 服务签名回执。
+- 写入状态：推送成功后写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].receipts[*].assetSignatureSummary` 与 `assetSignatures`。
+- 成功反馈：后台回执列表显示资产签名数量，导出的 HTML 审计包含签名摘要。
+- 失败反馈：缺少 SHA-256 的资产不会生成假签名；资产清单与布局不一致会阻止发布包通过预检。
+- 刷新后复现方式：远端回执保存在本机远端发布状态中，刷新后台仍能看到最近签名摘要。
+
+仍待补：
+
+- 当前是 mock/HMAC 开发验收，不是生产证书签名、账号权限审计、CDN 上传回执或服务端不可篡改审计链。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node scripts/remote-publish-check.js`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化远端发布资产签名回执`

@@ -59,9 +59,15 @@ async function run() {
   assert(adapter.validatePackage(mainPackage.package).ok, "远端发布包预检 API 应接受未篡改发布包。");
   assert(/^[a-f0-9]{64}$/.test(mainPackage.package.manifest.packageDigest), "发布包 manifest 应包含 SHA-256 摘要。");
   assert(mainPackage.package.manifest.objectSummary.objectCount === 1, "发布包 manifest 应统计布局对象数量。");
-  assert(mainPackage.package.assetManifest.assets.length === 1, "发布包应包含导入模型资产清单。");
-  assert(mainPackage.package.assetManifest.assets[0].sha256 === "a".repeat(64), "导入模型资产清单应保留 SHA-256。");
-  assert(mainPackage.package.manifest.assetSummary.hashedAssetCount === 1, "发布包 manifest 应统计带哈希资产。");
+  assert(mainPackage.package.assetManifest.assets.length === 2, "发布包应包含导入模型和贴图资产清单。");
+  const mainModelAsset = mainPackage.package.assetManifest.assets.find((asset) => asset.assetKind === "model");
+  const mainTextureAsset = mainPackage.package.assetManifest.assets.find((asset) => asset.assetKind === "texture");
+  assert(mainModelAsset && mainModelAsset.sha256 === "a".repeat(64), "导入模型资产清单应保留模型 SHA-256。");
+  assert(mainTextureAsset && mainTextureAsset.sha256 === "c".repeat(64), "导入模型资产清单应保留贴图 SHA-256。");
+  assert(mainTextureAsset.modelId === "asset-1", "贴图资产清单应指向所属导入模型。");
+  assert(mainPackage.package.manifest.assetSummary.importedModelCount === 1, "发布包 manifest 应统计模型资产数量。");
+  assert(mainPackage.package.manifest.assetSummary.textureAssetCount === 1, "发布包 manifest 应统计贴图资产数量。");
+  assert(mainPackage.package.manifest.assetSummary.hashedAssetCount === 2, "发布包 manifest 应统计带哈希资产。");
   assert(/^[a-f0-9]{64}$/.test(mainPackage.package.manifest.assetDigest), "发布包 manifest 应包含资产摘要。");
   const repeatedMainPackage = adapter.createPackage("mainScene", {
     sceneLabel: "主场景",
@@ -122,15 +128,7 @@ async function run() {
     if (options.method === "POST") {
       const body = JSON.parse(options.body);
       if (body.sceneId === "mainScene") pushedMainPackage = body;
-      fakeRemoteLatestReceipt = {
-        receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
-        packageId: `accepted-${body.sceneId}`,
-        releaseId: body.release.id,
-        sceneId: body.sceneId,
-        packageDigest: body.manifest.packageDigest,
-        acceptedAt: "2026-06-12T08:00:00.000Z",
-        remoteVersion: `${body.sceneId}-remote-v1`
-      };
+      fakeRemoteLatestReceipt = createFakeRemotePublishReceipt(body, "2026-06-12T08:00:00.000Z");
       return jsonResponse({
         ok: true,
         message: `${body.sceneLabel}远端发布已接收。`,
@@ -207,18 +205,23 @@ async function run() {
   assert(mainPush.ok, "主场景发布包应能推送到远端 API。");
   assert(pushedMainPackage.kind === "mr-calligraphy-remote-publish-package-v1", "推送 body 应是远端发布包。");
   assert(pushedMainPackage.manifest.packageDigest === mainPackage.package.manifest.packageDigest, "推送 body 应携带同一 manifest 摘要。");
-  assert(pushedMainPackage.assetManifest.assets[0].sha256 === "a".repeat(64), "推送 body 应携带资产 SHA-256。");
+  assert(pushedMainPackage.assetManifest.assets.some((asset) => asset.sha256 === "a".repeat(64)), "推送 body 应携带模型资产 SHA-256。");
+  assert(pushedMainPackage.assetManifest.assets.some((asset) => asset.sha256 === "c".repeat(64)), "推送 body 应携带贴图资产 SHA-256。");
   assert(mainPush.packageId === "accepted-mainScene", "主场景推送应记录远端接收 packageId。");
   assert(mainPush.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本地 packageDigest。");
   assert(mainPush.validation.ok, "主场景推送结果应包含通过的预检结果。");
   assert(mainPush.receipt && mainPush.receipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景推送结果应返回本机回执审计记录。");
   assert(mainPush.receipt.receiptDigest, "主场景回执审计记录应包含 receiptDigest。");
+  assert(mainPush.receipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执应保存远端资产签名数量。");
+  assert(mainPush.receipt.assetSignatures.length === 2, "主场景回执应保存每个资产的签名明细。");
   const mainAudit = adapter.getReceiptAudit("mainScene");
   assert(mainAudit.total === 1, "主场景推送成功后应保存一条远端回执审计。");
   assert(mainAudit.latestReceipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景回执审计应保留 packageDigest。");
+  assert(mainAudit.latestReceipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执审计应保留资产签名摘要。");
   const mainAuditExport = adapter.getReceiptAuditExport("mainScene");
   assert(mainAuditExport.ok && mainAuditExport.html.includes("MR 书法远端发布回执审计"), "主场景回执审计应可导出 HTML。");
   assert(mainAuditExport.html.includes("accepted-mainScene"), "主场景回执审计导出应包含远端 packageId。");
+  assert(mainAuditExport.html.includes("Asset Signatures"), "主场景回执审计导出应包含资产签名摘要字段。");
   const lockedWorkflow = adapter.getWorkflow("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -305,15 +308,7 @@ async function run() {
         releaseId: body.release.id,
         packageDigest: body.manifest.packageDigest,
         remoteVersion: `${body.sceneId}-remote-v1`,
-        receipt: {
-          receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
-          packageId: `accepted-${body.sceneId}`,
-          releaseId: body.release.id,
-          sceneId: body.sceneId,
-          packageDigest: body.manifest.packageDigest,
-          acceptedAt: "2026-06-12T08:10:00.000Z",
-          remoteVersion: `${body.sceneId}-remote-v1`
-        }
+        receipt: createFakeRemotePublishReceipt(body, "2026-06-12T08:10:00.000Z")
       });
     }
     return jsonResponse({
@@ -358,15 +353,17 @@ async function run() {
   assert(persisted.scenes.mainScene.review.status === "approved", "主场景审核通过状态应持久化。");
   assert(persisted.scenes.mainScene.receipts.length === 1, "主场景回执审计应持久化。");
   assert(persisted.scenes.mainScene.receipts[0].receiptDigest, "主场景持久化回执应包含 receiptDigest。");
+  assert(persisted.scenes.mainScene.receipts[0].assetSignatureSummary.signedAssetCount === 2, "主场景持久化回执应包含资产签名摘要。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
   assert(persisted.scenes.realisticScene.lock.packageDigest, "写实场景推送成功后应持久化发布锁。");
   assert(persisted.scenes.realisticScene.receipts.length === 1, "写实场景回执审计应持久化。");
+  assert(persisted.scenes.realisticScene.receipts[0].assetSignatures.length === 2, "写实场景持久化回执应包含资产签名明细。");
 
   await runMockServerChecks(adapter, nativeFetch);
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、资产清单、资产摘要、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、模型/贴图资产清单、资产摘要、远端资产签名回执、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
 }
 
 async function runMockServerChecks(adapter, fetchApi) {
@@ -406,8 +403,13 @@ async function runMockServerChecks(adapter, fetchApi) {
     assert(mock.state.received.length === 1, "mock 服务应记录一条发布回执。");
     assert(mock.state.received[0].packageDigest === mockPackage.package.manifest.packageDigest, "mock 回执应保留 packageDigest。");
     assert(mock.state.received[0].receiptDigest, "mock 回执应生成 receiptDigest。");
+    assert(mock.state.received[0].assetSignatureSummary.signedAssetCount === 2, "mock 回执应统计模型和贴图资产签名。");
+    assert(mock.state.received[0].assetSignatureSummary.signingKeyId === "remote-publish-mock-asset-hmac-v1", "mock 回执应返回资产签名 key id。");
+    assert(mock.state.received[0].assetSignatures.every((item) => /^[a-f0-9]{64}$/.test(item.signature)), "mock 回执资产签名应为 64 位 HMAC。");
+    assert(pushed.receipt.assetSignatureSummary.signedAssetCount === 2, "adapter 应暴露 mock 服务资产签名摘要。");
     const mockAudit = adapter.getReceiptAudit("mainScene");
     assert(mockAudit.latestReceipt.receiptDigest === mock.state.received[0].receiptDigest, "mock 服务回执应进入本机审计列表。");
+    assert(mockAudit.latestReceipt.assetSignatures.length === 2, "mock 服务资产签名明细应进入本机审计列表。");
     const mockUnlocked = adapter.unlock("mainScene", options);
     assert(mockUnlocked.ok, "mock 服务重复校验前应可解除本机发布锁。");
     const mockBlockedByServerLock = await adapter.push("mainScene", options);
@@ -432,6 +434,7 @@ async function runMockServerChecks(adapter, fetchApi) {
 
 function createPublishedRecord(releaseId, note, options = {}) {
   const assetHash = options.assetHash === undefined ? "a".repeat(64) : options.assetHash;
+  const textureHash = options.textureHash === undefined ? "c".repeat(64) : options.textureHash;
   const importedModel = {
     id: "asset-1",
     dbKey: "asset-1",
@@ -439,7 +442,14 @@ function createPublishedRecord(releaseId, note, options = {}) {
     fileName: "publish-model.glb",
     type: "glb",
     metrics: { fileBytes: 2048, meshCount: 1, vertexCount: 12 },
-    ...(assetHash ? { sha256: assetHash } : {})
+    ...(assetHash ? { sha256: assetHash } : {}),
+    texture: textureHash === false ? null : {
+      dbKey: "texture-1",
+      fileName: "ink-paper.png",
+      type: "png",
+      fileBytes: 512,
+      ...(textureHash ? { sha256: textureHash } : {})
+    }
   };
   const release = {
     id: releaseId,
@@ -473,6 +483,48 @@ function createPublishedRecord(releaseId, note, options = {}) {
     stats: release.stats,
     releases: [release]
   };
+}
+
+function createFakeRemotePublishReceipt(body, acceptedAt) {
+  const assetSignatures = createFakeAssetSignatures(body, acceptedAt);
+  return {
+    receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
+    packageId: `accepted-${body.sceneId}`,
+    releaseId: body.release.id,
+    sceneId: body.sceneId,
+    packageDigest: body.manifest.packageDigest,
+    acceptedAt,
+    remoteVersion: `${body.sceneId}-remote-v1`,
+    assetSignatureSummary: {
+      kind: "mr-calligraphy-remote-publish-asset-signature-summary-v1",
+      signedAssetCount: assetSignatures.length,
+      unsignedAssetCount: body.assetManifest.assets.filter((asset) => !asset.sha256).length,
+      missingHashCount: body.assetManifest.assets.filter((asset) => !asset.sha256).length,
+      signatureAlgorithm: "HMAC-SHA256",
+      signingKeyId: "remote-publish-e2e-hmac-v1",
+      assetDigest: body.manifest.assetDigest,
+      signedAt: acceptedAt
+    },
+    assetSignatures
+  };
+}
+
+function createFakeAssetSignatures(body, acceptedAt) {
+  return body.assetManifest.assets.filter((asset) => asset.sha256).map((asset, index) => ({
+    assetId: asset.id,
+    dbKey: asset.dbKey,
+    modelId: asset.modelId,
+    assetKind: asset.assetKind,
+    fileName: asset.fileName,
+    bytes: asset.bytes,
+    sha256: asset.sha256,
+    packageDigest: body.manifest.packageDigest,
+    assetDigest: body.manifest.assetDigest,
+    signatureAlgorithm: "HMAC-SHA256",
+    signingKeyId: "remote-publish-e2e-hmac-v1",
+    signature: `${(index + 1).toString(16)}`.repeat(64).slice(0, 64),
+    signedAt: acceptedAt
+  }));
 }
 
 function jsonResponse(payload, ok = true, status = 200) {

@@ -40,7 +40,7 @@ Authorization: Bearer <token>
 | `release` | 当前发布版本摘要 |
 | `record` | 本机发布记录 |
 | `releaseLayout` | 当前发布布局 |
-| `assetManifest` | 导入模型资产清单 |
+| `assetManifest` | 导入模型与导入模型贴图资产清单 |
 | `manifest` | 摘要和统计 |
 
 `manifest.kind` 固定为 `mr-calligraphy-remote-publish-manifest-v1`，并包含：
@@ -53,9 +53,20 @@ Authorization: Bearer <token>
 | `layoutDigest` | 发布布局摘要 |
 | `assetDigest` | 资产清单摘要 |
 | `objectSummary` | 对象数量、可见对象、导入模型等统计 |
-| `assetSummary` | 资产数量、带哈希数量、缺哈希数量和字节数 |
+| `assetSummary` | 模型资产、贴图资产、带哈希数量、缺哈希数量和字节数 |
 
 服务端应重新计算这些 digest，并拒绝不匹配的请求。
+
+`assetManifest.assets[*]` 会包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `assetKind` | `model` 或 `texture` |
+| `id` / `dbKey` | 本机资产引用 key |
+| `modelId` | 贴图所属导入模型 ID；模型资产等于自身 ID |
+| `fileName` / `type` / `bytes` | 本机文件摘要信息 |
+| `sha256` | 资产二进制 SHA-256；缺失时该资产不会被签名 |
+| `hashStatus` | `sha256` 或 `missing-hash` |
 
 ## 4. 检查响应与服务端发布锁
 
@@ -110,14 +121,39 @@ Authorization: Bearer <token>
     "releaseId": "main-release-1",
     "packageDigest": "64位sha256",
     "acceptedAt": "2026-06-12T00:00:00.000Z",
+    "assetSignatureSummary": {
+      "kind": "mr-calligraphy-remote-publish-asset-signature-summary-v1",
+      "signedAssetCount": 2,
+      "unsignedAssetCount": 0,
+      "missingHashCount": 0,
+      "signatureAlgorithm": "HMAC-SHA256",
+      "signingKeyId": "remote-publish-mock-asset-hmac-v1",
+      "assetDigest": "64位sha256",
+      "signedAt": "2026-06-12T00:00:00.000Z"
+    },
+    "assetSignatures": [
+      {
+        "assetId": "asset-1",
+        "dbKey": "asset-1",
+        "modelId": "asset-1",
+        "assetKind": "model",
+        "sha256": "64位sha256",
+        "packageDigest": "64位sha256",
+        "assetDigest": "64位sha256",
+        "signatureAlgorithm": "HMAC-SHA256",
+        "signingKeyId": "remote-publish-mock-asset-hmac-v1",
+        "signature": "64位hmac",
+        "signedAt": "2026-06-12T00:00:00.000Z"
+      }
+    ],
     "receiptDigest": "64位sha256"
   }
 }
 ```
 
-前端 adapter 会读取 `message`、`packageId`、`releaseId`、`packageDigest`、`remoteVersion` 和 `receipt`，并把本机 `releaseId`、`packageDigest`、发布锁、最近远端状态和最近回执审计写回 `mr-calligraphy-remote-publish-v1`。
+前端 adapter 会读取 `message`、`packageId`、`releaseId`、`packageDigest`、`remoteVersion` 和 `receipt`，并把本机 `releaseId`、`packageDigest`、发布锁、最近远端状态、资产签名摘要和最近回执审计写回 `mr-calligraphy-remote-publish-v1`。
 
-主后台和写实后台会显示最近回执，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。
+主后台和写实后台会显示最近回执和资产签名数量，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。当前 mock 服务的资产签名是 HMAC-SHA256 开发验收回执，不是生产证书签名或不可抵赖签章。
 
 ## 6. 失败响应
 
@@ -170,7 +206,8 @@ mock 服务会：
 - `POST` 重新计算 `packageDigest`、`layoutDigest`、`assetDigest`。
 - 拒绝摘要不匹配的发布包。
 - 拒绝重复 `packageDigest`。
-- 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执写入本机审计列表。
+- 对每个带 SHA-256 的模型 / 贴图资产返回 `assetSignatures[*]` HMAC 开发签名；缺哈希资产只返回 warning，不伪造签名。
+- 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执和资产签名摘要写入本机审计列表。
 
 ## 8. 验收
 
@@ -181,4 +218,4 @@ node scripts/remote-publish-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、发布包回执、回执审计导出、服务端锁预检、重复摘要拒绝、远端拒收释放临时锁和远端发布状态持久化。
+`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` 验证 endpoint、Bearer token、模型/贴图资产清单、远端资产签名回执、发布包回执、回执审计导出、服务端锁预检、重复摘要拒绝、远端拒收释放临时锁和远端发布状态持久化。

@@ -5,10 +5,13 @@ const http = require("http");
 
 const PACKAGE_KIND = "mr-calligraphy-remote-publish-package-v1";
 const MANIFEST_KIND = "mr-calligraphy-remote-publish-manifest-v1";
+const ASSET_SIGNATURE_ALGORITHM = "HMAC-SHA256";
+const ASSET_SIGNING_KEY_ID = "remote-publish-mock-asset-hmac-v1";
 const VERSION = 1;
 
 function createRemotePublishMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.REMOTE_PUBLISH_MOCK_TOKEN || "").trim();
+  const signingSecret = String(options.signingSecret || process.env.REMOTE_PUBLISH_MOCK_SIGNING_SECRET || "mr-calligraphy-remote-publish-mock-secret-v1");
   const state = {
     startedAt: new Date().toISOString(),
     received: [],
@@ -76,7 +79,7 @@ function createRemotePublishMockServer(options = {}) {
           });
         }
 
-        const receipt = createReceipt(payload, validation);
+        const receipt = createReceipt(payload, validation, signingSecret);
         state.received.unshift(receipt);
         state.byDigest.set(digest, receipt);
         return sendJson(response, 201, {
@@ -198,7 +201,7 @@ function createContract() {
     packageKind: PACKAGE_KIND,
     manifestKind: MANIFEST_KIND,
     requiredTopLevelFields: ["kind", "version", "packageId", "sceneId", "release", "record", "releaseLayout", "assetManifest", "manifest"],
-    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt"],
+    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt", "receipt.assetSignatures"],
     lockFields: ["publishLock.locked", "publishLock.sceneId", "publishLock.releaseId", "publishLock.packageDigest", "latestReceipt"]
   };
 }
@@ -316,9 +319,12 @@ function normalizeAssetRecord(asset = {}, index = 0) {
   const id = String(asset?.id || asset?.dbKey || asset?.key || `asset-${index + 1}`);
   const dbKey = String(asset?.dbKey || asset?.key || asset?.id || id);
   const sha256 = normalizeSha256(asset?.sha256);
+  const assetKind = asset?.assetKind === "texture" ? "texture" : "model";
   return {
     id,
     dbKey,
+    modelId: String(asset?.modelId || (assetKind === "model" ? id : "")).slice(0, 160),
+    assetKind,
     label: String(asset?.label || asset?.fileName || id).slice(0, 120),
     fileName: String(asset?.fileName || "").slice(0, 160),
     type: String(asset?.type || "").slice(0, 16),
@@ -331,8 +337,13 @@ function normalizeAssetRecord(asset = {}, index = 0) {
 function summarizeAssetManifest(manifest = {}) {
   const normalized = normalizeAssetManifest(manifest);
   const assets = normalized.assets;
+  const modelAssets = assets.filter((asset) => asset.assetKind !== "texture");
+  const textureAssets = assets.filter((asset) => asset.assetKind === "texture");
   return {
-    importedModelCount: assets.length,
+    importedModelCount: modelAssets.length,
+    assetCount: assets.length,
+    modelAssetCount: modelAssets.length,
+    textureAssetCount: textureAssets.length,
     hashedAssetCount: assets.filter((asset) => Boolean(asset.sha256)).length,
     missingHashCount: assets.filter((asset) => !asset.sha256).length,
     totalBytes: assets.reduce((sum, asset) => sum + Math.max(0, Number(asset.bytes || 0)), 0)
@@ -340,17 +351,28 @@ function summarizeAssetManifest(manifest = {}) {
 }
 
 function assetManifestMatchesLayout(assetManifest = {}, layout = {}) {
-  const layoutIds = new Set((Array.isArray(layout?.importedModels) ? layout.importedModels : []).map((record, index) => {
+  const importedModels = Array.isArray(layout?.importedModels) ? layout.importedModels : [];
+  const layoutIds = new Set(importedModels.map((record, index) => {
     return String(record?.id || record?.dbKey || record?.key || `asset-${index + 1}`);
   }));
-  const assetIds = new Set(normalizeAssetManifest(assetManifest).assets.map((asset) => asset.id));
-  if (layoutIds.size !== assetIds.size) return false;
-  return [...layoutIds].every((id) => assetIds.has(id));
+  const assets = normalizeAssetManifest(assetManifest).assets;
+  const modelAssetIds = new Set(assets.filter((asset) => asset.assetKind !== "texture").map((asset) => asset.id));
+  if (layoutIds.size !== modelAssetIds.size) return false;
+  if (![...layoutIds].every((id) => modelAssetIds.has(id))) return false;
+  const textureKeys = new Set(importedModels.map((record) => {
+    const texture = record?.texture && typeof record.texture === "object" ? record.texture : null;
+    return texture ? String(texture.dbKey || texture.key || texture.id || "") : "";
+  }).filter(Boolean));
+  const textureAssetKeys = new Set(assets.filter((asset) => asset.assetKind === "texture").map((asset) => asset.dbKey || asset.id).filter(Boolean));
+  if (textureKeys.size !== textureAssetKeys.size) return false;
+  return [...textureKeys].every((key) => textureAssetKeys.has(key));
 }
 
-function createReceipt(payload, validation) {
+function createReceipt(payload, validation, signingSecret) {
   const packageDigest = payload.manifest.packageDigest;
   const acceptedAt = new Date().toISOString();
+  const assetSignatures = createAssetSignatures(payload, acceptedAt, signingSecret);
+  const assetSignatureSummary = createAssetSignatureSummary(payload, assetSignatures, acceptedAt);
   return {
     receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
     remoteVersion: "mr-calligraphy-remote-publish-mock-v1",
@@ -363,12 +385,63 @@ function createReceipt(payload, validation) {
     acceptedAt,
     warningCount: validation.warnings.length,
     warnings: validation.warnings,
+    assetSignatureSummary,
+    assetSignatures,
     receiptDigest: sha256StableJson({
       sceneId: payload.sceneId,
       releaseId: payload.release?.id || "",
       packageDigest,
-      acceptedAt
+      acceptedAt,
+      assetSignatureSummary
     })
+  };
+}
+
+function createAssetSignatures(payload, acceptedAt, signingSecret) {
+  const assetManifest = normalizeAssetManifest(payload.assetManifest || {});
+  return assetManifest.assets.filter((asset) => asset.sha256).map((asset) => {
+    const signaturePayload = {
+      sceneId: payload.sceneId || "",
+      releaseId: payload.release?.id || "",
+      packageDigest: payload.manifest?.packageDigest || "",
+      assetDigest: payload.manifest?.assetDigest || "",
+      assetId: asset.id,
+      dbKey: asset.dbKey,
+      modelId: asset.modelId,
+      assetKind: asset.assetKind,
+      sha256: asset.sha256,
+      bytes: asset.bytes
+    };
+    return {
+      assetId: asset.id,
+      dbKey: asset.dbKey,
+      modelId: asset.modelId,
+      assetKind: asset.assetKind,
+      fileName: asset.fileName,
+      bytes: asset.bytes,
+      sha256: asset.sha256,
+      packageDigest: payload.manifest?.packageDigest || "",
+      assetDigest: payload.manifest?.assetDigest || "",
+      signatureAlgorithm: ASSET_SIGNATURE_ALGORITHM,
+      signingKeyId: ASSET_SIGNING_KEY_ID,
+      signature: hmacStableJson(signingSecret, signaturePayload),
+      signedAt: acceptedAt
+    };
+  });
+}
+
+function createAssetSignatureSummary(payload, assetSignatures, acceptedAt) {
+  const assetManifest = normalizeAssetManifest(payload.assetManifest || {});
+  const unsignedAssetCount = assetManifest.assets.filter((asset) => !asset.sha256).length;
+  return {
+    kind: "mr-calligraphy-remote-publish-asset-signature-summary-v1",
+    signedAssetCount: assetSignatures.length,
+    unsignedAssetCount,
+    missingHashCount: unsignedAssetCount,
+    signatureAlgorithm: ASSET_SIGNATURE_ALGORITHM,
+    signingKeyId: ASSET_SIGNING_KEY_ID,
+    assetDigest: payload.manifest?.assetDigest || "",
+    signedAt: acceptedAt
   };
 }
 
@@ -380,6 +453,10 @@ function compareField(errors, actual, expected, key, message) {
 
 function sha256StableJson(value) {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function hmacStableJson(secret, value) {
+  return crypto.createHmac("sha256", secret).update(stableStringify(value)).digest("hex");
 }
 
 function stableStringify(value) {

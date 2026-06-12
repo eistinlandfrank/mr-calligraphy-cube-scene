@@ -1485,7 +1485,9 @@ function renderRemotePublishReceipts(audit) {
     title.textContent = receipt.packageId || receipt.releaseId || "远端回执";
     const meta = document.createElement("span");
     const digest = receipt.receiptDigest || receipt.packageDigest || "";
-    meta.textContent = `${formatDateTime(receipt.acceptedAt || receipt.pushedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}`;
+    const signatureCount = Number(receipt.assetSignatureSummary?.signedAssetCount || 0);
+    const signatureMeta = signatureCount ? ` · 资产签名 ${signatureCount}` : "";
+    meta.textContent = `${formatDateTime(receipt.acceptedAt || receipt.pushedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}`;
     const message = document.createElement("small");
     message.textContent = receipt.message || receipt.remoteVersion || "远端已接收。";
     item.append(title, meta, message);
