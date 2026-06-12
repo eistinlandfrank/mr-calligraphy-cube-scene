@@ -1812,9 +1812,9 @@ function getAdminPermissionControls() {
     { element: remotePublishPushButton, permission: "remote" },
     { element: remotePublishRevokeButton, permission: "remote" },
     { element: remotePublishRequestReviewButton, permission: "remote" },
-    { element: remotePublishApproveReviewButton, permission: "remote" },
-    { element: remotePublishRejectReviewButton, permission: "remote" },
-    { element: remotePublishUnlockButton, permission: "remote" }
+    { element: remotePublishApproveReviewButton, permission: "approve" },
+    { element: remotePublishRejectReviewButton, permission: "approve" },
+    { element: remotePublishUnlockButton, permission: "approve" }
   ];
 }
 
@@ -2023,6 +2023,9 @@ function requestRemotePublishReview() {
 }
 
 function approveRemotePublishReview() {
+  if (!ensureAdminPermission("approve", "通过远端审核")) {
+    return;
+  }
   const record = loadPublishedLayoutRecord();
   const result = window.MRProjectRemotePublish?.approveReview?.("realisticScene", {
     ...createRemotePublishContext(record),
@@ -2033,6 +2036,9 @@ function approveRemotePublishReview() {
 }
 
 function rejectRemotePublishReview() {
+  if (!ensureAdminPermission("approve", "退回远端审核")) {
+    return;
+  }
   const record = loadPublishedLayoutRecord();
   const result = window.MRProjectRemotePublish?.rejectReview?.("realisticScene", {
     ...createRemotePublishContext(record),
@@ -2043,6 +2049,9 @@ function rejectRemotePublishReview() {
 }
 
 function unlockRemotePublish() {
+  if (!ensureAdminPermission("approve", "解除远端发布锁")) {
+    return;
+  }
   const record = loadPublishedLayoutRecord();
   const result = window.MRProjectRemotePublish?.unlock?.("realisticScene", createRemotePublishContext(record));
   renderRemotePublishPanel(record);
@@ -3680,9 +3689,9 @@ function bindUi() {
     remotePublishPushButton?.addEventListener("click", () => ensureAdminPermission("remote", "推送远端发布") && pushRemotePublishedLayout());
     remotePublishRevokeButton?.addEventListener("click", () => ensureAdminPermission("remote", "撤销远端发布") && revokeRemotePublishedLayout());
     remotePublishRequestReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "提交远端审核") && requestRemotePublishReview());
-    remotePublishApproveReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "通过远端审核") && approveRemotePublishReview());
-    remotePublishRejectReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "退回远端审核") && rejectRemotePublishReview());
-    remotePublishUnlockButton?.addEventListener("click", () => ensureAdminPermission("remote", "解除远端发布锁") && unlockRemotePublish());
+    remotePublishApproveReviewButton?.addEventListener("click", approveRemotePublishReview);
+    remotePublishRejectReviewButton?.addEventListener("click", rejectRemotePublishReview);
+    remotePublishUnlockButton?.addEventListener("click", unlockRemotePublish);
     remotePublishReceiptExportButton?.addEventListener("click", exportRemotePublishReceipts);
     snapshotCreateButton?.addEventListener("click", () => {
       if (!ensureAdminPermission("edit", "保存快照")) {

@@ -8648,3 +8648,45 @@
 提交：
 
 - 中文 commit message：`新增本机后台角色权限门控`
+
+### 2026-06-12：新增远端审核审批权限门控
+
+功能名：主后台和写实后台远端审核审批权限门控。
+
+完成内容：
+
+- `admin-audit.js` 新增 `approve` 权限和“远端审核审批”权限标签。
+- 本机管理员和负责人拥有审批权限；编辑角色可提交远端审核，但不能通过、退回审核或解除发布锁。
+- 主后台远端发布审核按钮改为 `approve` 权限门控，事件入口也会调用 `ensureAdminPermission("approve", ...)`。
+- 写实后台远端发布审核按钮同步改为 `approve` 权限门控。
+- 权限摘要区新增编辑角色说明，避免把“编辑可提交审核”误解成“编辑可自行审批”。
+- `tests/e2e/real-flows.spec.js` 的权限用例验证编辑角色审批按钮被拦截，负责人角色恢复审批权限。
+- 主后台远端发布 E2E 改为编辑提交审核、负责人通过审核、再推送远端包。
+
+真实化说明：
+
+- 数据来源：本机后台操作者角色。
+- 写入状态：复用 `mr-calligraphy-admin-operator-audit-v1`；权限拦截写入 `permission-blocked` 审计。
+- 成功反馈：远端审核按钮的 DOM 权限状态能区分 `remote` 和 `approve`，页面也会按角色禁用审批动作。
+- 失败反馈：无审批权限时按钮禁用；即使事件被直接触发，也会返回无权提示并留审计。
+- 刷新后复现方式：刷新后台后从本机角色重新套用审批门控。
+
+仍待补：
+
+- 该能力仍是本机浏览器分权，不是生产账号鉴权、服务端审批、真实多人复核、组织角色或不可篡改审计。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端审核审批权限门控`

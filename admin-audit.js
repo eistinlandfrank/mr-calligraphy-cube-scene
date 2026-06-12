@@ -19,11 +19,12 @@
     import: "导入资产",
     delete: "删除/恢复",
     publish: "本机发布",
-    remote: "远端发布"
+    remote: "远端发布",
+    approve: "远端审核审批"
   };
   const ROLE_PERMISSIONS = {
-    "local-admin": ["view", "operator", "export", "edit", "import", "delete", "publish", "remote"],
-    owner: ["view", "operator", "export", "edit", "import", "delete", "publish", "remote"],
+    "local-admin": ["view", "operator", "export", "edit", "import", "delete", "publish", "remote", "approve"],
+    owner: ["view", "operator", "export", "edit", "import", "delete", "publish", "remote", "approve"],
     editor: ["view", "operator", "export", "edit", "import", "delete", "publish", "remote"],
     reviewer: ["view", "operator", "export"]
   };
@@ -81,7 +82,10 @@
   function createPermissionSummary(operator) {
     const permissions = getRolePermissions(operator.role);
     if (operator.role === "reviewer") {
-      return "复核角色为只读：可查看与导出审计，不能编辑、导入、删除、发布或推送远端。";
+      return "复核角色为只读：可查看与导出审计，不能编辑、导入、删除、发布、推送远端或审批审核。";
+    }
+    if (operator.role === "editor") {
+      return "编辑角色可编辑、导入、删除、发布和提交远端审核；通过、退回审核和解除发布锁需负责人或本机管理员。";
     }
     return `当前角色可执行：${permissions.map((permission) => PERMISSION_LABELS[permission] || permission).join("、")}。`;
   }

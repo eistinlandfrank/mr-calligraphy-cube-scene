@@ -133,11 +133,23 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
 
   await page.locator("#mainAdminOperatorRole").selectOption("editor");
   await page.locator("#mainAdminOperatorSave").click();
-  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("当前角色可执行");
+  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("提交远端审核");
   await expect(page.locator("#mainObjectX")).toBeEnabled();
   await expect(page.locator("#mainNewObjectAdd")).toBeEnabled();
   await expect(page.locator("#mainSnapshotCreate")).toBeEnabled();
   await expect(page.locator("#mainPublishLayout")).toBeEnabled();
+  await expect(page.locator("#mainRemotePublishRequestReview")).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(page.locator("#mainRemotePublishApproveReview")).toHaveAttribute("data-admin-permission", "approve");
+  await expect(page.locator("#mainRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "blocked");
+  await expect(page.locator("#mainRemotePublishRejectReview")).toHaveAttribute("data-admin-permission-state", "blocked");
+  await expect(page.locator("#mainRemotePublishUnlock")).toHaveAttribute("data-admin-permission-state", "blocked");
+
+  await page.locator("#mainAdminOperatorRole").selectOption("owner");
+  await page.locator("#mainAdminOperatorSave").click();
+  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("远端审核审批");
+  await expect(page.locator("#mainRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(page.locator("#mainRemotePublishRejectReview")).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(page.locator("#mainRemotePublishUnlock")).toHaveAttribute("data-admin-permission-state", "allowed");
 
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
@@ -156,14 +168,24 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
 
   await page.locator("#realisticAdminOperatorRole").selectOption("editor");
   await page.locator("#realisticAdminOperatorSave").click();
-  await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("当前角色可执行");
+  await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("提交远端审核");
   await expect(page.locator("#designX")).toBeEnabled();
   await expect(page.locator("#realisticSnapshotCreate")).toBeEnabled();
   await expect(page.locator("#realisticPublishLayout")).toBeEnabled();
+  await expect(page.locator("#realisticRemotePublishRequestReview")).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(page.locator("#realisticRemotePublishApproveReview")).toHaveAttribute("data-admin-permission", "approve");
+  await expect(page.locator("#realisticRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "blocked");
+
+  await page.locator("#realisticAdminOperatorRole").selectOption("owner");
+  await page.locator("#realisticAdminOperatorSave").click();
+  await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("远端审核审批");
+  await expect(page.locator("#realisticRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(page.locator("#realisticRemotePublishRejectReview")).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(page.locator("#realisticRemotePublishUnlock")).toHaveAttribute("data-admin-permission-state", "allowed");
 
   const audit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
-  expect(audit.scopes.mainScene.operator.role).toBe("editor");
-  expect(audit.scopes.realisticScene.operator.role).toBe("editor");
+  expect(audit.scopes.mainScene.operator.role).toBe("owner");
+  expect(audit.scopes.realisticScene.operator.role).toBe("owner");
   expect(audit.scopes.mainScene.records.some((record) => record.action === "operator-save")).toBe(true);
   expect(audit.scopes.realisticScene.records.some((record) => record.action === "operator-save")).toBe(true);
 });
@@ -2365,6 +2387,10 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
 
   await page.locator("#mainRemotePublishRequestReview").click();
   await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("待审核");
+  await expect(page.locator("#mainRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "blocked");
+  await page.locator("#mainAdminOperatorRole").selectOption("owner");
+  await page.locator("#mainAdminOperatorSave").click();
+  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("远端审核审批");
   await page.locator("#mainRemotePublishApproveReview").click();
   await expect(page.locator("#mainRemotePublishReviewStatus")).toContainText("审核通过");
 

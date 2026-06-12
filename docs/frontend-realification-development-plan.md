@@ -3088,3 +3088,45 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增本机后台角色权限门控`
+
+## 86. 2026-06-12 新增远端审核审批权限门控
+
+本次把后台远端发布审核从“有远端发布权限即可通过审核”推进到更接近真实工作流的本机分权：编辑角色可以编辑内容、配置远端、提交远端审核和推送已批准版本，但通过审核、退回审核和解除发布锁必须由负责人或本机管理员执行。
+
+完成内容：
+
+- `admin-audit.js` 新增 `approve` 权限和“远端审核审批”权限文案。
+- 本机管理员与负责人拥有 `approve`；编辑角色保留编辑、导入、发布和远端发布，但不能审批审核；复核角色继续只读。
+- 主后台远端发布“通过审核 / 退回审核 / 解除发布锁”按钮改为 `approve` 权限门控，并在事件入口做二次权限预检。
+- 写实后台远端发布审核与锁按钮同步改为 `approve` 权限门控。
+- 权限摘要会明确编辑角色可提交远端审核，但审批动作需要负责人或本机管理员。
+- Playwright 权限用例验证编辑角色的审批按钮被本机角色拦截，切换负责人后审批权限恢复。
+- 主后台远端发布回归用例改为“编辑提交审核 -> 负责人通过审核 -> 推送远端包”，覆盖真实分权链路。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-admin-operator-audit-v1.scopes[*].operator.role`。
+- 写入状态：仍复用本机后台操作者审计；审批按钮的权限状态写入 DOM `data-admin-permission=approve` 和 `data-admin-permission-state`。
+- 成功反馈：编辑角色能看到提交审核可用但审批入口被角色禁用；负责人/本机管理员可继续通过、退回或解锁。
+- 失败反馈：无审批权限时会显示角色无权提示并记录 `permission-blocked` 审计。
+- 刷新后复现方式：刷新后台后从本机操作者角色重新应用同一审批门控。
+
+仍待补：
+
+- 当前仍是本机浏览器审批门控，不是服务端账号鉴权、组织角色、真实双人审批、不可篡改审计或生产发布审批流。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端审核审批权限门控`
