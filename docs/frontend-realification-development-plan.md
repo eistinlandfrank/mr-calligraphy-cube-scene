@@ -37,10 +37,10 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 67 | 14 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
+| `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 38 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 23 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
@@ -1883,3 +1883,44 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化导入模型文件替换`
+
+## 57. 2026-06-12 真实化导入模型 PBR 参数编辑
+
+本次把导入模型外观从“颜色、透明度和文件替换”继续推进到可真实编辑 PBR 材质参数：主后台和写实后台都能调整粗糙度与金属度，参数写入草稿和发布快照；普通前台 WebGL 也会读取这些参数并在 shader 中体现高光和金属感变化。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 的导入模型外观区新增粗糙度、金属度滑杆和数值显示。
+- `main-admin-scene.js` 与 `realistic-scene.js` 的导入模型记录新增 `roughness`、`metalness` 字段，旧记录会归一化到默认值。
+- 导入模型时会读取当前 PBR 滑杆；选中导入模型时会回填已保存 PBR 参数。
+- 点击“更新导入外观 / 更新外观”会克隆并更新导入模型材质，设置 `roughness` 和 `metalness`，后台画布即时显示材质变化。
+- 替换模型文件时保留原对象的颜色、透明度、粗糙度和金属度。
+- 发布后 PBR 参数进入 `mr-calligraphy-main-scene-published-v1` 和 `mr-calligraphy-realistic-published-v1`。
+- 普通前台 `script.js` 的 WebGL 顶点格式扩展到 14 个 float，新增材质 attribute，GLB / OBJ 导入模型会把 `roughness/metalness` 写入 shader。
+- `appendTransformedVertices` 同步修正为 RGBA + normal + material 的统一顶点步长，避免局部几何 normal 错位。
+- smoke test 主后台和写实后台页面检查新增 PBR 控件。
+- Playwright 更新主后台和写实后台导入模型外观用例，验证真实 `.glb` 导入、PBR 更新、草稿持久化、发布持久化和演示页布局读取。
+
+真实化说明：
+
+- 数据来源：真实导入模型记录、IndexedDB 模型文件、草稿布局和本机发布快照。
+- 写入状态：`importedModels[*].roughness` 和 `importedModels[*].metalness`，发布后进入各自 published layout。
+- 成功反馈：选中导入模型后 PBR 滑杆回填；更新后状态栏提示已写入，后台画布立即使用新材质。
+- 失败反馈：未选中导入模型、隐藏、锁定或删除时，更新按钮禁用并显示原因。
+- 刷新后复现方式：刷新后台或打开发布演示页，PBR 参数仍由本机布局读取。
+
+仍待补：
+
+- 当前完成主色调、透明度、文件替换和 PBR 参数；贴图替换、版本差异对比、远端资产签名和多人审计仍待继续补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js && node --check script.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型PBR参数编辑`

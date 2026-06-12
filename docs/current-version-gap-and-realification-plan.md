@@ -30,10 +30,10 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 67 | 14 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
+| `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 38 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 23 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：四个入口 HTML 的静态按钮和导航链接已经没有 `demo-content` 或缺失标记；前台动态场景热点按钮也已纳入清单脚本并改为本机真实交互。下一步要审计的是“标为真实的控件是否足够真实”。
@@ -2493,3 +2493,45 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`真实化导入模型文件替换`
+
+### 2026-06-12：真实化导入模型 PBR 参数编辑
+
+完成内容：
+
+- 主后台和写实后台导入模型外观区新增粗糙度、金属度滑杆和数值显示。
+- 主后台导入模型记录新增 `roughness/metalness`，默认值为 `0.64/0.02`，编辑范围分别限制为 `0.05-1` 和 `0-1`。
+- 写实后台导入模型记录新增 `roughness/metalness`，默认值为 `0.62/0.04`，编辑范围分别限制为 `0.05-1` 和 `0-1`。
+- 导入、选中、更新、撤销、替换文件和发布读取流程会同步 PBR 参数。
+- 后台 Three.js 材质更新会写入 `roughness` 和 `metalness`，材质变化即时显示。
+- 普通前台 `script.js` 增加材质 attribute 和 shader 高光计算，发布页会按导入模型 PBR 参数渲染。
+- 普通前台 WebGL 顶点步长统一为 14 个 float，同时修正局部几何变换时的 RGBA / normal 步长错位。
+- smoke test 主后台和写实后台标记新增 PBR 控件。
+- Playwright 更新主后台和写实后台导入外观用例，覆盖真实 `.glb` 导入、PBR 更新、草稿、发布和演示页布局读取。
+
+真实化说明：
+
+- 数据来源：真实导入模型记录、IndexedDB 模型文件、草稿布局和发布快照。
+- 写入状态：`importedModels[*].roughness` 与 `importedModels[*].metalness`，发布后进入各自 published layout。
+- 成功反馈：选中模型时滑杆回填，更新后后台画布即时显示材质变化。
+- 失败反馈：未选中导入模型、隐藏、锁定或删除时更新按钮禁用，状态文本说明原因。
+- 刷新后复现方式：刷新后台或打开演示页，PBR 参数仍由本机布局读取。
+
+仍待补：
+
+- 当前完成主色调、透明度、文件替换和 PBR 参数；贴图替换、版本差异对比、服务端资产签名和多人审计仍待补齐。
+
+GitHub 状态：
+
+- 本机代理可用，`git push origin main` 已通过代理重试，远端 `main` 能读取到上一笔中文提交。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js && node --check script.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型PBR参数编辑`

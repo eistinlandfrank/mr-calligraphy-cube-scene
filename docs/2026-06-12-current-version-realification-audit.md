@@ -121,10 +121,10 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 67 | 14 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 37 | 4 | 1 | 0 | 0 | 0 |
+| `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 38 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 22 | 1 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 23 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 判断：控件标记层面已经过关，没有明显未标记按钮。下一步不是继续数按钮，而是逐个验证 `real-local` 的真实边界是否在 UI、文档、状态和测试里讲清楚。
@@ -296,12 +296,14 @@ npm run test:e2e
 - 追加写实后台导入模型外观编辑记录：写实导入模型现在可编辑主色调，写入 `mr-calligraphy-realistic-layout-v1.importedModels[*].color`，发布后进入 `mr-calligraphy-realistic-published-v1`；E2E 已验证真实 `.glb` 导入、更新颜色、草稿持久化、发布持久化和写实演示页布局读取。
 - 追加导入模型透明度编辑记录：主后台和写实后台导入模型现在可编辑透明度，写入各自 `importedModels[*].opacity`，发布后进入对应 published layout；普通前台 WebGL 顶点已扩展为 RGBA，E2E 已验证真实 `.glb` 导入、更新透明度、草稿持久化、发布持久化和演示页布局读取。
 - 追加导入模型文件替换记录：主后台和写实后台导入模型现在可替换 GLB/OBJ 文件，保留原对象 ID 和布局变换，更新 `fileName/type/sha256/metrics` 并覆盖 IndexedDB 二进制；E2E 已验证真实 `.glb` 导入、替换为另一个 `.glb`、草稿持久化、发布持久化和演示页布局读取。
+- 追加导入模型 PBR 参数编辑记录：主后台和写实后台导入模型现在可编辑粗糙度和金属度，写入各自 `importedModels[*].roughness/metalness`，发布后进入对应 published layout；普通前台 WebGL 已新增材质 attribute 和 shader 高光/金属感计算，E2E 已验证真实 `.glb` 导入、PBR 更新、草稿持久化、发布持久化和演示页布局读取。
+- 追加 GitHub 代理重试记录：本机代理可用，`git push origin main` 已通过代理返回远端一致，GitHub 连接器也能读取最新中文提交；后续提交继续用本机代理参数推送。
 
 已知限制：
 
-- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计和撤销请求、主后台基础几何体更新闭环、写实后台对象删除恢复验收、主后台导入模型删除审计、写实导入模型软删除审计、主后台导入模型主色调编辑、写实后台导入模型主色调编辑、导入模型透明度编辑、导入模型文件替换；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、CDN purge、不可篡改日志、导入模型贴图/PBR 编辑、远端资产签名、云端垃圾回收或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
+- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计和撤销请求、主后台基础几何体更新闭环、写实后台对象删除恢复验收、主后台导入模型删除审计、写实导入模型软删除审计、主后台导入模型主色调编辑、写实后台导入模型主色调编辑、导入模型透明度编辑、导入模型文件替换、导入模型 PBR 参数编辑；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、CDN purge、不可篡改日志、导入模型贴图替换、远端资产签名、云端垃圾回收或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `真实化导入模型文件替换`
+- `真实化导入模型PBR参数编辑`

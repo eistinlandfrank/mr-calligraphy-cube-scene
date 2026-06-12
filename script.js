@@ -1225,6 +1225,8 @@ function normalizeMainImportedModel(record = {}, index = 0) {
     type,
     color: normalizeMainColor(record.color || "#c8b08a"),
     opacity: normalizeMainOpacity(record.opacity),
+    roughness: normalizeMainRoughness(record.roughness),
+    metalness: normalizeMainMetalness(record.metalness),
     sha256: normalizeMainSha256(record.sha256),
     metrics: normalizeMainImportMetrics(record.metrics),
     position: [
@@ -1251,6 +1253,16 @@ function normalizeMainColor(value, fallback = "#c8b08a") {
 function normalizeMainOpacity(value) {
   const number = Number(value);
   return Number.isFinite(number) ? clamp(number, 0.2, 1) : 1;
+}
+
+function normalizeMainRoughness(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(number, 0.05, 1) : 0.64;
+}
+
+function normalizeMainMetalness(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(number, 0, 1) : 0.02;
 }
 
 function normalizeMainSha256(value) {
@@ -1417,7 +1429,9 @@ function getRenderableImportedModelSpecs() {
       rotationZ: state.rz,
       scale: state.scale * readMainNumber(record.baseScale, 1),
       color: normalizeMainColor(record.color || "#c8b08a"),
-      opacity: normalizeMainOpacity(record.opacity)
+      opacity: normalizeMainOpacity(record.opacity),
+      roughness: normalizeMainRoughness(record.roughness),
+      metalness: normalizeMainMetalness(record.metalness)
     };
   }).filter(Boolean);
 }
@@ -2391,6 +2405,8 @@ function cloneConfig(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+const ROOM_VERTEX_STRIDE = 14;
+
 function createRoomRenderer(canvas) {
   if (!canvas) {
     return null;
@@ -2414,6 +2430,7 @@ function createRoomRenderer(canvas) {
     texCoord: gl.getAttribLocation(program, "aTexCoord"),
     color: gl.getAttribLocation(program, "aColor"),
     normal: gl.getAttribLocation(program, "aNormal"),
+    material: gl.getAttribLocation(program, "aMaterial"),
     projection: gl.getUniformLocation(program, "uProjection"),
     view: gl.getUniformLocation(program, "uView"),
     texture: gl.getUniformLocation(program, "uTexture"),
@@ -2449,7 +2466,7 @@ function createRoomRenderer(canvas) {
         modelVertices = result.vertices;
         furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, hasRenderableModels);
         window.MR_LOADED_MODEL_COUNT = result.loaded;
-        window.MR_LOADED_MODEL_VERTICES = modelVertices.length / 12;
+        window.MR_LOADED_MODEL_VERTICES = modelVertices.length / ROOM_VERTEX_STRIDE;
         showNotice(`已加载 ${result.loaded} 个 3D 模型。`);
         updateCubeTransform();
       })
@@ -2532,6 +2549,7 @@ const ROOM_VERTEX_SHADER = `
   attribute vec2 aTexCoord;
   attribute vec4 aColor;
   attribute vec3 aNormal;
+  attribute vec2 aMaterial;
 
   uniform mat4 uProjection;
   uniform mat4 uView;
@@ -2539,10 +2557,19 @@ const ROOM_VERTEX_SHADER = `
   varying vec2 vTexCoord;
   varying vec4 vColor;
   varying float vLight;
+  varying float vSpecular;
+  varying float vMetalness;
 
   void main() {
     vec3 lightDir = normalize(vec3(-0.34, 0.78, 0.48));
-    float diffuse = max(dot(normalize(aNormal), lightDir), 0.0);
+    vec3 normal = normalize(aNormal);
+    float roughness = clamp(aMaterial.x, 0.05, 1.0);
+    float metalness = clamp(aMaterial.y, 0.0, 1.0);
+    float diffuse = max(dot(normal, lightDir), 0.0);
+    vec3 halfDir = normalize(lightDir + vec3(0.0, 0.22, 1.0));
+    float gloss = 1.0 - roughness;
+    vSpecular = pow(max(dot(normal, halfDir), 0.0), mix(68.0, 9.0, roughness)) * (0.035 + metalness * 0.3) * gloss;
+    vMetalness = metalness;
     vLight = 0.76 + diffuse * 0.24;
     vTexCoord = aTexCoord;
     vColor = aColor;
@@ -2559,12 +2586,16 @@ const ROOM_FRAGMENT_SHADER = `
   varying vec2 vTexCoord;
   varying vec4 vColor;
   varying float vLight;
+  varying float vSpecular;
+  varying float vMetalness;
 
   void main() {
     vec4 texel = texture2D(uTexture, vTexCoord);
     vec3 base = mix(vColor.rgb, texel.rgb, uUseTexture);
     float alpha = mix(vColor.a, texel.a * vColor.a, uUseTexture);
-    gl_FragColor = vec4(base * vLight, alpha);
+    vec3 lit = base * vLight + vec3(vSpecular);
+    vec3 metalTint = mix(lit, lit * mix(vec3(1.0), base, 0.45), vMetalness);
+    gl_FragColor = vec4(metalTint, alpha);
   }
 `;
 
@@ -2865,11 +2896,12 @@ function parseGlbModel(arrayBuffer, spec) {
         ? readGlbAccessor(gltf, binaryChunk, primitive.indices)
         : positions.map((_, index) => index);
       const color = getGlbMaterialColor(gltf, primitive.material, spec);
+      const material = getGlbMaterialParams(gltf, primitive.material, spec);
 
       for (let i = 0; i < indices.length; i += 3) {
-        pushGlbModelVertex(vertices, positions[indices[i]], normals && normals[indices[i]], color, bounds, spec);
-        pushGlbModelVertex(vertices, positions[indices[i + 1]], normals && normals[indices[i + 1]], color, bounds, spec);
-        pushGlbModelVertex(vertices, positions[indices[i + 2]], normals && normals[indices[i + 2]], color, bounds, spec);
+        pushGlbModelVertex(vertices, positions[indices[i]], normals && normals[indices[i]], color, bounds, spec, material);
+        pushGlbModelVertex(vertices, positions[indices[i + 1]], normals && normals[indices[i + 1]], color, bounds, spec, material);
+        pushGlbModelVertex(vertices, positions[indices[i + 2]], normals && normals[indices[i + 2]], color, bounds, spec, material);
       }
     });
   });
@@ -2917,6 +2949,7 @@ function parseObjModel(arrayBuffer, spec) {
 
   const bounds = getObjPositionBounds(positions);
   const color = withAlpha(spec.color ? hexToRgb(spec.color) : [0.72, 0.5, 0.32], spec.opacity);
+  const material = getModelMaterialParams(spec);
   const rx = degToRad(spec.rotationX || 0);
   const ry = degToRad(spec.rotationY || 0);
   const rz = degToRad(spec.rotationZ || 0);
@@ -2929,9 +2962,9 @@ function parseObjModel(arrayBuffer, spec) {
       subtractVector(triangle[2], triangle[0])
     ));
 
-    pushVertex(vertices, triangle[0], [0, 0], color, normal);
-    pushVertex(vertices, triangle[1], [1, 0], color, normal);
-    pushVertex(vertices, triangle[2], [0, 1], color, normal);
+    pushVertex(vertices, triangle[0], [0, 0], color, normal, material);
+    pushVertex(vertices, triangle[1], [1, 0], color, normal, material);
+    pushVertex(vertices, triangle[2], [0, 1], color, normal, material);
   });
 
   return vertices;
@@ -3107,7 +3140,28 @@ function getGlbMaterialColor(gltf, materialIndex, spec) {
   );
 }
 
-function pushGlbModelVertex(vertices, position, normal, color, bounds, spec) {
+function getGlbMaterialParams(gltf, materialIndex, spec) {
+  if (spec.roughness !== undefined || spec.metalness !== undefined) {
+    return getModelMaterialParams(spec);
+  }
+
+  const material = (gltf.materials || [])[materialIndex] || {};
+  const pbr = material.pbrMetallicRoughness || {};
+
+  return [
+    normalizeMainRoughness(pbr.roughnessFactor),
+    normalizeMainMetalness(pbr.metallicFactor)
+  ];
+}
+
+function getModelMaterialParams(spec = {}) {
+  return [
+    normalizeMainRoughness(spec.roughness),
+    normalizeMainMetalness(spec.metalness)
+  ];
+}
+
+function pushGlbModelVertex(vertices, position, normal, color, bounds, spec, material) {
   if (!position) {
     return;
   }
@@ -3135,7 +3189,7 @@ function pushGlbModelVertex(vertices, position, normal, color, bounds, spec) {
     degToRad(spec.rotationZ || 0)
   ));
 
-  pushVertex(vertices, finalPosition, [0, 0], color, finalNormal);
+  pushVertex(vertices, finalPosition, [0, 0], color, finalNormal, material);
 }
 
 function createFurnitureMesh(gl, roles = [], modelVertices = [], showFallbackFurniture = true) {
@@ -3188,7 +3242,7 @@ function appendTransformedVertices(target, source, transform) {
   const ry = degToRad(transform.ry || 0);
   const rz = degToRad(transform.rz || 0);
 
-  for (let i = 0; i < source.length; i += 11) {
+  for (let i = 0; i < source.length; i += ROOM_VERTEX_STRIDE) {
     const rotatedPosition = rotateVectorWithRadians(
       [source[i] * scale, source[i + 1] * scale, source[i + 2] * scale],
       rx,
@@ -3196,7 +3250,7 @@ function appendTransformedVertices(target, source, transform) {
       rz
     );
     const rotatedNormal = normalizeVector(rotateVectorWithRadians(
-      [source[i + 8], source[i + 9], source[i + 10]],
+      [source[i + 9], source[i + 10], source[i + 11]],
       rx,
       ry,
       rz
@@ -3211,9 +3265,12 @@ function appendTransformedVertices(target, source, transform) {
       source[i + 5],
       source[i + 6],
       source[i + 7],
+      source[i + 8],
       rotatedNormal[0],
       rotatedNormal[1],
-      rotatedNormal[2]
+      rotatedNormal[2],
+      source[i + 12] ?? 0.64,
+      source[i + 13] ?? 0.02
     );
   }
 }
@@ -3462,13 +3519,30 @@ function addCylinder(vertices, centerX, centerY, centerZ, radius, height, color,
   }
 }
 
-function pushVertex(vertices, position, uv, color, normal) {
+function pushVertex(vertices, position, uv, color, normal, material) {
+  const materialParams = normalizeMainMaterialVector(material);
+
   vertices.push(
     position[0], position[1], position[2],
     uv[0], uv[1],
     color[0], color[1], color[2], color[3] ?? 1,
-    normal[0], normal[1], normal[2]
+    normal[0], normal[1], normal[2],
+    materialParams[0], materialParams[1]
   );
+}
+
+function normalizeMainMaterialVector(material) {
+  if (Array.isArray(material)) {
+    return [
+      normalizeMainRoughness(material[0]),
+      normalizeMainMetalness(material[1])
+    ];
+  }
+
+  return [
+    normalizeMainRoughness(material?.roughness),
+    normalizeMainMetalness(material?.metalness)
+  ];
 }
 
 function createMesh(gl, vertices, texture) {
@@ -3480,12 +3554,12 @@ function createMesh(gl, vertices, texture) {
   return {
     buffer,
     texture,
-    count: vertices.length / 12
+    count: vertices.length / ROOM_VERTEX_STRIDE
   };
 }
 
 function drawRoomMesh(gl, locations, mesh, texture, useTexture) {
-  const stride = 12 * Float32Array.BYTES_PER_ELEMENT;
+  const stride = ROOM_VERTEX_STRIDE * Float32Array.BYTES_PER_ELEMENT;
 
   gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buffer);
   gl.enableVertexAttribArray(locations.position);
@@ -3496,6 +3570,10 @@ function drawRoomMesh(gl, locations, mesh, texture, useTexture) {
   gl.vertexAttribPointer(locations.color, 4, gl.FLOAT, false, stride, 5 * Float32Array.BYTES_PER_ELEMENT);
   gl.enableVertexAttribArray(locations.normal);
   gl.vertexAttribPointer(locations.normal, 3, gl.FLOAT, false, stride, 9 * Float32Array.BYTES_PER_ELEMENT);
+  if (locations.material >= 0) {
+    gl.enableVertexAttribArray(locations.material);
+    gl.vertexAttribPointer(locations.material, 2, gl.FLOAT, false, stride, 12 * Float32Array.BYTES_PER_ELEMENT);
+  }
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);

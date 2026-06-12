@@ -134,11 +134,25 @@
             </label>
             <output id="mainImportModelOpacityValue" for="mainImportModelOpacity">1.00</output>
           </div>
+          <div class="main-import-pbr-row">
+            <label for="mainImportModelRoughness">
+              <span>粗糙度</span>
+              <input id="mainImportModelRoughness" type="range" min="0.05" max="1" step="0.01" value="0.64">
+            </label>
+            <output id="mainImportModelRoughnessValue" for="mainImportModelRoughness">0.64</output>
+          </div>
+          <div class="main-import-pbr-row">
+            <label for="mainImportModelMetalness">
+              <span>金属度</span>
+              <input id="mainImportModelMetalness" type="range" min="0" max="1" step="0.01" value="0.02">
+            </label>
+            <output id="mainImportModelMetalnessValue" for="mainImportModelMetalness">0.02</output>
+          </div>
           <label class="main-import-control">
             <span>替换当前模型</span>
             <input id="mainImportModelReplace" type="file" accept=".glb,.obj,model/gltf-binary,text/plain" disabled>
           </label>
-          <p id="mainImportMaterialStatus" class="main-import-status">选中导入模型后，可调整颜色和透明度，并写入草稿和发布版本。</p>
+          <p id="mainImportMaterialStatus" class="main-import-status">选中导入模型后，可调整颜色、透明度、粗糙度和金属度，并写入草稿和发布版本。</p>
           <div class="main-project-audit" aria-label="导入模型删除审计">
             <div class="main-project-audit-head">
               <strong>导入模型删除审计</strong>

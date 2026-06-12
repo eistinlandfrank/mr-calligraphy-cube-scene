@@ -457,14 +457,16 @@ body.admin-page .design-panel {
   align-items: end;
 }
 
-.realistic-import-opacity-row {
+.realistic-import-opacity-row,
+.realistic-import-pbr-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 48px;
   gap: 7px;
   align-items: end;
 }
 
-.realistic-import-opacity-row output {
+.realistic-import-opacity-row output,
+.realistic-import-pbr-row output {
   color: rgba(248, 232, 202, 0.78);
   font-variant-numeric: tabular-nums;
   text-align: right;

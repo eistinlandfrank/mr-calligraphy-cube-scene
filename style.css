@@ -633,14 +633,16 @@ button {
   align-items: end;
 }
 
-.main-import-opacity-row {
+.main-import-opacity-row,
+.main-import-pbr-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 48px;
   gap: 8px;
   align-items: end;
 }
 
-.main-import-opacity-row output {
+.main-import-opacity-row output,
+.main-import-pbr-row output {
   color: rgba(255, 244, 216, 0.82);
   font-variant-numeric: tabular-nums;
   text-align: right;

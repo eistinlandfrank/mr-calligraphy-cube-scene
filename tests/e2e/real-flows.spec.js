@@ -1906,6 +1906,8 @@ test("main admin updates imported model material and publishes it", async ({ pag
   const importedObjectId = await page.locator("#mainObjectSelect").inputValue();
   await page.locator("#mainImportModelColor").fill("#2255aa");
   await setRangeValue(page, "#mainImportModelOpacity", "0.55");
+  await setRangeValue(page, "#mainImportModelRoughness", "0.35");
+  await setRangeValue(page, "#mainImportModelMetalness", "0.7");
   await page.locator("#mainImportModelMaterialUpdate").click();
   await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已更新：${importLabel}`);
   await expect(page.locator("#mainPublishDiffList")).toContainText(importLabel);
@@ -1916,6 +1918,8 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(importedRecord.label).toBe(importLabel);
   expect(importedRecord.color).toBe("#2255aa");
   expect(importedRecord.opacity).toBeCloseTo(0.55, 2);
+  expect(importedRecord.roughness).toBeCloseTo(0.35, 2);
+  expect(importedRecord.metalness).toBeCloseTo(0.7, 2);
 
   await page.locator("#mainPublishLayout").click();
   await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
@@ -1924,6 +1928,8 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(publishedImportedRecord).toBeTruthy();
   expect(publishedImportedRecord.color).toBe("#2255aa");
   expect(publishedImportedRecord.opacity).toBeCloseTo(0.55, 2);
+  expect(publishedImportedRecord.roughness).toBeCloseTo(0.35, 2);
+  expect(publishedImportedRecord.metalness).toBeCloseTo(0.7, 2);
   expect(published.stats.importedCount).toBeGreaterThan(0);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -1934,6 +1940,8 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(frontImportedRecord).toBeTruthy();
   expect(frontImportedRecord.color).toBe("#2255aa");
   expect(frontImportedRecord.opacity).toBeCloseTo(0.55, 2);
+  expect(frontImportedRecord.roughness).toBeCloseTo(0.35, 2);
+  expect(frontImportedRecord.metalness).toBeCloseTo(0.7, 2);
 });
 
 test("main admin replaces imported model file and publishes it", async ({ page }) => {
@@ -2266,6 +2274,8 @@ test("realistic admin updates imported model material and publishes it", async (
   const importedObjectId = await page.locator("#designObjectSelect").inputValue();
   await page.locator("#realisticImportModelColor").fill("#2255aa");
   await setRangeValue(page, "#realisticImportModelOpacity", "0.6");
+  await setRangeValue(page, "#realisticImportModelRoughness", "0.4");
+  await setRangeValue(page, "#realisticImportModelMetalness", "0.65");
   await page.locator("#realisticImportModelMaterialUpdate").click();
   await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已更新：books");
   await expect(page.locator("#realisticPublishDiffList")).toContainText("books");
@@ -2276,6 +2286,8 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(importedRecord.fileName).toBe("books.glb");
   expect(importedRecord.color).toBe("#2255aa");
   expect(importedRecord.opacity).toBeCloseTo(0.6, 2);
+  expect(importedRecord.roughness).toBeCloseTo(0.4, 2);
+  expect(importedRecord.metalness).toBeCloseTo(0.65, 2);
 
   await page.locator("#realisticPublishLayout").click();
   await expect(page.locator("#realisticPublishStatus")).toContainText("已发布到演示");
@@ -2284,6 +2296,8 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(publishedImportedRecord).toBeTruthy();
   expect(publishedImportedRecord.color).toBe("#2255aa");
   expect(publishedImportedRecord.opacity).toBeCloseTo(0.6, 2);
+  expect(publishedImportedRecord.roughness).toBeCloseTo(0.4, 2);
+  expect(publishedImportedRecord.metalness).toBeCloseTo(0.65, 2);
   expect(published.stats.importedCount).toBeGreaterThan(0);
 
   await page.goto("/realistic-demo.html", { waitUntil: "domcontentloaded" });
@@ -2294,6 +2308,8 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(demoImportedRecord).toBeTruthy();
   expect(demoImportedRecord.color).toBe("#2255aa");
   expect(demoImportedRecord.opacity).toBeCloseTo(0.6, 2);
+  expect(demoImportedRecord.roughness).toBeCloseTo(0.4, 2);
+  expect(demoImportedRecord.metalness).toBeCloseTo(0.65, 2);
 });
 
 test("realistic admin replaces imported model file and publishes it", async ({ page }) => {

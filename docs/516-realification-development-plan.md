@@ -7446,3 +7446,44 @@
 提交：
 
 - 中文 commit message：`真实化导入模型文件替换`
+
+### 2026-06-12：真实化导入模型 PBR 参数编辑
+
+功能名：导入模型 PBR 参数编辑。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 在导入模型外观区域新增粗糙度、金属度滑杆和数值显示。
+- 主后台和写实后台导入模型记录新增 `roughness`、`metalness` 字段，旧数据会归一化到默认值。
+- 导入模型时读取当前 PBR 参数；选中导入模型时回填已保存参数。
+- 点击更新外观会克隆导入 mesh 的材质并设置粗糙度和金属度，后台 Three.js 画布即时更新。
+- 外观更新写入主后台和写实后台 layout 的 `importedModels[*].roughness/metalness`，并支持撤回。
+- 替换模型文件时保留原对象材质参数。
+- 发布后，PBR 参数进入主前台和写实演示页各自 published layout。
+- `script.js` 前台主场景 WebGL 顶点扩展为 14 个 float，新增材质 attribute 和 shader 高光/金属感计算。
+- `appendTransformedVertices` 同步修正顶点步长，避免 RGBA 扩展后局部几何 normal 错位。
+- smoke test 和 Playwright 均覆盖新增 PBR 控件与真实材质更新流程。
+
+真实化说明：
+
+- 数据来源：真实导入模型记录、IndexedDB 模型文件、草稿布局和发布快照。
+- 写入状态：`importedModels[*].roughness/metalness`，发布后进入各自 published layout。
+- 成功反馈：状态栏显示“已载入”和“已更新”，后台画布立即显示材质变化。
+- 失败反馈：未选中导入模型、隐藏、锁定或删除时更新按钮禁用。
+- 刷新后复现方式：刷新后台或打开演示页，导入模型 PBR 参数仍从本机布局读取。
+
+仍待补：
+
+- 当前完成主色调、透明度、文件替换和 PBR 参数；贴图替换、版本差异、服务端资产签名和多人审计还未完成。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js && node --check script.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型PBR参数编辑`

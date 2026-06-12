@@ -57,6 +57,10 @@ const importStatus = document.getElementById("mainImportStatus");
 const importModelColorInput = document.getElementById("mainImportModelColor");
 const importModelOpacityInput = document.getElementById("mainImportModelOpacity");
 const importModelOpacityValue = document.getElementById("mainImportModelOpacityValue");
+const importModelRoughnessInput = document.getElementById("mainImportModelRoughness");
+const importModelRoughnessValue = document.getElementById("mainImportModelRoughnessValue");
+const importModelMetalnessInput = document.getElementById("mainImportModelMetalness");
+const importModelMetalnessValue = document.getElementById("mainImportModelMetalnessValue");
 const importModelReplaceInput = document.getElementById("mainImportModelReplace");
 const importModelMaterialUpdateButton = document.getElementById("mainImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
@@ -553,6 +557,8 @@ async function handleImportModel(event) {
       type,
       color: importModelColorInput?.value || "#c8b08a",
       opacity: normalizeImportOpacity(importModelOpacityInput?.value),
+      roughness: normalizeImportRoughness(importModelRoughnessInput?.value),
+      metalness: normalizeImportMetalness(importModelMetalnessInput?.value),
       position: [0, -1.05, -3.2],
       rotation: [0, 0, 0],
       scale: 1
@@ -665,6 +671,8 @@ function prepareImportedModel(model) {
 function applyImportedModelMaterial(root, record, options = {}) {
   const color = new THREE.Color(normalizeImportColor(record.color || "#c8b08a"));
   const opacity = normalizeImportOpacity(record.opacity);
+  const roughness = normalizeImportRoughness(record.roughness);
+  const metalness = normalizeImportMetalness(record.metalness);
 
   root.traverse((child) => {
     if (!child.isMesh) {
@@ -674,14 +682,14 @@ function applyImportedModelMaterial(root, record, options = {}) {
     const previous = child.material;
     const sourceMaterials = Array.isArray(previous) ? previous : [previous].filter(Boolean);
     const nextMaterials = sourceMaterials.length
-      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color, opacity))
+      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color, opacity, roughness, metalness))
       : [new THREE.MeshStandardMaterial({
           color,
           opacity,
           transparent: opacity < 0.999,
           depthWrite: opacity >= 0.999,
-          roughness: 0.64,
-          metalness: 0.02
+          roughness,
+          metalness
         })];
 
     child.material = Array.isArray(previous) ? nextMaterials : nextMaterials[0];
@@ -692,12 +700,12 @@ function applyImportedModelMaterial(root, record, options = {}) {
   });
 }
 
-function cloneImportedMaterial(material, color, opacity) {
+function cloneImportedMaterial(material, color, opacity, roughness, metalness) {
   const next = material?.clone
     ? material.clone()
     : new THREE.MeshStandardMaterial({
-        roughness: 0.64,
-        metalness: 0.02
+        roughness,
+        metalness
       });
 
   if (next.color?.set) {
@@ -706,6 +714,8 @@ function cloneImportedMaterial(material, color, opacity) {
   next.opacity = opacity;
   next.transparent = opacity < 0.999;
   next.depthWrite = opacity >= 0.999;
+  next.roughness = roughness;
+  next.metalness = metalness;
   next.needsUpdate = true;
   return next;
 }
@@ -896,6 +906,8 @@ function normalizeImportedModel(record = {}, index = 0) {
     type,
     color: normalizeImportColor(record.color || "#c8b08a"),
     opacity: normalizeImportOpacity(record.opacity),
+    roughness: normalizeImportRoughness(record.roughness),
+    metalness: normalizeImportMetalness(record.metalness),
     position: [
       readNumber(position[0], 0),
       readNumber(position[1], -1.05),
@@ -940,6 +952,14 @@ function normalizeImportColor(value) {
 
 function normalizeImportOpacity(value) {
   return clampNumber(value, 0.2, 1, 1);
+}
+
+function normalizeImportRoughness(value) {
+  return clampNumber(value, 0.05, 1, 0.64);
+}
+
+function normalizeImportMetalness(value) {
+  return clampNumber(value, 0, 1, 0.02);
 }
 
 function normalizeSha256(value) {
@@ -3200,13 +3220,15 @@ function syncImportedMaterialEditorFromSelection() {
       importModelColorInput.value = "#c8b08a";
     }
     setImportOpacityControl(1);
+    setImportRoughnessControl(0.64);
+    setImportMetalnessControl(0.02);
     if (importModelReplaceInput) {
       importModelReplaceInput.disabled = true;
       importModelReplaceInput.value = "";
     }
     showImportMaterialStatus(selectedEntry
       ? "当前选中对象不是导入模型；可导入 GLB / OBJ 后再编辑外观。"
-      : "选中导入模型后，可调整颜色和透明度并写入草稿和发布版本。");
+      : "选中导入模型后，可调整颜色、透明度、粗糙度和金属度并写入草稿和发布版本。");
     return;
   }
 
@@ -3215,6 +3237,8 @@ function syncImportedMaterialEditorFromSelection() {
     importModelColorInput.value = normalizeImportColor(record.color || "#c8b08a");
   }
   setImportOpacityControl(record.opacity);
+  setImportRoughnessControl(record.roughness);
+  setImportMetalnessControl(record.metalness);
   if (importModelMaterialUpdateButton) {
     importModelMaterialUpdateButton.disabled = !canEditImportedEntry(entry);
   }
@@ -3223,7 +3247,7 @@ function syncImportedMaterialEditorFromSelection() {
     importModelReplaceInput.value = "";
   }
   showImportMaterialStatus(canEditImportedEntry(entry)
-    ? `已载入：${entry.label}。可调整外观，或选择 GLB / OBJ 替换当前模型文件。`
+    ? `已载入：${entry.label}。可调整材质参数，或选择 GLB / OBJ 替换当前模型文件。`
     : `已载入：${entry.label}，需恢复显示并解锁后才能更新外观。`);
 }
 
@@ -3243,11 +3267,15 @@ function updateSelectedImportedMaterial() {
   const nextRecord = normalizeImportedModel({
     ...beforeRecord,
     color: importModelColorInput?.value || beforeRecord.color,
-    opacity: importModelOpacityInput?.value ?? beforeRecord.opacity
+    opacity: importModelOpacityInput?.value ?? beforeRecord.opacity,
+    roughness: importModelRoughnessInput?.value ?? beforeRecord.roughness,
+    metalness: importModelMetalnessInput?.value ?? beforeRecord.metalness
   });
 
   if (beforeRecord.color === nextRecord.color
-      && normalizeImportOpacity(beforeRecord.opacity) === nextRecord.opacity) {
+      && normalizeImportOpacity(beforeRecord.opacity) === nextRecord.opacity
+      && normalizeImportRoughness(beforeRecord.roughness) === nextRecord.roughness
+      && normalizeImportMetalness(beforeRecord.metalness) === nextRecord.metalness) {
     showImportMaterialStatus("当前导入模型外观没有变化。");
     return;
   }
@@ -3262,7 +3290,7 @@ function updateSelectedImportedMaterial() {
   saveEntry(entry);
   selectObject(entry.id);
   createLayoutSnapshot(`外观：${entry.label}`, { notice: false });
-  showImportMaterialStatus(`已更新：${entry.label}。主色调和透明度已写入本机布局和后续发布版本。`);
+  showImportMaterialStatus(`已更新：${entry.label}。颜色、透明度、粗糙度和金属度已写入本机布局和后续发布版本。`);
   showNotice(`已更新导入外观：${entry.label}`);
 }
 
@@ -3278,6 +3306,34 @@ function setImportOpacityControl(value) {
 
 function updateImportOpacityOutput() {
   setImportOpacityControl(importModelOpacityInput?.value);
+}
+
+function setImportRoughnessControl(value) {
+  const roughness = normalizeImportRoughness(value);
+  if (importModelRoughnessInput) {
+    importModelRoughnessInput.value = String(roughness);
+  }
+  if (importModelRoughnessValue) {
+    importModelRoughnessValue.textContent = roughness.toFixed(2);
+  }
+}
+
+function updateImportRoughnessOutput() {
+  setImportRoughnessControl(importModelRoughnessInput?.value);
+}
+
+function setImportMetalnessControl(value) {
+  const metalness = normalizeImportMetalness(value);
+  if (importModelMetalnessInput) {
+    importModelMetalnessInput.value = String(metalness);
+  }
+  if (importModelMetalnessValue) {
+    importModelMetalnessValue.textContent = metalness.toFixed(2);
+  }
+}
+
+function updateImportMetalnessOutput() {
+  setImportMetalnessControl(importModelMetalnessInput?.value);
 }
 
 async function replaceSelectedImportedModelFile(event) {
@@ -3847,6 +3903,8 @@ function bindUi() {
   syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
   importModelOpacityInput?.addEventListener("input", updateImportOpacityOutput);
+  importModelRoughnessInput?.addEventListener("input", updateImportRoughnessOutput);
+  importModelMetalnessInput?.addEventListener("input", updateImportMetalnessOutput);
   importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
   importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
   importAuditExportButton?.addEventListener("click", exportImportAudit);

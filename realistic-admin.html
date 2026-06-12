@@ -102,11 +102,25 @@
           </label>
           <output id="realisticImportModelOpacityValue" for="realisticImportModelOpacity">1.00</output>
         </div>
+        <div class="realistic-import-pbr-row">
+          <label for="realisticImportModelRoughness">
+            <span>粗糙度</span>
+            <input id="realisticImportModelRoughness" type="range" min="0.05" max="1" step="0.01" value="0.62">
+          </label>
+          <output id="realisticImportModelRoughnessValue" for="realisticImportModelRoughness">0.62</output>
+        </div>
+        <div class="realistic-import-pbr-row">
+          <label for="realisticImportModelMetalness">
+            <span>金属度</span>
+            <input id="realisticImportModelMetalness" type="range" min="0" max="1" step="0.01" value="0.04">
+          </label>
+          <output id="realisticImportModelMetalnessValue" for="realisticImportModelMetalness">0.04</output>
+        </div>
         <label class="import-control">
           <span>替换当前模型</span>
           <input id="realisticImportModelReplace" type="file" accept=".glb,.obj,model/gltf-binary,text/plain" disabled>
         </label>
-        <p id="realisticImportMaterialStatus" class="realistic-panel-status">选中写实导入模型后，可调整颜色和透明度并写入草稿和发布版本。</p>
+        <p id="realisticImportMaterialStatus" class="realistic-panel-status">选中写实导入模型后，可调整颜色、透明度、粗糙度和金属度并写入草稿和发布版本。</p>
       </section>
       <section class="realistic-import-audit-panel" aria-label="写实导入模型删除审计">
         <div class="realistic-panel-title">
