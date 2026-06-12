@@ -2959,3 +2959,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增前台服务边界状态面板`
+
+## 83. 2026-06-12 新增后台服务边界状态面板
+
+本次把主后台和写实后台的“本机静态后台”风险提示扩展为真实状态面板。后台会直接显示本机编辑、本机发布、远端 Adapter 和生产后台四层边界，避免用户把“发布到前台”“远端发布 API”“项目仓库 API”误认为已经具备账号后台、多人协作 CMS 或生产 CDN。
+
+完成内容：
+
+- `main-admin.html` 新增 `mainAdminBoundaryPanel`、`mainAdminBoundaryStatus` 和 `mainAdminBoundaryList`。
+- `realistic-admin.html` 新增 `realisticAdminBoundaryPanel`、`realisticAdminBoundaryStatus` 和 `realisticAdminBoundaryList`。
+- `main-admin-scene.js` 新增主后台边界渲染：读取本机主场景草稿对象数、本机前台发布版本、远端发布 adapter、项目仓库远端 adapter 和回执本机校验数量。
+- `realistic-scene.js` 新增写实后台边界渲染：读取写实草稿对象状态、导入模型、本机演示发布版本、远端发布 adapter 和回执本机校验数量。
+- `project-archive.js` 在项目仓库远端状态刷新后通知主后台边界面板同步更新。
+- `style.css` 和 `realistic-demo.css` 新增后台边界面板样式，作为风险提示的一部分展示，不额外遮挡编辑面板。
+- smoke test 和 Playwright 手机视口用例新增两个后台服务边界验收。
+
+真实化说明：
+
+- 数据来源：当前后台草稿状态、已发布版本、`MRProjectRemotePublish` 状态、主后台 `MRProjectArchive` 项目仓库远端状态和回执审计。
+- 写入状态：本轮不新增存储，只读取已有本机状态并实时渲染。
+- 成功反馈：两个后台风险提示区显示“本机编辑 / 前台或演示发布 / 远端 Adapter / 生产后台”。
+- 失败反馈：未发布、未配置远端或无回执时展示明确本机边界，不伪造成生产服务。
+- 刷新后复现方式：面板由 localStorage/IndexedDB 和远端 adapter 状态重新推导，刷新后台后仍可显示。
+
+仍待补：
+
+- 这仍不是生产后台；账号登录、角色权限、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计仍待后续开发。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check project-archive.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增后台服务边界状态面板`

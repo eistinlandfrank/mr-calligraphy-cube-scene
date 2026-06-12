@@ -126,6 +126,8 @@ const remotePublishReceiptExportButton = document.getElementById("mainRemotePubl
 const adminRiskBanner = document.getElementById("mainAdminRiskBanner");
 const adminRiskAcknowledgeButton = document.getElementById("mainAdminRiskAcknowledge");
 const adminRiskStatus = document.getElementById("mainAdminRiskStatus");
+const adminBoundaryStatus = document.getElementById("mainAdminBoundaryStatus");
+const adminBoundaryList = document.getElementById("mainAdminBoundaryList");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
@@ -271,6 +273,9 @@ animate();
 window.MRMainImportAudit = {
   getAuditLog: loadImportAuditLog,
   getAuditExport: getImportAuditExport
+};
+window.MRMainAdminBoundary = {
+  render: renderAdminBoundaryPanel
 };
 
 function createMaterials() {
@@ -1406,6 +1411,7 @@ function renderPublishPanel() {
     renderPublishDiff(record);
     renderPublishHistory(record);
     renderRemotePublishPanel(record);
+    renderAdminBoundaryPanel(record);
     return;
   }
 
@@ -1415,6 +1421,7 @@ function renderPublishPanel() {
   renderPublishDiff(record);
   renderPublishHistory(record);
   renderRemotePublishPanel(record);
+  renderAdminBoundaryPanel(record);
 }
 
 function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
@@ -1506,6 +1513,69 @@ function renderRemotePublishReceipts(audit) {
     item.append(title, meta, message);
     remotePublishReceiptList.appendChild(item);
   });
+}
+
+function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
+  if (!adminBoundaryList) {
+    return;
+  }
+
+  const adapter = window.MRProjectRemotePublish;
+  const hasLocalRelease = Boolean(record?.layout);
+  const context = createRemotePublishContext(record);
+  const remoteStatus = adapter?.getStatus?.("mainScene", { ...context, hasLocalRelease });
+  const receiptAudit = adapter?.getReceiptAudit?.("mainScene");
+  const projectRemote = window.MRProjectArchive?.getProjectRepositoryRemoteStatus?.();
+  const projectReceiptAudit = window.MRProjectArchive?.getProjectRepositoryReceiptAudit?.();
+  const draftStats = getLayoutStats(layout);
+  const releaseCount = Array.isArray(record?.releases) ? record.releases.length : 0;
+  const remoteConfiguredCount = [remoteStatus, projectRemote].filter((item) => item?.remoteConfigured).length;
+  const receiptCount = Number(receiptAudit?.total || 0) + Number(projectReceiptAudit?.total || projectRemote?.receiptCount || 0);
+  const verifiedCount = Number(receiptAudit?.verifiedCount || 0) + Number(projectReceiptAudit?.verifiedCount || 0);
+  const rows = [
+    {
+      label: "本机编辑",
+      state: draftStats.objectCount ? "ready" : "idle",
+      detail: `${draftStats.objectCount} 个主场景对象，含 ${draftStats.customCount} 个基础物体、${draftStats.importedCount} 个导入模型；草稿写入本机 localStorage/IndexedDB。`
+    },
+    {
+      label: "前台发布",
+      state: hasLocalRelease ? "ready" : "idle",
+      detail: hasLocalRelease
+        ? `已发布本机前台 v${record.releaseNumber || 1}，发布历史 ${releaseCount} 个版本。`
+        : "尚未生成本机前台发布版本，前台会临时读取当前草稿。"
+    },
+    {
+      label: "远端 Adapter",
+      state: remoteConfiguredCount ? "ready" : "idle",
+      detail: remoteConfiguredCount
+        ? `已配置 ${remoteConfiguredCount} 个远端接口；本机校验通过 ${verifiedCount}/${receiptCount} 条发布/项目回执。`
+        : "远端发布和项目仓库 API 尚未配置；当前只保留本机草稿、发布版本和项目档案。"
+    },
+    {
+      label: "生产后台",
+      state: "missing",
+      detail: "未接入账号登录、角色权限、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计。"
+    }
+  ];
+
+  if (adminBoundaryStatus) {
+    adminBoundaryStatus.textContent = remoteConfiguredCount
+      ? `${remoteConfiguredCount} 个远端接口已配置，生产后台仍未接入。`
+      : "当前为本机静态后台，生产后台未接入。";
+  }
+  adminBoundaryList.replaceChildren(...rows.map(createAdminBoundaryItem));
+}
+
+function createAdminBoundaryItem(item) {
+  const li = document.createElement("li");
+  li.dataset.boundaryState = item.state;
+  const label = document.createElement("strong");
+  label.textContent = item.label;
+  const detail = document.createElement("span");
+  detail.textContent = item.detail;
+  li.append(label, detail);
+  return li;
 }
 
 function formatRemotePublishReceiptVerificationStatus(status) {
@@ -4302,6 +4372,7 @@ function renderAdminRiskBanner() {
   if (adminRiskAcknowledgeButton) {
     adminRiskAcknowledgeButton.textContent = acknowledged ? "重新确认" : "已了解";
   }
+  renderAdminBoundaryPanel();
 }
 
 function acknowledgeAdminRisk() {

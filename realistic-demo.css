@@ -216,6 +216,79 @@ body.model-error #brushModel::part(default-progress-bar) {
     var(--glass);
 }
 
+.admin-boundary-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(255, 249, 237, 0.14);
+  border-radius: 8px;
+  background: rgba(10, 9, 8, 0.28);
+}
+
+.admin-boundary-head,
+.admin-boundary-list li {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.admin-boundary-head span {
+  color: rgba(255, 249, 237, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-boundary-head strong {
+  min-width: 0;
+  color: #fff9ed;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.admin-boundary-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-boundary-list li {
+  min-height: 32px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 249, 237, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.admin-boundary-list strong {
+  color: rgba(255, 249, 237, 0.84);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.admin-boundary-list span {
+  min-width: 0;
+  color: rgba(255, 249, 237, 0.72);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-boundary-list li[data-boundary-state="ready"] {
+  border-color: rgba(169, 240, 197, 0.32);
+  background: rgba(47, 111, 104, 0.2);
+}
+
+.admin-boundary-list li[data-boundary-state="missing"] {
+  border-color: rgba(217, 184, 132, 0.45);
+  background: rgba(122, 91, 35, 0.2);
+}
+
 .demo-panel {
   right: 28px;
   bottom: 28px;

@@ -3498,3 +3498,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增前台服务边界状态面板`
+
+### 2026-06-12：新增后台服务边界状态面板
+
+完成内容：
+
+- 主后台风险提示区新增后台服务边界面板，显示本机编辑、前台发布、远端 Adapter 和生产后台四层状态。
+- 写实后台风险提示区新增后台服务边界面板，显示本机编辑、演示发布、远端 Adapter 和生产后台四层状态。
+- 主后台面板读取本机场景草稿对象数、本机发布历史、远端发布 adapter、项目仓库远端 adapter 和回执本机校验数量。
+- 写实后台面板读取写实草稿对象状态、导入模型、本机演示发布历史、远端发布 adapter 和回执本机校验数量。
+- 项目仓库远端状态刷新后会同步刷新主后台边界摘要。
+- smoke test 和 Playwright 手机视口用例新增两个后台服务边界验收。
+
+真实化说明：
+
+- 数据来源：后台本机草稿、发布记录、`MRProjectRemotePublish`、主后台 `MRProjectArchive` 和回执审计。
+- 写入状态：不新增持久化字段，使用已有本机状态实时推导。
+- 成功反馈：后台打开后即可看到哪些是本机真实、哪些是远端 adapter、哪些生产后台能力仍未接入。
+- 失败反馈：未发布、未配置远端、无回执时都显示明确本机/adapter 边界。
+- 刷新后复现方式：刷新后重新读取本机状态和 adapter 状态并渲染相同边界。
+
+仍待补：
+
+- 仍需真正的账号化后台、角色权限、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计；本轮只把后台边界放到用户看得见的位置。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check project-archive.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增后台服务边界状态面板`

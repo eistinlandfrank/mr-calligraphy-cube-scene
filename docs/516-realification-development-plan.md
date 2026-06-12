@@ -8524,3 +8524,42 @@
 提交：
 
 - 中文 commit message：`新增前台服务边界状态面板`
+
+### 2026-06-12：新增后台服务边界状态面板
+
+功能名：主后台和写实后台本机真实 / 远端 Adapter / 生产后台边界状态。
+
+完成内容：
+
+- `main-admin.html` 在主后台权限风险提示中新增 `mainAdminBoundaryPanel`。
+- `realistic-admin.html` 在写实后台权限风险提示中新增 `realisticAdminBoundaryPanel`。
+- `main-admin-scene.js` 汇总主场景本机草稿、本机前台发布、远端发布 adapter、项目仓库远端 adapter 和回执本机校验数量。
+- `realistic-scene.js` 汇总写实场景本机草稿、本机演示发布、远端发布 adapter 和回执本机校验数量。
+- `project-archive.js` 在项目仓库远端状态变化后刷新主后台边界面板。
+- `style.css`、`realistic-demo.css`、`scripts/smoke-test.js` 和 `tests/e2e/real-flows.spec.js` 同步新增样式与验收。
+
+真实化说明：
+
+- 数据来源：后台草稿、本机发布记录、远端发布状态、项目仓库远端状态和回执审计。
+- 写入状态：不新增存储，只把已有真实状态可视化。
+- 成功反馈：两个后台直接显示本机编辑、本机发布、远端 Adapter 和生产后台四层边界。
+- 失败反馈：未发布或未配置远端时展示明确本机边界。
+- 刷新后复现方式：刷新后台后从本机持久化状态重新推导面板。
+
+仍待补：
+
+- 这不是生产后台接入；账号登录、角色权限、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计仍待后续开发。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check project-archive.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增后台服务边界状态面板`

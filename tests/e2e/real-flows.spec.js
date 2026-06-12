@@ -76,6 +76,10 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await expectNoHorizontalOverflow(page);
   await expectBoxInsideViewport(page, ".main-admin-header");
   await expectBoxInsideViewport(page, "#mainAdminRiskBanner");
+  await expect(page.locator("#mainAdminBoundaryStatus")).toContainText("生产后台");
+  await expect(page.locator("#mainAdminBoundaryList")).toContainText("本机编辑");
+  await expect(page.locator("#mainAdminBoundaryList")).toContainText("前台发布");
+  await expect(page.locator("#mainAdminBoundaryList")).toContainText("远端 Adapter");
   await expectBoxInsideViewport(page, ".main-object-panel");
   await expectBoxesDoNotOverlap(page, ".main-admin-header", "#mainAdminRiskBanner", 4);
   await expectBoxesDoNotOverlap(page, "#mainAdminRiskBanner", ".main-object-panel", 12);
@@ -86,6 +90,10 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await expectNoHorizontalOverflow(page);
   await expectBoxInsideViewport(page, ".demo-header");
   await expectBoxInsideViewport(page, "#realisticAdminRiskBanner");
+  await expect(page.locator("#realisticAdminBoundaryStatus")).toContainText("生产后台");
+  await expect(page.locator("#realisticAdminBoundaryList")).toContainText("本机编辑");
+  await expect(page.locator("#realisticAdminBoundaryList")).toContainText("演示发布");
+  await expect(page.locator("#realisticAdminBoundaryList")).toContainText("远端 Adapter");
   await expectBoxInsideViewport(page, ".design-panel");
   await expectBoxesDoNotOverlap(page, ".demo-header", "#realisticAdminRiskBanner", 4);
   await expectBoxesDoNotOverlap(page, "#realisticAdminRiskBanner", ".design-panel", 12);

@@ -3951,6 +3951,7 @@
           repositoryVersionSelect.disabled = isBusy || !repositoryVersionSelect.value;
         }
       }
+      window.MRMainAdminBoundary?.render?.();
       if (!repositoryReceiptList) {
         return;
       }

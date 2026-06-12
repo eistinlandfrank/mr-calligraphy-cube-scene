@@ -433,6 +433,79 @@ button {
     rgba(16, 16, 16, 0.72);
 }
 
+.admin-boundary-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(255, 238, 205, 0.14);
+  border-radius: 8px;
+  background: rgba(10, 12, 12, 0.28);
+}
+
+.admin-boundary-head,
+.admin-boundary-list li {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.admin-boundary-head span {
+  color: rgba(255, 244, 223, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-boundary-head strong {
+  min-width: 0;
+  color: #fff8ea;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.admin-boundary-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-boundary-list li {
+  min-height: 32px;
+  padding: 7px 8px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(49, 74, 122, 0.14);
+}
+
+.admin-boundary-list strong {
+  color: rgba(255, 248, 234, 0.84);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.admin-boundary-list span {
+  min-width: 0;
+  color: rgba(255, 248, 234, 0.72);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-boundary-list li[data-boundary-state="ready"] {
+  border-color: rgba(116, 255, 219, 0.28);
+  background: rgba(47, 111, 104, 0.2);
+}
+
+.admin-boundary-list li[data-boundary-state="missing"] {
+  border-color: rgba(247, 215, 139, 0.36);
+  background: rgba(122, 91, 35, 0.2);
+}
+
 .main-object-panel {
   right: 24px;
   top: 24px;
@@ -8701,6 +8774,8 @@ body.is-model-view .notice-panel {
     left: 12px;
     top: 72px;
     width: calc(100vw - 24px);
+    max-height: 248px;
+    overflow-y: auto;
     min-width: 0;
     grid-template-columns: 1fr;
   }
