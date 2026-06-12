@@ -4364,3 +4364,39 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习档案重试恢复`
+
+### 2026-06-13：新增报告仓库重试恢复
+
+完成内容：
+
+- 前台远端报告仓库检查、推送和拉取新增 8 秒请求超时保护。
+- `reportRepository` 新增 `lastRemotePushAt`、`lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 远端失败会记录动作、失败类型、endpoint、workspace、报告包 ID、包摘要、报告数、失败时间和建议重试时间。
+- 失败类型会区分 HTTP 拒收、网络异常、请求超时、结构校验失败和远端响应未完成。
+- 前台报告仓库状态会显示失败历史摘要；推送失败后按钮显示“重试推送”。
+- 修复 endpoint 后重试推送成功会清空当前错误和重试时间，保留失败历史和签名回执。
+- Playwright 新增报告仓库失败恢复用例，覆盖 401、500、非法 JSON、无报告包、PUT 422、网络中断、超时注入、恢复 endpoint 后成功重试和签名回执本机校验。
+
+真实化说明：
+
+- 数据来源：本机报告包、真实 fetch 响应、远端错误和前台 `reportRepository` 状态。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportRepository.remoteFailureHistory`、`remoteRetryAfter`、`lastRemoteFailureAt`、`lastFailureAction` 和 `lastRemotePushAt`。
+- 成功反馈：恢复成功后页面显示已推送报告，按钮恢复“推送报告”，签名回执本机校验通过。
+- 失败反馈：失败只写真实错误和失败历史，不伪造远端成功。
+- 刷新后复现方式：失败历史和最近错误随本机学习状态持久化。
+
+仍待补：
+
+- 当前是浏览器本机 adapter 级失败恢复，不是账号化报告仓库、服务端重试队列、教师端账号审批、生产证书签章或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front report repository shows retryable remote failure recovery"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库重试恢复`

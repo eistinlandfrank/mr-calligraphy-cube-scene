@@ -49,6 +49,9 @@
   const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
   const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
+  const REPORT_REPOSITORY_MAX_FAILURES = 12;
+  const REPORT_REPOSITORY_REQUEST_TIMEOUT_MS = 8000;
+  const REPORT_REPOSITORY_RETRY_BASE_MS = 15000;
   const REPORT_TEACHER_REVIEW_AUDIT_KIND = "mr-calligraphy-report-teacher-review-audit-v1";
   const REPORT_TEACHER_REVIEW_SIGNATURE_KIND = "mr-calligraphy-report-teacher-review-local-signature-v1";
   const REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM = "sha256-stable-json";
@@ -1887,6 +1890,7 @@
       lastImportedAt: normalizePlanDate(source.lastImportedAt),
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
       lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
+      lastRemotePushAt: normalizePlanDate(source.lastRemotePushAt || (lastRemoteDirection === "push" ? source.lastRemoteSyncAt : null)),
       lastRemoteDirection,
       lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).slice(0, 180) : "",
       lastExportedReportCount: normalizeInteger(source.lastExportedReportCount, 0, 0, 99999),
@@ -1897,6 +1901,12 @@
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
       lastSignedReceipt,
       signedReceipts: appendReportRepositorySignedReceipt({ signedReceipts, workspaceId }, lastSignedReceipt),
+      lastRemoteFailureAt: normalizePlanDate(source.lastRemoteFailureAt),
+      lastFailureAction: normalizeReportRepositoryFailureAction(source.lastFailureAction),
+      remoteRetryAfter: normalizePlanDate(source.remoteRetryAfter),
+      remoteFailureHistory: Array.isArray(source.remoteFailureHistory)
+        ? source.remoteFailureHistory.map(normalizeReportRepositoryFailure).filter(Boolean).slice(0, REPORT_REPOSITORY_MAX_FAILURES)
+        : [],
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
@@ -2076,6 +2086,85 @@
   function normalizeReportRepositoryHex(value) {
     const hex = String(value || "").trim().toLowerCase();
     return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
+  }
+
+  function normalizeReportRepositoryFailureAction(action) {
+    return ["check", "push", "pull"].includes(action) ? action : "";
+  }
+
+  function normalizeReportRepositoryFailure(record) {
+    if (!record || typeof record !== "object") return null;
+    const failedAt = normalizePlanDate(record.failedAt) || new Date().toISOString();
+    const message = String(record.message || "").trim().slice(0, 220);
+    if (!message) return null;
+    const action = normalizeReportRepositoryFailureAction(record.action) || "check";
+    return {
+      id: String(record.id || `report-repository-failure-${action}-${failedAt.replace(/[-:.TZ]/g, "").slice(0, 14)}`).slice(0, 120),
+      action,
+      failedAt,
+      retryAfter: normalizePlanDate(record.retryAfter),
+      attemptCount: normalizeInteger(record.attemptCount, 0, 0, 9999),
+      reportCount: normalizeInteger(record.reportCount, 0, 0, 99999),
+      endpoint: String(record.endpoint || "").trim().slice(0, 240),
+      workspaceId: normalizeReportRepositoryWorkspaceId(record.workspaceId),
+      packageId: String(record.packageId || "").trim().slice(0, 120),
+      packageDigest: normalizeReportRepositoryHex(record.packageDigest),
+      failureKind: ["http", "network", "timeout", "validation", "response", "unknown"].includes(record.failureKind)
+        ? record.failureKind
+        : classifyReportRepositoryFailure(message),
+      message
+    };
+  }
+
+  function classifyReportRepositoryFailure(message = "") {
+    const text = String(message || "");
+    if (/超时|timeout/i.test(text)) return "timeout";
+    if (/HTTP\s+\d+/.test(text)) return "http";
+    if (/网络请求异常|Failed|Network/i.test(text)) return "network";
+    if (/格式|结构|JSON|缺少|不是/.test(text)) return "validation";
+    if (/没有返回|无响应|请求失败/.test(text)) return "response";
+    return "unknown";
+  }
+
+  function getReportRepositoryRetryDelayMs(attemptCount, options = {}) {
+    if (Number.isFinite(Number(options.retryDelayMs))) {
+      return Math.max(0, Math.min(3600000, Math.round(Number(options.retryDelayMs))));
+    }
+    const attempt = normalizeInteger(attemptCount, 1, 1, 10);
+    return Math.min(10 * 60 * 1000, REPORT_REPOSITORY_RETRY_BASE_MS * Math.max(1, 2 ** (attempt - 1)));
+  }
+
+  function getReportRepositoryRetrySummary(repository = state.reportRepository) {
+    const normalized = normalizeReportRepository(repository);
+    if (!normalized.remoteFailureHistory.length || !normalized.remoteRetryAfter) {
+      return "";
+    }
+    const latestFailure = normalized.remoteFailureHistory[0] || null;
+    const actionLabel = {
+      check: "检查",
+      push: "推送",
+      pull: "拉取"
+    }[latestFailure?.action] || "同步";
+    const reason = latestFailure?.failureKind === "timeout"
+      ? "请求超时"
+      : latestFailure?.failureKind === "http"
+        ? "服务端拒收"
+        : latestFailure?.failureKind === "network"
+          ? "网络异常"
+          : latestFailure?.failureKind === "validation"
+            ? "结构校验失败"
+            : "远端响应未完成";
+    return `失败历史 ${normalized.remoteFailureHistory.length} 次，最近一次${actionLabel}为${reason}；建议 ${formatPlanDate(normalized.remoteRetryAfter)} 后重试。`;
+  }
+
+  function hasReportRepositoryPushRetryPending(repository = state.reportRepository) {
+    const normalized = normalizeReportRepository(repository);
+    const lastPushTime = Date.parse(normalized.lastRemotePushAt || "") || 0;
+    return normalized.remoteFailureHistory.some((failure) => {
+      if (failure.action !== "push") return false;
+      const failedAt = Date.parse(failure.failedAt || "") || 0;
+      return failedAt > lastPushTime;
+    });
   }
 
   function normalizeReportRepositoryConflict(record) {
@@ -6402,11 +6491,16 @@
     if (repository.lastError) {
       tone = "warning";
       message = repository.lastError;
+      const retrySummary = getReportRepositoryRetrySummary(repository);
+      if (retrySummary) {
+        message = `${message} ${retrySummary}`;
+      }
     }
     const signedReceiptSummary = getReportRepositorySignedReceiptSummary(repository.lastSignedReceipt);
     if (signedReceiptSummary && !repository.lastError) {
       message = `${message} ${signedReceiptSummary}`;
     }
+    const remoteRetrySummary = getReportRepositoryRetrySummary(repository);
 
     return {
       ok: true,
@@ -6427,6 +6521,7 @@
       lastImportedAt: repository.lastImportedAt,
       lastCheckedAt: repository.lastCheckedAt,
       lastRemoteSyncAt: repository.lastRemoteSyncAt,
+      lastRemotePushAt: repository.lastRemotePushAt,
       lastRemoteDirection: repository.lastRemoteDirection,
       lastRemoteStatus: repository.lastRemoteStatus,
       lastExportedReportCount: repository.lastExportedReportCount,
@@ -6439,6 +6534,13 @@
       signedReceiptCount: repository.signedReceipts.length,
       signedReceipts: clone(repository.signedReceipts),
       signedReceiptStatus: signedReceiptSummary,
+      lastRemoteFailureAt: repository.lastRemoteFailureAt,
+      lastFailureAction: repository.lastFailureAction,
+      remoteRetryAfter: repository.remoteRetryAfter,
+      remoteFailureCount: repository.remoteFailureHistory.length,
+      remoteFailureHistory: clone(repository.remoteFailureHistory),
+      remoteRetrySummary,
+      reportPushRetryPending: hasReportRepositoryPushRetryPending(repository),
       lastError: repository.lastError
     };
   }
@@ -6703,11 +6805,50 @@
     return { ok: true, package: source };
   }
 
-  function recordReportRepositoryError(message) {
+  function recordReportRepositoryError(message, options = {}) {
+    const current = normalizeReportRepository(state.reportRepository);
+    const now = new Date().toISOString();
+    const normalizedMessage = String(message || "报告仓库同步失败。").trim().slice(0, 220);
+    const action = normalizeReportRepositoryFailureAction(options.action);
+    const trackRemote = Boolean(action || options.trackRemote === true);
+    let remoteRetryAfter = current.remoteRetryAfter;
+    let remoteFailureHistory = current.remoteFailureHistory;
+    let lastRemoteFailureAt = current.lastRemoteFailureAt;
+    let lastFailureAction = current.lastFailureAction;
+
+    if (trackRemote) {
+      const attemptCount = normalizeInteger(options.attemptCount, current.remoteFailureHistory.length + 1, 1, 9999);
+      const retryDelayMs = getReportRepositoryRetryDelayMs(attemptCount, options);
+      const retryAfter = retryDelayMs ? new Date(Date.now() + retryDelayMs).toISOString() : now;
+      const failure = normalizeReportRepositoryFailure({
+        failedAt: now,
+        retryAfter,
+        attemptCount,
+        action: action || "check",
+        endpoint: options.endpoint || current.remoteEndpoint,
+        workspaceId: options.workspaceId || current.workspaceId,
+        packageId: options.packageId || current.lastPackageId || "",
+        packageDigest: options.packageDigest || "",
+        reportCount: options.reportCount ?? current.lastRemoteReportCount ?? state.reports.length,
+        failureKind: options.failureKind || classifyReportRepositoryFailure(normalizedMessage),
+        message: normalizedMessage
+      });
+      remoteFailureHistory = [failure, ...current.remoteFailureHistory]
+        .filter(Boolean)
+        .slice(0, REPORT_REPOSITORY_MAX_FAILURES);
+      remoteRetryAfter = retryAfter;
+      lastRemoteFailureAt = now;
+      lastFailureAction = failure?.action || action || current.lastFailureAction;
+    }
+
     state.reportRepository = normalizeReportRepository({
-      ...state.reportRepository,
-      lastCheckedAt: new Date().toISOString(),
-      lastError: message
+      ...current,
+      lastCheckedAt: now,
+      lastRemoteFailureAt,
+      lastFailureAction,
+      remoteRetryAfter,
+      remoteFailureHistory,
+      lastError: normalizedMessage
     });
     saveState();
   }
@@ -6854,6 +6995,10 @@
         lastSkippedConflictCount: 0,
         lastConflictReports: [],
         lastRemoteStatus: "",
+        lastRemoteFailureAt: null,
+        lastFailureAction: "",
+        remoteRetryAfter: null,
+        remoteFailureHistory: [],
         lastError: ""
       });
       addEvent("report-repository-remote", `清除远端报告 API 配置，保留空间 ${workspaceId}`);
@@ -6884,6 +7029,7 @@
       lastSkippedConflictCount: sameRemoteSpace ? repository.lastSkippedConflictCount : 0,
       lastConflictReports: sameRemoteSpace ? repository.lastConflictReports : [],
       lastCheckedAt: new Date().toISOString(),
+      remoteRetryAfter: null,
       lastRemoteStatus: `远端报告 API 已配置，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
@@ -6910,6 +7056,26 @@
       headers,
       ...(options.body ? { body: JSON.stringify(options.body) } : {})
     };
+  }
+
+  function requestReportRepository(repository, fetchApi, options = {}) {
+    const requestUrl = options.requestUrl || repository.remoteEndpoint;
+    const timeoutMs = normalizeInteger(options.timeoutMs, REPORT_REPOSITORY_REQUEST_TIMEOUT_MS, 1, 600000);
+    const request = buildReportRepositoryRequest(repository, options);
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`请求超时 ${timeoutMs}ms`);
+        error.name = "TimeoutError";
+        reject(error);
+      }, timeoutMs);
+    });
+    const requestPromise = Promise.resolve().then(() => fetchApi(requestUrl, request));
+    return Promise.race([requestPromise, timeout]).finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
   }
 
   async function parseRemoteReportRepositoryResponse(response) {
@@ -6959,12 +7125,17 @@
 
   function formatReportRepositoryNetworkError(action, error) {
     const detail = String(error?.message || "").trim();
+    if (error?.name === "TimeoutError" || /超时|timeout/i.test(detail)) {
+      return detail
+        ? `远端报告 API ${action}失败：请求超时（${detail}）。`
+        : `远端报告 API ${action}失败：请求超时。`;
+    }
     return detail
       ? `远端报告 API ${action}失败：网络请求异常（${detail}）。`
       : `远端报告 API ${action}失败：网络请求异常。`;
   }
 
-  function checkRemoteReportRepository() {
+  function checkRemoteReportRepository(options = {}) {
     const repository = normalizeReportRepository(state.reportRepository);
     const remoteConfigured = Boolean(repository.remoteEndpoint);
     const fetchApi = getPlanRepositoryFetch();
@@ -6986,22 +7157,20 @@
       const status = getReportRepositoryStatus();
       return { ok: false, status, message: `${status.message} ${REPORT_REPOSITORY_BOUNDARY}` };
     }
-    return checkRemoteReportRepositoryAsync(repository, fetchApi);
+    return checkRemoteReportRepositoryAsync(repository, fetchApi, options);
   }
 
-  async function checkRemoteReportRepositoryAsync(repository, fetchApi) {
+  async function checkRemoteReportRepositoryAsync(repository, fetchApi, options = {}) {
     try {
-      const response = await fetchApi(repository.remoteEndpoint, buildReportRepositoryRequest(repository));
+      const response = await requestReportRepository(repository, fetchApi, options);
       const parsed = await parseRemoteReportRepositoryResponse(response);
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.reportRepository = normalizeReportRepository({
-          ...repository,
-          mode: "remote-api",
-          lastCheckedAt: now,
-          lastError: parsed.message
+        recordReportRepositoryError(parsed.message, {
+          action: "check",
+          failureKind: classifyReportRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
       const reportCount = parsed.package?.reports?.length || 0;
@@ -7027,6 +7196,7 @@
         lastSignedReceipt: signedReceipt,
         signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("report-repository-remote-check", `检查远端报告 API：${repository.workspaceId} / ${reportCount} 份报告`);
@@ -7040,7 +7210,11 @@
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("检查", error);
-      recordReportRepositoryError(message);
+      recordReportRepositoryError(message, {
+        action: "check",
+        failureKind: classifyReportRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
   }
@@ -7049,40 +7223,45 @@
     const repository = normalizeReportRepository(state.reportRepository);
     const fetchApi = getPlanRepositoryFetch();
     if (!repository.remoteEndpoint) {
-      return checkRemoteReportRepository();
+      return checkRemoteReportRepository(options);
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法推送报告到远端 API。";
-      recordReportRepositoryError(message);
+      recordReportRepositoryError(message, {
+        action: "push",
+        failureKind: "network",
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
     const packageResult = getReportRepositoryPackage(options);
     if (!packageResult.ok) {
       return packageResult;
     }
-    return pushReportRepositoryToRemoteAsync(repository, fetchApi, packageResult.package);
+    return pushReportRepositoryToRemoteAsync(repository, fetchApi, packageResult.package, options);
   }
 
-  async function pushReportRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage) {
+  async function pushReportRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage, options = {}) {
     try {
-      const response = await fetchApi(
-        repository.remoteEndpoint,
-        buildReportRepositoryRequest(repository, {
-          method: "PUT",
-          body: repositoryPackage
-        })
-      );
+      const response = await requestReportRepository(repository, fetchApi, {
+        method: "PUT",
+        body: repositoryPackage,
+        timeoutMs: options.timeoutMs
+      });
       const parsed = await parseRemoteReportRepositoryResponse(response);
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const reportCount = repositoryPackage.reports.length;
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.reportRepository = normalizeReportRepository({
-          ...repository,
-          lastCheckedAt: now,
-          lastError: parsed.message
+        const packageDigest = sha256StableJson(repositoryPackage);
+        recordReportRepositoryError(parsed.message, {
+          action: "push",
+          packageId: repositoryPackage.packageId,
+          packageDigest,
+          reportCount,
+          failureKind: classifyReportRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
 
@@ -7104,6 +7283,7 @@
         workspaceId: repository.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
+        lastRemotePushAt: now,
         lastRemoteDirection: "push",
         lastRemoteReportCount: reportCount,
         lastExportedAt: now,
@@ -7114,6 +7294,7 @@
         lastSkippedConflictCount: 0,
         lastConflictReports: [],
         lastRemoteStatus: remoteStatus,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("report-repository-remote-push", `推送报告到远端 API：${repository.workspaceId} / ${reportCount} 份报告`);
@@ -7128,36 +7309,56 @@
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("推送", error);
-      recordReportRepositoryError(message);
+      const packageDigest = sha256StableJson(repositoryPackage);
+      recordReportRepositoryError(message, {
+        action: "push",
+        packageId: repositoryPackage.packageId,
+        packageDigest,
+        reportCount: repositoryPackage.reports.length,
+        failureKind: classifyReportRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
   }
 
-  function pullReportRepositoryFromRemote() {
+  function pullReportRepositoryFromRemote(options = {}) {
     const repository = normalizeReportRepository(state.reportRepository);
     const fetchApi = getPlanRepositoryFetch();
     if (!repository.remoteEndpoint) {
-      return checkRemoteReportRepository();
+      return checkRemoteReportRepository(options);
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法从远端 API 拉取报告。";
-      recordReportRepositoryError(message);
+      recordReportRepositoryError(message, {
+        action: "pull",
+        failureKind: "network",
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
-    return pullReportRepositoryFromRemoteAsync(repository, fetchApi);
+    return pullReportRepositoryFromRemoteAsync(repository, fetchApi, options);
   }
 
-  async function pullReportRepositoryFromRemoteAsync(repository, fetchApi) {
+  async function pullReportRepositoryFromRemoteAsync(repository, fetchApi, options = {}) {
     try {
-      const response = await fetchApi(repository.remoteEndpoint, buildReportRepositoryRequest(repository));
+      const response = await requestReportRepository(repository, fetchApi, options);
       const parsed = await parseRemoteReportRepositoryResponse(response);
       if (!parsed.ok) {
-        recordReportRepositoryError(parsed.message);
+        recordReportRepositoryError(parsed.message, {
+          action: "pull",
+          failureKind: classifyReportRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
+        });
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
       if (!parsed.package) {
         const message = "远端报告 API 没有返回可导入的报告包。";
-        recordReportRepositoryError(message);
+        recordReportRepositoryError(message, {
+          action: "pull",
+          failureKind: "response",
+          retryDelayMs: options.retryDelayMs
+        });
         return { ok: false, status: getReportRepositoryStatus(), message };
       }
 
@@ -7190,6 +7391,7 @@
         signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastSkippedConflictCount: imported.skippedConflictCount || 0,
         lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，空间 ${repository.workspaceId}，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
+        remoteRetryAfter: null,
         lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
           : ""
@@ -7209,7 +7411,11 @@
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("拉取", error);
-      recordReportRepositoryError(message);
+      recordReportRepositoryError(message, {
+        action: "pull",
+        failureKind: classifyReportRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
   }

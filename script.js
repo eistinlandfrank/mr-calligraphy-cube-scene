@@ -6508,6 +6508,7 @@ function renderReportRepositoryStatus(detail) {
   }
   if (els.reportRepositoryPushButton) {
     els.reportRepositoryPushButton.disabled = !status?.remoteConfigured || !status?.reportCount;
+    els.reportRepositoryPushButton.textContent = status?.reportPushRetryPending ? "重试推送" : "推送报告";
   }
   if (els.reportRepositoryPullButton) {
     els.reportRepositoryPullButton.disabled = !status?.remoteConfigured;

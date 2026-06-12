@@ -1371,6 +1371,319 @@ test("front report repository imports a local JSON package", async ({ page }) =>
   expect(learningState.reportRepository.lastPackageId).toBe("e2e-local-report-package");
 });
 
+test("front report repository shows retryable remote failure recovery", async ({ page }) => {
+  const requests = [];
+  const networkPushPath = "/e2e-report-repository-network-push";
+  const recoveryPushPath = "/e2e-report-repository-recovery-push";
+  let latestRecoveryReceipt = null;
+  const routes = [
+    {
+      path: "/e2e-report-repository-expired-token",
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "报告 token 已过期，请重新登录。"
+      })
+    },
+    {
+      path: "/e2e-report-repository-server-error",
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "报告仓库服务端 E2E 故障。"
+      })
+    },
+    {
+      path: "/e2e-report-repository-invalid-json",
+      status: 200,
+      contentType: "application/json",
+      body: "{not-json"
+    },
+    {
+      path: "/e2e-report-repository-empty-package",
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "远端空报告仓库 E2E 可访问，但没有返回报告包。"
+      })
+    },
+    {
+      path: "/e2e-report-repository-rejected-push",
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "报告包结构被 E2E 服务端拒绝。"
+      })
+    }
+  ];
+
+  for (const routeConfig of routes) {
+    await page.route(`**${routeConfig.path}`, async (route) => {
+      const request = route.request();
+      requests.push({
+        path: routeConfig.path,
+        method: request.method(),
+        authorization: request.headers().authorization || "",
+        workspaceId: request.headers()["x-mr-workspace-id"] || "",
+        body: request.method() === "PUT" ? request.postDataJSON() : null
+      });
+      await route.fulfill({
+        status: routeConfig.status,
+        contentType: routeConfig.contentType,
+        body: routeConfig.body
+      });
+    });
+  }
+
+  await page.route(`**${networkPushPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: networkPushPath,
+      method: request.method(),
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body: request.method() === "PUT" ? request.postDataJSON() : null
+    });
+    await route.abort("failed");
+  });
+
+  await page.route(`**${recoveryPushPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    requests.push({
+      path: recoveryPushPath,
+      method,
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body
+    });
+
+    if (method === "PUT") {
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = sha256StableJson(body);
+      latestRecoveryReceipt = {
+        receiptKind: "mr-calligraphy-report-repository-receipt-v1",
+        remoteVersion: "e2e-report-recovery-v1",
+        packageId: "e2e-report-recovered-package",
+        sourcePackageId: body.packageId,
+        workspaceId: body.workspaceId,
+        repositoryDigest,
+        acceptedAt,
+        reportCount: body.summary.total,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: sha256StableJson({
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          repositoryDigest,
+          acceptedAt
+        }),
+        signatureAlgorithm: "HMAC-SHA256",
+        signingKeyId: "e2e-report-recovery-signing-key-v1",
+        signedFields: ["receiptKind", "packageId", "sourcePackageId", "workspaceId", "repositoryDigest", "acceptedAt", "reportCount", "receiptDigest"],
+        signature: "d".repeat(64)
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `报告仓库恢复端 E2E 已接收 ${body.summary.total} 份报告。`,
+          remoteVersion: "e2e-report-recovery-v1",
+          packageId: latestRecoveryReceipt.packageId,
+          receipt: latestRecoveryReceipt
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "报告仓库恢复端 E2E 可访问。"
+      })
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const reportDownloadPromise = page.waitForEvent("download");
+  const seed = await page.evaluate(() => {
+    const artwork = window.MRAppState.saveArtwork({
+      strokes: [
+        [
+          { x: 0.28, y: 0.34, t: 0, p: 0.45 },
+          { x: 0.42, y: 0.43, t: 16, p: 0.58 },
+          { x: 0.57, y: 0.52, t: 32, p: 0.62 },
+          { x: 0.71, y: 0.61, t: 48, p: 0.5 }
+        ]
+      ],
+      bounds: { minX: 0.28, minY: 0.34, maxX: 0.71, maxY: 0.61 },
+      metrics: { structure: 86, stroke: 84, technique: 85, fluency: 88, force: 82 },
+      score: 85,
+      feedback: ["E2E 报告仓库失败恢复记录"]
+    });
+    const report = window.MRAppState.createReport();
+    return {
+      artworkOk: artwork.ok,
+      reportOk: report.ok,
+      reportId: report.report.id,
+      status: window.MRAppState.getReportRepositoryStatus()
+    };
+  });
+  await reportDownloadPromise;
+  expect(seed.artworkOk).toBe(true);
+  expect(seed.reportOk).toBe(true);
+  expect(seed.status.reportCount).toBe(1);
+
+  await page.goto(`/?report=${seed.reportId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#reportPanel")).toBeVisible();
+  await page.locator(".report-repository-remote summary").click();
+
+  const expiredEndpoint = await getSameOriginEndpoint(page, "/e2e-report-repository-expired-token");
+  await configureReportRepositoryRemoteInUi(page, expiredEndpoint, "report-expired-token");
+  await page.locator("#reportRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 401");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("HTTP 401");
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toContain("HTTP 401");
+  expect(requests.some((item) => item.path === "/e2e-report-repository-expired-token" && item.authorization === "Bearer report-expired-token")).toBe(true);
+  expect(requests.some((item) => item.path === "/e2e-report-repository-expired-token" && item.workspaceId === "local-browser")).toBe(true);
+
+  const serverErrorEndpoint = await getSameOriginEndpoint(page, "/e2e-report-repository-server-error");
+  await configureReportRepositoryRemoteInUi(page, serverErrorEndpoint, "report-server-error-token");
+  await page.locator("#reportRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 500");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("HTTP 500");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toContain("HTTP 500");
+
+  const invalidJsonEndpoint = await getSameOriginEndpoint(page, "/e2e-report-repository-invalid-json");
+  await configureReportRepositoryRemoteInUi(page, invalidJsonEndpoint, "report-invalid-json-token");
+  await page.locator("#reportRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("不是可解析 JSON");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("不是可解析 JSON");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toContain("不是可解析 JSON");
+
+  const emptyPackageEndpoint = await getSameOriginEndpoint(page, "/e2e-report-repository-empty-package");
+  await configureReportRepositoryRemoteInUi(page, emptyPackageEndpoint, "report-empty-package-token");
+  await page.locator("#reportRepositoryRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("远端空报告仓库 E2E 可访问");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toBe("");
+  expect(learningState.reportRepository.lastRemoteStatus).toContain("远端空报告仓库 E2E 可访问");
+
+  await page.locator("#reportRepositoryPullButton").click();
+  await expect(page.locator("#noticeState")).toContainText("没有返回可导入的报告包");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("没有返回可导入的报告包");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("失败历史");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toContain("没有返回可导入的报告包");
+  expect(learningState.reportRepository.remoteFailureHistory[0].action).toBe("pull");
+  expect(learningState.reportRepository.remoteFailureHistory[0].failureKind).toBe("response");
+  expect(requests.some((item) => item.path === "/e2e-report-repository-empty-package" && item.authorization === "Bearer report-empty-package-token")).toBe(true);
+
+  const rejectedPushEndpoint = await getSameOriginEndpoint(page, "/e2e-report-repository-rejected-push");
+  await configureReportRepositoryRemoteInUi(page, rejectedPushEndpoint, "report-rejected-push-token");
+  await page.locator("#reportRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 422");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("HTTP 422");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("失败历史");
+  await expect(page.locator("#reportRepositoryPushButton")).toHaveText("重试推送");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toContain("HTTP 422");
+  expect(learningState.reportRepository.remoteRetryAfter).toBeTruthy();
+  expect(learningState.reportRepository.remoteFailureHistory[0].action).toBe("push");
+  expect(learningState.reportRepository.remoteFailureHistory[0].failureKind).toBe("http");
+
+  const putRequest = requests.find((item) => item.path === "/e2e-report-repository-rejected-push" && item.method === "PUT");
+  expect(putRequest.authorization).toBe("Bearer report-rejected-push-token");
+  expect(putRequest.workspaceId).toBe("local-browser");
+  expect(putRequest.body.kind).toBe("mr-calligraphy-report-repository-v1");
+  expect(putRequest.body.workspaceId).toBe("local-browser");
+  expect(putRequest.body.summary.total).toBe(1);
+  expect(learningState.reportRepository.remoteFailureHistory[0].packageId).toBe(putRequest.body.packageId);
+  expect(learningState.reportRepository.remoteFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+
+  const networkPushEndpoint = await getSameOriginEndpoint(page, networkPushPath);
+  await configureReportRepositoryRemoteInUi(page, networkPushEndpoint, "report-network-push-token");
+  await expect(page.locator("#reportRepositoryPushButton")).toHaveText("重试推送");
+  await page.locator("#reportRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("网络请求异常");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("网络请求异常");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("失败历史");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.remoteFailureHistory[0].action).toBe("push");
+  expect(learningState.reportRepository.remoteFailureHistory[0].failureKind).toBe("network");
+  expect(learningState.reportRepository.remoteFailureHistory[0].endpoint).toContain(networkPushPath);
+  expect(requests.some((item) => item.path === networkPushPath && item.method === "PUT" && item.authorization === "Bearer report-network-push-token")).toBe(true);
+
+  const timeoutResult = await page.evaluate(async () => {
+    const originalFetch = window.fetch;
+    window.fetch = () => new Promise((resolve) => {
+      window.setTimeout(() => {
+        resolve(new Response(JSON.stringify({
+          ok: true,
+          message: "报告仓库慢响应 E2E 最终可访问。"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }));
+      }, 40);
+    });
+    try {
+      return await window.MRAppState.checkRemoteReportRepository({ timeoutMs: 1, retryDelayMs: 5 });
+    } finally {
+      window.fetch = originalFetch;
+    }
+  });
+  expect(timeoutResult.ok).toBe(false);
+  expect(timeoutResult.message).toContain("请求超时");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.remoteFailureHistory[0].action).toBe("check");
+  expect(learningState.reportRepository.remoteFailureHistory[0].failureKind).toBe("timeout");
+  expect(learningState.reportRepository.remoteRetryAfter).toBeTruthy();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#reportPanel")).toBeVisible();
+  await page.locator(".report-repository-remote summary").click();
+  await expect(page.locator("#reportRepositorySummary")).toContainText("请求超时");
+  await expect(page.locator("#reportRepositoryPushButton")).toHaveText("重试推送");
+
+  const recoveryPushEndpoint = await getSameOriginEndpoint(page, recoveryPushPath);
+  await configureReportRepositoryRemoteInUi(page, recoveryPushEndpoint, "report-recovery-token");
+  await expect(page.locator("#reportRepositoryPushButton")).toHaveText("重试推送");
+  await page.locator("#reportRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已推送 1 份报告");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("已推送 1 份报告");
+  await expect(page.locator("#reportRepositoryPushButton")).toHaveText("推送报告");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastError).toBe("");
+  expect(learningState.reportRepository.remoteRetryAfter || "").toBe("");
+  expect(learningState.reportRepository.lastRemoteDirection).toBe("push");
+  expect(learningState.reportRepository.lastRemotePushAt).toBeTruthy();
+  expect(learningState.reportRepository.remoteFailureHistory.length).toBeGreaterThanOrEqual(5);
+  expect(learningState.reportRepository.lastSignedReceipt.receiptDigest).toBe(latestRecoveryReceipt.receiptDigest);
+  expect(learningState.reportRepository.lastSignedReceipt.verificationStatus).toBe("verified");
+  const recoveryStatus = await page.evaluate(() => window.MRAppState.getReportRepositoryStatus());
+  expect(recoveryStatus.reportPushRetryPending).toBe(false);
+  expect(recoveryStatus.remoteFailureCount).toBeGreaterThanOrEqual(5);
+
+  const recoveryPutRequest = requests.find((item) => item.path === recoveryPushPath && item.method === "PUT");
+  expect(recoveryPutRequest.authorization).toBe("Bearer report-recovery-token");
+  expect(recoveryPutRequest.workspaceId).toBe("local-browser");
+  expect(recoveryPutRequest.body.kind).toBe("mr-calligraphy-report-repository-v1");
+  expect(recoveryPutRequest.body.summary.total).toBe(1);
+});
+
 test("front history repository shows real remote failure feedback", async ({ page }) => {
   const requests = [];
   const networkPushPath = "/e2e-history-repository-network-push";
@@ -3909,6 +4222,14 @@ async function configureHistoryRepositoryRemoteInUi(page, endpoint, token = "", 
   await page.locator("#historyRepositoryWorkspaceInput").fill(workspaceId);
   await page.locator("#historyRepositorySaveRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("已保存远端学习档案 API 配置");
+}
+
+async function configureReportRepositoryRemoteInUi(page, endpoint, token = "", workspaceId = "local-browser") {
+  await page.locator("#reportRepositoryEndpointInput").fill(endpoint);
+  await page.locator("#reportRepositoryTokenInput").fill(token);
+  await page.locator("#reportRepositoryWorkspaceInput").fill(workspaceId);
+  await page.locator("#reportRepositorySaveRemoteButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已保存远端报告 API 配置");
 }
 
 async function configureShareRemoteInUi(page, endpoint, token = "", workspaceId = "local-browser") {
