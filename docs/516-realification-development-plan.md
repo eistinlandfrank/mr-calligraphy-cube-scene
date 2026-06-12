@@ -6884,3 +6884,60 @@
 提交：
 
 - 中文 commit message：`新增项目档案恢复审计摘要`
+
+### 2026-06-12：新增书写视频封面和导出记录
+
+功能名：前台书写视频导出可追溯。
+
+涉及文件：
+
+- `app-state.js`
+- `practice-canvas.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- 复盘页可直接导出最近作品的 WebM 回放视频。
+- WebM 导出成功后会生成 PNG 封面并保存到本机导出记录。
+- 复盘页显示最近视频导出摘要和导出记录列表。
+- “下载封面”按钮会从本机导出记录下载 PNG。
+- 数据层提供 `recordPracticeVideoExport()` 和 `getPracticeVideoExportStatus()`。
+- E2E 覆盖 WebM 下载、封面记录、封面下载和本机状态字段。
+
+真实化说明：
+
+- 数据来源：真实书写笔迹、最近作品关联练习和 canvas 回放帧。
+- 写入状态：`mr-calligraphy-learning-state-v1.videoExportService.records[*]`。
+- 成功反馈：下载 WebM，显示本机导出记录，并可下载 PNG 封面。
+- 失败反馈：导出失败不写成功记录，最近失败原因写入 `lastError`。
+- 刷新后复现方式：本机记录和封面 Data URL 随学习状态持久化。
+
+已知限制：
+
+- 当前仍不是 MP4/GIF、服务端转码、压缩队列或公开分享服务。
+
+验收方式：
+
+- 脚本验收：`node scripts/learning-state-check.js`。
+- 浏览器验收：`npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check practice-canvas.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+
+提交：
+
+- 中文 commit message：`新增书写视频封面导出记录`

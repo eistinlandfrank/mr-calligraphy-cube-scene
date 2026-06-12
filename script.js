@@ -828,9 +828,13 @@ const els = {
   reviewPointCount: document.getElementById("reviewPointCount"),
   reviewFeedback: document.getElementById("reviewFeedback"),
   reviewReplay: document.getElementById("reviewReplay"),
+  reviewDownloadVideo: document.getElementById("reviewDownloadVideo"),
+  reviewDownloadVideoCover: document.getElementById("reviewDownloadVideoCover"),
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
   reviewDownloadShare: document.getElementById("reviewDownloadShare"),
+  videoExportSummary: document.getElementById("videoExportSummary"),
+  videoExportRecords: document.getElementById("videoExportRecords"),
   shareServiceSummary: document.getElementById("shareServiceSummary"),
   reviewCreateShareLink: document.getElementById("reviewCreateShareLink"),
   reviewCopyShareLink: document.getElementById("reviewCopyShareLink"),
@@ -3666,6 +3670,8 @@ function initPracticeCanvas() {
 
 function bindReviewControls() {
   els.reviewReplay?.addEventListener("click", replayLatestArtwork);
+  els.reviewDownloadVideo?.addEventListener("click", downloadLatestPracticeVideo);
+  els.reviewDownloadVideoCover?.addEventListener("click", downloadLatestPracticeVideoCover);
   els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
   els.reviewDownloadShare?.addEventListener("click", downloadLatestArtworkSharePage);
@@ -4444,10 +4450,56 @@ function renderReviewPanel(sceneIndex = currentIndex) {
 
   const hasStrokes = Boolean(session?.strokes?.length);
   els.reviewReplay.disabled = !hasStrokes;
+  if (els.reviewDownloadVideo) els.reviewDownloadVideo.disabled = !hasStrokes;
   els.reviewDownloadImage.disabled = !hasImage;
   els.reviewDownloadReport.disabled = !report;
   if (els.reviewDownloadShare) els.reviewDownloadShare.disabled = !artwork;
+  renderVideoExportPanel(artwork, session);
   renderShareServicePanel(artwork);
+}
+
+function renderVideoExportPanel(artwork, session) {
+  const status = window.MRAppState?.getPracticeVideoExportStatus?.({
+    artworkId: artwork?.id,
+    sessionId: session?.id
+  }) || null;
+  const currentRecord = status?.currentRecord || null;
+  if (els.reviewDownloadVideoCover) {
+    els.reviewDownloadVideoCover.disabled = !currentRecord?.coverDataUrl;
+  }
+  if (els.videoExportSummary) {
+    els.videoExportSummary.textContent = status
+      ? `${status.message} ${status.boundary}`
+      : "本机视频导出服务尚未初始化。";
+    els.videoExportSummary.dataset.videoTone = currentRecord?.coverDataUrl
+      ? "ready"
+      : status?.lastError
+        ? "warning"
+        : "idle";
+  }
+  if (!els.videoExportRecords) return;
+  els.videoExportRecords.innerHTML = "";
+  const records = (status?.records || []).slice(0, 3);
+  if (!records.length) {
+    const item = document.createElement("li");
+    const body = document.createElement("span");
+    body.textContent = status?.lastError
+      ? `最近导出失败：${status.lastError}`
+      : "暂无视频导出记录。导出视频后会显示 WebM 文件、封面和笔迹统计。";
+    item.appendChild(body);
+    els.videoExportRecords.appendChild(item);
+    return;
+  }
+
+  records.forEach((record) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${record.title} · ${record.durationLabel}`;
+    const detail = document.createElement("span");
+    detail.textContent = `${record.sourceLabel} / ${record.strokeCount} 笔 / ${record.pointCount} 点 / ${record.videoSizeLabel} / ${record.createdLabel}`;
+    item.append(title, detail);
+    els.videoExportRecords.appendChild(item);
+  });
 }
 
 function replayLatestArtwork() {
@@ -6051,15 +6103,15 @@ function getActiveReportDetail() {
   return window.MRAppState.getReportDetail(activeReportDetailId);
 }
 
-async function exportPracticeReplayVideo() {
-  if (!window.MRPracticeCanvas?.exportReplayVideo) {
+async function exportPracticeReplayVideo(options = {}) {
+  if (!window.MRPracticeCanvas?.exportReplayVideo || !window.MRPracticeCanvas?.exportReplayCover) {
     return { ok: false, message: "书写画布尚未初始化，无法导出视频。" };
   }
   if (isReplayVideoExporting) {
     return { ok: false, message: "书写回放视频正在生成中，请稍候。" };
   }
 
-  const source = getPracticeVideoSource();
+  const source = getPracticeVideoSource(options);
   if (!source.strokes.length) {
     return { ok: false, message: "请先在练习格中书写，或保存一条带笔迹的作品后再生成视频。" };
   }
@@ -6067,9 +6119,24 @@ async function exportPracticeReplayVideo() {
   isReplayVideoExporting = true;
   try {
     if (source.source === "当前练习") {
-      recordLivePracticeIfAvailable({ allowCreate: true });
+      const recorded = recordLivePracticeIfAvailable({ allowCreate: true });
+      if (recorded?.session?.id) {
+        source.sessionId = recorded.session.id;
+        source.sourceId = recorded.session.id;
+        source.title = recorded.session.title || `${source.glyph}字当前练习`;
+      }
     } else {
       window.MRPracticeCanvas.loadStrokes?.(source.strokes);
+    }
+
+    const coverResult = window.MRPracticeCanvas.exportReplayCover({
+      strokes: source.strokes,
+      glyph: source.glyph
+    });
+    if (!coverResult?.ok || !coverResult.dataUrl) {
+      const message = coverResult?.message || "视频封面生成失败。";
+      window.MRAppState?.recordPracticeVideoExportError?.(message);
+      return { ok: false, message };
     }
 
     const result = await window.MRPracticeCanvas.exportReplayVideo({
@@ -6077,43 +6144,121 @@ async function exportPracticeReplayVideo() {
       glyph: source.glyph
     });
     if (!result?.ok || !result.blob) {
-      return result || { ok: false, message: "视频导出失败。" };
+      const message = result?.message || "视频导出失败。";
+      window.MRAppState?.recordPracticeVideoExportError?.(message);
+      return result || { ok: false, message };
     }
 
-    const filename = `mr-calligraphy-replay-${sanitizeFilename(source.glyph)}-${Date.now()}.webm`;
+    const timestamp = Date.now();
+    const filename = `mr-calligraphy-replay-${sanitizeFilename(source.glyph)}-${timestamp}.webm`;
+    const coverFilename = `mr-calligraphy-replay-cover-${sanitizeFilename(source.glyph)}-${timestamp}.png`;
+    const recordResult = window.MRAppState?.recordPracticeVideoExport?.({
+      source: source.source,
+      sourceId: source.sourceId,
+      artworkId: source.artworkId,
+      sessionId: source.sessionId,
+      glyph: source.glyph,
+      title: source.title || `${source.glyph}字书写回放`,
+      videoFilename: filename,
+      coverFilename,
+      mimeType: result.mimeType || result.blob.type || "video/webm",
+      videoBytes: result.blob.size || 0,
+      coverDataUrl: coverResult.dataUrl,
+      durationMs: result.durationMs,
+      strokeCount: source.strokes.length,
+      pointCount: countVideoSourcePoints(source.strokes),
+      message: `已导出 ${source.source} 的 WebM 回放视频，并生成 PNG 封面。`
+    });
     downloadBlob(result.blob, filename);
     return {
       ok: true,
-      message: `${result.message} 已下载：${filename}。`,
-      notice: `已导出${source.source}回放视频。`
+      detail: recordResult?.record ? {
+        title: "视频导出记录",
+        rows: [
+          ["来源", recordResult.record.sourceLabel],
+          ["视频", recordResult.record.videoFilename],
+          ["封面", recordResult.record.coverFilename],
+          ["时长", recordResult.record.durationLabel],
+          ["大小", recordResult.record.videoSizeLabel]
+        ]
+      } : null,
+      message: `${result.message} 已下载：${filename}。封面已保存到复盘记录，可点击“下载封面”。`,
+      notice: `已导出${source.source}回放视频，并生成封面记录。`
     };
   } finally {
     isReplayVideoExporting = false;
   }
 }
 
-function getPracticeVideoSource() {
+function getPracticeVideoSource(options = {}) {
   const liveStrokes = window.MRPracticeCanvas?.getStrokes?.() || [];
   const stats = window.MRAppState?.getStats?.();
+  const review = window.MRAppState?.getLatestReview?.();
+  const session = review?.session;
+  if (options.preferReview && session?.strokes?.length) {
+    return {
+      source: "最近作品",
+      sourceId: review?.artwork?.id || session.id,
+      sessionId: session.id,
+      artworkId: review?.artwork?.id || "",
+      glyph: session.glyph || stats?.glyph || "永",
+      title: review?.artwork?.title || session.title || `${session.glyph || stats?.glyph || "永"}字最近作品`,
+      strokes: session.strokes
+    };
+  }
+
   if (liveStrokes.length) {
     return {
       source: "当前练习",
+      sourceId: "",
+      sessionId: "",
+      artworkId: "",
       glyph: stats?.glyph || "永",
+      title: `${stats?.glyph || "永"}字当前练习`,
       strokes: liveStrokes
     };
   }
 
-  const review = window.MRAppState?.getLatestReview?.();
-  const session = review?.session;
   if (session?.strokes?.length) {
     return {
       source: "最近作品",
+      sourceId: review?.artwork?.id || session.id,
+      sessionId: session.id,
+      artworkId: review?.artwork?.id || "",
       glyph: session.glyph || stats?.glyph || "永",
+      title: review?.artwork?.title || session.title || `${session.glyph || stats?.glyph || "永"}字最近作品`,
       strokes: session.strokes
     };
   }
 
   return { source: "空记录", glyph: stats?.glyph || "永", strokes: [] };
+}
+
+function countVideoSourcePoints(strokes = []) {
+  return strokes.reduce((sum, stroke) => sum + (Array.isArray(stroke) ? stroke.length : 0), 0);
+}
+
+async function downloadLatestPracticeVideo() {
+  if (els.actionFeedback) {
+    els.actionFeedback.textContent = "正在生成真实书写回放视频，请稍候...";
+  }
+  const result = await exportPracticeReplayVideo({ preferReview: true });
+  applyActionResult(result, { label: "生成视频" });
+}
+
+function downloadLatestPracticeVideoCover() {
+  const review = window.MRAppState?.getLatestReview?.();
+  const status = window.MRAppState?.getPracticeVideoExportStatus?.({
+    artworkId: review?.artwork?.id,
+    sessionId: review?.session?.id
+  });
+  const record = status?.currentRecord || status?.latestRecord;
+  if (!record?.coverDataUrl) {
+    showNotice("还没有可下载的视频封面。请先导出一次书写视频。");
+    return;
+  }
+  downloadDataUrl(record.coverDataUrl, record.coverFilename || `mr-calligraphy-replay-cover-${Date.now()}.png`);
+  showNotice(`已下载视频封面：${record.coverFilename || "PNG 封面"}。`);
 }
 
 function downloadDataUrl(dataUrl, filename) {

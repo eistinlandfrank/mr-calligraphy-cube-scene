@@ -4538,6 +4538,7 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.video-export-summary,
 .share-service-summary {
   margin-top: 8px;
   padding: 7px 8px;
@@ -4550,12 +4551,14 @@ body.is-model-view .notice-panel {
   line-height: 1.35;
 }
 
+.video-export-summary[data-video-tone="ready"],
 .share-service-summary[data-share-tone="ready"] {
   border-color: rgba(116, 255, 219, 0.32);
   color: #e8fff9;
   background: rgba(47, 111, 104, 0.24);
 }
 
+.video-export-summary[data-video-tone="warning"],
 .share-service-summary[data-share-tone="warning"] {
   border-color: rgba(247, 215, 139, 0.42);
   color: #fff0bd;
@@ -4594,6 +4597,7 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.video-export-records,
 .share-service-records {
   display: grid;
   gap: 5px;
@@ -4602,6 +4606,7 @@ body.is-model-view .notice-panel {
   list-style: none;
 }
 
+.video-export-records li,
 .share-service-records li {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -4614,6 +4619,12 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.video-export-records li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.video-export-records strong,
+.video-export-records span,
 .share-service-records strong,
 .share-service-records span {
   display: block;
@@ -4623,11 +4634,13 @@ body.is-model-view .notice-panel {
   white-space: nowrap;
 }
 
+.video-export-records strong,
 .share-service-records strong {
   color: #fffaf1;
   font-size: 11px;
 }
 
+.video-export-records span,
 .share-service-records span {
   color: rgba(255, 250, 241, 0.62);
   font-size: 10px;

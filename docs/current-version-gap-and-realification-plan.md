@@ -56,7 +56,7 @@ node scripts/control-inventory.js
 | 模块 | 当前可用内容 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
-| 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
+| 生成视频 | 能用真实笔迹导出 WebM 回放，并生成 PNG 封面、本机导出记录和封面下载入口 | 不是 MP4/GIF，没有压缩、云端转码、异步队列和分享链路 | UI 写明 WebM；后续加格式转换、压缩和异步导出队列 |
 | 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前签名回执审计是本机列表和 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
@@ -2028,3 +2028,38 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增项目档案恢复审计摘要`
+
+### 2026-06-12：新增书写视频封面和导出记录
+
+完成内容：
+
+- 书写画布新增 `exportReplayCover()`，复用 WebM 回放同一套 canvas 绘制逻辑生成 PNG 封面。
+- 前台复盘面板新增“导出视频”和“下载封面”按钮。
+- WebM 导出成功后写入 `videoExportService.records`，记录来源、作品/练习 ID、文件名、时长、大小、笔画数、采样点和封面 Data URL。
+- 复盘面板显示最近视频导出摘要和最近 3 条导出记录。
+- 视频导出失败会写入 `videoExportService.lastError`，不会伪造成成功记录。
+- Playwright 覆盖保存作品后导出 WebM、写入本机记录、下载 PNG 封面和刷新后状态读取。
+
+真实化说明：
+
+- 数据来源：当前浏览器真实书写笔迹、最近作品关联练习和 canvas 回放帧。
+- 写入状态：`mr-calligraphy-learning-state-v1.videoExportService.records[*]`。
+- 成功反馈：下载 WebM，复盘面板显示本机导出记录，并可下载 PNG 封面。
+- 失败反馈：无笔迹、无录制能力或封面生成失败时返回明确错误，并写入最近失败原因。
+- 刷新后复现方式：导出记录和封面 Data URL 保存在本机学习状态中，刷新后仍可查看并下载封面。
+
+仍待补：
+
+- 当前仍是浏览器端 WebM，不是 MP4/GIF 转码、服务端压缩、后台异步队列或公网分享链路。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check practice-canvas.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增书写视频封面导出记录`

@@ -370,6 +370,29 @@
     });
   }
 
+  function exportReplayCover(options = {}) {
+    const strokes = normalizeVideoStrokes(options.strokes || state.strokes);
+    const glyph = String(options.glyph || state.glyph || "永");
+    const width = Number(options.width || 720);
+    const height = Number(options.height || 720);
+    if (!strokes.length) {
+      return { ok: false, message: "还没有可生成封面的笔迹。" };
+    }
+    const output = document.createElement("canvas");
+    output.width = width;
+    output.height = height;
+    const ctx = output.getContext("2d");
+    drawReplayVideoFrame(ctx, { strokes, glyph, width, height, progress: 1 });
+    return {
+      ok: true,
+      dataUrl: output.toDataURL("image/png"),
+      mimeType: "image/png",
+      width,
+      height,
+      message: "已生成书写回放封面。"
+    };
+  }
+
   function normalizeVideoStrokes(strokes) {
     return Array.isArray(strokes)
       ? strokes.map((stroke) => Array.isArray(stroke) ? stroke.map(normalizePoint).filter(isValidPoint) : []).filter((stroke) => stroke.length > 1)
@@ -800,6 +823,7 @@
     undo,
     replay,
     exportReplayVideo,
+    exportReplayCover,
     getResult,
     analyzeStrokes,
     loadStrokes,

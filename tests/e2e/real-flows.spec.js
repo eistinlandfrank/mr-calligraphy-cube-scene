@@ -175,6 +175,49 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         }
       }
     });
+
+    Object.defineProperty(window.HTMLCanvasElement.prototype, "captureStream", {
+      configurable: true,
+      value() {
+        return {
+          getTracks() {
+            return [{ stop() {} }];
+          }
+        };
+      }
+    });
+
+    class FakeMediaRecorder {
+      constructor(stream, options = {}) {
+        this.stream = stream;
+        this.mimeType = options.mimeType || "video/webm";
+        this.state = "inactive";
+        this.ondataavailable = null;
+        this.onerror = null;
+        this.onstop = null;
+      }
+
+      start() {
+        this.state = "recording";
+      }
+
+      stop() {
+        if (this.state !== "recording") return;
+        this.state = "inactive";
+        const blob = new Blob([new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8])], { type: this.mimeType || "video/webm" });
+        this.ondataavailable?.({ data: blob });
+        this.onstop?.();
+      }
+
+      static isTypeSupported() {
+        return true;
+      }
+    }
+
+    Object.defineProperty(window, "MediaRecorder", {
+      configurable: true,
+      value: FakeMediaRecorder
+    });
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -211,6 +254,26 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.scoreService.status).toBe("scored");
   expect(learningState.scoreService.lastScore).toBeGreaterThan(0);
   expect(learningState.scoreService.lastEvidenceSummary).toContain("采样");
+
+  await expect(page.locator("#reviewDownloadVideo")).toBeEnabled();
+  const videoDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reviewDownloadVideo").click();
+  const videoDownload = await videoDownloadPromise;
+  expect(videoDownload.suggestedFilename()).toMatch(/^mr-calligraphy-replay-.*\.webm$/);
+  await expect(page.locator("#actionFeedback")).toContainText("封面已保存到复盘记录", { timeout: 6000 });
+  await expect(page.locator("#videoExportSummary")).toContainText("1 条书写视频导出记录");
+  await expect(page.locator("#videoExportRecords")).toContainText("最近作品");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.videoExportService.records).toHaveLength(1);
+  expect(learningState.videoExportService.records[0].source).toBe("最近作品");
+  expect(learningState.videoExportService.records[0].videoFilename).toMatch(/\.webm$/);
+  expect(learningState.videoExportService.records[0].coverFilename).toMatch(/\.png$/);
+  expect(learningState.videoExportService.records[0].coverDataUrl).toContain("data:image/png");
+  expect(learningState.videoExportService.records[0].videoBytes).toBeGreaterThan(0);
+  const coverDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reviewDownloadVideoCover").click();
+  const coverDownload = await coverDownloadPromise;
+  expect(coverDownload.suggestedFilename()).toMatch(/^mr-calligraphy-replay-cover-.*\.png$/);
 
   await page.locator("#reviewCreateShareLink").click();
   await expect(page.locator("#shareServiceSummary")).toContainText("1 条有效链接");

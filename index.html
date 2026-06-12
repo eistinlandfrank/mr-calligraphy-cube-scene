@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR 书法 360° 全景交互演示</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=report-package-20260612">
+  <link rel="stylesheet" href="style.css?v=video-export-20260612">
 </head>
 <body>
   <main class="app-shell">
@@ -173,10 +173,14 @@
           <ul id="reviewFeedback" class="review-feedback"></ul>
           <div class="review-actions">
             <button data-feature-state="real-local" id="reviewReplay" type="button">回放作品</button>
+            <button data-feature-state="real-export" id="reviewDownloadVideo" type="button">导出视频</button>
+            <button data-feature-state="real-export" id="reviewDownloadVideoCover" type="button">下载封面</button>
             <button data-feature-state="real-export" id="reviewDownloadImage" type="button">下载图片</button>
             <button data-feature-state="real-export" id="reviewDownloadReport" type="button">下载报告</button>
             <button data-feature-state="real-export" id="reviewDownloadShare" type="button">导出分享页</button>
           </div>
+          <div id="videoExportSummary" class="video-export-summary">书写视频尚未导出。</div>
+          <ul id="videoExportRecords" class="video-export-records" aria-label="本机视频导出记录"></ul>
           <div id="shareServiceSummary" class="share-service-summary">本机分享链接尚未生成。</div>
           <div class="share-service-actions">
             <button data-feature-state="real-local" id="reviewCreateShareLink" type="button">生成本机链接</button>
@@ -610,8 +614,8 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
-  <script src="app-state.js?v=report-package-20260612"></script>
-  <script src="practice-canvas.js?v=practice-canvas-20260611"></script>
-  <script src="script.js?v=report-package-20260612"></script>
+  <script src="app-state.js?v=video-export-20260612"></script>
+  <script src="practice-canvas.js?v=video-export-20260612"></script>
+  <script src="script.js?v=video-export-20260612"></script>
 </body>
 </html>

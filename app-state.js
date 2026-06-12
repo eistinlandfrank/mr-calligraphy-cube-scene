@@ -5,6 +5,7 @@
   const MAX_HISTORY_TRASH = 12;
   const MAX_ARTWORK_TAGS = 8;
   const MAX_SHARE_RECORDS = 24;
+  const MAX_VIDEO_EXPORT_RECORDS = 18;
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
@@ -12,6 +13,7 @@
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
+  const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
@@ -370,6 +372,7 @@
       artworks,
       reports,
       reportTeacherReviewAudits: normalizeReportTeacherReviewAudits(source?.reportTeacherReviewAudits),
+      videoExportService: normalizeVideoExportService(source?.videoExportService),
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
@@ -584,6 +587,57 @@
     state.reportTeacherReviewAudits = [normalized, ...existing.filter((item) => item.id !== normalized.id)]
       .slice(0, REPORT_TEACHER_REVIEW_MAX_AUDITS);
     return normalized;
+  }
+
+  function normalizeVideoExportService(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    return {
+      records: Array.isArray(source.records)
+        ? source.records.map(normalizeVideoExportRecord).filter(Boolean).slice(0, MAX_VIDEO_EXPORT_RECORDS)
+        : [],
+      lastExportedAt: normalizePlanDate(source.lastExportedAt),
+      lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+    };
+  }
+
+  function normalizeVideoExportRecord(record) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    const createdAt = normalizePlanDate(record.createdAt) || new Date().toISOString();
+    if (!id) return null;
+    const source = ["当前练习", "最近作品"].includes(record.source) ? record.source : "当前练习";
+    const coverDataUrl = typeof record.coverDataUrl === "string" && record.coverDataUrl.startsWith("data:image/")
+      ? record.coverDataUrl
+      : "";
+    return {
+      id,
+      source,
+      sourceId: String(record.sourceId || "").trim().slice(0, 120),
+      artworkId: String(record.artworkId || "").trim().slice(0, 120),
+      sessionId: String(record.sessionId || "").trim().slice(0, 120),
+      glyph: String(record.glyph || "永").trim().slice(0, 12) || "永",
+      title: String(record.title || "书写回放视频").trim().slice(0, 140) || "书写回放视频",
+      videoFilename: String(record.videoFilename || "").trim().slice(0, 180),
+      coverFilename: String(record.coverFilename || "").trim().slice(0, 180),
+      mimeType: String(record.mimeType || "video/webm").trim().slice(0, 80) || "video/webm",
+      videoBytes: normalizeInteger(record.videoBytes, 0, 0, 999999999),
+      coverBytes: normalizeInteger(record.coverBytes, estimateDataUrlBytes(coverDataUrl), 0, 999999999),
+      durationMs: normalizeInteger(record.durationMs, 0, 0, 600000),
+      strokeCount: normalizeInteger(record.strokeCount, 0, 0, 9999),
+      pointCount: normalizeInteger(record.pointCount, 0, 0, 999999),
+      coverDataUrl,
+      createdAt,
+      message: String(record.message || "").trim().slice(0, 220)
+    };
+  }
+
+  function estimateDataUrlBytes(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:[^;,]+;base64,([\s\S]+)$/i);
+    if (!match) return 0;
+    const clean = match[1].replace(/\s+/g, "");
+    if (!clean) return 0;
+    const padding = clean.endsWith("==") ? 2 : clean.endsWith("=") ? 1 : 0;
+    return Math.max(0, Math.floor((clean.length * 3) / 4) - padding);
   }
 
   function normalizeShareService(record = {}) {
@@ -7319,6 +7373,129 @@
     };
   }
 
+  function recordPracticeVideoExport(payload = {}) {
+    const createdAt = new Date().toISOString();
+    const record = normalizeVideoExportRecord({
+      id: payload.id || makeId("video"),
+      source: payload.source,
+      sourceId: payload.sourceId,
+      artworkId: payload.artworkId,
+      sessionId: payload.sessionId,
+      glyph: payload.glyph || state.selectedGlyph,
+      title: payload.title || "书写回放视频",
+      videoFilename: payload.videoFilename,
+      coverFilename: payload.coverFilename,
+      mimeType: payload.mimeType || "video/webm",
+      videoBytes: payload.videoBytes,
+      coverBytes: payload.coverBytes,
+      durationMs: payload.durationMs,
+      strokeCount: payload.strokeCount,
+      pointCount: payload.pointCount,
+      coverDataUrl: payload.coverDataUrl,
+      createdAt,
+      message: payload.message || "已生成本机书写回放视频和封面。"
+    });
+    if (!record) {
+      return { ok: false, message: "视频导出记录缺少必要信息，未写入本机状态。" };
+    }
+    state.videoExportService.records = [record, ...state.videoExportService.records]
+      .filter(Boolean)
+      .slice(0, MAX_VIDEO_EXPORT_RECORDS);
+    state.videoExportService.lastExportedAt = createdAt;
+    state.videoExportService.lastError = "";
+    addEvent("video-export", `导出书写回放视频：${record.title}`);
+    saveState();
+    return {
+      ok: true,
+      record: decorateVideoExportRecord(record),
+      status: getPracticeVideoExportStatus({
+        artworkId: record.artworkId,
+        sessionId: record.sessionId,
+        sourceId: record.sourceId
+      }),
+      boundary: VIDEO_EXPORT_BOUNDARY,
+      message: `已记录“${record.title}”的视频导出，包含 WebM 和 PNG 封面。`
+    };
+  }
+
+  function recordPracticeVideoExportError(message = "") {
+    const text = String(message || "书写回放视频导出失败。").trim().slice(0, 180);
+    state.videoExportService.lastError = text;
+    saveState();
+    return {
+      ok: false,
+      boundary: VIDEO_EXPORT_BOUNDARY,
+      message: text
+    };
+  }
+
+  function getPracticeVideoExportStatus(options = {}) {
+    const source = options && typeof options === "object" ? options : {};
+    const artworkId = String(source.artworkId || "").trim();
+    const sessionId = String(source.sessionId || "").trim();
+    const sourceId = String(source.sourceId || "").trim();
+    const records = state.videoExportService.records
+      .map(decorateVideoExportRecord)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+    const currentRecord = records.find((record) => (
+      (artworkId && record.artworkId === artworkId) ||
+      (sessionId && record.sessionId === sessionId) ||
+      (sourceId && record.sourceId === sourceId)
+    )) || records[0] || null;
+
+    return {
+      ok: true,
+      boundary: VIDEO_EXPORT_BOUNDARY,
+      total: records.length,
+      latestRecord: records[0] || null,
+      currentRecord,
+      records,
+      lastExportedAt: state.videoExportService.lastExportedAt,
+      lastError: state.videoExportService.lastError,
+      message: records.length
+        ? `本机已有 ${records.length} 条书写视频导出记录，最近一次 ${formatDateTime(records[0].createdAt)}。`
+        : state.videoExportService.lastError
+          ? `最近导出失败：${state.videoExportService.lastError}`
+          : "还没有书写视频导出记录。生成视频后会保存 WebM、PNG 封面和本机记录。"
+    };
+  }
+
+  function decorateVideoExportRecord(record) {
+    const normalized = normalizeVideoExportRecord(record);
+    if (!normalized) return null;
+    const artwork = normalized.artworkId
+      ? state.artworks.find((item) => item.id === normalized.artworkId) || null
+      : null;
+    const session = normalized.sessionId
+      ? state.sessions.find((item) => item.id === normalized.sessionId) || null
+      : null;
+    return {
+      ...clone(normalized),
+      artworkTitle: artwork?.title || normalized.title,
+      sessionTitle: session?.title || "",
+      durationLabel: formatDurationMs(normalized.durationMs),
+      videoSizeLabel: formatBytes(normalized.videoBytes),
+      coverSizeLabel: formatBytes(normalized.coverBytes),
+      createdLabel: formatDateTime(normalized.createdAt),
+      sourceLabel: normalized.source === "最近作品" ? "最近作品" : "当前练习",
+      boundary: VIDEO_EXPORT_BOUNDARY
+    };
+  }
+
+  function formatDurationMs(value) {
+    const ms = normalizeInteger(value, 0, 0, 600000);
+    if (!ms) return "时长未知";
+    return `${(ms / 1000).toFixed(ms >= 10000 ? 0 : 1)} 秒`;
+  }
+
+  function formatBytes(value) {
+    const bytes = normalizeInteger(value, 0, 0, 999999999);
+    if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    if (bytes >= 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${bytes} B`;
+  }
+
   function getReportDetail(reportId = null) {
     const recordId = String(reportId || "");
     const report = recordId
@@ -10852,6 +11029,7 @@
     getReportSeries,
     getArtworkSharePackage,
     getShareServiceStatus,
+    getPracticeVideoExportStatus,
     getLatestReview,
     getHistory,
     getHistoryDetail,
@@ -10927,6 +11105,8 @@
     openArtworkShareLink,
     markArtworkShareLinkCopied,
     revokeArtworkShareLink,
+    recordPracticeVideoExport,
+    recordPracticeVideoExportError,
     downloadPlan,
     downloadPlanCalendar,
     downloadPlanRepository,

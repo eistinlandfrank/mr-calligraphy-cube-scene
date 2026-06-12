@@ -210,6 +210,47 @@ const emptyShareStatus = window.MRAppState.getShareServiceStatus("artwork-2");
 assert(emptyShareStatus.total === 0, "初始分享服务不应伪造已有链接。");
 assert(emptyShareStatus.boundary.includes("不是公网 URL"), "分享服务应说明本机链接边界。");
 
+const emptyVideoStatus = window.MRAppState.getPracticeVideoExportStatus({
+  artworkId: "artwork-2",
+  sessionId: "session-2"
+});
+assert(emptyVideoStatus.total === 0, "初始视频导出服务不应伪造已有记录。");
+assert(emptyVideoStatus.boundary.includes("WebM"), "视频导出服务应说明 WebM 和本机记录边界。");
+
+const videoRecord = window.MRAppState.recordPracticeVideoExport({
+  source: "最近作品",
+  sourceId: "artwork-2",
+  artworkId: "artwork-2",
+  sessionId: "session-2",
+  glyph: "永",
+  title: "永字视频回放",
+  videoFilename: "mr-calligraphy-replay-yong.webm",
+  coverFilename: "mr-calligraphy-replay-cover-yong.png",
+  mimeType: "video/webm",
+  videoBytes: 4096,
+  durationMs: 3600,
+  strokeCount: 2,
+  pointCount: 80,
+  coverDataUrl: "data:image/png;base64,iVBORw0KGgo="
+});
+assert(videoRecord.ok, "视频导出成功后应能写入本机记录。");
+assert(videoRecord.record.coverFilename.endsWith(".png"), "视频导出记录应包含封面文件名。");
+assert(videoRecord.record.videoSizeLabel === "4 KB", "视频导出记录应显示真实视频大小。");
+assert(videoRecord.record.durationLabel.includes("秒"), "视频导出记录应显示导出时长。");
+
+const videoStatus = window.MRAppState.getPracticeVideoExportStatus({
+  artworkId: "artwork-2",
+  sessionId: "session-2"
+});
+assert(videoStatus.total === 1, "视频导出服务应统计本机导出记录。");
+assert(videoStatus.currentRecord.coverDataUrl.startsWith("data:image/png"), "视频导出服务应保留封面数据。");
+assert(videoStatus.message.includes("书写视频导出记录"), "视频导出服务应返回可读摘要。");
+const persistedVideoState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
+assert(
+  persistedVideoState.videoExportService.records[0].videoFilename === "mr-calligraphy-replay-yong.webm",
+  "视频导出记录应持久化到 localStorage。"
+);
+
 const shareLink = window.MRAppState.createArtworkShareLink("artwork-2", { expiresInDays: 3 });
 assert(shareLink.ok, "作品应能生成本机分享链接记录。");
 assert(shareLink.record.artworkId === "artwork-2", "分享记录应关联作品 ID。");
@@ -833,7 +874,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、书写视频导出记录和封面、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {
