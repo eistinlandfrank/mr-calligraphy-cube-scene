@@ -8690,3 +8690,41 @@
 提交：
 
 - 中文 commit message：`新增远端审核审批权限门控`
+
+### 2026-06-12：新增远端发布操作审计
+
+功能名：主后台和写实后台远端发布操作本机审计。
+
+完成内容：
+
+- 主后台远端发布检查、推送、撤销、审核提交、审核通过、审核退回和解除发布锁会写入后台操作者审计。
+- 写实后台同步记录同一组远端发布操作。
+- 审计元数据保留 workspace、releaseId、packageDigest、packageId 和 direction，不保存 token。
+- 远端操作成功记为 `ok`，网络异常或 adapter 返回失败记为 `failed`。
+- `tests/e2e/real-flows.spec.js` 的主后台远端发布用例新增后台审计断言，覆盖检查、提交审核、审批、推送和撤销。
+
+真实化说明：
+
+- 数据来源：后台远端发布操作结果和本机远端发布 adapter 状态。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1`。
+- 成功反馈：审计列表和 HTML 导出能看到远端操作链路与操作者。
+- 失败反馈：远端失败会写入失败审计，而不是只显示临时提示。
+- 刷新后复现方式：localStorage 审计刷新后继续可读。
+
+仍待补：
+
+- 本轮仍是本机可追踪审计，不是服务端不可篡改日志、账号签名、组织审批或长期审计仓库。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端发布操作审计`

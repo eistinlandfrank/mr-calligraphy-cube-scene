@@ -123,6 +123,13 @@ const ADMIN_AUDIT_ACTION_LABELS = {
   "confirm-boundary": "确认边界",
   snapshot: "保存快照",
   "publish-local": "本机发布",
+  "remote-publish-check": "检查远端发布",
+  "remote-publish-push": "远端发布推送",
+  "remote-publish-revoke": "远端发布撤销",
+  "remote-review-request": "提交远端审核",
+  "remote-review-approve": "通过远端审核",
+  "remote-review-reject": "退回远端审核",
+  "remote-review-unlock": "解除发布锁",
   "operator-save": "保存操作者",
   "permission-blocked": "权限拦截"
 };
@@ -1956,6 +1963,26 @@ function createRemotePublishContext(record = loadPublishedLayoutRecord()) {
   };
 }
 
+function recordRemotePublishOperation(action, result, fallbackDetail, metadata = {}) {
+  const status = result?.status || {};
+  const workflow = result?.workflow || {};
+  const current = workflow.current || {};
+  const receipt = status.latestReceipt || {};
+  recordAdminOperation(
+    action,
+    "写实场景远端发布",
+    result?.message || fallbackDetail,
+    result?.ok ? "ok" : "failed",
+    {
+      workspaceId: status.workspaceId || metadata.workspaceId || remotePublishWorkspaceInput?.value || "local-browser",
+      releaseId: current.releaseId || receipt.releaseId || metadata.releaseId || "",
+      packageDigest: current.packageDigest || receipt.packageDigest || metadata.packageDigest || "",
+      packageId: receipt.packageId || status.lastPackageId || metadata.packageId || "",
+      direction: receipt.direction || metadata.direction || ""
+    }
+  );
+}
+
 function saveRemotePublishConfig() {
   const result = window.MRProjectRemotePublish?.configure?.("realisticScene", {
     endpoint: remotePublishEndpointInput?.value || "",
@@ -1970,8 +1997,10 @@ async function checkRemotePublishApi() {
   setRemotePublishBusy(true);
   try {
     const result = await window.MRProjectRemotePublish?.check?.("realisticScene");
+    recordRemotePublishOperation("remote-publish-check", result, "检查写实场景远端发布 API。");
     showNotice(result?.message || "远端发布 API 检查失败。");
   } catch (error) {
+    recordRemotePublishOperation("remote-publish-check", { ok: false, message: error?.message || "网络请求异常" }, "检查写实场景远端发布 API 失败。");
     showNotice(`远端发布 API 检查失败：${error?.message || "网络请求异常"}。`);
   } finally {
     setRemotePublishBusy(false);
@@ -1987,8 +2016,14 @@ async function pushRemotePublishedLayout() {
     const result = await window.MRProjectRemotePublish?.push?.("realisticScene", {
       ...context
     });
+    recordRemotePublishOperation("remote-publish-push", result, "推送写实场景远端发布包。", {
+      releaseId: context.release?.id || ""
+    });
     showNotice(result?.message || "远端发布包推送失败。");
   } catch (error) {
+    recordRemotePublishOperation("remote-publish-push", { ok: false, message: error?.message || "网络请求异常" }, "推送写实场景远端发布包失败。", {
+      releaseId: context.release?.id || ""
+    });
     showNotice(`远端发布包推送失败：${error?.message || "网络请求异常"}。`);
   } finally {
     setRemotePublishBusy(false);
@@ -2003,8 +2038,14 @@ async function revokeRemotePublishedLayout() {
       sceneLabel: "写实场景",
       reason: publishNoteInput?.value || "local-user-revoked-remote-publish"
     });
+    recordRemotePublishOperation("remote-publish-revoke", result, "撤销写实场景远端发布。", {
+      direction: "revoke"
+    });
     showNotice(result?.message || "远端发布撤销失败。");
   } catch (error) {
+    recordRemotePublishOperation("remote-publish-revoke", { ok: false, message: error?.message || "网络请求异常" }, "撤销写实场景远端发布失败。", {
+      direction: "revoke"
+    });
     showNotice(`远端发布撤销失败：${error?.message || "网络请求异常"}。`);
   } finally {
     setRemotePublishBusy(false);
@@ -2018,6 +2059,7 @@ function requestRemotePublishReview() {
     ...createRemotePublishContext(record),
     note: publishNoteInput?.value || ""
   });
+  recordRemotePublishOperation("remote-review-request", result, "提交写实场景远端发布审核。");
   renderRemotePublishPanel(record);
   showNotice(result?.message || "远端发布审核提交失败。");
 }
@@ -2031,6 +2073,7 @@ function approveRemotePublishReview() {
     ...createRemotePublishContext(record),
     note: publishNoteInput?.value || ""
   });
+  recordRemotePublishOperation("remote-review-approve", result, "通过写实场景远端发布审核。");
   renderRemotePublishPanel(record);
   showNotice(result?.message || "远端发布审核通过失败。");
 }
@@ -2044,6 +2087,7 @@ function rejectRemotePublishReview() {
     ...createRemotePublishContext(record),
     reason: publishNoteInput?.value || ""
   });
+  recordRemotePublishOperation("remote-review-reject", result, "退回写实场景远端发布审核。");
   renderRemotePublishPanel(record);
   showNotice(result?.message || "远端发布审核退回失败。");
 }
@@ -2054,6 +2098,7 @@ function unlockRemotePublish() {
   }
   const record = loadPublishedLayoutRecord();
   const result = window.MRProjectRemotePublish?.unlock?.("realisticScene", createRemotePublishContext(record));
+  recordRemotePublishOperation("remote-review-unlock", result, "解除写实场景远端发布锁。");
   renderRemotePublishPanel(record);
   showNotice(result?.message || "远端发布锁解除失败。");
 }

@@ -3130,3 +3130,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增远端审核审批权限门控`
+
+## 87. 2026-06-12 新增远端发布操作审计
+
+本次把远端发布链路从“有回执审计”继续补成“后台操作者审计也覆盖远端动作”。主后台和写实后台现在会把检查远端、提交审核、通过审核、退回审核、解除发布锁、推送远端包和撤销远端发布写入本机后台操作审计，避免远端流程只在发布 adapter 状态里留痕。
+
+完成内容：
+
+- 主后台新增远端发布动作审计标签：检查、推送、撤销、提交审核、通过审核、退回审核和解除发布锁。
+- 写实后台同步新增同一组远端发布动作审计标签。
+- 新增轻量审计记录 helper，只保存 workspace、releaseId、packageDigest、packageId 和 direction，不把 endpoint token 写入审计。
+- 远端 API 检查、推送和撤销会记录成功或失败状态。
+- 远端审核提交、通过、退回和解锁会记录当前操作者与结果。
+- Playwright 主后台远端发布用例新增本机后台审计断言，确认检查、提交审核、审批、推送和撤销都进入 `mr-calligraphy-admin-operator-audit-v1`。
+
+真实化说明：
+
+- 数据来源：后台远端发布按钮真实操作结果和 `MRProjectRemotePublish` 返回的 status/workflow/receipt。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1.scopes.mainScene.records[*]` 与 `scopes.realisticScene.records[*]`。
+- 成功反馈：后台操作者审计列表和导出的本机审计 HTML 能看到远端发布操作。
+- 失败反馈：网络异常、远端检查失败或推送失败也会以 `failed` 结果写入审计。
+- 刷新后复现方式：审计记录保存在 localStorage，刷新后台后仍能查看和导出。
+
+仍待补：
+
+- 当前是本机后台审计，不是服务端不可篡改审计、账号签名、生产审批流或跨设备审计仓库。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端发布操作审计`

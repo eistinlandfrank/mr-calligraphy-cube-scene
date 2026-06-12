@@ -2450,6 +2450,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(revokedRemoteState.scenes.mainScene.receipts[1].verificationStatus).toBe("verified");
   await expect(page.locator("#mainRemotePublishRevoke")).toBeDisabled();
 
+  const remoteAuditState = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
+  const remoteAuditActions = remoteAuditState.scopes.mainScene.records.map((record) => record.action);
+  expect(remoteAuditActions).toContain("remote-publish-check");
+  expect(remoteAuditActions).toContain("remote-review-request");
+  expect(remoteAuditActions).toContain("remote-review-approve");
+  expect(remoteAuditActions).toContain("remote-publish-push");
+  expect(remoteAuditActions).toContain("remote-publish-revoke");
+  const remotePushAudit = remoteAuditState.scopes.mainScene.records.find((record) => record.action === "remote-publish-push");
+  expect(remotePushAudit.metadata.workspaceId).toBe("main-remote-e2e");
+  expect(remotePushAudit.metadata.packageId).toBe("e2e-mainScene");
+
   const receiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#mainRemotePublishReceiptExport").click();
   const receiptDownload = await receiptDownloadPromise;

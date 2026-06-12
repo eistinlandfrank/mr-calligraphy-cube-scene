@@ -3655,3 +3655,38 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增远端审核审批权限门控`
+
+### 2026-06-12：新增远端发布操作审计
+
+完成内容：
+
+- 主后台和写实后台远端发布检查、推送、撤销、审核提交、审核通过、审核退回和解除发布锁会写入本机后台操作者审计。
+- 审计元数据只保留 workspace、releaseId、packageDigest、packageId 和 direction，不保存 token。
+- 远端 API 异常和失败返回会以 `failed` 结果写入审计。
+- Playwright 主后台远端发布用例新增 `mr-calligraphy-admin-operator-audit-v1` 断言，确认远端发布关键动作都留下后台审计记录。
+
+真实化说明：
+
+- 数据来源：后台远端发布操作和 `MRProjectRemotePublish` 返回结果。
+- 写入状态：本机后台操作者审计 records。
+- 成功反馈：后台审计列表和 HTML 导出能看到远端操作链路。
+- 失败反馈：失败结果不会只停留在 toast 或控制台，会写入失败审计。
+- 刷新后复现方式：刷新后台后继续读取同一份 localStorage 审计。
+
+仍待补：
+
+- 当前仍不是服务端不可篡改审计、账号签名审计、真实审批流审计或跨设备审计仓库。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端发布操作审计`
