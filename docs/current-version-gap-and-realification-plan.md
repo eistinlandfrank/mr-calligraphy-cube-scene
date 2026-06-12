@@ -3879,3 +3879,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增路径误差热力证据`
+
+### 2026-06-12：新增报告评分证据摘要
+
+完成内容：
+
+- `ReportRecord` 新增 `scoreEvidenceSummary`，从最近作品或最近练习的 `scoreEvidence` 派生报告级摘要。
+- 报告摘要记录算法版本、评分来源、范字、目标笔顺、笔顺匹配、路径贴合、路径误差、压感采样、误差热力和最低能力项。
+- `MRAppState.getReportDetail()` 返回同一份评分证据摘要，站内报告面板新增“基础评分证据”区块。
+- HTML 学习报告导出新增“基础评分证据”区块，写入算法、笔顺、路径、压感和误差热力。
+- PDF 学习报告导出新增评分证据正文，并在 PDF 注释中写入 `ScoreEvidence`、`ScoreEvidenceAlgorithm` 和 `ScoreEvidencePathFit`，便于测试和后续验真。
+- 报告验真 payload 纳入 `scoreEvidenceSummary`，报告仓库同步包会随报告携带同一份摘要。
+- 数据层和 E2E 均覆盖报告导出后的评分证据摘要、HTML 内容、站内面板和 PDF 标记。
+
+真实化说明：
+
+- 数据来源：真实书写保存时产生的 `scoreEvidence`，包括路径热力、逐笔匹配和压感采样。
+- 写入状态：`mr-calligraphy-learning-state-v1.reports[*].scoreEvidenceSummary`。
+- 成功反馈：用户导出报告后，下载 HTML、站内报告详情和 PDF 都能看到评分证据，不再只显示泛化建议。
+- 失败反馈：没有真实笔迹时不会伪造证据；旧报告缺少摘要字段时，详情和导出只读回填最近练习/作品的可用证据。
+- 刷新后复现方式：保存作品并导出报告后刷新，打开 `?report=<报告ID>`，报告详情仍显示基础评分证据。
+
+仍待补：
+
+- 当前是本机评分证据摘要，不是云端教师审阅、专业模型评分证书或可跨设备同步的官方评级报告。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告评分证据摘要`

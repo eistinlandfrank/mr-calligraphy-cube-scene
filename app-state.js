@@ -481,6 +481,7 @@
       learningMinutes: normalizeInteger(record.learningMinutes, 0, 0, 99999),
       scoreBreakdown: normalizeMetrics(record.scoreBreakdown),
       trend: Array.isArray(record.trend) ? record.trend.map(normalizeReportTrendPoint).filter(Boolean).slice(-8) : [],
+      scoreEvidenceSummary: normalizeReportScoreEvidenceSummary(record.scoreEvidenceSummary),
       recommendations: Array.isArray(record.recommendations) ? record.recommendations.map(String) : [],
       teacherReview: normalizeReportTeacherReview(record.teacherReview, {
         reportId: String(record.id || ""),
@@ -2289,6 +2290,111 @@
       })
     };
     return normalized;
+  }
+
+  function normalizeReportScoreEvidenceSummary(value) {
+    const source = value && typeof value === "object" ? value : null;
+    if (!source) return null;
+    const targetStrokeNames = normalizeStrokeNameList(source.targetStrokeNames);
+    const hotspots = normalizePathErrorHotspots(source.hotspots || source.pathErrorHotspots);
+    const strokePathErrors = normalizeStrokePathErrors(source.strokePathErrors);
+    const strokeOrderWarnings = normalizeStringList(source.strokeOrderWarnings);
+    const weakestSource = source.weakestReason && typeof source.weakestReason === "object" ? source.weakestReason : null;
+    const weakestReason = weakestSource
+      ? {
+          key: String(weakestSource.key || "").slice(0, 32),
+          label: String(weakestSource.label || weakestSource.key || "最低项").slice(0, 24),
+          score: normalizeScore(weakestSource.score, 0),
+          evidence: String(weakestSource.evidence || "").slice(0, 180)
+        }
+      : null;
+    const summary = String(source.summary || "").trim().replace(/\s+/g, " ").slice(0, 260);
+    const strokeCount = normalizeInteger(source.strokeCount, 0, 0, 999);
+    const pointCount = normalizeInteger(source.pointCount, 0, 0, 99999);
+    const hasEvidence = strokeCount > 0
+      || pointCount > 0
+      || targetStrokeNames.length > 0
+      || hotspots.length > 0
+      || strokePathErrors.length > 0
+      || normalizeInteger(source.pathFitPercent, 0, 0, 100) > 0
+      || normalizeInteger(source.pressurePointCount, 0, 0, 99999) > 0;
+    if (!hasEvidence) return null;
+    return {
+      kind: "mr-calligraphy-score-evidence-summary-v1",
+      sourceType: ["session", "artwork"].includes(source.sourceType) ? source.sourceType : "session",
+      sourceId: String(source.sourceId || "").slice(0, 120),
+      label: String(source.label || "基础练习评分").slice(0, 80),
+      algorithmVersion: String(source.algorithmVersion || DEFAULT_SCORE_ALGORITHM_VERSION).slice(0, 80),
+      disclaimer: String(source.disclaimer || "该摘要来自浏览器本机启发式评分证据，用于报告复盘。").slice(0, 180),
+      glyph: String(source.glyph || "永").slice(0, 16),
+      copybook: String(source.copybook || "").slice(0, 32),
+      score: normalizeScore(source.score, 0),
+      strokeCount,
+      pointCount,
+      targetStrokeCount: normalizeInteger(source.targetStrokeCount, Math.max(1, targetStrokeNames.length || strokeCount || 1), 1, 80),
+      targetStrokeNames,
+      strokeOrderMatchPercent: normalizeInteger(source.strokeOrderMatchPercent, 0, 0, 100),
+      strokeOrderCoveragePercent: normalizeInteger(source.strokeOrderCoveragePercent, 0, 0, 100),
+      strokeShapeMatchPercent: normalizeInteger(source.strokeShapeMatchPercent, 0, 0, 100),
+      pathFitPercent: normalizeInteger(source.pathFitPercent, 0, 0, 100),
+      pathErrorPercent: normalizeInteger(source.pathErrorPercent, 0, 0, 100),
+      pathErrorSampleCount: normalizeInteger(source.pathErrorSampleCount, 0, 0, 99999),
+      coveragePercent: normalizeInteger(source.coveragePercent, 0, 0, 100),
+      centerOffsetPercent: normalizeInteger(source.centerOffsetPercent, 0, 0, 100),
+      pressurePointCount: normalizeInteger(source.pressurePointCount, 0, 0, 99999),
+      pressureSpreadPercent: normalizeInteger(source.pressureSpreadPercent, 0, 0, 100),
+      hotspots,
+      strokePathErrors,
+      strokeOrderWarnings,
+      weakestReason,
+      summary
+    };
+  }
+
+  function createReportScoreEvidenceSummary(record, sourceType = "session") {
+    if (!record || typeof record !== "object") return null;
+    const scoreEvidence = normalizeScoreEvidence(record.scoreEvidence, record);
+    const evidence = scoreEvidence.evidence || {};
+    const reasons = Array.isArray(scoreEvidence.reasons) ? scoreEvidence.reasons : [];
+    const weakestReason = reasons
+      .filter((reason) => reason && Number.isFinite(Number(reason.score)))
+      .sort((a, b) => Number(a.score) - Number(b.score))[0] || null;
+    return normalizeReportScoreEvidenceSummary({
+      sourceType,
+      sourceId: record.id || "",
+      label: scoreEvidence.label,
+      algorithmVersion: scoreEvidence.algorithmVersion || scoreEvidence.kind,
+      disclaimer: scoreEvidence.disclaimer,
+      glyph: scoreEvidence.glyph || record.glyph,
+      copybook: scoreEvidence.copybook || evidence.copybook || record.copybook,
+      score: record.score,
+      strokeCount: evidence.strokeCount ?? record.strokeCount,
+      pointCount: evidence.pointCount ?? record.pointCount,
+      targetStrokeCount: evidence.targetStrokeCount,
+      targetStrokeNames: evidence.targetStrokeNames || scoreEvidence.targetStrokeNames,
+      strokeOrderMatchPercent: evidence.strokeOrderMatchPercent,
+      strokeOrderCoveragePercent: evidence.strokeOrderCoveragePercent,
+      strokeShapeMatchPercent: evidence.strokeShapeMatchPercent,
+      pathFitPercent: evidence.pathFitPercent,
+      pathErrorPercent: evidence.pathErrorPercent,
+      pathErrorSampleCount: evidence.pathErrorSampleCount,
+      pathErrorHotspots: evidence.pathErrorHotspots,
+      strokePathErrors: evidence.strokePathErrors,
+      strokeOrderWarnings: evidence.strokeOrderWarnings,
+      coveragePercent: evidence.coveragePercent,
+      centerOffsetPercent: evidence.centerOffsetPercent,
+      pressurePointCount: evidence.pressurePointCount,
+      pressureSpreadPercent: evidence.pressureSpreadPercent,
+      weakestReason,
+      summary: summarizeScoreEvidence(scoreEvidence)
+    });
+  }
+
+  function getReportScoreEvidenceSummary(report, latestSession = null, latestArtwork = null) {
+    const stored = normalizeReportScoreEvidenceSummary(report?.scoreEvidenceSummary);
+    if (stored) return stored;
+    return createReportScoreEvidenceSummary(latestArtwork, "artwork")
+      || createReportScoreEvidenceSummary(latestSession, "session");
   }
 
   function normalizeScoreService(record = {}, records = []) {
@@ -5501,6 +5607,8 @@
   function createReport() {
     const stats = getStats();
     const reportTrend = getReportTrend();
+    const scoreEvidenceSummary = createReportScoreEvidenceSummary(stats.latestArtwork, "artwork")
+      || createReportScoreEvidenceSummary(stats.latestSession, "session");
     const report = {
       id: makeId("report"),
       taskId: stats.selectedTaskId,
@@ -5519,6 +5627,7 @@
       latestPointCount: stats.latestSession?.pointCount || 0,
       scoreBreakdown: getReportScoreBreakdown(),
       trend: reportTrend,
+      scoreEvidenceSummary,
       recommendations: [
         ...stats.latestFeedback,
         "优先补齐结构稳定度和重心控制。",
@@ -5902,6 +6011,7 @@
     const normalizedReport = normalizeReport(report);
     const latestSession = findReportSession(normalizedReport);
     const latestArtwork = findReportArtwork(normalizedReport);
+    const scoreEvidenceSummary = getReportScoreEvidenceSummary(normalizedReport, latestSession, latestArtwork);
     return {
       kind: REPORT_VERIFICATION_KIND,
       version: 1,
@@ -5925,6 +6035,7 @@
         latestPointCount: normalizedReport.latestPointCount,
         scoreBreakdown: normalizedReport.scoreBreakdown,
         trend: normalizedReport.trend,
+        scoreEvidenceSummary,
         recommendations: normalizedReport.recommendations,
         teacherReview: normalizedReport.teacherReview
       },
@@ -7012,6 +7123,7 @@
     const trend = normalizedReport.trend.length ? normalizedReport.trend : getReportTrend();
     const latestArtwork = findReportArtwork(normalizedReport);
     const latestSession = findReportSession(normalizedReport);
+    const scoreEvidenceSummary = getReportScoreEvidenceSummary(normalizedReport, latestSession, latestArtwork);
     const metricLabels = [
       ["structure", "结构"],
       ["stroke", "笔画"],
@@ -7025,6 +7137,9 @@
     const imageBlock = latestArtwork?.imageData
       ? `<figure class="artwork"><img src="${escapeAttr(latestArtwork.imageData)}" alt="${escapeAttr(latestArtwork.title)}"><figcaption>${escapeHtml(latestArtwork.title)} · ${latestArtwork.score} 分</figcaption></figure>`
       : `<div class="empty">暂无可嵌入的作品截图。保存作品时生成截图后，报告会自动带上最近作品。</div>`;
+    const scoreEvidenceBlock = scoreEvidenceSummary
+      ? `<section class="score-evidence" aria-label="基础评分证据"><h2>基础评分证据</h2><p>${escapeHtml(scoreEvidenceSummary.summary || "本报告保留了最近一次本机评分证据。")}</p><dl><div><dt>算法</dt><dd>${escapeHtml(scoreEvidenceSummary.algorithmVersion)}</dd></div><div><dt>来源</dt><dd>${escapeHtml(scoreEvidenceSummary.sourceType === "artwork" ? "最近作品" : "最近练习")} · ${escapeHtml(scoreEvidenceSummary.copybook || "通用范字")}</dd></div><div><dt>笔顺</dt><dd>匹配 ${scoreEvidenceSummary.strokeOrderMatchPercent}% · 覆盖 ${scoreEvidenceSummary.strokeOrderCoveragePercent}% · 形态 ${scoreEvidenceSummary.strokeShapeMatchPercent}%</dd></div><div><dt>路径</dt><dd>贴合 ${scoreEvidenceSummary.pathFitPercent}% · 误差 ${scoreEvidenceSummary.pathErrorPercent}% · 采样 ${scoreEvidenceSummary.pathErrorSampleCount} 点</dd></div><div><dt>压感</dt><dd>${scoreEvidenceSummary.pressurePointCount} 点 · 跨度 ${scoreEvidenceSummary.pressureSpreadPercent}%</dd></div></dl>${scoreEvidenceSummary.targetStrokeNames.length ? `<p class="muted">范字笔顺：${escapeHtml(scoreEvidenceSummary.targetStrokeNames.slice(0, 8).join("、"))}</p>` : ""}${scoreEvidenceSummary.hotspots.length ? `<ul>${scoreEvidenceSummary.hotspots.slice(0, 4).map((item) => `<li>${escapeHtml(item.label || item.zone)}：误差 ${item.errorPercent}% / ${item.sampleCount} 点</li>`).join("")}</ul>` : ""}${scoreEvidenceSummary.weakestReason ? `<p class="muted">最低项：${escapeHtml(scoreEvidenceSummary.weakestReason.label)} ${scoreEvidenceSummary.weakestReason.score} 分，${escapeHtml(scoreEvidenceSummary.weakestReason.evidence)}</p>` : ""}<small>${escapeHtml(scoreEvidenceSummary.disclaimer)}</small></section>`
+      : `<section class="score-evidence is-empty" aria-label="基础评分证据"><h2>基础评分证据</h2><p>暂无可写入报告的真实评分证据。完成一次书写并保存作品后，报告会记录算法版本、笔顺、路径误差和压感摘要。</p></section>`;
     const trendBars = trend.length
       ? trend.map((item) => {
         const height = Math.max(8, Math.round((item.score / maxTrendScore) * 100));
@@ -7086,6 +7201,15 @@
     .artwork img { display: block; width: 100%; max-height: 420px; object-fit: contain; border-radius: 6px; background: var(--wash); }
     .artwork figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
     .empty { margin-top: 12px; padding: 16px; border: 1px dashed var(--line); border-radius: 8px; color: var(--muted); background: #ffffff; }
+    .score-evidence { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .score-evidence p { margin-top: 8px; }
+    .score-evidence dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0 0; }
+    .score-evidence div { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--wash); }
+    .score-evidence dt { color: var(--muted); font-size: 12px; }
+    .score-evidence dd { margin: 2px 0 0; font-weight: 800; }
+    .score-evidence ul { display: grid; gap: 6px; margin: 12px 0 0; padding-left: 20px; }
+    .score-evidence small { display: block; margin-top: 10px; color: var(--muted); }
+    .score-evidence.is-empty { color: var(--muted); }
     .recommendations { display: grid; gap: 8px; margin: 12px 0 0; padding-left: 20px; }
     .teacher-review { margin-top: 26px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fffdf8; }
     .teacher-review p { margin-top: 8px; }
@@ -7162,6 +7286,8 @@
       ${imageBlock}
     </section>
 
+    ${scoreEvidenceBlock}
+
     <section>
       <h2>练习建议</h2>
       <ol class="recommendations">
@@ -7192,6 +7318,8 @@
     const pdf = typeof pdfResult === "string" ? pdfResult : pdfResult.pdf;
     const pdfFeatures = pdfResult?.features || {};
     const latestArtwork = findReportArtwork(normalizedReport);
+    const latestSession = findReportSession(normalizedReport);
+    const scoreEvidenceSummary = getReportScoreEvidenceSummary(normalizedReport, latestSession, latestArtwork);
     const trendCount = normalizeInteger(pdfFeatures.trendCount, 0, 0, 99);
     const radarMetricCount = normalizeInteger(pdfFeatures.radarMetricCount, 0, 0, 99);
     return {
@@ -7217,12 +7345,15 @@
         artworkImageDigest: pdfFeatures.artworkImageDigest || "",
         teacherReview: Boolean(normalizedReport.teacherReview),
         teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
+        scoreEvidenceSummary: Boolean(scoreEvidenceSummary),
+        scoreEvidenceAlgorithm: scoreEvidenceSummary?.algorithmVersion || "",
+        scoreEvidencePathFitPercent: scoreEvidenceSummary?.pathFitPercent || 0,
         verification: Boolean(verification),
         verificationDigest: verification?.digest || ""
       },
       message: pdfFeatures.artworkImageEmbedded
-        ? "已生成包含能力条形图、能力雷达图、分数趋势图、最近作品截图、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
-        : "已生成包含能力条形图、能力雷达图、分数趋势图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        ? "已生成包含能力条形图、能力雷达图、分数趋势图、最近作品截图、评分证据摘要、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        : "已生成包含能力条形图、能力雷达图、分数趋势图、最近作品卡片、评分证据摘要、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
     };
   }
 
@@ -7235,6 +7366,9 @@
     }
     const normalizedReport = normalizeReport(report);
     const verification = createReportVerification(normalizedReport);
+    const latestArtwork = findReportArtwork(normalizedReport);
+    const latestSession = findReportSession(normalizedReport);
+    const scoreEvidenceSummary = getReportScoreEvidenceSummary(normalizedReport, latestSession, latestArtwork);
     return {
       ok: true,
       report: clone(normalizedReport),
@@ -7243,12 +7377,15 @@
       mimeType: "text/html;charset=utf-8",
       html: createReportHtml(normalizedReport, verification),
       features: {
+        scoreEvidenceSummary: Boolean(scoreEvidenceSummary),
+        scoreEvidenceAlgorithm: scoreEvidenceSummary?.algorithmVersion || "",
+        scoreEvidencePathFitPercent: scoreEvidenceSummary?.pathFitPercent || 0,
         teacherReview: Boolean(normalizedReport.teacherReview),
         teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
         verification: Boolean(verification),
         verificationDigest: verification?.digest || ""
       },
-      message: "已生成包含本机教师批注状态和验真摘要的 HTML 学习报告。"
+      message: "已生成包含评分证据摘要、本机教师批注状态和验真摘要的 HTML 学习报告。"
     };
   }
 
@@ -7257,6 +7394,7 @@
     const verificationInfo = verification || createReportVerification(normalizedReport);
     const latestSession = findReportSession(normalizedReport);
     const latestArtwork = findReportArtwork(normalizedReport);
+    const scoreEvidenceSummary = getReportScoreEvidenceSummary(normalizedReport, latestSession, latestArtwork);
     const metricLabels = [
       ["structure", "结构"],
       ["stroke", "笔画"],
@@ -7304,6 +7442,20 @@
       },
       { type: "artworkCard", artwork: latestArtwork, session: latestSession, image: artworkPdfImage },
       { text: "", size: 6 },
+      { text: "评分证据摘要", size: 16 },
+      {
+        text: scoreEvidenceSummary
+          ? `算法：${scoreEvidenceSummary.algorithmVersion}；来源：${scoreEvidenceSummary.sourceType === "artwork" ? "最近作品" : "最近练习"}；范字：${scoreEvidenceSummary.copybook || "通用范字"}；笔顺匹配 ${scoreEvidenceSummary.strokeOrderMatchPercent}%；路径贴合 ${scoreEvidenceSummary.pathFitPercent}%；路径误差 ${scoreEvidenceSummary.pathErrorPercent}%；压感 ${scoreEvidenceSummary.pressurePointCount} 点。`
+          : "暂无可写入报告的真实评分证据。",
+        size: 12
+      },
+      {
+        text: scoreEvidenceSummary?.hotspots?.length
+          ? `误差热力：${scoreEvidenceSummary.hotspots.slice(0, 3).map((item) => `${item.label || item.zone}${item.errorPercent}%`).join("；")}。`
+          : "误差热力：暂无高误差区域。",
+        size: 10
+      },
+      { text: "", size: 6 },
       { text: "教师批注", size: 16 },
       {
         text: normalizedReport.teacherReview
@@ -7345,6 +7497,9 @@
       artworkImageDigest: artworkPdfImage?.digest || "",
       teacherReview: Boolean(normalizedReport.teacherReview),
       teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
+      scoreEvidenceSummary: Boolean(scoreEvidenceSummary),
+      scoreEvidenceAlgorithm: scoreEvidenceSummary?.algorithmVersion || "",
+      scoreEvidencePathFitPercent: scoreEvidenceSummary?.pathFitPercent || 0,
       verificationKind: verificationInfo.kind,
       verificationAlgorithm: verificationInfo.algorithm,
       verificationDigest: verificationInfo.digest
@@ -7359,7 +7514,10 @@
         artworkImageEmbedded: Boolean(artworkPdfImage),
         artworkImageMime: artworkPdfImage?.mimeType || "",
         artworkImageDigest: artworkPdfImage?.digest || "",
-        teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || ""
+        teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
+        scoreEvidenceSummary: Boolean(scoreEvidenceSummary),
+        scoreEvidenceAlgorithm: scoreEvidenceSummary?.algorithmVersion || "",
+        scoreEvidencePathFitPercent: scoreEvidenceSummary?.pathFitPercent || 0
       }
     };
   }
@@ -7675,6 +7833,8 @@
     const artworkImageMime = sanitizePdfComment(metadata.artworkImageMime || "");
     const artworkImageDigest = sanitizePdfComment(metadata.artworkImageDigest || "");
     const teacherReviewSignatureDigest = sanitizePdfComment(metadata.teacherReviewSignatureDigest || "");
+    const scoreEvidenceAlgorithm = sanitizePdfComment(metadata.scoreEvidenceAlgorithm || "");
+    const scoreEvidencePathFitPercent = normalizeInteger(metadata.scoreEvidencePathFitPercent, 0, 0, 100);
     const pdfComments = [
       `% Source: ${source}`,
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
@@ -7688,6 +7848,9 @@
       `% ArtworkImageDigest: ${artworkImageDigest}`,
       `% TeacherReview: ${metadata.teacherReview ? "yes" : "no"}`,
       `% TeacherReviewSignatureDigest: ${teacherReviewSignatureDigest}`,
+      `% ScoreEvidence: ${metadata.scoreEvidenceSummary ? "yes" : "no"}`,
+      `% ScoreEvidenceAlgorithm: ${scoreEvidenceAlgorithm}`,
+      `% ScoreEvidencePathFit: ${scoreEvidencePathFitPercent}`,
       `% ReportVerification: ${verificationDigest ? "yes" : "no"}`,
       `% ReportVerificationKind: ${verificationKind}`,
       `% ReportVerificationAlgorithm: ${verificationAlgorithm}`,
@@ -9439,6 +9602,7 @@
     const normalizedReport = normalizeReport(report);
     const latestSession = findReportSession(normalizedReport);
     const latestArtwork = findReportArtwork(normalizedReport);
+    const scoreEvidenceSummary = getReportScoreEvidenceSummary(normalizedReport, latestSession, latestArtwork);
     return {
       id: normalizedReport.id,
       type: "report",
@@ -9456,6 +9620,7 @@
       trend: clone(normalizedReport.trend || []),
       metricTrend: clone(getReportMetricTrend(normalizedReport)),
       recommendations: clone(normalizedReport.recommendations || []),
+      scoreEvidenceSummary: scoreEvidenceSummary ? clone(scoreEvidenceSummary) : null,
       teacherReview: normalizedReport.teacherReview ? clone(normalizedReport.teacherReview) : null,
       latestSession: latestSession
         ? {

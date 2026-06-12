@@ -387,6 +387,8 @@ assert(reportPdfExport.features.artworkAvailable, "PDF 报告应识别最近作�
 assert(reportPdfExport.features.artworkImageAvailable, "PDF 报告应识别最近作品截图来源。");
 assert(reportPdfExport.features.artworkImageEmbedded, "PDF 报告应把可用 JPEG 作品截图嵌入 PDF。");
 assert(reportPdfExport.features.artworkImageMime === "image/jpeg", "PDF 报告应记录已嵌入截图 MIME。");
+assert(reportPdfExport.features.scoreEvidenceSummary, "PDF 报告应声明包含评分证据摘要。");
+assert(reportPdfExport.features.scoreEvidenceAlgorithm === "local-heuristic-v2.2.0", "PDF 报告应声明评分算法版本。");
 assert(reportPdfExport.features.verification, "PDF 报告应声明包含本机验真摘要。");
 assert(/^[a-f0-9]{64}$/.test(reportPdfExport.verification.digest), "PDF 报告验真摘要应为 64 位 SHA-256。");
 assert(reportPdfExport.features.verificationDigest === reportPdfExport.verification.digest, "PDF feature 应暴露同一个验真摘要。");
@@ -396,6 +398,8 @@ assert(reportPdfExport.pdf.includes("RadarChart: 5"), "PDF 内容应包含能力
 assert(reportPdfExport.pdf.includes("TrendBars: 4"), "PDF 内容应包含分数趋势图标记。");
 assert(reportPdfExport.pdf.includes("ArtworkCard: yes"), "PDF 内容应包含作品卡片标记。");
 assert(reportPdfExport.pdf.includes("ArtworkImageEmbedded: yes"), "PDF 内容应包含作品截图嵌入标记。");
+assert(reportPdfExport.pdf.includes("ScoreEvidence: yes"), "PDF 内容应包含评分证据标记。");
+assert(reportPdfExport.pdf.includes("ScoreEvidenceAlgorithm: local-heuristic-v2.2.0"), "PDF 内容应包含评分算法标记。");
 assert(reportPdfExport.pdf.includes("/Subtype /Image"), "PDF 内容应包含图片 XObject。");
 assert(reportPdfExport.pdf.includes("/DCTDecode"), "PDF 内容应使用 JPEG DCTDecode 图片流。");
 assert(reportPdfExport.pdf.includes("ReportVerification: yes"), "PDF 内容应包含报告验真标记。");
@@ -442,20 +446,26 @@ assert(teacherReviewAuditExport.html.includes("教研审核") && teacherReviewAu
 const reviewedDetail = window.MRAppState.getReportDetail("report-2");
 assert(reviewedDetail.teacherReview.note.includes("结构更稳"), "报告详情应返回教师批注。");
 assert(reviewedDetail.teacherReview.localSignatureDigest === teacherReview.teacherReview.localSignatureDigest, "报告详情应返回同一份本机签名摘要。");
+assert(reviewedDetail.scoreEvidenceSummary.algorithmVersion === "local-heuristic-v2.2.0", "报告详情应返回评分证据摘要。");
+assert(reviewedDetail.scoreEvidenceSummary.pointCount === 120, "报告详情评分证据应关联最近作品采样点。");
 
 const reviewedHtml = window.MRAppState.getReportHtmlExport("report-2");
 assert(reviewedHtml.ok, "报告 HTML 应可通过无副作用 API 生成。");
+assert(reviewedHtml.features.scoreEvidenceSummary, "HTML 报告导出应声明包含评分证据摘要。");
+assert(reviewedHtml.features.scoreEvidenceAlgorithm === "local-heuristic-v2.2.0", "HTML 报告导出应声明评分算法版本。");
 assert(reviewedHtml.features.teacherReview, "HTML 报告导出应声明包含教师批注。");
 assert(reviewedHtml.features.teacherReviewSignatureDigest === teacherReview.teacherReview.localSignatureDigest, "HTML 报告导出应声明教师批注本机签名摘要。");
 assert(reviewedHtml.features.verification, "HTML 报告导出应声明包含本机验真摘要。");
 assert(reviewedHtml.html.includes("教师批注") && reviewedHtml.html.includes("结构更稳"), "HTML 报告应包含教师批注内容。");
 assert(reviewedHtml.html.includes("教研审核") && reviewedHtml.html.includes(teacherReview.teacherReview.localSignatureDigest.slice(0, 16)), "HTML 报告应包含教师角色和签名短码。");
 assert(reviewedHtml.html.includes("本机验真摘要"), "HTML 报告应显示本机验真摘要。");
+assert(reviewedHtml.html.includes("基础评分证据") && reviewedHtml.html.includes("路径"), "HTML 报告应显示评分证据摘要。");
 assert(reviewedHtml.html.includes(reviewedHtml.verification.digest), "HTML 报告应包含验真摘要文本。");
 assert(reviewedHtml.verification.digest !== reportPdfExport.verification.digest, "教师批注变更后报告摘要应随内容变化。");
 
 const reviewedPdf = window.MRAppState.getReportPdfExport("report-2");
 assert(reviewedPdf.features.teacherReview, "PDF 报告应声明包含教师批注。");
+assert(reviewedPdf.features.scoreEvidenceSummary, "批注后的 PDF 报告应继续包含评分证据摘要。");
 assert(reviewedPdf.features.teacherReviewSignatureDigest === teacherReview.teacherReview.localSignatureDigest, "PDF 报告应声明教师批注本机签名摘要。");
 assert(reviewedPdf.features.verification, "批注后的 PDF 报告应继续包含本机验真摘要。");
 assert(reviewedPdf.pdf.includes("TeacherReview: yes"), "PDF 内容应包含教师批注标记。");
@@ -1026,7 +1036,7 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {

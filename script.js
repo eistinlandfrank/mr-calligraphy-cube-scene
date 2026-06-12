@@ -6213,6 +6213,60 @@ function renderReportLatest(detail) {
   }
 
   els.reportLatest.appendChild(latest);
+  els.reportLatest.appendChild(createReportScoreEvidenceSummaryNode(detail.scoreEvidenceSummary));
+}
+
+function createReportScoreEvidenceSummaryNode(evidence) {
+  const panel = document.createElement("div");
+  panel.className = "report-score-evidence";
+
+  const heading = document.createElement("strong");
+  heading.textContent = "基础评分证据";
+  panel.appendChild(heading);
+
+  if (!evidence) {
+    const empty = document.createElement("p");
+    empty.className = "report-empty";
+    empty.textContent = "暂无可写入报告的评分证据。完成真实书写并保存作品后，会显示算法版本、笔顺、路径误差和压感摘要。";
+    panel.appendChild(empty);
+    return panel;
+  }
+
+  const summary = document.createElement("p");
+  summary.textContent = evidence.summary || "本报告已保留最近一次本机评分证据。";
+  panel.appendChild(summary);
+
+  const stats = document.createElement("div");
+  stats.className = "report-score-evidence-stats";
+  [
+    ["算法", evidence.algorithmVersion || "local-heuristic-v2.2.0"],
+    ["笔顺匹配", `${evidence.strokeOrderMatchPercent || 0}%`],
+    ["路径贴合", `${evidence.pathFitPercent || 0}%`],
+    ["压感采样", `${evidence.pressurePointCount || 0}点`]
+  ].forEach(([label, value]) => {
+    const item = document.createElement("span");
+    const name = document.createElement("small");
+    const data = document.createElement("em");
+    name.textContent = label;
+    data.textContent = value;
+    item.append(name, data);
+    stats.appendChild(item);
+  });
+  panel.appendChild(stats);
+
+  if (evidence.hotspots?.length) {
+    const hotspot = document.createElement("small");
+    hotspot.textContent = `误差热力：${evidence.hotspots.slice(0, 3).map((item) => `${item.label || item.zone} ${item.errorPercent}%`).join(" / ")}`;
+    panel.appendChild(hotspot);
+  }
+
+  if (evidence.weakestReason) {
+    const weakest = document.createElement("small");
+    weakest.textContent = `最低项：${evidence.weakestReason.label || "维度"} ${evidence.weakestReason.score || 0}分`;
+    panel.appendChild(weakest);
+  }
+
+  return panel;
 }
 
 function renderReportRecommendations(items) {

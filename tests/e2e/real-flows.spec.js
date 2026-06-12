@@ -791,12 +791,19 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.getByRole("button", { name: "导出报告" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^mr-calligraphy-report-report-/);
+  const reportHtmlPath = await download.path();
+  const reportHtml = fs.readFileSync(reportHtmlPath, "utf8");
+  expect(reportHtml).toContain("基础评分证据");
+  expect(reportHtml).toContain("路径");
   await expect(page.locator("#actionFeedback")).toContainText("学习报告已生成");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports).toHaveLength(1);
   expect(learningState.reports[0].artworkCount).toBe(1);
   expect(learningState.reports[0].latestStrokeCount).toBeGreaterThan(0);
+  expect(learningState.reports[0].scoreEvidenceSummary?.algorithmVersion).toBe("local-heuristic-v2.2.0");
+  expect(learningState.reports[0].scoreEvidenceSummary?.pathFitPercent).toBeGreaterThanOrEqual(0);
+  expect(learningState.reports[0].scoreEvidenceSummary?.hotspots?.length).toBeGreaterThan(0);
   const pathAfterReport = await page.evaluate(() => window.MRAppState.getLearningPathStatus());
   expect(pathAfterReport.steps).toHaveLength(10);
   expect(pathAfterReport.steps[3].done).toBe(true);
@@ -823,6 +830,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTitle")).toContainText("学习报告");
   await expect(page.locator("#reportStats")).toContainText("作品1幅");
+  await expect(page.locator("#reportLatest")).toContainText("基础评分证据");
+  await expect(page.locator("#reportLatest")).toContainText("路径贴合");
 
   await page.locator("#reportTeacherReviewerInput").fill("王老师");
   await page.locator("#reportTeacherReviewRoleInput").selectOption("local-reviewer");
@@ -876,6 +885,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportPdfText).toContain("RadarChart:");
   expect(reportPdfText).toContain("TrendBars:");
   expect(reportPdfText).toContain("ArtworkImageEmbedded: yes");
+  expect(reportPdfText).toContain("ScoreEvidence: yes");
+  expect(reportPdfText).toContain("ScoreEvidenceAlgorithm: local-heuristic-v2.2.0");
   expect(reportPdfText).toContain(`TeacherReviewSignatureDigest: ${teacherReviewSignatureDigest}`);
   expect(reportPdfText).toContain("/Subtype /Image");
   expect(reportPdfText).toContain("/DCTDecode");

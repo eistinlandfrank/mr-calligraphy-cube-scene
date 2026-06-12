@@ -6300,6 +6300,62 @@ body.is-model-view .notice-panel {
   background: #f2e5cb;
 }
 
+.report-score-evidence {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(116, 255, 219, 0.16);
+  border-radius: 7px;
+  background: rgba(20, 38, 34, 0.42);
+}
+
+.report-score-evidence > strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.report-score-evidence p,
+.report-score-evidence small {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.64);
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.report-score-evidence-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.report-score-evidence-stats span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.report-score-evidence-stats small,
+.report-score-evidence-stats em {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-score-evidence-stats small {
+  color: rgba(255, 250, 241, 0.52);
+  font-size: 9px;
+}
+
+.report-score-evidence-stats em {
+  color: #ffffff;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
 .report-recommendations {
   display: grid;
   gap: 5px;

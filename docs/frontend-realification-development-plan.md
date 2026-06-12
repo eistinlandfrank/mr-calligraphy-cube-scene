@@ -3371,3 +3371,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增路径误差热力证据`
+
+## 93. 2026-06-12 新增报告评分证据摘要
+
+本次把评分证据从练习分析面板推进到报告体系。用户导出学习报告后，报告记录、站内报告面板、HTML 导出和 PDF 导出都会显示同一份基础评分证据摘要，避免“看起来有报告，但报告里没有真实评分依据”的空壳体验。
+
+完成内容：
+
+- `app-state.js` 新增报告级 `scoreEvidenceSummary` 归一化与生成逻辑。
+- `createReport()` 会从最近作品优先、最近练习兜底提取评分证据摘要，并持久化到报告记录。
+- `getReportDetail()` 返回评分证据摘要，前端报告详情新增“基础评分证据”区域。
+- HTML 报告导出展示算法版本、来源、笔顺匹配、路径贴合、路径误差、压感采样、范字笔顺、误差热力和最低项。
+- PDF 报告导出展示评分证据摘要，并输出可测试的 `ScoreEvidence` 注释标记。
+- `style.css` 为报告详情评分证据区新增稳定网格，避免长算法版本和窄屏内容挤压。
+- 数据层脚本和 Playwright 前台真实流程新增断言，确认报告导出后 localStorage、HTML、站内详情和 PDF 均包含评分证据。
+
+真实化说明：
+
+- 数据来源：真实书写保存后生成的 `scoreEvidence`，不是硬编码演示文字。
+- 写入状态：`mr-calligraphy-learning-state-v1.reports[*].scoreEvidenceSummary`。
+- 成功反馈：报告详情显示“基础评分证据”“路径贴合”等字段；PDF 文本包含 `ScoreEvidence: yes`。
+- 失败反馈：旧报告没有摘要字段时只读回填最近练习/作品可用证据；没有笔迹时不会伪造路径热力。
+- 刷新后复现方式：完成前台书写、保存作品、导出报告，再进入 `?report=<报告ID>` 查看同一份摘要。
+
+仍待补：
+
+- 目前仍是本机启发式评分摘要，不是云端账号化报告、教师签章报告、专业模型评分证书或跨设备同步能力。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告评分证据摘要`
