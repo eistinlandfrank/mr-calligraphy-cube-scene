@@ -13,6 +13,7 @@ function createShareRepositoryMockServer(options = {}) {
   const state = {
     startedAt: new Date().toISOString(),
     package: null,
+    revokedShares: [],
     receipts: []
   };
 
@@ -89,9 +90,47 @@ function createShareRepositoryMockServer(options = {}) {
         });
       }
 
+      if (request.method === "DELETE") {
+        const payload = mergeRevokeQuery(await readJsonBody(request), request.url);
+        const validation = validateShareRevokeRequest(payload, state.package);
+        if (!validation.ok) {
+          return sendJson(response, 422, {
+            ok: false,
+            message: validation.message,
+            errors: validation.errors,
+            warnings: validation.warnings,
+            remoteVersion: "mr-calligraphy-share-repository-mock-v1"
+          });
+        }
+
+        const receipt = createRevokeReceipt(payload, validation, state.package, publicBaseUrl);
+        state.revokedShares.unshift({
+          shareId: receipt.shareId,
+          packageId: receipt.packageId,
+          publicUrl: receipt.publicUrl,
+          revokedAt: receipt.acceptedAt,
+          receiptDigest: receipt.receiptDigest
+        });
+        if (state.package) {
+          state.package = applyRevokeToPackage(state.package, receipt);
+        }
+        state.receipts.unshift(receipt);
+
+        return sendJson(response, 200, {
+          ok: true,
+          message: `远端分享 mock 已撤销 ${receipt.shareId}。`,
+          remoteVersion: receipt.remoteVersion,
+          packageId: receipt.packageId,
+          repositoryDigest: receipt.repositoryDigest,
+          publicUrl: receipt.publicUrl,
+          receipt,
+          warnings: validation.warnings
+        });
+      }
+
       return sendJson(response, 405, {
         ok: false,
-        message: "作品分享 mock 只支持 GET 检查、PUT 写入和 OPTIONS 预检。"
+        message: "作品分享 mock 只支持 GET 检查、PUT 写入、DELETE 撤销和 OPTIONS 预检。"
       });
     } catch (error) {
       return sendJson(response, 500, {
@@ -185,6 +224,23 @@ function readJsonBody(request) {
   });
 }
 
+function mergeRevokeQuery(payload, requestUrl) {
+  const base = payload && typeof payload === "object" ? payload : {};
+  try {
+    const url = new URL(requestUrl || "/", "http://localhost");
+    return {
+      ...base,
+      kind: base.kind || "mr-calligraphy-share-repository-revoke-v1",
+      version: base.version || VERSION,
+      shareId: base.shareId || url.searchParams.get("shareId") || "",
+      packageId: base.packageId || url.searchParams.get("packageId") || "",
+      publicUrl: base.publicUrl || url.searchParams.get("publicUrl") || ""
+    };
+  } catch (error) {
+    return base;
+  }
+}
+
 function sendEmpty(response, statusCode) {
   response.writeHead(statusCode, createResponseHeaders());
   response.end();
@@ -201,7 +257,7 @@ function sendJson(response, statusCode, payload) {
 function createResponseHeaders(extra = {}) {
   return {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
     "Access-Control-Max-Age": "600",
     "Cache-Control": "no-store",
@@ -215,10 +271,12 @@ function createContract() {
     accepts: {
       check: "GET /api/share-repository",
       publish: "PUT /api/share-repository",
+      revoke: "DELETE /api/share-repository",
       authorization: "optional Bearer token",
-      cors: "GET, PUT, OPTIONS"
+      cors: "GET, PUT, DELETE, OPTIONS"
     },
     packageKind: PACKAGE_KIND,
+    revokeKind: "mr-calligraphy-share-repository-revoke-v1",
     requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "storageKey", "summary", "records", "shares"],
     receiptFields: ["ok", "message", "packageId", "repositoryDigest", "publicUrl", "remoteVersion", "receipt"]
   };
@@ -278,6 +336,40 @@ function validateShareRepositoryPackage(payload) {
   };
 }
 
+function validateShareRevokeRequest(payload, currentPackage = null) {
+  const errors = [];
+  const warnings = [];
+  if (!payload || typeof payload !== "object") {
+    return {
+      ok: false,
+      errors: ["撤销请求为空"],
+      warnings,
+      message: "分享撤销请求校验失败：撤销请求为空。"
+    };
+  }
+  if (payload.kind !== "mr-calligraphy-share-repository-revoke-v1") {
+    errors.push("kind 应为 mr-calligraphy-share-repository-revoke-v1");
+  }
+  if (Number(payload.version) !== VERSION) {
+    warnings.push(`version 为 ${payload.version || "空"}，当前 mock 按 v${VERSION} 验收。`);
+  }
+  if (!payload.shareId) errors.push("缺少 shareId");
+  if (!payload.packageId) warnings.push("缺少 packageId，mock 将按 shareId 尝试撤销。");
+  if (!payload.publicUrl) warnings.push("缺少 publicUrl，mock 将按 publicBaseUrl 生成撤销目标。");
+  if (currentPackage?.records?.length) {
+    const exists = currentPackage.records.some((record) => record.id === payload.shareId);
+    if (!exists) {
+      warnings.push(`当前 mock 最近包中没有 shareId=${payload.shareId}，仍会记录撤销回执。`);
+    }
+  }
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    message: errors.length ? `分享撤销请求校验失败：${errors.join("；")}。` : "分享撤销请求校验通过。"
+  };
+}
+
 function createReceipt(payload, validation, publicBaseUrl) {
   const firstRecord = payload.records[0] || {};
   const firstShare = payload.shares[0] || {};
@@ -319,6 +411,64 @@ function createReceipt(payload, validation, publicBaseUrl) {
       acceptedAt
     })
   };
+}
+
+function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl) {
+  const shareId = String(payload.shareId || "share");
+  const matchedRecord = currentPackage?.records?.find((record) => record.id === shareId) || {};
+  const matchedShare = currentPackage?.shares?.find((share) => share.shareId === shareId) || {};
+  const acceptedAt = new Date().toISOString();
+  const publicUrl = String(payload.publicUrl || `${publicBaseUrl}/${encodeURIComponent(shareId)}.html`);
+  const repositoryDigest = sha256StableJson({
+    kind: "mr-calligraphy-share-repository-revoke-v1",
+    version: VERSION,
+    shareId,
+    artworkId: payload.artworkId || matchedRecord.artworkId || matchedShare.artworkId || "",
+    packageId: payload.packageId || currentPackage?.packageId || "",
+    publicUrl,
+    acceptedAt,
+    previousRepositoryDigest: currentPackage?.repositoryDigest || ""
+  });
+  return {
+    receiptKind: RECEIPT_KIND,
+    remoteVersion: "mr-calligraphy-share-repository-mock-v1",
+    packageId: `mock-share-revoke-${repositoryDigest.slice(0, 12)}`,
+    sourcePackageId: String(payload.packageId || currentPackage?.packageId || ""),
+    shareId,
+    artworkId: String(payload.artworkId || matchedRecord.artworkId || matchedShare.artworkId || ""),
+    repositoryDigest,
+    acceptedAt,
+    publicUrl,
+    shareCount: currentPackage?.records?.length || 0,
+    htmlBytes: String(matchedShare.html || "").length,
+    warningCount: validation.warnings.length,
+    warnings: validation.warnings,
+    receiptDigest: sha256StableJson({
+      action: "revoke",
+      sourcePackageId: payload.packageId || currentPackage?.packageId || "",
+      shareId,
+      repositoryDigest,
+      publicUrl,
+      acceptedAt
+    })
+  };
+}
+
+function applyRevokeToPackage(currentPackage, receipt) {
+  const nextPackage = clone(currentPackage);
+  nextPackage.records = (nextPackage.records || []).map((record) => (
+    record.id === receipt.shareId
+      ? { ...record, revokedAt: receipt.acceptedAt, remoteRevokedAt: receipt.acceptedAt }
+      : record
+  ));
+  nextPackage.summary = {
+    ...(nextPackage.summary || {}),
+    revokedShareCount: (nextPackage.records || []).filter((record) => record.revokedAt).length,
+    lastRevokedShareId: receipt.shareId,
+    lastRevokedAt: receipt.acceptedAt
+  };
+  nextPackage.latestReceipt = receipt;
+  return nextPackage;
 }
 
 function sha256StableJson(value) {
@@ -367,5 +517,6 @@ module.exports = {
   createShareRepositoryMockServer,
   startShareRepositoryMockServer,
   validateShareRepositoryPackage,
+  validateShareRevokeRequest,
   createReceipt
 };

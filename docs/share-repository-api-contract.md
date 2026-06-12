@@ -17,6 +17,7 @@
 | --- | --- | --- |
 | `GET` | 检查服务可访问性，并读取最近分享包 | 无 |
 | `PUT` | 发布当前有效分享链接对应的分享包 | `mr-calligraphy-share-repository-v1` |
+| `DELETE` | 撤销某条远端分享链接 | `mr-calligraphy-share-repository-revoke-v1` |
 | `OPTIONS` | 浏览器跨端口预检 | 无 |
 
 如配置 token，请求会携带：
@@ -138,23 +139,50 @@ mock 服务会：
 
 - `GET` 返回合同、远端版本、最近一次保存的分享包和最近回执。
 - `PUT` 校验 `mr-calligraphy-share-repository-v1` 结构并保存到内存。
+- `DELETE` 校验 `mr-calligraphy-share-repository-revoke-v1` 撤销请求，把最近包里的对应记录标记为远端撤销，并返回撤销回执。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
 - 返回 `mr-calligraphy-share-repository-receipt-v1` 回执、`repositoryDigest` 和 `publicUrl`。
 
-## 7. 回执审计导出
+## 7. 远端撤销请求
+
+前端点击“撤销远端”时，会向同一 endpoint 发送：
+
+```json
+{
+  "kind": "mr-calligraphy-share-repository-revoke-v1",
+  "version": 1,
+  "storageKey": "mr-calligraphy-learning-state-v1",
+  "shareId": "share-...",
+  "artworkId": "artwork-...",
+  "title": "永字作品",
+  "packageId": "mock-share-repository-...",
+  "publicUrl": "https://share.example.test/share-....html",
+  "receiptDigest": "64 hex chars",
+  "requestedAt": "2026-06-12T00:00:00.000Z",
+  "reason": "local-user-revoked-remote-share"
+}
+```
+
+服务端应至少校验 `kind`、`shareId`、账号/空间权限、目标 URL 是否属于当前用户空间，以及该分享是否已经撤销。成功后建议返回同一个 `mr-calligraphy-share-repository-receipt-v1` kind，前端会把本机方向补充为 `revoke`，并写入 `ShareRecord.remoteRevokedAt` 和 `remoteRevokeReceiptDigest`。
+
+为兼容部分服务端、网关或代理对 `DELETE` body 支持不稳定的情况，前端会同时把 `shareId`、`packageId`、`publicUrl` 附加在查询参数里；生产服务端应优先读取 JSON body，并把查询参数作为兜底输入。
+
+当前 mock 服务会把撤销动作写入内存 `revokedShares`，并在最近包的对应 `records[*]` 上标记 `remoteRevokedAt`。生产服务端仍需要实现真正的 URL 失效、CDN purge、访问权限更新和不可篡改撤销审计。
+
+## 8. 回执审计导出
 
 前台复盘区“远端分享 API”会显示最近作品分享远端回执，并提供“导出回执”按钮。
 
 导出内容来自 `mr-calligraphy-learning-state-v1.shareService.receipts`，不是临时页面状态。导出的 HTML 会包含：
 
 - `mr-calligraphy-share-repository-receipt-audit-v1` 审计来源。
-- 每条回执的方向、分享数量、`shareId`、`artworkId`、`publicUrl`、HTML 字节数、`repositoryDigest`、`receiptDigest`、远端版本、endpoint、接收时间和原始 JSON。
+- 每条回执的方向（检查、发布、撤销）、分享数量、`shareId`、`artworkId`、`publicUrl`、HTML 字节数、`repositoryDigest`、`receiptDigest`、远端版本、endpoint、接收时间和原始 JSON。
 - 当前远端 adapter 边界说明：它是真实 HTTP 回执记录，但不是生产不可篡改审计、账号权限或 CDN 日志。
 
 没有任何远端回执时，导出 API 会返回失败状态，不生成空审计文件。
 
-## 8. 验收
+## 9. 验收
 
 脚本验收：
 
@@ -169,4 +197,4 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 npm run test:e2e -- --grep "front practice saves real strokes and exports a report"
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、分享包、publicUrl、回执、回执审计导出和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` / `DELETE` 验证 endpoint、Bearer token、分享包、publicUrl、发布回执、撤销回执、回执审计导出和错误 token 拒绝。

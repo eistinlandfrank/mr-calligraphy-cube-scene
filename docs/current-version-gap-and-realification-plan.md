@@ -2170,3 +2170,40 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增分享远端回执审计`
+
+### 2026-06-12：新增作品分享远端撤销
+
+完成内容：
+
+- 新增 `mr-calligraphy-share-repository-revoke-v1` 撤销请求体和 `MRAppState.getArtworkShareRemoteRevokePackage()`。
+- 新增 `MRAppState.revokeArtworkShareRemote()`，对用户配置的分享 endpoint 发起真实 `DELETE`。
+- `ShareRecord` 记录 `remoteRevokedAt` 和 `remoteRevokeReceiptDigest`，刷新后仍可追踪远端撤销。
+- 前台远端分享面板新增“撤销远端”按钮。
+- 远端回执审计方向支持 `revoke`，列表和 HTML 导出会显示“撤销”。
+- 分享 mock server 支持 `DELETE`、撤销请求校验、`revokedShares` 内存记录和撤销回执。
+- smoke test 新增撤销按钮 DOM 标记。
+- 数据层和 Playwright 覆盖真实 DELETE、撤销请求体、Bearer token、撤销回执、本机状态和审计导出。
+
+真实化说明：
+
+- 数据来源：已远端发布的分享记录、远端 publicUrl、用户配置 endpoint/token 和服务端 DELETE 回执。
+- 写入状态：`shareService.records[*].remoteRevokedAt`、`remoteRevokeReceiptDigest`、`lastRemoteDirection` 和 `receipts[*]`。
+- 成功反馈：页面显示已请求远端撤销，分享记录显示“远端已撤销”，复制远端按钮禁用。
+- 失败反馈：无远端发布记录、已撤销、未配置远端、fetch 不可用或 HTTP 错误都明确失败。
+- 刷新后复现方式：撤销状态和撤销回执随学习状态持久化。
+
+仍待补：
+
+- 当前只是前端 adapter 对自备 API 的撤销请求；生产仍需要账号权限、服务端 URL 失效、CDN purge、访问日志、撤销审计和幂等防重复。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/share-repository-mock-server.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享远端撤销`

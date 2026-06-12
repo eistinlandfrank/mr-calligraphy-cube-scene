@@ -709,7 +709,7 @@
       remoteToken: source.remoteToken ? String(source.remoteToken).trim().slice(0, 240) : "",
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
       lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
-      lastRemoteDirection: ["check", "push"].includes(source.lastRemoteDirection) ? source.lastRemoteDirection : "",
+      lastRemoteDirection: ["check", "push", "revoke"].includes(source.lastRemoteDirection) ? source.lastRemoteDirection : "",
       lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).trim().slice(0, 260) : "",
       lastError: source.lastError ? String(source.lastError).trim().slice(0, 220) : "",
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).trim().slice(0, 160) : "",
@@ -738,9 +738,11 @@
       copiedAt: normalizePlanDate(record.copiedAt),
       lastViewedAt: normalizePlanDate(record.lastViewedAt),
       remotePublishedAt: normalizePlanDate(record.remotePublishedAt),
+      remoteRevokedAt: normalizePlanDate(record.remoteRevokedAt),
       remotePublicUrl: normalizeSharePublicUrl(record.remotePublicUrl),
       remotePackageId: record.remotePackageId ? String(record.remotePackageId).trim().slice(0, 160) : "",
       remoteReceiptDigest: normalizeShareRepositoryHex(record.remoteReceiptDigest),
+      remoteRevokeReceiptDigest: normalizeShareRepositoryHex(record.remoteRevokeReceiptDigest),
       viewCount: normalizeInteger(record.viewCount, 0, 0, 999999),
       copyCount: normalizeInteger(record.copyCount, 0, 0, 999999)
     };
@@ -801,7 +803,7 @@
       htmlBytes: normalizeInteger(record.htmlBytes, 0, 0, 999999999),
       warningCount: normalizeInteger(record.warningCount, 0, 0, 9999),
       warnings: normalizeStringList(record.warnings).slice(0, 12),
-      direction: ["check", "push"].includes(record.direction) ? record.direction : "",
+      direction: ["check", "push", "revoke"].includes(record.direction) ? record.direction : "",
       endpoint: record.endpoint ? String(record.endpoint).slice(0, 420) : "",
       receivedAt: normalizePlanDate(record.receivedAt),
       message: record.message ? String(record.message).slice(0, 260) : ""
@@ -7344,7 +7346,8 @@
   function formatShareRepositoryReceiptDirection(direction) {
     return {
       check: "检查",
-      push: "发布"
+      push: "发布",
+      revoke: "撤销"
     }[direction] || "远端回执";
   }
 
@@ -7686,9 +7689,11 @@
       const record = findShareRecord(shareRecord.id);
       if (record) {
         record.remotePublishedAt = now;
+        record.remoteRevokedAt = "";
         record.remotePublicUrl = publicUrl;
         record.remotePackageId = acceptedPackageId;
         record.remoteReceiptDigest = receipt?.receiptDigest || "";
+        record.remoteRevokeReceiptDigest = "";
       }
       const remoteStatus = publicUrl
         ? `已发布作品分享到远端 API：${publicUrl}`
@@ -7723,6 +7728,148 @@
       const message = formatShareRepositoryNetworkError("发布", error);
       recordShareRepositoryError(message);
       return { ok: false, status: getShareServiceStatus(), message };
+    }
+  }
+
+  function getArtworkShareRemoteRevokePackage(shareId = null) {
+    const record = getShareRecordForRemote(shareId);
+    if (!record) {
+      return {
+        ok: false,
+        message: "未找到可撤销远端发布的分享记录。"
+      };
+    }
+    if (!record.remotePublicUrl && !record.remotePackageId) {
+      return {
+        ok: false,
+        record: decorateShareRecord(record),
+        message: "这条分享还没有远端发布记录，无法撤销远端链接。"
+      };
+    }
+    if (record.remoteRevokedAt) {
+      return {
+        ok: false,
+        record: decorateShareRecord(record),
+        message: `这条分享的远端链接已于 ${formatDateTime(record.remoteRevokedAt)} 撤销。`
+      };
+    }
+    const now = new Date().toISOString();
+    return {
+      ok: true,
+      record,
+      revoke: {
+        kind: "mr-calligraphy-share-repository-revoke-v1",
+        version: VERSION,
+        storageKey: STORAGE_KEY,
+        shareId: record.id,
+        artworkId: record.artworkId,
+        title: record.title || "",
+        packageId: record.remotePackageId || state.shareService.lastPackageId || "",
+        publicUrl: record.remotePublicUrl || state.shareService.lastRemotePublicUrl || "",
+        receiptDigest: record.remoteReceiptDigest || "",
+        requestedAt: now,
+        reason: "local-user-revoked-remote-share"
+      }
+    };
+  }
+
+  function revokeArtworkShareRemote(shareId = null) {
+    const service = normalizeShareService(state.shareService);
+    const fetchApi = getShareRepositoryFetch();
+    if (!service.remoteEndpoint) {
+      return checkRemoteShareService();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法撤销远端分享链接。";
+      recordShareRepositoryError(message);
+      return { ok: false, status: getShareServiceStatus(), message };
+    }
+    const revokeResult = getArtworkShareRemoteRevokePackage(shareId);
+    if (!revokeResult.ok) {
+      return revokeResult;
+    }
+    return revokeArtworkShareRemoteAsync(service, fetchApi, revokeResult.revoke, revokeResult.record);
+  }
+
+  async function revokeArtworkShareRemoteAsync(service, fetchApi, revokePackage, shareRecord) {
+    try {
+      const response = await fetchApi(
+        createShareRepositoryRevokeUrl(service.remoteEndpoint, revokePackage),
+        buildShareRepositoryRequest(service, {
+          method: "DELETE",
+          body: revokePackage
+        })
+      );
+      const parsed = await parseRemoteShareRepositoryResponse(response);
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.shareService = normalizeShareService({
+          ...service,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getShareServiceStatus(), message: parsed.message };
+      }
+
+      const receipt = parsed.receipt
+        ? decorateShareRepositoryReceipt(parsed.receipt, {
+          direction: "revoke",
+          endpoint: service.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const record = findShareRecord(shareRecord.id);
+      if (record) {
+        record.remoteRevokedAt = now;
+        record.remoteRevokeReceiptDigest = receipt?.receiptDigest || "";
+      }
+      const remoteStatus = `已请求远端撤销作品分享：${shareRecord.title || shareRecord.id}。`;
+      state.shareService = normalizeShareService({
+        ...state.shareService,
+        mode: "remote-api",
+        remoteEndpoint: service.remoteEndpoint,
+        remoteToken: service.remoteToken,
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "revoke",
+        lastRemoteShareId: shareRecord.id,
+        lastRemotePublicUrl: "",
+        lastReceipt: receipt || service.lastReceipt,
+        receipts: appendShareRepositoryReceipt(service, receipt),
+        lastRemoteStatus: remoteStatus,
+        lastError: ""
+      });
+      addEvent("share-remote-revoke", `撤销远端分享：${shareRecord.title || shareRecord.id}`);
+      saveState();
+      return {
+        ok: true,
+        status: getShareServiceStatus(shareRecord.artworkId),
+        receipt: receipt ? clone(receipt) : null,
+        message: `${remoteStatus} ${SHARE_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = formatShareRepositoryNetworkError("撤销", error);
+      recordShareRepositoryError(message);
+      return { ok: false, status: getShareServiceStatus(), message };
+    }
+  }
+
+  function createShareRepositoryRevokeUrl(endpoint, revokePackage) {
+    try {
+      const url = new URL(endpoint, typeof location !== "undefined" && location.href ? location.href : "http://localhost/");
+      [
+        ["shareId", revokePackage.shareId],
+        ["packageId", revokePackage.packageId],
+        ["publicUrl", revokePackage.publicUrl]
+      ].forEach(([key, value]) => {
+        if (value) url.searchParams.set(key, value);
+      });
+      return url.href;
+    } catch (error) {
+      return endpoint;
     }
   }
 
@@ -11994,6 +12141,7 @@
     getReportSeries,
     getArtworkSharePackage,
     getArtworkShareRemotePackage,
+    getArtworkShareRemoteRevokePackage,
     getShareServiceStatus,
     getShareServiceRemoteConfig,
     getShareRepositoryReceiptAudit,
@@ -12078,6 +12226,7 @@
     configureShareServiceRemote,
     checkRemoteShareService,
     pushArtworkShareToRemote,
+    revokeArtworkShareRemote,
     queuePracticeVideoExportJob,
     startPracticeVideoExportJob,
     retryPracticeVideoExportJob,

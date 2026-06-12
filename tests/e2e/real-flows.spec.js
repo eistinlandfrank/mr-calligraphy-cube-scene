@@ -148,10 +148,11 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     });
   });
 
-  await page.route(`**${shareEndpointPath}`, async (route) => {
+  await page.route(`**${shareEndpointPath}**`, async (route) => {
     const request = route.request();
     const method = request.method();
-    const body = method === "PUT" ? request.postDataJSON() : null;
+    const rawBody = method === "PUT" || method === "DELETE" ? request.postData() : "";
+    const body = rawBody ? JSON.parse(rawBody) : createShareRevokeBodyFromUrl(request.url());
     shareRequests.push({
       method,
       authorization: request.headers().authorization || "",
@@ -192,6 +193,54 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
           packageId: remoteSharePackage.packageId,
           publicUrl,
           package: remoteSharePackage,
+          receipt: latestShareReceipt
+        })
+      });
+      return;
+    }
+    if (method === "DELETE") {
+      const revokedAt = new Date().toISOString();
+      remoteSharePackage = remoteSharePackage
+        ? {
+          ...remoteSharePackage,
+          records: remoteSharePackage.records.map((record) => (
+            record.id === body.shareId
+              ? { ...record, remoteRevokedAt: revokedAt, revokedAt }
+              : record
+          )),
+          summary: {
+            ...(remoteSharePackage.summary || {}),
+            revokedShareCount: 1,
+            lastRevokedShareId: body.shareId,
+            lastRevokedAt: revokedAt
+          }
+        }
+        : null;
+      latestShareReceipt = {
+        receiptKind: "mr-calligraphy-share-repository-receipt-v1",
+        remoteVersion: "e2e-share-v1",
+        packageId: "e2e-share-revoke-package",
+        sourcePackageId: body.packageId,
+        shareId: body.shareId,
+        artworkId: body.artworkId,
+        repositoryDigest: "f".repeat(64),
+        acceptedAt: revokedAt,
+        publicUrl: body.publicUrl,
+        shareCount: remoteSharePackage?.records?.length || 0,
+        htmlBytes: 0,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: "a".repeat(64)
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `远端分享 E2E 已撤销 ${body.shareId}。`,
+          remoteVersion: "e2e-share-v1",
+          packageId: latestShareReceipt.packageId,
+          publicUrl: body.publicUrl,
           receipt: latestShareReceipt
         })
       });
@@ -409,6 +458,24 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(shareReceiptHtml).toContain("MR 书法作品分享远端回执审计");
   expect(shareReceiptHtml).toContain("https://share.example.test/");
   expect(shareReceiptHtml).toContain("e".repeat(64));
+  await page.locator("#shareRemoteRevokeButton").click();
+  await expect(page.locator("#shareRemoteStatus")).toContainText("已请求远端撤销");
+  await expect(page.locator("#shareRepositoryReceiptList")).toContainText("撤销");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  const shareDelete = shareRequests.find((request) => request.method === "DELETE");
+  expect(shareDelete.authorization).toBe("Bearer share-token");
+  expect(shareDelete.body.kind).toBe("mr-calligraphy-share-repository-revoke-v1");
+  expect(shareDelete.body.shareId).toBe(shareRecordId);
+  expect(learningState.shareService.lastRemoteDirection).toBe("revoke");
+  expect(learningState.shareService.records[0].remoteRevokedAt).toBeTruthy();
+  expect(learningState.shareService.records[0].remoteRevokeReceiptDigest).toBe("a".repeat(64));
+  const revokedReceiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#shareRepositoryReceiptExportButton").click();
+  const revokedReceiptDownload = await revokedReceiptDownloadPromise;
+  const revokedReceiptPath = await revokedReceiptDownload.path();
+  const revokedReceiptHtml = fs.readFileSync(revokedReceiptPath, "utf8");
+  expect(revokedReceiptHtml).toContain("撤销");
+  expect(revokedReceiptHtml).toContain("a".repeat(64));
 
   await page.locator("#reviewCopyShareLink").click();
   await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);
@@ -2277,6 +2344,19 @@ function toProjectRepositoryVersionSummary(version) {
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function createShareRevokeBodyFromUrl(url) {
+  const parsed = new URL(url);
+  const shareId = parsed.searchParams.get("shareId");
+  if (!shareId) return null;
+  return {
+    kind: "mr-calligraphy-share-repository-revoke-v1",
+    version: 1,
+    shareId,
+    packageId: parsed.searchParams.get("packageId") || "",
+    publicUrl: parsed.searchParams.get("publicUrl") || ""
+  };
 }
 
 async function expectCanvasHasVisiblePixels(page, selector) {
