@@ -2922,3 +2922,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增远端发布回执本机校验`
+
+## 82. 2026-06-12 新增前台服务边界状态面板
+
+本次把前台顶部学习状态从单一“本机学习记录摘要”扩展为可见的三层服务边界：本机真实、远端 Adapter、生产云端。用户进入前台时能直接看到当前哪些能力只在本机闭环内真实可用、哪些远端接口已配置并有回执校验、哪些生产云端能力仍未接入，减少“按钮能点就等于线上产品已完成”的误解。
+
+完成内容：
+
+- `index.html` 新增 `serviceBoundaryPanel`、`serviceBoundaryStatus` 和 `serviceBoundaryList`。
+- `script.js` 新增 `renderServiceBoundaryPanel()`，从学习统计、学习档案仓库、计划仓库、报告仓库和作品分享远端状态中汇总本机记录数、远端 adapter 配置数和回执本机校验数。
+- 面板明确展示“生产云端未接入账号登录、教师端权限、生产 CDN、跨设备云同步和服务端不可篡改审计”。
+- `style.css` 为服务边界面板补充移动端友好的紧凑布局，长 endpoint 或状态文本可自动换行。
+- smoke test 新增前台服务边界 DOM 标记检查。
+- Playwright 移动端入口和前台练习用例新增服务边界可见性与文案断言。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getStats()`、各远端仓库 status 和 receipt audit。
+- 写入状态：本轮不新增存储结构，只读取已有本机状态并实时渲染边界。
+- 成功反馈：前台顶部显示“本机真实 / 远端 Adapter / 生产云端”三行状态。
+- 失败反馈：状态层未初始化时显示“本机能力尚未初始化”；未配置远端时显示本机导出和本机分享链接边界。
+- 刷新后复现方式：面板由本机持久化状态重新推导，刷新后仍能显示当前 adapter 与回执情况。
+
+仍待补：
+
+- 该面板只是前端边界透明化，不是账号系统、教师端、生产 CDN、跨设备同步或服务端不可篡改审计。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增前台服务边界状态面板`

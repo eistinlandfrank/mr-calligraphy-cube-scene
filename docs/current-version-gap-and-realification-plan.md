@@ -3464,3 +3464,37 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增远端发布回执本机校验`
+
+### 2026-06-12：新增前台服务边界状态面板
+
+完成内容：
+
+- 前台顶部新增 `serviceBoundaryPanel`，把“本机真实 / 远端 Adapter / 生产云端”三层状态放到学习任务前。
+- 面板读取本机学习统计、学习档案仓库、计划仓库、报告仓库和作品分享远端状态，展示本机记录数、真实练习、作品、报告、远端 adapter 配置数和回执本机校验数。
+- 未配置远端时明确显示当前以本机 JSON、HTML、PDF、ICS 和本机分享链接留存。
+- 生产云端行明确说明账号登录、教师端权限、生产 CDN、跨设备云同步和服务端不可篡改审计未接入。
+- smoke test 和 Playwright 移动端入口用例新增服务边界面板验收。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getStats()` 与各 repository/share service 的 status 和 receipt audit。
+- 写入状态：不新增持久化字段，使用已有本机状态实时推导。
+- 成功反馈：用户进入前台即可看到当前能力属于本机真实、远端 adapter 还是尚未接入的生产云端。
+- 失败反馈：状态层未初始化或远端未配置时显示清晰边界，不伪造成云端能力。
+- 刷新后复现方式：刷新后重新读取本机状态并渲染相同边界。
+
+仍待补：
+
+- 仍需真正的账号化服务端、教师端权限、跨设备同步、生产 CDN 和服务端审计；本轮只是把边界放到用户看得见的位置。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增前台服务边界状态面板`

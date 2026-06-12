@@ -3852,6 +3852,79 @@ body.is-model-view .notice-panel {
   line-height: 1.45;
 }
 
+.service-boundary-panel {
+  display: grid;
+  gap: 8px;
+  margin: -4px 0 12px;
+  padding: 10px;
+  border: 1px solid rgba(255, 238, 205, 0.14);
+  border-radius: 8px;
+  background: rgba(24, 25, 22, 0.58);
+}
+
+.service-boundary-head,
+.service-boundary-list li {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.42fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.service-boundary-head span {
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.service-boundary-head strong {
+  min-width: 0;
+  color: #fffaf1;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.service-boundary-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.service-boundary-list li {
+  min-height: 34px;
+  padding: 7px 8px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(49, 74, 122, 0.14);
+}
+
+.service-boundary-list strong {
+  color: rgba(255, 250, 241, 0.82);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.service-boundary-list span {
+  min-width: 0;
+  color: rgba(255, 250, 241, 0.72);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.service-boundary-list li[data-boundary-state="ready"] {
+  border-color: rgba(116, 255, 219, 0.28);
+  background: rgba(47, 111, 104, 0.2);
+}
+
+.service-boundary-list li[data-boundary-state="missing"] {
+  border-color: rgba(247, 215, 139, 0.34);
+  background: rgba(122, 91, 35, 0.2);
+}
+
 .task-panel {
   display: grid;
   gap: 10px;

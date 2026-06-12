@@ -796,6 +796,9 @@ const els = {
   infoPanelHandle: document.getElementById("infoPanelHandle"),
   modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
   learningStateSummary: document.getElementById("learningStateSummary"),
+  serviceBoundaryPanel: document.getElementById("serviceBoundaryPanel"),
+  serviceBoundaryStatus: document.getElementById("serviceBoundaryStatus"),
+  serviceBoundaryList: document.getElementById("serviceBoundaryList"),
   taskPanel: document.getElementById("taskPanel"),
   taskTitle: document.getElementById("taskTitle"),
   taskLevel: document.getElementById("taskLevel"),
@@ -4323,6 +4326,101 @@ function renderLearningStateSummary() {
       : "阶段待开始";
     els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.taskTitle} / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${stageLabel} / ${trainingLabel}模式`;
   }
+  renderServiceBoundaryPanel(stats);
+}
+
+function renderServiceBoundaryPanel(stats = window.MRAppState?.getStats?.()) {
+  if (!els.serviceBoundaryList) {
+    return;
+  }
+  if (!stats) {
+    if (els.serviceBoundaryStatus) {
+      els.serviceBoundaryStatus.textContent = "本机能力尚未初始化。";
+    }
+    els.serviceBoundaryList.replaceChildren();
+    return;
+  }
+
+  const repositories = getServiceBoundaryRepositoryStates();
+  const configured = repositories.filter((item) => item.remoteConfigured);
+  const receiptCount = repositories.reduce((sum, item) => sum + item.receiptCount, 0);
+  const verifiedCount = repositories.reduce((sum, item) => sum + item.verifiedCount, 0);
+  const localRecordCount = Number(stats.recordCount || 0);
+  const localText = `${localRecordCount} 条本机记录，含 ${Number(stats.practicedSessionCount || 0)} 次真实练习、${Number(stats.artworkCount || 0)} 幅作品、${Number(stats.reportCount || 0)} 份报告。`;
+  const remoteReceiptText = receiptCount
+    ? `本机校验通过 ${verifiedCount}/${receiptCount} 条回执。`
+    : "暂无远端回执。";
+  const remoteText = configured.length
+    ? `已配置 ${configured.length} 个远端 adapter：${configured.map((item) => item.label).join("、")}；${remoteReceiptText}`
+    : "尚未配置远端 adapter；当前以本机 JSON、HTML、PDF、ICS 和本机分享链接留存。";
+  const cloudText = "未接入账号登录、教师端权限、生产 CDN、跨设备云同步和服务端不可篡改审计。";
+
+  if (els.serviceBoundaryStatus) {
+    els.serviceBoundaryStatus.textContent = configured.length
+      ? `${configured.length} 个远端接口已配置，生产云端仍未接入。`
+      : "当前为本机真实闭环，生产云端未接入。";
+  }
+
+  const rows = [
+    {
+      label: "本机真实",
+      state: localRecordCount ? "ready" : "idle",
+      detail: localText
+    },
+    {
+      label: "远端 Adapter",
+      state: configured.length ? "ready" : "idle",
+      detail: remoteText
+    },
+    {
+      label: "生产云端",
+      state: "missing",
+      detail: cloudText
+    }
+  ];
+  els.serviceBoundaryList.replaceChildren(...rows.map(createServiceBoundaryItem));
+}
+
+function getServiceBoundaryRepositoryStates() {
+  const sources = [
+    {
+      label: "学习档案",
+      status: window.MRAppState?.getHistoryRepositoryStatus?.(),
+      audit: window.MRAppState?.getHistoryRepositoryReceiptAudit?.()
+    },
+    {
+      label: "计划",
+      status: window.MRAppState?.getPlanRepositoryStatus?.(),
+      audit: window.MRAppState?.getPlanRepositoryReceiptAudit?.()
+    },
+    {
+      label: "报告",
+      status: window.MRAppState?.getReportRepositoryStatus?.(),
+      audit: window.MRAppState?.getReportRepositoryReceiptAudit?.()
+    },
+    {
+      label: "作品分享",
+      status: window.MRAppState?.getShareServiceStatus?.(),
+      audit: window.MRAppState?.getShareRepositoryReceiptAudit?.()
+    }
+  ];
+  return sources.map((item) => ({
+    label: item.label,
+    remoteConfigured: Boolean(item.status?.remoteConfigured),
+    receiptCount: Number(item.audit?.total || item.status?.receiptCount || 0),
+    verifiedCount: Number(item.audit?.verifiedCount || 0)
+  }));
+}
+
+function createServiceBoundaryItem(item) {
+  const li = document.createElement("li");
+  li.dataset.boundaryState = item.state;
+  const label = document.createElement("strong");
+  label.textContent = item.label;
+  const detail = document.createElement("span");
+  detail.textContent = item.detail;
+  li.append(label, detail);
+  return li;
 }
 
 function renderTaskPanel() {

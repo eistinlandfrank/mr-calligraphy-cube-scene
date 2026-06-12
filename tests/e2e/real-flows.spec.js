@@ -59,6 +59,11 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   await expect(page.locator("#taskPanel")).toBeVisible();
+  await expect(page.locator("#serviceBoundaryPanel")).toBeVisible();
+  await expect(page.locator("#serviceBoundaryStatus")).toContainText("生产云端");
+  await expect(page.locator("#serviceBoundaryList")).toContainText("本机真实");
+  await expect(page.locator("#serviceBoundaryList")).toContainText("远端 Adapter");
+  await expect(page.locator("#serviceBoundaryList")).toContainText("生产云端");
   await expect(page.locator("#actionFeedback")).toBeVisible();
   await expectNoHorizontalOverflow(page);
   await expectBoxInsideViewport(page, ".scene-heading");
@@ -466,6 +471,9 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#taskPanel")).toBeVisible();
   await expect(page.locator("#learningPathServiceSummary")).toContainText("2/10 步完成");
   await expect(page.locator("#learningPathServiceSummary")).toContainText("数据来自本机任务");
+  await expect(page.locator("#serviceBoundaryStatus")).toContainText("生产云端");
+  await expect(page.locator("#serviceBoundaryList")).toContainText("本机真实");
+  await expect(page.locator("#serviceBoundaryList")).toContainText("远端 Adapter");
   await expect(page.locator("#sceneTitle")).toContainText("今日单字：永");
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);

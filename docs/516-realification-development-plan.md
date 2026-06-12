@@ -8487,3 +8487,40 @@
 提交：
 
 - 中文 commit message：`新增远端发布回执本机校验`
+
+### 2026-06-12：新增前台服务边界状态面板
+
+功能名：前台本机真实 / 远端 Adapter / 生产云端边界状态。
+
+完成内容：
+
+- `index.html` 新增 `serviceBoundaryPanel`，位于前台学习状态摘要和当前任务面板之间。
+- `script.js` 新增服务边界渲染逻辑，汇总本机学习记录、练习、作品、报告、远端 adapter 配置和回执本机校验数量。
+- `style.css` 新增紧凑边界面板样式，适配手机视口和长状态文本。
+- `scripts/smoke-test.js` 新增前台服务边界 DOM 标记检查。
+- `tests/e2e/real-flows.spec.js` 新增移动端入口和前台练习服务边界断言。
+- `docs/current-version-gap-and-realification-plan.md`、`docs/frontend-realification-development-plan.md`、`docs/smoke-test.md` 和当前开发文档同步记录。
+
+真实化说明：
+
+- 数据来源：本机学习统计、学习档案仓库、计划仓库、报告仓库和作品分享服务状态。
+- 写入状态：不新增存储，只把已有真实状态可视化。
+- 成功反馈：前台直接显示本机真实、远端 Adapter 和生产云端三层边界。
+- 失败反馈：未初始化或未配置远端时展示明确本机/导出边界。
+- 刷新后复现方式：刷新后从本机持久化状态重新推导面板。
+
+仍待补：
+
+- 这不是生产云端接入；账号登录、教师权限、生产 CDN、跨设备同步和服务端不可篡改审计仍待后续开发。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增前台服务边界状态面板`

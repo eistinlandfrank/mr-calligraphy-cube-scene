@@ -21,6 +21,8 @@
 
 用户看到“发布”“同步”“教师批注”“AI 讲解”“报告”“分享”这些词，会自然理解成云端、账号、权限和跨设备能力。当前版本还没有这些生产闭环，因此 UI 必须持续强调“本机”“导出”“远端 API adapter”，不能让用户误会已经上线。
 
+本轮已在前台新增服务边界状态面板，把“本机真实 / 远端 Adapter / 生产云端”放到当前任务之前，实时显示本机记录数、已配置远端 adapter、回执本机校验数，并明确生产云端仍未接入账号登录、教师端权限、生产 CDN、跨设备云同步和服务端不可篡改审计。
+
 ### 2.2 前台学习路径已有本机服务 adapter，但还不是云端课程引擎
 
 前台学习路径已新增本机 `LearningPathService` adapter：`MRAppState.getLearningPathStatus()` 会用当前 `LearningTask`、`PracticeSession`、`ArtworkRecord`、`ReportRecord` 和 `PlanRecord` 推导 10 步标题、说明、焦点、完成状态、证据和下一步动作；路径面板显示真实完成数，前 6 个场景的热点正文也优先读取路径服务证据。`SCENES` 现在主要作为视觉场景和兜底配置。
@@ -312,12 +314,13 @@ npm run test:e2e
 - 追加学习档案仓库 Workspace 空间隔离记录：前台远端学习档案 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，同步包写入顶层 `workspaceId` 和 `source.workspaceId`，mock server 按 workspace 分桶保存档案 package/receipt；数据层和 E2E 已验证 header、包字段、本机状态持久化、history-alpha/history-beta 空间互不覆盖、切回原空间读取、分页追取和冲突审计继续可用。
 - 追加报告仓库 Workspace 空间隔离记录：前台远端报告 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，报告包写入顶层 `workspaceId` 和 `source.workspaceId`，签名回执和审计 HTML 写入 workspace，mock server 按 workspace 分桶保存报告 package/receipt；数据层和 E2E 已验证 header、包字段、签名回执持久化、report-alpha/report-beta 空间互不覆盖、切回原空间读取和报告冲突审计继续可用。
 - 追加项目仓库 Workspace 空间隔离记录：主后台远端项目仓库 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，项目仓库包写入顶层 `workspaceId`，回执、版本列表和审计 HTML 写入 workspace，mock server 按 workspace 分桶保存项目仓库 package/receipt/versions；E2E 已验证 header、包字段、本机状态持久化、版本历史、回执导出和指定版本拉取预览继续可用。
+- 追加前台服务边界状态记录：前台新增 `serviceBoundaryPanel`，实时汇总本机学习记录、练习、作品、报告、远端 adapter 配置和回执本机校验数量，并明确生产云端未接入；smoke test 和 Playwright 手机视口已覆盖 DOM 标记、三层边界文案和可见性。
 
 已知限制：
 
-- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计、撤销请求和 Workspace 空间隔离、前台本机学习详情总结、核心入口移动端视口验收、主后台基础几何体更新闭环、写实后台对象删除恢复验收、主后台导入模型删除审计、写实导入模型软删除审计、写实导入模型已删除文件本机清理、主后台导入模型主色调编辑、写实后台导入模型主色调编辑、导入模型透明度编辑、导入模型文件替换、导入模型 PBR 参数编辑、导入模型发布差异明细、导入模型贴图替换、计划仓库、学习档案仓库、报告仓库和项目仓库 Workspace 空间隔离、项目仓库回执本机一致性校验，以及远端发布开发级资产签名、CDN upload、CDN purge 回执和回执本机一致性校验；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、不可篡改日志、云端垃圾回收、完整移动设备矩阵或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
+- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计、撤销请求和 Workspace 空间隔离、前台本机学习详情总结、前台服务边界状态、核心入口移动端视口验收、主后台基础几何体更新闭环、写实后台对象删除恢复验收、主后台导入模型删除审计、写实导入模型软删除审计、写实导入模型已删除文件本机清理、主后台导入模型主色调编辑、写实后台导入模型主色调编辑、导入模型透明度编辑、导入模型文件替换、导入模型 PBR 参数编辑、导入模型发布差异明细、导入模型贴图替换、计划仓库、学习档案仓库、报告仓库和项目仓库 Workspace 空间隔离、项目仓库回执本机一致性校验，以及远端发布开发级资产签名、CDN upload、CDN purge 回执和回执本机一致性校验；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、不可篡改日志、云端垃圾回收、完整移动设备矩阵或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `新增远端发布回执本机校验`
+- `新增前台服务边界状态面板`
