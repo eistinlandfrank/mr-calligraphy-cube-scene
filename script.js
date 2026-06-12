@@ -6259,9 +6259,9 @@ function renderReportRepositoryReceipts() {
     const meta = document.createElement("span");
     const signature = receipt.signature ? receipt.signature.slice(0, 12) : "签名未知";
     const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
-    meta.textContent = `${formatReportRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 签名 ${signature} · 仓库 ${digest}`;
+    meta.textContent = `${formatReportRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 签名 ${signature} · 仓库 ${digest} · ${formatReportRepositoryReceiptVerificationStatus(receipt.verificationStatus)}`;
     const detail = document.createElement("small");
-    detail.textContent = `${receipt.signatureAlgorithm || "签名算法未知"} / ${receipt.signingKeyId || "key 未知"} / ${receipt.workspaceId || "local-browser"} / ${receipt.reportCount || 0} 份报告`;
+    detail.textContent = `${receipt.signatureAlgorithm || "签名算法未知"} / ${receipt.signingKeyId || "key 未知"} / ${receipt.workspaceId || "local-browser"} / ${receipt.reportCount || 0} 份报告 / ${receipt.verificationMessage || "本机校验未执行"}`;
     item.append(title, meta, detail);
     els.reportRepositoryReceiptList.appendChild(item);
   });
@@ -6273,6 +6273,14 @@ function formatReportRepositoryReceiptDirection(direction) {
     push: "推送",
     pull: "拉取"
   }[direction] || "回执";
+}
+
+function formatReportRepositoryReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "workspace-mismatch": "空间不匹配",
+    "digest-mismatch": "摘要不匹配"
+  }[status] || "未校验";
 }
 
 function renderReportRepositoryConflictPanel(status) {

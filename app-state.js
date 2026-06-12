@@ -1321,8 +1321,11 @@
     const lastConflictReports = Array.isArray(source.lastConflictReports)
       ? source.lastConflictReports.map(normalizeReportRepositoryConflict).filter(Boolean).slice(0, REPORT_REPOSITORY_MAX_CONFLICTS)
       : [];
-    const signedReceipts = normalizeReportRepositorySignedReceipts(source);
-    const lastSignedReceipt = normalizeReportRepositorySignedReceipt(source.lastSignedReceipt || source.signedReceipt || source.receipt || null)
+    const signedReceipts = normalizeReportRepositorySignedReceipts(source, { expectedWorkspaceId: workspaceId });
+    const lastSignedReceipt = normalizeReportRepositorySignedReceipt({
+      ...(source.lastSignedReceipt || source.signedReceipt || source.receipt || {}),
+      expectedWorkspaceId: workspaceId
+    })
       || signedReceipts[0]
       || null;
     return {
@@ -1343,7 +1346,7 @@
       lastConflictReports,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
       lastSignedReceipt,
-      signedReceipts: appendReportRepositorySignedReceipt({ signedReceipts }, lastSignedReceipt),
+      signedReceipts: appendReportRepositorySignedReceipt({ signedReceipts, workspaceId }, lastSignedReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
@@ -1357,7 +1360,7 @@
     return normalized || REPORT_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
-  function normalizeReportRepositorySignedReceipts(source = {}) {
+  function normalizeReportRepositorySignedReceipts(source = {}, context = {}) {
     const candidates = Array.isArray(source.signedReceipts)
       ? source.signedReceipts
       : Array.isArray(source.receipts)
@@ -1366,7 +1369,10 @@
     const seen = new Set();
     const receipts = [];
     candidates
-      .map(normalizeReportRepositorySignedReceipt)
+      .map((receipt) => normalizeReportRepositorySignedReceipt({
+        ...receipt,
+        expectedWorkspaceId: context.expectedWorkspaceId || source.workspaceId || source.remoteWorkspaceId || source.accountId
+      }))
       .filter(Boolean)
       .forEach((receipt) => {
         const key = receipt.signature || receipt.receiptDigest || receipt.id;
@@ -1391,13 +1397,25 @@
     const signedFields = Array.isArray(record.signedFields)
       ? record.signedFields.map((field) => String(field || "").trim()).filter(Boolean).slice(0, 16)
       : [];
+    const workspaceId = normalizeReportRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId);
+    const verification = verifyReportRepositorySignedReceipt({
+      ...record,
+      receiptKind,
+      sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      workspaceId,
+      repositoryDigest,
+      acceptedAt: normalizePlanDate(record.acceptedAt),
+      receiptDigest
+    }, {
+      expectedWorkspaceId: record.expectedWorkspaceId || record.contextWorkspaceId || record.currentWorkspaceId || ""
+    });
     return {
       receiptKind,
       id: String(record.id || `report-receipt-${signature.slice(0, 16)}`).slice(0, 120),
       remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
       packageId: String(record.packageId || "").trim().slice(0, 120),
       sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
-      workspaceId: normalizeReportRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId),
+      workspaceId,
       direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
       endpoint: String(record.endpoint || "").trim().slice(0, 240),
       receivedAt: normalizePlanDate(record.receivedAt),
@@ -1413,7 +1431,50 @@
       signingKeyId,
       signedFields,
       message: String(record.message || "").slice(0, 180),
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationDigest: verification.digest,
+      verificationExpectedDigest: verification.expectedDigest,
+      verificationWorkspaceStatus: verification.workspaceStatus,
       signature
+    };
+  }
+
+  function verifyReportRepositorySignedReceipt(receipt = {}, context = {}) {
+    const sourcePackageId = String(receipt.sourcePackageId || "").trim();
+    const workspaceId = normalizeReportRepositoryWorkspaceId(receipt.workspaceId || receipt.remoteWorkspaceId || receipt.accountId);
+    const repositoryDigest = normalizeReportRepositoryHex(receipt.repositoryDigest);
+    const acceptedAt = normalizePlanDate(receipt.acceptedAt);
+    const receiptDigest = normalizeReportRepositoryHex(receipt.receiptDigest);
+    const expectedWorkspaceId = context.expectedWorkspaceId
+      ? normalizeReportRepositoryWorkspaceId(context.expectedWorkspaceId)
+      : "";
+    const expectedDigest = sourcePackageId && workspaceId && repositoryDigest && acceptedAt
+      ? sha256StableJson({
+        sourcePackageId,
+        workspaceId,
+        repositoryDigest,
+        acceptedAt
+      })
+      : "";
+    const digestOk = Boolean(expectedDigest && receiptDigest && expectedDigest === receiptDigest);
+    const workspaceOk = !expectedWorkspaceId || expectedWorkspaceId === workspaceId;
+    const status = digestOk && workspaceOk
+      ? "verified"
+      : digestOk
+        ? "workspace-mismatch"
+        : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 与声明字段一致，Workspace 匹配当前空间。",
+      "workspace-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执空间 ${workspaceId} 与当前空间 ${expectedWorkspaceId} 不一致。`,
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按 sourcePackageId、workspaceId、repositoryDigest 和 acceptedAt 重算匹配。"
+    };
+    return {
+      status,
+      message: messages[status],
+      digest: receiptDigest,
+      expectedDigest,
+      workspaceStatus: workspaceOk ? "matched" : "mismatch"
     };
   }
 
@@ -1423,6 +1484,7 @@
       direction: context.direction || receipt?.direction,
       endpoint: context.endpoint || receipt?.endpoint,
       workspaceId: context.workspaceId || receipt?.workspaceId,
+      expectedWorkspaceId: context.workspaceId || receipt?.expectedWorkspaceId,
       receivedAt: context.receivedAt || receipt?.receivedAt,
       message: context.message || receipt?.message
     });
@@ -1430,18 +1492,27 @@
   }
 
   function appendReportRepositorySignedReceipt(repository, receipt) {
-    const normalized = normalizeReportRepositorySignedReceipt(receipt);
+    const normalized = normalizeReportRepositorySignedReceipt({
+      ...receipt,
+      expectedWorkspaceId: repository?.workspaceId || receipt?.expectedWorkspaceId
+    });
     const existing = Array.isArray(repository?.signedReceipts) ? repository.signedReceipts : [];
     if (!normalized) {
       return existing
-        .map(normalizeReportRepositorySignedReceipt)
+        .map((item) => normalizeReportRepositorySignedReceipt({
+          ...item,
+          expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+        }))
         .filter(Boolean)
         .slice(0, REPORT_REPOSITORY_MAX_RECEIPTS);
     }
     const seen = new Set([normalized.signature]);
     const next = [normalized];
     existing
-      .map(normalizeReportRepositorySignedReceipt)
+      .map((item) => item && normalizeReportRepositorySignedReceipt({
+        ...item,
+        expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+      }))
       .filter(Boolean)
       .forEach((item) => {
         const key = item.signature || item.receiptDigest || item.id;
@@ -5509,22 +5580,25 @@
     const signatureShort = normalized.signature.slice(0, 12);
     const digestShort = normalized.repositoryDigest.slice(0, 12);
     const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
-    return `已收到远端签名回执：${normalized.signatureAlgorithm} / ${normalized.signingKeyId}，空间 ${normalized.workspaceId}，签名 ${signatureShort}，仓库摘要 ${digestShort}${acceptedAt}。`;
+    const verificationLabel = formatReportRepositoryReceiptVerificationStatus(normalized.verificationStatus);
+    return `已收到远端签名回执：${normalized.signatureAlgorithm} / ${normalized.signingKeyId}，空间 ${normalized.workspaceId}，签名 ${signatureShort}，仓库摘要 ${digestShort}${acceptedAt}；${verificationLabel}。`;
   }
 
   function getReportRepositoryReceiptAudit() {
     const repository = normalizeReportRepository(state.reportRepository);
     const receipts = repository.signedReceipts;
+    const verifiedCount = receipts.filter((receipt) => receipt.verificationStatus === "verified").length;
     return {
       ok: true,
       kind: "mr-calligraphy-report-repository-receipt-audit-v1",
       total: receipts.length,
+      verifiedCount,
       workspaceId: repository.workspaceId,
       latestReceipt: receipts[0] || null,
       receipts: clone(receipts),
       boundary: REPORT_REPOSITORY_BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条报告仓库签名回执，当前空间 ${repository.workspaceId}，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        ? `已保存 ${receipts.length} 条报告仓库签名回执，当前空间 ${repository.workspaceId}，本机校验通过 ${verifiedCount} 条，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
         : "暂无报告仓库签名回执。"
     };
   }
@@ -5576,6 +5650,9 @@
             <dt>Signature</dt><dd>${escapeHtml(receipt.signature || "未知")}</dd>
             <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
             <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>本机校验</dt><dd>${escapeHtml(formatReportRepositoryReceiptVerificationStatus(receipt.verificationStatus))}</dd>
+            <dt>校验说明</dt><dd>${escapeHtml(receipt.verificationMessage || "未执行")}</dd>
+            <dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "未知")}</dd>
             <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
             <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
             <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
@@ -5620,6 +5697,14 @@
       push: "推送",
       pull: "拉取"
     }[direction] || "远端回执";
+  }
+
+  function formatReportRepositoryReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "workspace-mismatch": "空间不匹配",
+      "digest-mismatch": "摘要不匹配"
+    }[status] || "未校验";
   }
 
   function getReportRepositoryRemoteConfig() {

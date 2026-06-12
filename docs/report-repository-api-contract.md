@@ -122,6 +122,14 @@ X-MR-Workspace-Id: <workspaceId>
 
 前端 adapter 当前会读取 `message`、`workspaceId`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt/latestReceipt`。如果回执包含 `receiptKind`、`workspaceId`、`repositoryDigest`、`receiptDigest`、`signatureAlgorithm`、`signingKeyId` 和 64 位 `signature`，前端会把它规范化保存到 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`，同时写入 `reportRepository.signedReceipts` 最近 12 条审计列表，并在报告仓库摘要和签名回执审计区提示最近回执及所属空间。
 
+本机一致性校验：
+
+- 前端会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`，并写入 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 如果重算摘要一致且回执 workspace 与当前配置空间一致，会显示“本机校验通过”。
+- 如果摘要一致但 workspace 不一致，会显示“空间不匹配”，不会把其它空间回执当作当前空间证据。
+- 如果 `receiptDigest` 无法重算匹配，会显示“摘要不匹配”，审计 HTML 会保留服务端摘要和本机重算摘要方便排查。
+- 该校验只能验证回执字段一致性和空间边界，不能替代生产服务端证书、公钥验签、HMAC 私钥验签或不可篡改审计。
+
 ## 6. 同 ID 差异策略
 
 当前前端第一版不会在拉取时静默覆盖同 ID 但内容不同的本机报告。处理规则：

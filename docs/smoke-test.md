@@ -83,6 +83,8 @@ node scripts/learning-state-check.js
 
 本轮新增报告仓库 Workspace 验收：`getReportRepositoryPackage()` 输出顶层 `workspaceId` 和 `source.workspaceId`；远端报告 API 配置保存 endpoint/token/workspace；检查、推送和拉取携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 `report-alpha` / `report-beta` 分桶保存报告包和签名回执；切回原空间能读取原 package；回执审计 HTML 会包含 workspace。
 
+本轮新增报告仓库回执本机校验验收：报告仓库签名回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`；真实 mock 回执应显示“本机校验通过”，篡改摘要的回执应显示“摘要不匹配”；报告仓库状态、回执列表和回执审计 HTML 都会保留校验状态和重算摘要。
+
 本轮新增项目仓库 Workspace 验收：主后台远端项目仓库面板新增 `projectRepositoryWorkspace`；项目仓库包输出顶层 `workspaceId`；检查、推送和拉取携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存项目仓库包、回执和版本历史；回执审计 HTML 会包含 workspace。
 
 本轮新增远端发布 Workspace 验收：主后台和写实后台远端发布面板新增 `mainRemotePublishWorkspace` / `realisticRemotePublishWorkspace`；发布包、manifest、撤销包、回执和回执审计均保留 `workspaceId`；GET / POST / DELETE 携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存发布回执和重复摘要锁；跨空间回执不会被当前空间误判为发布锁。

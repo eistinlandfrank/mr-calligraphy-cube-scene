@@ -3227,3 +3227,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告教师批注本机签名摘要`
+
+### 2026-06-12：新增报告仓库回执本机校验
+
+完成内容：
+
+- 报告仓库签名回执新增本机一致性校验字段。
+- 前端会重算 `receiptDigest`，检查回执是否与 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 一致。
+- 回执会检查 workspace 是否匹配当前报告仓库空间。
+- 报告仓库状态、回执列表、审计 HTML 和本机状态都保留校验结果。
+- 状态层脚本覆盖真实 mock 校验通过和篡改回执摘要不匹配；Playwright 覆盖页面与导出结果。
+
+真实化说明：
+
+- 数据来源：远端报告仓库回执和当前 Workspace。
+- 写入状态：`reportRepository.lastSignedReceipt` 和 `reportRepository.signedReceipts[*]`。
+- 成功反馈：页面与审计导出显示“本机校验通过”。
+- 失败反馈：摘要不一致显示“摘要不匹配”，空间不一致显示“空间不匹配”。
+- 刷新后复现方式：校验结果随回执持久化。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产 HMAC 私钥验签、证书链、公钥验签、账号权限或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库回执本机校验`

@@ -1,4 +1,5 @@
 const { expect, test } = require("@playwright/test");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 const { validateProjectRepositoryPackage } = require("../../scripts/project-repository-mock-server.js");
@@ -14,6 +15,20 @@ const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
 const REALISTIC_HISTORY_KEY = "mr-calligraphy-realistic-history-v1";
 const REALISTIC_IMPORT_AUDIT_KEY = "mr-calligraphy-realistic-import-audit-v1";
 const REALISTIC_PUBLISHED_KEY = "mr-calligraphy-realistic-published-v1";
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256StableJson(value) {
+  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript((keys) => {
@@ -163,7 +178,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         reportCount: body.summary.total,
         warningCount: 0,
         warnings: [],
-        receiptDigest: "b".repeat(64),
+        receiptDigest: sha256StableJson({
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          repositoryDigest: "a".repeat(64),
+          acceptedAt: remoteReportPackage.acceptedAt
+        }),
         signatureAlgorithm: "HMAC-SHA256",
         signingKeyId: "e2e-report-signing-key-v1",
         signedFields: ["receiptKind", "packageId", "sourcePackageId", "workspaceId", "repositoryDigest", "acceptedAt", "reportCount", "receiptDigest"],
@@ -676,7 +696,9 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportRepositorySummary")).toContainText("已推送 1 份报告");
   await expect(page.locator("#reportRepositorySummary")).toContainText("签名回执");
   await expect(page.locator("#reportRepositoryReceiptStatus")).toContainText("已保存 1 条报告仓库签名回执");
+  await expect(page.locator("#reportRepositoryReceiptStatus")).toContainText("本机校验通过 1 条");
   await expect(page.locator("#reportRepositoryReceiptList")).toContainText("HMAC-SHA256");
+  await expect(page.locator("#reportRepositoryReceiptList")).toContainText("本机校验通过");
 
   const reportPutRequest = reportRequests.find((item) => item.method === "PUT");
   expect(reportPutRequest.authorization).toBe("Bearer report-token");
@@ -697,9 +719,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reportRepository.lastSignedReceipt.signingKeyId).toBe("e2e-report-signing-key-v1");
   expect(learningState.reportRepository.lastSignedReceipt.workspaceId).toBe("report-e2e");
   expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
+  expect(learningState.reportRepository.lastSignedReceipt.verificationStatus).toBe("verified");
+  expect(learningState.reportRepository.lastSignedReceipt.verificationExpectedDigest).toBe(learningState.reportRepository.lastSignedReceipt.receiptDigest);
   expect(learningState.reportRepository.signedReceipts).toHaveLength(1);
   expect(learningState.reportRepository.signedReceipts[0].direction).toBe("push");
   expect(learningState.reportRepository.signedReceipts[0].workspaceId).toBe("report-e2e");
+  expect(learningState.reportRepository.signedReceipts[0].verificationStatus).toBe("verified");
 
   const receiptAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportRepositoryReceiptExportButton").click();
@@ -710,6 +735,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(receiptAuditHtml).toContain("MR 书法报告仓库签名回执审计");
   expect(receiptAuditHtml).toContain("report-e2e");
   expect(receiptAuditHtml).toContain("c".repeat(64));
+  expect(receiptAuditHtml).toContain("本机校验通过");
 
   await page.locator("#reportRepositoryPullButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已从远端 API 拉取 1 份报告");

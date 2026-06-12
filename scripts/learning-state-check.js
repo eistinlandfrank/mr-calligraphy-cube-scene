@@ -965,7 +965,7 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
@@ -1123,22 +1123,54 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
     assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].signature), "报告仓库 mock 应返回 64 位签名。");
     assert(pushedMock.signedReceipt.signature === mock.state.receipts[0].signature, "报告仓库推送结果应暴露服务端签名回执。");
     assert(pushedMock.signedReceipt.workspaceId === "report-alpha", "报告仓库推送结果应保留签名回执 workspace。");
+    assert(pushedMock.signedReceipt.verificationStatus === "verified", "报告仓库推送结果应标记回执本机校验通过。");
+    assert(pushedMock.signedReceipt.verificationExpectedDigest === pushedMock.signedReceipt.receiptDigest, "报告仓库推送结果应保留重算回执摘要。");
     const signedStatus = window.MRAppState.getReportRepositoryStatus();
     assert(signedStatus.lastSignedReceipt.signature === mock.state.receipts[0].signature, "报告仓库状态应持久化最近签名回执。");
     assert(signedStatus.workspaceId === "report-alpha", "报告仓库状态应持久化当前 workspace。");
     assert(signedStatus.lastSignedReceipt.workspaceId === "report-alpha", "报告仓库状态应持久化签名回执 workspace。");
+    assert(signedStatus.lastSignedReceipt.verificationStatus === "verified", "报告仓库状态应持久化本机校验状态。");
     assert(signedStatus.signedReceiptCount === 1, "报告仓库状态应记录签名回执审计数量。");
     assert(signedStatus.signedReceipts[0].direction === "push", "报告仓库签名回执审计应记录推送方向。");
+    assert(signedStatus.signedReceipts[0].verificationStatus === "verified", "报告仓库签名回执审计应保留校验通过状态。");
     assert(signedStatus.message.includes("签名回执"), "报告仓库状态摘要应提示最近签名回执。");
+    assert(signedStatus.message.includes("本机校验通过"), "报告仓库状态摘要应提示回执校验结果。");
     const receiptAudit = window.MRAppState.getReportRepositoryReceiptAudit();
     assert(receiptAudit.ok && receiptAudit.total === 1, "报告仓库签名回执审计 API 应返回最近回执。");
+    assert(receiptAudit.verifiedCount === 1, "报告仓库签名回执审计应统计本机校验通过数量。");
     assert(receiptAudit.workspaceId === "report-alpha", "报告仓库签名回执审计应返回当前 workspace。");
     assert(receiptAudit.receipts[0].signature === mock.state.receipts[0].signature, "报告仓库回执审计应保留签名。");
     assert(receiptAudit.receipts[0].workspaceId === "report-alpha", "报告仓库回执审计应保留 workspace。");
+    assert(receiptAudit.receipts[0].verificationStatus === "verified", "报告仓库回执审计应保留校验状态。");
     const receiptExport = window.MRAppState.getReportRepositoryReceiptAuditExport();
     assert(receiptExport.ok && receiptExport.html.includes("MR 书法报告仓库签名回执审计"), "报告仓库回执审计应可导出 HTML。");
     assert(receiptExport.html.includes(mock.state.receipts[0].signature), "报告仓库回执审计 HTML 应包含签名。");
     assert(receiptExport.html.includes("report-alpha"), "报告仓库回执审计 HTML 应包含 workspace。");
+    assert(receiptExport.html.includes("本机校验通过"), "报告仓库回执审计 HTML 应包含校验结果。");
+
+    const tamperedReceiptPackage = {
+      ...packageResult.package,
+      packageId: "tampered-report-package",
+      workspaceId: "report-alpha"
+    };
+    const tamperedResponse = new Response(JSON.stringify({
+      ok: true,
+      message: "篡改回执测试",
+      package: tamperedReceiptPackage,
+      receipt: {
+        ...mock.state.receipts[0],
+        sourcePackageId: "tampered-report-package",
+        receiptDigest: "f".repeat(64),
+        signature: "d".repeat(64)
+      }
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+    const previousMockFetch = global.fetch;
+    global.fetch = async () => tamperedResponse.clone();
+    const tamperedCheck = await window.MRAppState.checkRemoteReportRepository();
+    assert(tamperedCheck.ok, "报告仓库应能读取带篡改回执的远端响应用于本机校验。");
+    assert(tamperedCheck.signedReceipt.verificationStatus === "digest-mismatch", "篡改回执应被标记为摘要不匹配。");
+    assert(tamperedCheck.signedReceipt.verificationExpectedDigest !== tamperedCheck.signedReceipt.receiptDigest, "篡改回执应保留重算摘要用于对比。");
+    global.fetch = previousMockFetch;
 
     const checkedAfterPush = await window.MRAppState.checkRemoteReportRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.reports.length === mock.state.package.reports.length, "报告仓库 mock GET 应返回最近 PUT 保存的报告包。");

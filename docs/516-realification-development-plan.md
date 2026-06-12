@@ -8239,3 +8239,45 @@
 提交：
 
 - 中文 commit message：`新增报告教师批注本机签名摘要`
+
+### 2026-06-12：新增报告仓库回执本机校验
+
+功能名：报告仓库签名回执本机一致性校验。
+
+完成内容：
+
+- 报告仓库签名回执新增 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 前端按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`，判断回执摘要是否自洽。
+- 回执校验同时检查远端回执 workspace 是否匹配当前报告仓库配置空间。
+- 报告仓库状态摘要、回执列表和回执审计 HTML 都显示本机校验结果。
+- 状态层脚本验证真实 mock 回执校验通过，并验证被篡改的回执会标记为摘要不匹配。
+- Playwright 前台报告仓库用例验证状态栏、回执列表、localStorage 和审计 HTML 的校验结果。
+- 报告仓库 API 合同同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端报告仓库 API 返回的签名回执和当前 Workspace。
+- 写入状态：写入 `reportRepository.lastSignedReceipt` 与 `reportRepository.signedReceipts[*]`。
+- 成功反馈：页面和审计导出显示“本机校验通过”。
+- 失败反馈：摘要不一致显示“摘要不匹配”，空间不一致显示“空间不匹配”，不会把其它空间回执当作当前证据。
+- 刷新后复现方式：校验结果随本机回执状态保存，刷新后仍可查看。
+
+仍待补：
+
+- 当前只校验 receiptDigest 和 Workspace，不是生产私钥验签、证书链、公钥验签、账号权限或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库回执本机校验`

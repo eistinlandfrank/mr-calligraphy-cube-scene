@@ -2665,3 +2665,46 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告教师批注本机签名摘要`
+
+## 76. 2026-06-12 新增报告仓库回执本机校验
+
+本次把报告仓库签名回执从“保存并展示”推进为“保存、展示并做本机一致性校验”。前端会重算 `receiptDigest`，判断回执字段是否自洽、workspace 是否匹配当前空间，并把结果显示在报告仓库状态、回执列表和审计 HTML 中。
+
+完成内容：
+
+- `normalizeReportRepositorySignedReceipt()` 新增 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 新增 `verifyReportRepositorySignedReceipt()`，按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 报告仓库状态摘要新增“本机校验通过 / 空间不匹配 / 摘要不匹配”提示。
+- 报告仓库回执列表显示校验状态和校验说明。
+- 报告仓库回执审计 HTML 新增本机校验、校验说明和重算摘要字段。
+- `scripts/learning-state-check.js` 验证真实 mock 回执校验通过，并验证篡改 `receiptDigest` 的回执会被标记为摘要不匹配。
+- Playwright 前台报告仓库用例验证回执状态、列表、localStorage 和审计 HTML 都显示本机校验通过。
+- `docs/report-repository-api-contract.md` 同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端报告仓库 API 返回的 `receipt/latestReceipt` 和当前配置的 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt` 与 `signedReceipts[*]` 的校验字段。
+- 成功反馈：状态栏、回执列表和导出的审计 HTML 都显示“本机校验通过”。
+- 失败反馈：摘要被篡改或公式不匹配会显示“摘要不匹配”；空间不一致会显示“空间不匹配”。
+- 刷新后复现方式：校验字段随回执进入本机学习状态，刷新后重新读取仍会规范化保留校验结果。
+
+仍待补：
+
+- 当前校验只能证明回执声明字段一致和空间匹配，不能替代生产 HMAC 私钥验签、证书链、公钥验签、账号权限或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库回执本机校验`
