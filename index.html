@@ -365,6 +365,14 @@
               <button data-feature-state="real-local" id="historyRepositoryPushButton" type="button">推送档案</button>
               <button data-feature-state="real-local" id="historyRepositoryPullButton" type="button">拉取档案</button>
             </div>
+            <div id="historyRepositoryReceiptAudit" class="history-repository-receipt" aria-label="学习档案仓库回执审计">
+              <div class="history-repository-receipt-head">
+                <strong>学习档案仓库回执审计</strong>
+                <button data-feature-state="real-export" id="historyRepositoryReceiptExportButton" type="button">导出回执</button>
+              </div>
+              <p id="historyRepositoryReceiptStatus">暂无学习档案仓库回执。</p>
+              <ul id="historyRepositoryReceiptList" class="history-repository-receipt-list"></ul>
+            </div>
             <div id="historyRepositoryConflictPanel" class="history-repository-conflict" aria-label="学习档案冲突审计" hidden>
               <div class="history-repository-conflict-head">
                 <strong>学习档案冲突审计</strong>
@@ -667,8 +675,8 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
-  <script src="app-state.js?v=share-receipt-verify-20260612"></script>
+  <script src="app-state.js?v=history-receipt-verify-20260612"></script>
   <script src="practice-canvas.js?v=share-revoke-20260612"></script>
-  <script src="script.js?v=share-receipt-verify-20260612"></script>
+  <script src="script.js?v=history-receipt-verify-20260612"></script>
 </body>
 </html>

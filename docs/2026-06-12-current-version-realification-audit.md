@@ -88,14 +88,14 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST/DELETE 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布已补 Workspace 空间 ID，请求头、同步包或发布包、回执和 mock server 都能按空间隔离，计划仓库与作品分享远端 API 还能保存回执审计并重算 `receiptDigest` 做本机一致性校验；报告仓库、项目仓库、作品分享远端 API 和远端发布都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST/DELETE 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布已补 Workspace 空间 ID，请求头、同步包或发布包、回执和 mock server 都能按空间隔离，计划仓库、学习档案仓库与作品分享远端 API 还能保存回执审计并重算 `receiptDigest` 做本机一致性校验；报告仓库、项目仓库、作品分享远端 API 和远端发布都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
 
 真实化方向：
 
 - 补生产服务端仓库。
 - 补登录态和 token 刷新。
 - 将当前 `.ics` 本机日历导出升级为账号化提醒、教师端通知和后台任务下发。
-- 补账号化分页查询、服务端冲突合并、生产签名回执和不可篡改审计；前端 adapter 已能按 `nextPageUrl` 自动追取学习档案分页，并把同 ID 差异保存为本机冲突审计和字段级合并表单，计划仓库也已能保存远端 receipt 到本机审计列表并做本机一致性校验。
+- 补账号化分页查询、服务端冲突合并、生产签名回执和不可篡改审计；前端 adapter 已能按 `nextPageUrl` 自动追取学习档案分页，并把同 ID 差异保存为本机冲突审计和字段级合并表单，计划仓库和学习档案仓库也已能保存远端 receipt 到本机审计列表并做本机一致性校验。
 - mock server 保留为本地开发验收，不再作为产品能力宣传。
 
 ### 2.9 浏览器级验收还不够
@@ -290,6 +290,7 @@ npm run test:e2e
 - 追加作品分享远端回执审计记录：远端分享 API 返回的 `receipt/latestReceipt` 会写入 `shareService.receipts`，复盘区可查看最近回执并导出 HTML 审计页；数据层和 E2E 已验证无回执不可导出、publicUrl、receiptDigest 和下载文件内容。
 - 追加作品分享远端撤销记录：复盘区新增“撤销远端”，会对分享 endpoint 发起真实 DELETE，请求 `mr-calligraphy-share-repository-revoke-v1`，并把 `remoteRevokedAt`、撤销回执和审计导出写回本机状态；数据层和 E2E 已验证撤销请求体、Bearer token、撤销回执和下载文件内容。
 - 追加作品分享回执本机校验记录：发布回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest`、`publicUrl` 和 `acceptedAt` 重算摘要；撤销回执会额外带 `action: revoke` 与 `shareId` 重算摘要；页面、localStorage 和回执审计 HTML 均显示校验结果，数据层已验证篡改摘要会被标记为不匹配。
+- 追加学习档案仓库回执本机校验记录：远端学习档案 API 返回的 `receipt/latestReceipt` 会写入 `historyRepository.lastReceipt` 和最近 12 条 `receipts`，前端按 `workspaceId`、`sourcePackageId`、`repositoryDigest` 和 `acceptedAt` 重算摘要；页面、localStorage 和回执审计 HTML 均显示校验结果，数据层与 E2E 已验证篡改摘要会被标记为不匹配。
 - 追加主后台基础物体更新记录：“更新所选”不再被 HTML 静态禁用，改由选中对象状态动态控制；E2E 已验证新增基础物体后修改名称、类型、颜色、半径和高度，并确认草稿、发布版本和前台发布布局都读取更新后的规格。
 - 追加写实后台删除恢复记录：E2E 已覆盖删除当前写实对象、恢复对象、再次删除后撤回，并读取 `mr-calligraphy-realistic-layout-v1` 确认 `deleted` 字段随 UI 操作持久化。
 - 追加主后台导入模型删除审计记录：导入模型删除后会写入 `mr-calligraphy-main-import-audit-v1`，记录模型 ID、文件名、SHA-256、文件大小、历史快照引用和清理结果；E2E 已验证真实 `.glb` 导入、删除、刷新持久化和 HTML 审计导出。

@@ -58,7 +58,7 @@ node scripts/control-inventory.js
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放，并生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码、页面关闭后的后台队列和分享链路 | UI 写明 WebM；后续加格式转换、压缩和 Service Worker/服务端异步导出队列 |
 | 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 Workspace 空间隔离、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前 Workspace 是账号化前置隔离，签名回执审计是本机列表和 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
-| 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
+| 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、远端回执审计导出、回执本机一致性校验、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数、撤销记录和远端分享 API adapter；可配置 endpoint/token/Workspace，真实 GET 检查、PUT 发布分享包、DELETE 撤销远端分享，保存 publicUrl、发布/撤销回执、回执审计和回执本机一致性校验；已有 API 合同与本机 mock 服务 | 远端 adapter 仍需用户自备服务端；没有内置账号、微信、社群、课堂作品墙、CDN 托管或生产权限控制 | 离线导出按钮保持 `real-export`，本机分享服务和远端 adapter 标记 `real-local`；后续加账号化公开链接服务、权限、撤销审计和课堂作品墙 |
 
 ### 3.3 主后台和写实后台
@@ -3346,3 +3346,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增分享回执本机校验`
+
+### 2026-06-12：新增学习档案仓库回执本机校验
+
+完成内容：
+
+- 学习档案仓库远端回执新增本机一致性校验字段。
+- 前端会按 `workspaceId`、`sourcePackageId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 回执会检查 workspace 是否匹配当前学习档案仓库空间。
+- 学习档案仓库状态、回执列表、审计 HTML 和本机状态都保留校验结果。
+- 状态层脚本覆盖真实 mock 回执校验通过，并验证篡改 `receiptDigest` 的回执会被标记为摘要不匹配。
+- Playwright 前台学习档案远端同步用例验证页面、localStorage 和审计 HTML 都显示本机校验通过。
+- `docs/history-repository-api-contract.md` 同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端学习档案仓库 API 返回的 `receipt/latestReceipt` 和当前配置的 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.historyRepository.lastReceipt` 与 `receipts[*]` 的校验字段。
+- 成功反馈：状态栏、回执列表和导出的审计 HTML 都显示“本机校验通过”。
+- 失败反馈：摘要被篡改或公式不匹配会显示“摘要不匹配”；空间不一致会显示“空间不匹配”。
+- 刷新后复现方式：校验字段随回执进入本机学习状态，刷新后重新读取仍会规范化保留校验结果。
+
+仍待补：
+
+- 当前校验只能证明学习档案仓库回执声明字段一致和空间匹配，不能替代生产 HMAC 私钥验签、证书链、公钥验签、账号权限、服务端教师批注审计或不可篡改日志。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案回执本机校验`

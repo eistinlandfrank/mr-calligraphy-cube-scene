@@ -55,7 +55,7 @@ node scripts/control-inventory.js --check
 | AI 讲解 | 浏览器本机语音能朗读讲解段落；本机 `LectureService` 会记录语音能力、播放段落、文本降级、失败和完成状态 | 不是云端 AI 音频，也不是按真实笔迹实时生成 | 保留本机语音 fallback，后续在同一讲解服务接口扩展云端 AI 音频/文本 |
 | 书写练习 | 鼠标/触控笔迹、撤销、清空、回放、保存和基础评分可用；本机 `ScoreService` 会记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点 | 缺压感、笔锋、笔画顺序模型、硬件适配和专业评分模型 | 继续扩展范字路径库、笔画顺序校验、压感字段和服务端评分来源 |
 | 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、`.ics` 日历导出、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、Workspace 空间隔离、远端回执审计、回执本机一致性校验、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒、教师端通知和服务端不可篡改审计 | 做账号化 repository、服务端合并策略、跨设备提醒、教师端视图和生产审计 |
-| 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、Workspace 空间隔离、`nextPageUrl` 分页自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、生产级分页查询、长期归档和服务端教师批注审计 | 做账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
+| 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、Workspace 空间隔离、`nextPageUrl` 分页自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、远端回执审计导出、回执本机一致性校验、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、生产级分页查询、长期归档和服务端教师批注审计 | 做账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 
 ### 4.2 作品、报告和分享
 
@@ -2795,3 +2795,49 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增分享回执本机校验`
+
+## 79. 2026-06-12 新增学习档案仓库回执本机校验
+
+本次把学习档案仓库远端回执从“mock 返回、状态只记 packageId”推进为“保存、展示并做本机一致性校验”。前端会重算 `receiptDigest`，判断回执字段是否自洽、workspace 是否匹配当前学习档案空间，并把结果显示在学习档案仓库状态、回执列表和审计 HTML 中。
+
+完成内容：
+
+- `normalizeHistoryRepository()` 新增 `lastReceipt` 和 `receipts`，刷新后会重新规范化并保留校验结果。
+- `normalizeHistoryRepositoryReceipt()` 新增 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 新增 `verifyHistoryRepositoryReceipt()`，按 `workspaceId`、`sourcePackageId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 学习档案仓库状态摘要新增“本机校验通过 / 空间不匹配 / 摘要不匹配”提示。
+- 前台远端学习档案 API 面板新增“学习档案仓库回执审计”区域，显示最近回执、校验状态和校验说明。
+- 新增 `getHistoryRepositoryReceiptAudit()`、`getHistoryRepositoryReceiptAuditExport()` 和 `downloadHistoryRepositoryReceiptAudit()`。
+- 学习档案仓库回执审计 HTML 新增本机校验、校验说明和重算摘要字段。
+- `scripts/learning-state-check.js` 验证真实 mock 回执校验通过，并验证篡改 `receiptDigest` 的回执会被标记为摘要不匹配。
+- Playwright 前台学习档案远端同步用例验证回执状态、列表、localStorage 和审计 HTML 都显示本机校验通过。
+- `docs/history-repository-api-contract.md` 同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端学习档案仓库 API 返回的 `receipt/latestReceipt` 与当前学习档案 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.historyRepository.lastReceipt` 与 `receipts[*]` 的校验字段。
+- 成功反馈：学习档案仓库摘要、回执列表和审计 HTML 显示“本机校验通过”。
+- 失败反馈：回执摘要无法重算时显示“摘要不匹配”；回执自洽但 workspace 不同则显示“空间不匹配”。
+- 刷新后复现方式：校验结果随本机学习状态持久化，刷新前台后仍能读取。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产私钥验签、公钥证书链、账号权限、服务端教师批注审计、跨设备长期归档或服务端不可篡改日志。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案回执本机校验`

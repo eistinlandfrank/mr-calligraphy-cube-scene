@@ -1008,7 +1008,7 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
@@ -1372,6 +1372,25 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(mock.state.package.records.reports.find((item) => item.id === "report-2").teacherReview.note.includes("竖钩"), "学习档案仓库 mock 应保存教师批注内容。");
     assert(mock.state.receipts[0].repositoryDigest, "学习档案仓库 mock 应返回 repositoryDigest 回执。");
     assert(mock.state.receipts[0].workspaceId === "history-alpha", "学习档案仓库 mock 回执应包含 workspace。");
+    assert(pushedMock.receipt.verificationStatus === "verified", "学习档案仓库回执应标记本机校验通过。");
+    assert(pushedMock.receipt.verificationExpectedDigest === pushedMock.receipt.receiptDigest, "学习档案仓库回执应保留重算摘要。");
+    const historyStatusAfterPush = window.MRAppState.getHistoryRepositoryStatus();
+    assert(historyStatusAfterPush.lastReceipt.verificationStatus === "verified", "学习档案仓库状态应持久化回执校验。");
+    assert(historyStatusAfterPush.receiptCount === 1, "学习档案仓库状态应统计回执数量。");
+    const historyReceiptAudit = window.MRAppState.getHistoryRepositoryReceiptAudit();
+    assert(historyReceiptAudit.kind === "mr-calligraphy-history-repository-receipt-audit-v1", "学习档案仓库回执审计应包含稳定 kind。");
+    assert(historyReceiptAudit.workspaceId === "history-alpha", "学习档案仓库回执审计应返回当前 workspace。");
+    assert(historyReceiptAudit.total === 1, "学习档案仓库回执审计应统计最近回执。");
+    assert(historyReceiptAudit.verifiedCount === 1, "学习档案仓库回执审计应统计本机校验通过数量。");
+    assert(historyReceiptAudit.latestReceipt.verificationStatus === "verified", "学习档案仓库回执审计应保留校验状态。");
+    const historyReceiptExport = window.MRAppState.getHistoryRepositoryReceiptAuditExport();
+    assert(historyReceiptExport.ok, "学习档案仓库回执应可导出 HTML 审计。");
+    assert(historyReceiptExport.filename.includes("mr-calligraphy-history-repository-receipts"), "学习档案仓库回执审计导出应返回稳定文件名。");
+    assert(historyReceiptExport.html.includes("MR 书法学习档案仓库回执审计"), "学习档案仓库回执审计 HTML 应包含标题。");
+    assert(historyReceiptExport.html.includes("history-alpha"), "学习档案仓库回执审计 HTML 应包含 workspace。");
+    assert(historyReceiptExport.html.includes(mock.state.receipts[0].receiptDigest), "学习档案仓库回执审计 HTML 应包含 receiptDigest。");
+    assert(historyReceiptExport.html.includes("本机校验通过"), "学习档案仓库回执审计 HTML 应包含本机校验结果。");
+    assert(historyReceiptExport.html.includes("重算摘要"), "学习档案仓库回执审计 HTML 应包含重算摘要字段。");
 
     const checkedAfterPush = await window.MRAppState.checkRemoteHistoryRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.summary.total === mock.state.package.summary.total, "学习档案仓库 mock GET 应返回最近 PUT 保存的档案包。");
@@ -1438,6 +1457,20 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(copiedConflict.ok && copiedConflict.copiedCount === 1, "学习档案远端冲突记录应可另存为本机副本。");
     assert(window.MRAppState.getState().sessions.length === sessionCountBeforeCopy + 1, "另存远端冲突副本应新增一条本机练习。");
     assert(window.MRAppState.getHistoryRepositoryConflicts().count === Math.max(0, copyConflicts.count - 1), "处理后的学习档案冲突审计应减少。");
+
+    global.fetch = async () => createJsonResponse({
+      ok: true,
+      message: "远端返回了被篡改的学习档案仓库回执。",
+      package: mock.state.workspaces["history-alpha"].package,
+      latestReceipt: {
+        ...mock.state.workspaces["history-alpha"].receipts[0],
+        receiptDigest: "0".repeat(64)
+      }
+    });
+    const tamperedHistoryReceiptCheck = await window.MRAppState.checkRemoteHistoryRepository();
+    assert(tamperedHistoryReceiptCheck.ok, "学习档案篡改回执检查仍应完成远端读取。");
+    assert(tamperedHistoryReceiptCheck.receipt.verificationStatus === "digest-mismatch", "学习档案篡改回执应被标记为摘要不匹配。");
+    global.fetch = fetchApi;
 
     const badTokenConfig = window.MRAppState.configureHistoryRepositoryRemote({
       remoteEndpoint: mock.endpoint,

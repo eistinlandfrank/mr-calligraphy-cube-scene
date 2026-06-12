@@ -29,6 +29,8 @@
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包、携带 Workspace 空间 ID 并按 nextPageUrl 追取分页，但仍不包含完整账号权限、教师批注审计或公开作品墙。";
+  const HISTORY_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-history-repository-receipt-v1";
+  const HISTORY_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
@@ -1461,6 +1463,13 @@
       ? source.lastRemoteDirection
       : "";
     const workspaceId = normalizeHistoryRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
+    const receipts = normalizeHistoryRepositoryReceipts(source, { expectedWorkspaceId: workspaceId });
+    const lastReceipt = normalizeHistoryRepositoryReceipt({
+      ...(source.lastReceipt || source.latestReceipt || source.receipt || {}),
+      expectedWorkspaceId: workspaceId
+    })
+      || receipts[0]
+      || null;
     const lastConflictRecords = Array.isArray(source.lastConflictRecords)
       ? source.lastConflictRecords.map(normalizeHistoryRepositoryConflict).filter(Boolean).slice(0, HISTORY_REPOSITORY_MAX_CONFLICTS)
       : [];
@@ -1481,6 +1490,8 @@
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastReceipt,
+      receipts: appendHistoryRepositoryReceipt({ receipts, workspaceId }, lastReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
@@ -1492,6 +1503,169 @@
       .replace(/[^a-zA-Z0-9_.:-]/g, "")
       .slice(0, 64);
     return normalized || HISTORY_REPOSITORY_DEFAULT_WORKSPACE;
+  }
+
+  function normalizeHistoryRepositoryReceipts(source = {}, context = {}) {
+    const candidates = Array.isArray(source.receipts)
+      ? source.receipts
+      : Array.isArray(source.historyReceipts)
+        ? source.historyReceipts
+        : [];
+    const seen = new Set();
+    const receipts = [];
+    candidates
+      .map((receipt) => normalizeHistoryRepositoryReceipt({
+        ...receipt,
+        expectedWorkspaceId: context.expectedWorkspaceId || source.workspaceId || source.remoteWorkspaceId || source.accountId
+      }))
+      .filter(Boolean)
+      .forEach((receipt) => {
+        const key = getHistoryRepositoryReceiptKey(receipt);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        receipts.push(receipt);
+      });
+    return receipts.slice(0, HISTORY_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function normalizeHistoryRepositoryReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const receiptKind = String(record.receiptKind || "").trim();
+    const repositoryDigest = normalizeHistoryRepositoryHex(record.repositoryDigest);
+    const receiptDigest = normalizeHistoryRepositoryHex(record.receiptDigest);
+    if (receiptKind !== HISTORY_REPOSITORY_RECEIPT_KIND || !repositoryDigest || !receiptDigest) {
+      return null;
+    }
+    const warnings = Array.isArray(record.warnings)
+      ? record.warnings.map((warning) => String(warning || "").slice(0, 180)).filter(Boolean).slice(0, 10)
+      : [];
+    const workspaceId = normalizeHistoryRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId);
+    const acceptedAt = normalizePlanDate(record.acceptedAt);
+    const verification = verifyHistoryRepositoryReceipt({
+      ...record,
+      sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 160),
+      workspaceId,
+      repositoryDigest,
+      acceptedAt,
+      receiptDigest
+    }, {
+      expectedWorkspaceId: record.expectedWorkspaceId || record.contextWorkspaceId || record.currentWorkspaceId || ""
+    });
+    return {
+      receiptKind,
+      id: String(record.id || `history-receipt-${receiptDigest.slice(0, 16)}`).slice(0, 120),
+      remoteVersion: String(record.remoteVersion || "").trim().slice(0, 100),
+      packageId: String(record.packageId || "").trim().slice(0, 160),
+      sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 160),
+      workspaceId,
+      direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
+      endpoint: String(record.endpoint || "").trim().slice(0, 420),
+      receivedAt: normalizePlanDate(record.receivedAt),
+      repositoryDigest,
+      acceptedAt,
+      recordCount: normalizeInteger(record.recordCount, 0, 0, 999999),
+      warningCount: normalizeInteger(record.warningCount, warnings.length, 0, 99999),
+      warnings,
+      receiptDigest,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationDigest: verification.digest,
+      verificationExpectedDigest: verification.expectedDigest,
+      verificationWorkspaceStatus: verification.workspaceStatus,
+      message: String(record.message || "").slice(0, 220)
+    };
+  }
+
+  function verifyHistoryRepositoryReceipt(receipt = {}, context = {}) {
+    const sourcePackageId = String(receipt.sourcePackageId || "").trim();
+    const workspaceId = normalizeHistoryRepositoryWorkspaceId(receipt.workspaceId || receipt.remoteWorkspaceId || receipt.accountId);
+    const repositoryDigest = normalizeHistoryRepositoryHex(receipt.repositoryDigest);
+    const acceptedAt = normalizePlanDate(receipt.acceptedAt);
+    const receiptDigest = normalizeHistoryRepositoryHex(receipt.receiptDigest);
+    const expectedWorkspaceId = context.expectedWorkspaceId
+      ? normalizeHistoryRepositoryWorkspaceId(context.expectedWorkspaceId)
+      : "";
+    const expectedDigest = sourcePackageId && workspaceId && repositoryDigest && acceptedAt
+      ? sha256StableJson({
+        workspaceId,
+        sourcePackageId,
+        repositoryDigest,
+        acceptedAt
+      })
+      : "";
+    const digestOk = Boolean(expectedDigest && receiptDigest && expectedDigest === receiptDigest);
+    const workspaceOk = !expectedWorkspaceId || expectedWorkspaceId === workspaceId;
+    const status = digestOk && workspaceOk
+      ? "verified"
+      : digestOk
+        ? "workspace-mismatch"
+        : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 与学习档案仓库声明字段一致，Workspace 匹配当前空间。",
+      "workspace-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执空间 ${workspaceId} 与当前空间 ${expectedWorkspaceId} 不一致。`,
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按 workspaceId、sourcePackageId、repositoryDigest 和 acceptedAt 重算匹配。"
+    };
+    return {
+      status,
+      message: messages[status],
+      digest: receiptDigest,
+      expectedDigest,
+      workspaceStatus: workspaceOk ? "matched" : "mismatch"
+    };
+  }
+
+  function decorateHistoryRepositoryReceipt(receipt, context = {}) {
+    return normalizeHistoryRepositoryReceipt({
+      ...receipt,
+      direction: context.direction || receipt?.direction,
+      endpoint: context.endpoint || receipt?.endpoint,
+      workspaceId: receipt?.workspaceId || context.workspaceId,
+      expectedWorkspaceId: context.workspaceId || receipt?.expectedWorkspaceId,
+      receivedAt: context.receivedAt || receipt?.receivedAt,
+      message: context.message || receipt?.message
+    });
+  }
+
+  function appendHistoryRepositoryReceipt(repository, receipt) {
+    const normalized = normalizeHistoryRepositoryReceipt({
+      ...receipt,
+      expectedWorkspaceId: repository?.workspaceId || receipt?.expectedWorkspaceId
+    });
+    const existing = Array.isArray(repository?.receipts) ? repository.receipts : [];
+    if (!normalized) {
+      return existing
+        .map((item) => normalizeHistoryRepositoryReceipt({
+          ...item,
+          expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+        }))
+        .filter(Boolean)
+        .slice(0, HISTORY_REPOSITORY_MAX_RECEIPTS);
+    }
+    const seen = new Set([getHistoryRepositoryReceiptKey(normalized)]);
+    const next = [normalized];
+    existing
+      .map((item) => normalizeHistoryRepositoryReceipt({
+        ...item,
+        expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+      }))
+      .filter(Boolean)
+      .forEach((item) => {
+        const key = getHistoryRepositoryReceiptKey(item);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        next.push(item);
+      });
+    return next.slice(0, HISTORY_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function getHistoryRepositoryReceiptKey(receipt) {
+    if (!receipt) return "";
+    return receipt.receiptDigest || `${receipt.repositoryDigest}:${receipt.packageId}:${receipt.sourcePackageId}:${receipt.acceptedAt}` || receipt.id || "";
+  }
+
+  function normalizeHistoryRepositoryHex(value) {
+    const hex = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
   }
 
   function normalizeReportRepository(record = {}) {
@@ -11479,6 +11653,10 @@
       tone = "warning";
       message = repository.lastError;
     }
+    const receiptSummary = getHistoryRepositoryReceiptSummary(repository.lastReceipt);
+    if (receiptSummary && !repository.lastError) {
+      message = `${message} ${receiptSummary}`;
+    }
 
     return {
       ok: true,
@@ -11508,8 +11686,142 @@
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
+      lastReceipt: repository.lastReceipt ? clone(repository.lastReceipt) : null,
+      receiptCount: repository.receipts.length,
+      receipts: clone(repository.receipts),
+      receiptStatus: receiptSummary,
       lastError: repository.lastError
     };
+  }
+
+  function getHistoryRepositoryReceiptSummary(receipt) {
+    const normalized = normalizeHistoryRepositoryReceipt(receipt);
+    if (!normalized) return "";
+    const digestShort = normalized.repositoryDigest.slice(0, 12);
+    const receiptShort = normalized.receiptDigest.slice(0, 12);
+    const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
+    const verificationLabel = formatHistoryRepositoryReceiptVerificationStatus(normalized.verificationStatus);
+    return `已收到远端学习档案回执：仓库摘要 ${digestShort}，回执 ${receiptShort}${acceptedAt}；${verificationLabel}。`;
+  }
+
+  function getHistoryRepositoryReceiptAudit() {
+    const repository = normalizeHistoryRepository(state.historyRepository);
+    const receipts = repository.receipts;
+    const verifiedCount = receipts.filter((receipt) => receipt.verificationStatus === "verified").length;
+    return {
+      ok: true,
+      kind: "mr-calligraphy-history-repository-receipt-audit-v1",
+      workspaceId: repository.workspaceId,
+      total: receipts.length,
+      verifiedCount,
+      latestReceipt: receipts[0] || null,
+      receipts: clone(receipts),
+      boundary: HISTORY_REPOSITORY_BOUNDARY,
+      message: receipts.length
+        ? `已保存 ${receipts.length} 条学习档案仓库回执，本机校验通过 ${verifiedCount} 条，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        : "暂无学习档案仓库回执。"
+    };
+  }
+
+  function getHistoryRepositoryReceiptAuditExport() {
+    const audit = getHistoryRepositoryReceiptAudit();
+    if (!audit.total) {
+      return {
+        ok: false,
+        message: "暂无可导出的学习档案仓库回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-history-repository-receipts-${exportedAt.slice(0, 10)}.html`,
+      html: renderHistoryRepositoryReceiptAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.total} 条学习档案仓库回执审计导出。`
+    };
+  }
+
+  function downloadHistoryRepositoryReceiptAudit() {
+    const result = getHistoryRepositoryReceiptAuditExport();
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      receiptCount: result.audit.total,
+      message: result.message
+    };
+  }
+
+  function renderHistoryRepositoryReceiptAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const warnings = Array.isArray(receipt.warnings) && receipt.warnings.length ? receipt.warnings.join("；") : "无";
+      return `
+        <section class="receipt">
+          <h2>${escapeHtml(receipt.packageId || receipt.sourcePackageId || "packageId 未知")}</h2>
+          <dl>
+            <dt>方向</dt><dd>${escapeHtml(formatHistoryRepositoryReceiptDirection(receipt.direction))}</dd>
+            <dt>档案数量</dt><dd>${escapeHtml(receipt.recordCount || 0)}</dd>
+            <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
+            <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>本机校验</dt><dd>${escapeHtml(formatHistoryRepositoryReceiptVerificationStatus(receipt.verificationStatus))}</dd>
+            <dt>校验说明</dt><dd>${escapeHtml(receipt.verificationMessage || "未执行")}</dd>
+            <dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "未知")}</dd>
+            <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
+            <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || HISTORY_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
+            <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
+            <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
+            <dt>Received At</dt><dd>${escapeHtml(receipt.receivedAt || "未知")}</dd>
+            <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
+            <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
+          </dl>
+          <pre>${escapeHtml(JSON.stringify(receipt, null, 2))}</pre>
+        </section>`;
+    }).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法学习档案仓库回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 12px; font-size: 17px; overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 6px; background: #1f2937; color: #f8fafc; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法学习档案仓库回执审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatHistoryRepositoryReceiptDirection(direction) {
+    return {
+      check: "检查",
+      push: "推送",
+      pull: "拉取"
+    }[direction] || "远端回执";
+  }
+
+  function formatHistoryRepositoryReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "workspace-mismatch": "空间不匹配",
+      "digest-mismatch": "摘要不匹配"
+    }[status] || "未校验";
   }
 
   function getHistoryRepositoryRemoteConfig() {
@@ -11601,6 +11913,9 @@
       lastExportedRecordCount: result.package.summary.total,
       lastPackageId: result.package.packageId,
       lastSkippedConflictCount: 0,
+      lastReceipt: null,
+      receipts: [],
+      lastRemoteStatus: "",
       lastError: ""
     });
     addEvent("history-repository-export", `导出学习档案同步包：${result.package.summary.total} 条记录`);
@@ -11769,6 +12084,9 @@
       lastSkippedConflictCount: skippedConflictCount,
       lastConflictRecords: conflictRecords,
       lastPackageId: parsed.package.packageId || null,
+      lastReceipt: null,
+      receipts: [],
+      lastRemoteStatus: "",
       lastError: skippedConflictCount
         ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
         : ""
@@ -11809,6 +12127,8 @@
         lastSkippedConflictCount: 0,
         lastConflictRecords: [],
         lastCheckedAt: new Date().toISOString(),
+        lastReceipt: null,
+        receipts: [],
         lastRemoteStatus: "",
         lastError: ""
       });
@@ -11841,6 +12161,8 @@
       lastSkippedConflictCount: sameRemoteSpace ? repository.lastSkippedConflictCount : 0,
       lastConflictRecords: sameRemoteSpace ? repository.lastConflictRecords : [],
       lastCheckedAt: new Date().toISOString(),
+      lastReceipt: sameRemoteSpace ? repository.lastReceipt : null,
+      receipts: sameRemoteSpace ? repository.receipts : [],
       lastRemoteStatus: `远端学习档案 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
@@ -11891,6 +12213,7 @@
         ? payload.repository
         : payload;
     const parsed = parseHistoryRepositoryPackage(candidate);
+    const receipt = normalizeHistoryRepositoryReceipt(payload.receipt || payload.latestReceipt || null);
     if (parsed.ok) {
       const summary = parsed.package.summary || {};
       const pagination = getHistoryRepositoryPagination(payload, options.requestUrl || response.url || "");
@@ -11899,6 +12222,7 @@
       return {
         ok: true,
         package: parsed.package,
+        receipt,
         pagination,
         message: paginationNotice ? `${message} ${paginationNotice}` : message
       };
@@ -11907,6 +12231,7 @@
       return {
         ok: true,
         package: null,
+        receipt,
         pagination: getHistoryRepositoryPagination(payload, options.requestUrl || response.url || ""),
         message: payload.message || "远端学习档案 API 检查通过，但没有返回档案包。"
       };
@@ -12006,6 +12331,16 @@
       }
 
       const recordCount = parsed.package?.summary?.total || 0;
+      const parsedReceipt = parsed.receipt
+        ? decorateHistoryRepositoryReceipt(parsed.receipt, {
+          direction: "check",
+          endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const receipt = parsedReceipt || repository.lastReceipt || null;
       state.historyRepository = normalizeHistoryRepository({
         ...repository,
         mode: "remote-api",
@@ -12015,6 +12350,8 @@
         lastRemoteDirection: "check",
         lastRemoteRecordCount: recordCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastReceipt: receipt,
+        receipts: appendHistoryRepositoryReceipt(repository, parsedReceipt),
         lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
         lastError: ""
       });
@@ -12024,6 +12361,7 @@
         ok: true,
         status: getHistoryRepositoryStatus(),
         package: parsed.package || null,
+        receipt: receipt ? clone(receipt) : null,
         message: `${parsed.message} 空间 ${repository.workspaceId}。${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -12074,6 +12412,15 @@
         return { ok: false, status: getHistoryRepositoryStatus(), message: parsed.message };
       }
 
+      const receipt = parsed.receipt
+        ? decorateHistoryRepositoryReceipt(parsed.receipt, {
+          direction: "push",
+          endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
       state.historyRepository = normalizeHistoryRepository({
         ...repository,
         mode: "remote-api",
@@ -12087,7 +12434,11 @@
         lastPackageId: acceptedPackageId,
         lastSkippedConflictCount: 0,
         lastConflictRecords: [],
-        lastRemoteStatus: `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}。`,
+        lastReceipt: receipt || repository.lastReceipt,
+        receipts: appendHistoryRepositoryReceipt(repository, receipt),
+        lastRemoteStatus: receipt
+          ? `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
+          : `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}。`,
         lastError: ""
       });
       addEvent("history-repository-remote-push", `推送学习档案到远端 API：${repository.workspaceId} / ${recordCount} 条记录`);
@@ -12097,6 +12448,7 @@
         status: getHistoryRepositoryStatus(),
         packageId: acceptedPackageId,
         pushedRecordCount: recordCount,
+        receipt: receipt ? clone(receipt) : null,
         message: `已推送 ${recordCount} 条学习档案到远端 API，空间 ${repository.workspaceId}。${HISTORY_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -12236,6 +12588,16 @@
       const recordCount = repositoryPackages.reduce((total, repositoryPackage) => total + countHistoryRepositoryPackageRecords(repositoryPackage), 0);
       const pageCountText = remotePages.pages.length > 1 ? `（${remotePages.pages.length} 页）` : "";
       const warningText = remotePages.warning ? ` ${remotePages.warning}` : "";
+      const parsedReceipt = remotePages.pages.find((page) => page.receipt)?.receipt || null;
+      const receipt = parsedReceipt
+        ? decorateHistoryRepositoryReceipt(parsedReceipt, {
+          direction: "pull",
+          endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
+          receivedAt: now,
+          message: remotePages.message
+        })
+        : null;
       state.historyRepository = normalizeHistoryRepository({
         ...state.historyRepository,
         mode: "remote-api",
@@ -12251,6 +12613,8 @@
         lastPackageId: imported.latestPackageId || repository.lastPackageId || null,
         lastSkippedConflictCount: imported.skippedConflictCount,
         lastConflictRecords: imported.conflicts,
+        lastReceipt: receipt || repository.lastReceipt,
+        receipts: appendHistoryRepositoryReceipt(repository, receipt),
         lastRemoteStatus: `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}，新增 ${imported.importedCount}，跳过冲突 ${imported.skippedConflictCount}。${warningText}`,
         lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 条同 ID 差异记录已跳过，已保存冲突审计，未覆盖本机记录。`
@@ -12265,6 +12629,7 @@
         skippedConflictCount: imported.skippedConflictCount,
         pulledRecordCount: recordCount,
         conflicts: imported.conflicts,
+        receipt: receipt ? clone(receipt) : null,
         message: imported.skippedConflictCount
           ? `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}：新增 ${imported.importedCount}，跳过 ${imported.skippedConflictCount} 条同 ID 差异记录，并保存冲突审计。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
           : `已从远端 API 拉取 ${recordCount} 条学习档案${pageCountText}，空间 ${repository.workspaceId}：新增 ${imported.importedCount} 条记录。${warningText}${HISTORY_REPOSITORY_BOUNDARY}`
@@ -12679,6 +13044,8 @@
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,
+    getHistoryRepositoryReceiptAudit,
+    getHistoryRepositoryReceiptAuditExport,
     getReportRepositoryStatus,
     getReportRepositoryRemoteConfig,
     getReportRepositoryConflicts,
@@ -12720,6 +13087,7 @@
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
     downloadHistoryRepository,
+    downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,
     downloadReportRepository,
     downloadReportRepositoryReceiptAudit,

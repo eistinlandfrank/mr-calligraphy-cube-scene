@@ -103,6 +103,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   let remoteHistoryPackage = null;
   let remoteReportPackage = null;
   let remoteSharePackage = null;
+  let latestHistoryReceipt = null;
   let latestReportReceipt = null;
   let latestShareReceipt = null;
 
@@ -117,11 +118,32 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
       body
     });
     if (method === "PUT") {
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = "9".repeat(64);
       remoteHistoryPackage = {
         ...body,
         workspaceId: body.workspaceId,
         packageId: "e2e-history-package",
-        acceptedAt: new Date().toISOString()
+        acceptedAt,
+        repositoryDigest
+      };
+      latestHistoryReceipt = {
+        receiptKind: "mr-calligraphy-history-repository-receipt-v1",
+        remoteVersion: "e2e-history-v1",
+        packageId: remoteHistoryPackage.packageId,
+        sourcePackageId: body.packageId,
+        workspaceId: body.workspaceId,
+        repositoryDigest,
+        acceptedAt,
+        recordCount: body.summary.total,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: sha256StableJson({
+          workspaceId: body.workspaceId,
+          sourcePackageId: body.packageId,
+          repositoryDigest,
+          acceptedAt
+        })
       };
       await route.fulfill({
         status: 201,
@@ -131,7 +153,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
           message: `远端学习档案 E2E 已接收 ${body.summary.total} 条记录。`,
           remoteVersion: "e2e-history-v1",
           packageId: remoteHistoryPackage.packageId,
-          package: remoteHistoryPackage
+          package: remoteHistoryPackage,
+          receipt: latestHistoryReceipt
         })
       });
       return;
@@ -145,7 +168,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
           ? `远端学习档案 E2E 可读，当前包含 ${remoteHistoryPackage.summary.total} 条记录。`
           : "远端学习档案 E2E 可访问，当前尚未接收档案包。",
         remoteVersion: "e2e-history-v1",
-        package: remoteHistoryPackage
+        package: remoteHistoryPackage,
+        latestReceipt: latestHistoryReceipt
       })
     });
   });
@@ -838,6 +862,24 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.historyRepository.lastRemoteDirection).toBe("push");
   expect(learningState.historyRepository.lastPackageId).toBe("e2e-history-package");
   expect(learningState.historyRepository.workspaceId).toBe("history-e2e");
+  expect(learningState.historyRepository.lastReceipt.receiptDigest).toBe(latestHistoryReceipt.receiptDigest);
+  expect(learningState.historyRepository.lastReceipt.verificationStatus).toBe("verified");
+  expect(learningState.historyRepository.lastReceipt.verificationExpectedDigest).toBe(latestHistoryReceipt.receiptDigest);
+  await expect(page.locator("#historyRepositoryReceiptStatus")).toContainText("学习档案仓库回执");
+  await expect(page.locator("#historyRepositoryReceiptStatus")).toContainText("本机校验通过 1 条");
+  await expect(page.locator("#historyRepositoryReceiptList")).toContainText("推送");
+  await expect(page.locator("#historyRepositoryReceiptList")).toContainText("本机校验通过");
+  const historyReceiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#historyRepositoryReceiptExportButton").click();
+  const historyReceiptDownload = await historyReceiptDownloadPromise;
+  expect(historyReceiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-repository-receipts-.*\.html$/);
+  const historyReceiptPath = await historyReceiptDownload.path();
+  const historyReceiptHtml = fs.readFileSync(historyReceiptPath, "utf8");
+  expect(historyReceiptHtml).toContain("MR 书法学习档案仓库回执审计");
+  expect(historyReceiptHtml).toContain("history-e2e");
+  expect(historyReceiptHtml).toContain(latestHistoryReceipt.receiptDigest);
+  expect(historyReceiptHtml).toContain("本机校验通过");
+  expect(historyReceiptHtml).toContain("重算摘要");
 
   await page.locator("#historyRepositoryPullButton").click();
   await expect(page.locator("#historyRepositorySummary")).toContainText("已从远端 API 拉取 3 条学习档案");
@@ -845,6 +887,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
   expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
+  expect(learningState.historyRepository.lastReceipt.verificationStatus).toBe("verified");
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token" && item.workspaceId === "history-e2e")).toBe(true);
 
   await page.evaluate(() => window.MRAppState.createPlan());

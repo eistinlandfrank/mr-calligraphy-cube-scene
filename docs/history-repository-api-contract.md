@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端会携带 Workspace 空间 ID 做同 endpoint 下的第一层隔离，拉取时也会按响应里的 `nextPageUrl` 追取分页；但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
+远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端会携带 Workspace 空间 ID 做同 endpoint 下的第一层隔离，拉取时也会按响应里的 `nextPageUrl` 追取分页；收到 `receipt/latestReceipt` 后会重算 `receiptDigest`，用于确认回执声明字段是否自洽、workspace 是否匹配当前空间。但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
 
 生产服务端必须重新校验档案包结构，并在账号、空间、权限、数据版本和分页查询上做服务端隔离；前端 Workspace 只能作为 adapter 合同和本地开发保护，不能替代登录态和服务端授权。
 
@@ -103,9 +103,40 @@ Workspace 由前台“远端学习档案 API”面板配置，默认 `local-brow
 }
 ```
 
-前端 adapter 当前会读取 `message`、`workspaceId`、`package.packageId`、`package.summary`、`package.records` 和可选 `pagination`，并把当前 workspace、远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
+前端 adapter 当前会读取 `message`、`workspaceId`、`package.packageId`、`package.summary`、`package.records`、`receipt/latestReceipt` 和可选 `pagination`，并把当前 workspace、远端记录数量、最近 packageId、同步方向、跳过冲突数量、远端状态、最近回执和回执审计列表写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
 
-## 4.1 分页响应
+保存到本机的回执会补充：
+
+- `direction`：`check`、`push` 或 `pull`。
+- `endpoint` 和 `receivedAt`。
+- `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+
+## 5. 本机一致性校验
+
+前端收到学习档案仓库回执后，会使用稳定 JSON 重新计算：
+
+```json
+{
+  "workspaceId": "<receipt.workspaceId>",
+  "sourcePackageId": "<receipt.sourcePackageId>",
+  "repositoryDigest": "<receipt.repositoryDigest>",
+  "acceptedAt": "<receipt.acceptedAt>"
+}
+```
+
+重算结果必须等于 `receipt.receiptDigest`。同时，回执里的 `workspaceId` 必须匹配当前远端学习档案配置的 Workspace。
+
+校验结果：
+
+| 状态 | 说明 |
+| --- | --- |
+| `verified` | `receiptDigest` 与声明字段一致，且 Workspace 匹配当前空间 |
+| `workspace-mismatch` | `receiptDigest` 自洽，但回执空间不是当前空间 |
+| `digest-mismatch` | `receiptDigest` 无法按声明字段重算匹配，回执可能损坏或被篡改 |
+
+这个校验只能证明学习档案仓库回执字段自洽和空间匹配，不能替代生产 HMAC 私钥验签、公钥验签、证书链、账号权限、服务端教师审计或不可篡改日志。
+
+## 5.1 分页响应
 
 如果服务端返回分页包，可在响应中附加：
 
@@ -133,7 +164,7 @@ Workspace 由前台“远端学习档案 API”面板配置，默认 `local-brow
 
 当前前端拉取时会从初始 endpoint 开始，沿 `pagination.nextPageUrl` 或顶层 `nextPageUrl` 自动请求后续页面，最多追取 20 页，并用已访问 URL 防止分页循环。检查远端时只展示当前响应状态，不会导入后续页。生产服务端分页仍需要账号、游标、超时重试、服务端查询隔离和完整审计策略。
 
-## 5. 同 ID 差异策略
+## 6. 同 ID 差异策略
 
 当前前端第一版不会在拉取时静默覆盖同 ID 但内容不同的本机记录。处理规则：
 
@@ -145,7 +176,7 @@ Workspace 由前台“远端学习档案 API”面板配置，默认 `local-brow
 
 后续账号化服务端应提供版本号、服务端字段级 merge、服务端冲突审计和用户确认入口。
 
-## 6. 失败响应
+## 7. 失败响应
 
 失败响应建议返回：
 
@@ -168,7 +199,7 @@ Workspace 由前台“远端学习档案 API”面板配置，默认 `local-brow
 | `422` | 档案包结构校验失败 |
 | `500` | 服务端内部错误 |
 
-## 7. 本机 mock 服务
+## 8. 本机 mock 服务
 
 启动 mock server：
 
@@ -194,9 +225,9 @@ mock 服务会：
 - `PUT` 校验 `mr-calligraphy-history-repository-v1` 结构，并按 `X-MR-Workspace-Id` 保存到内存分桶。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
-- 返回带 `workspaceId` 的 `mr-calligraphy-history-repository-receipt-v1` 回执和 `repositoryDigest`。
+- 返回带 `workspaceId` 的 `mr-calligraphy-history-repository-receipt-v1` 回执、`repositoryDigest` 和可被前端重算匹配的 `receiptDigest`。
 
-## 8. 验收
+## 9. 验收
 
 脚本验收：
 
@@ -205,4 +236,4 @@ node scripts/learning-state-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、Workspace header、学习档案包 `workspaceId`、mock server 按空间隔离、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过、冲突审计、字段级合并、远端冲突另存副本和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl`、合并后续页，并在同 ID 差异后展示冲突审计入口和字段级合并表单。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、Workspace header、学习档案包 `workspaceId`、mock server 按空间隔离、学习档案仓库回执、本机一致性校验、回执审计导出、篡改摘要不匹配、拉取最近档案包、同 ID 差异跳过、冲突审计、字段级合并、远端冲突另存副本和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl`、合并后续页，并在同 ID 差异后展示冲突审计入口和字段级合并表单。

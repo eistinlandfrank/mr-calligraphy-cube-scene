@@ -46,7 +46,7 @@
 | 学习模式 tabs | 已接入“单字学习 / 集字练习 / 创作”的本机状态切换，并补齐本机任务库、任务面板、同模式任务选择、字帖切换、任务依赖、完成条件、锁定状态和按任务推导的完成进度 | 还没有云端课程库、教师端任务下发和更细的逐步骤评分规则 |
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
-| 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
+| 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出、远端 `nextPageUrl` 分页追取、远端回执审计和回执本机一致性校验 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
 | 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、生产证书签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页，也可通过远端分享 API 发布/撤销分享、保存 publicUrl、回执审计和回执本机一致性校验；“生成视频”已可导出真实笔迹 WebM 回放，并有 PNG 封面、本机队列和失败重试 | 还没有社交平台分享、MP4/GIF、公开作品集、后台转码队列和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
@@ -8366,3 +8366,47 @@
 提交：
 
 - 中文 commit message：`新增分享回执本机校验`
+
+### 2026-06-12：新增学习档案仓库回执本机校验
+
+功能名：学习档案仓库远端回执本机一致性校验。
+
+完成内容：
+
+- `app-state.js` 为 `normalizeHistoryRepository()` 新增 `lastReceipt` 和 `receipts`。
+- `normalizeHistoryRepositoryReceipt()` 新增本机校验字段：`verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 新增 `verifyHistoryRepositoryReceipt()`，用 `workspaceId`、`sourcePackageId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 学习档案仓库状态摘要、回执列表和回执审计 HTML 都会展示“本机校验通过 / 空间不匹配 / 摘要不匹配”。
+- `script.js` 的前台学习档案远端 API 面板新增回执审计区域、回执列表和“导出回执”。
+- `scripts/learning-state-check.js` 新增真实 mock 回执校验通过、localStorage 持久化、HTML 审计导出和篡改摘要不匹配验收。
+- `tests/e2e/real-flows.spec.js` 的前台学习档案远端同步用例改为生成真实可重算 receipt，并验证页面、localStorage 和 HTML 审计导出。
+- `docs/history-repository-api-contract.md`、`docs/smoke-test.md` 和当前开发文档同步验收范围与生产边界。
+
+真实化说明：
+
+- 数据来源：远端学习档案仓库 API 返回的 `receipt/latestReceipt` 与当前学习档案 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.historyRepository.lastReceipt` 与 `receipts[*]`。
+- 成功反馈：学习档案仓库摘要、回执列表和审计 HTML 显示“本机校验通过”。
+- 失败反馈：回执摘要无法重算时显示“摘要不匹配”；回执自洽但 workspace 不同则显示“空间不匹配”。
+- 刷新后复现方式：校验结果随本机学习状态持久化，刷新前台后仍能读取。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产私钥验签、公钥证书链、账号权限、服务端教师批注审计、跨设备长期归档或服务端不可篡改日志。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案回执本机校验`

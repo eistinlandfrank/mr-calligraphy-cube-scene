@@ -911,6 +911,10 @@ const els = {
   historyRepositoryRemoteButton: document.getElementById("historyRepositoryRemoteButton"),
   historyRepositoryPushButton: document.getElementById("historyRepositoryPushButton"),
   historyRepositoryPullButton: document.getElementById("historyRepositoryPullButton"),
+  historyRepositoryReceiptAudit: document.getElementById("historyRepositoryReceiptAudit"),
+  historyRepositoryReceiptStatus: document.getElementById("historyRepositoryReceiptStatus"),
+  historyRepositoryReceiptList: document.getElementById("historyRepositoryReceiptList"),
+  historyRepositoryReceiptExportButton: document.getElementById("historyRepositoryReceiptExportButton"),
   historyRepositoryConflictPanel: document.getElementById("historyRepositoryConflictPanel"),
   historyRepositoryConflictStatus: document.getElementById("historyRepositoryConflictStatus"),
   historyRepositoryConflictList: document.getElementById("historyRepositoryConflictList"),
@@ -4220,6 +4224,7 @@ function bindHistoryControls() {
   els.historyRepositoryRemoteButton?.addEventListener("click", checkHistoryRepositoryRemote);
   els.historyRepositoryPushButton?.addEventListener("click", pushHistoryRepositoryRemote);
   els.historyRepositoryPullButton?.addEventListener("click", pullHistoryRepositoryRemote);
+  els.historyRepositoryReceiptExportButton?.addEventListener("click", exportHistoryRepositoryReceipts);
   els.historyRepositoryConflictList?.addEventListener("click", handleHistoryRepositoryConflictAction);
   els.historyRepositoryImportInput?.addEventListener("change", importHistoryRepositoryFile);
 }
@@ -7076,7 +7081,51 @@ function renderHistoryRepositoryStatus(history) {
   if (els.historyRepositoryPullButton) {
     els.historyRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
+  renderHistoryRepositoryReceipts();
   renderHistoryRepositoryConflictPanel(status);
+}
+
+function renderHistoryRepositoryReceipts() {
+  const audit = window.MRAppState?.getHistoryRepositoryReceiptAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.historyRepositoryReceiptStatus) {
+    els.historyRepositoryReceiptStatus.textContent = audit?.message || "暂无学习档案仓库回执。";
+    els.historyRepositoryReceiptStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.historyRepositoryReceiptExportButton) {
+    els.historyRepositoryReceiptExportButton.disabled = !receipts.length;
+  }
+  if (!els.historyRepositoryReceiptList) return;
+  els.historyRepositoryReceiptList.replaceChildren();
+  receipts.slice(0, 6).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatHistoryRepositoryReceiptDirection(receipt.direction)} · ${receipt.packageId || receipt.sourcePackageId || "远端回执"}`;
+    const meta = document.createElement("span");
+    const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
+    const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
+    meta.textContent = `空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 档案 ${receipt.recordCount || 0} · 仓库 ${digest} · 回执 ${receiptDigest} · ${formatHistoryRepositoryReceiptVerificationStatus(receipt.verificationStatus)}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.verificationMessage || "本机校验未执行"}`;
+    item.append(title, meta, detail);
+    els.historyRepositoryReceiptList.appendChild(item);
+  });
+}
+
+function formatHistoryRepositoryReceiptDirection(direction) {
+  return {
+    check: "检查",
+    push: "推送",
+    pull: "拉取"
+  }[direction] || "回执";
+}
+
+function formatHistoryRepositoryReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "workspace-mismatch": "空间不匹配",
+    "digest-mismatch": "摘要不匹配"
+  }[status] || "未校验";
 }
 
 function renderHistoryRepositoryConflictPanel(status) {
@@ -7317,6 +7366,14 @@ async function pullHistoryRepositoryRemote() {
   }
 }
 
+function exportHistoryRepositoryReceipts() {
+  const result = window.MRAppState?.downloadHistoryRepositoryReceiptAudit?.();
+  if (result?.message) {
+    showNotice(result.message);
+  }
+  renderHistoryPanel(currentIndex);
+}
+
 function handleHistoryRepositoryConflictAction(event) {
   const button = event.target?.closest?.("[data-history-conflict-action]");
   if (!button) return;
@@ -7348,7 +7405,8 @@ function setHistoryRepositoryRemoteBusy(isBusy) {
     els.historyRepositorySaveRemoteButton,
     els.historyRepositoryRemoteButton,
     els.historyRepositoryPushButton,
-    els.historyRepositoryPullButton
+    els.historyRepositoryPullButton,
+    els.historyRepositoryReceiptExportButton
   ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);
