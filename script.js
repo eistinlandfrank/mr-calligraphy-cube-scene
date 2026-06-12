@@ -4942,7 +4942,7 @@ function renderShareServicePanel(artwork) {
   }
   if (els.shareRemoteStatus) {
     const receiptText = status?.lastReceipt?.receiptDigest
-      ? ` 回执 ${status.lastReceipt.receiptDigest.slice(0, 12)}。`
+      ? ` 回执 ${status.lastReceipt.receiptDigest.slice(0, 12)}，${formatShareRepositoryReceiptVerificationStatus(status.lastReceipt.verificationStatus)}。`
       : "";
     const publicText = status?.lastRemotePublicUrl
       ? ` 远端链接：${status.lastRemotePublicUrl}`
@@ -5046,10 +5046,10 @@ function renderShareRepositoryReceipts() {
     const meta = document.createElement("span");
     const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
     const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
-    meta.textContent = `${formatShareRepositoryReceiptDirection(receipt.direction)} · 空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
+    meta.textContent = `${formatShareRepositoryReceiptDirection(receipt.direction)} · 空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest} · ${formatShareRepositoryReceiptVerificationStatus(receipt.verificationStatus)}`;
     const detail = document.createElement("small");
     const publicText = receipt.publicUrl ? "有公开链接" : "未返回公开链接";
-    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.shareCount || 0} 条分享 / ${publicText}`;
+    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.shareCount || 0} 条分享 / ${publicText} / ${receipt.verificationMessage || "本机校验未执行"}`;
     item.append(title, meta, detail);
     els.shareRepositoryReceiptList.appendChild(item);
   });
@@ -5061,6 +5061,14 @@ function formatShareRepositoryReceiptDirection(direction) {
     push: "发布",
     revoke: "撤销"
   }[direction] || "回执";
+}
+
+function formatShareRepositoryReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "workspace-mismatch": "空间不匹配",
+    "digest-mismatch": "摘要不匹配"
+  }[status] || "未校验";
 }
 
 function createLatestArtworkShareLink() {

@@ -770,8 +770,11 @@
     const source = record && typeof record === "object" ? record : {};
     const mode = source.mode === "remote-api" ? "remote-api" : "local-link";
     const workspaceId = normalizeShareRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
-    const receipts = normalizeShareRepositoryReceipts(source);
-    const lastReceipt = normalizeShareRepositoryReceipt(source.lastReceipt || source.latestReceipt || source.receipt || null)
+    const receipts = normalizeShareRepositoryReceipts(source, { expectedWorkspaceId: workspaceId });
+    const lastReceipt = normalizeShareRepositoryReceipt({
+      ...(source.lastReceipt || source.latestReceipt || source.receipt || {}),
+      expectedWorkspaceId: workspaceId
+    })
       || receipts[0]
       || null;
     return {
@@ -795,7 +798,7 @@
       lastRemoteShareId: source.lastRemoteShareId ? String(source.lastRemoteShareId).trim().slice(0, 120) : "",
       lastRemotePublicUrl: normalizeSharePublicUrl(source.lastRemotePublicUrl),
       lastReceipt,
-      receipts: appendShareRepositoryReceipt({ receipts }, lastReceipt)
+      receipts: appendShareRepositoryReceipt({ receipts, workspaceId }, lastReceipt)
     };
   }
 
@@ -851,7 +854,7 @@
     return normalized || SHARE_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
-  function normalizeShareRepositoryReceipts(source = {}) {
+  function normalizeShareRepositoryReceipts(source = {}, context = {}) {
     const candidates = Array.isArray(source.receipts)
       ? source.receipts
       : Array.isArray(source.remoteReceipts)
@@ -859,7 +862,10 @@
         : [];
     const receipts = [];
     candidates
-      .map(normalizeShareRepositoryReceipt)
+      .map((receipt) => normalizeShareRepositoryReceipt({
+        ...receipt,
+        expectedWorkspaceId: context.expectedWorkspaceId || source.workspaceId || source.remoteWorkspaceId || source.accountId
+      }))
       .filter(Boolean)
       .forEach((receipt) => {
         const key = getShareRepositoryReceiptKey(receipt);
@@ -878,19 +884,34 @@
     if (receiptKind !== SHARE_REPOSITORY_RECEIPT_KIND || !repositoryDigest || !receiptDigest) {
       return null;
     }
+    const workspaceId = normalizeShareRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId);
+    const publicUrl = normalizeSharePublicUrl(record.publicUrl);
+    const acceptedAt = normalizePlanDate(record.acceptedAt);
+    const verification = verifyShareRepositoryReceipt({
+      ...record,
+      sourcePackageId: String(record.sourcePackageId || "").slice(0, 160),
+      workspaceId,
+      shareId: String(record.shareId || "").slice(0, 120),
+      repositoryDigest,
+      publicUrl,
+      acceptedAt,
+      receiptDigest
+    }, {
+      expectedWorkspaceId: record.expectedWorkspaceId || record.contextWorkspaceId || record.currentWorkspaceId || ""
+    });
     return {
       receiptKind,
       id: String(record.id || `share-receipt-${receiptDigest.slice(0, 16)}`).slice(0, 120),
       remoteVersion: String(record.remoteVersion || "").slice(0, 120),
       packageId: String(record.packageId || "").slice(0, 160),
       sourcePackageId: String(record.sourcePackageId || "").slice(0, 160),
-      workspaceId: normalizeShareRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId),
+      workspaceId,
       shareId: String(record.shareId || "").slice(0, 120),
       artworkId: String(record.artworkId || "").slice(0, 120),
       repositoryDigest,
       receiptDigest,
-      publicUrl: normalizeSharePublicUrl(record.publicUrl),
-      acceptedAt: normalizePlanDate(record.acceptedAt),
+      publicUrl,
+      acceptedAt,
       shareCount: normalizeInteger(record.shareCount, 0, 0, 9999),
       htmlBytes: normalizeInteger(record.htmlBytes, 0, 0, 999999999),
       warningCount: normalizeInteger(record.warningCount, 0, 0, 9999),
@@ -898,31 +919,121 @@
       direction: ["check", "push", "revoke"].includes(record.direction) ? record.direction : "",
       endpoint: record.endpoint ? String(record.endpoint).slice(0, 420) : "",
       receivedAt: normalizePlanDate(record.receivedAt),
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationDigest: verification.digest,
+      verificationExpectedDigest: verification.expectedDigest,
+      verificationWorkspaceStatus: verification.workspaceStatus,
+      verificationAction: verification.action,
       message: record.message ? String(record.message).slice(0, 260) : ""
     };
   }
 
+  function verifyShareRepositoryReceipt(receipt = {}, context = {}) {
+    const sourcePackageId = String(receipt.sourcePackageId || "").trim();
+    const workspaceId = normalizeShareRepositoryWorkspaceId(receipt.workspaceId || receipt.remoteWorkspaceId || receipt.accountId);
+    const shareId = String(receipt.shareId || "").trim();
+    const repositoryDigest = normalizeShareRepositoryHex(receipt.repositoryDigest);
+    const publicUrl = normalizeSharePublicUrl(receipt.publicUrl);
+    const acceptedAt = normalizePlanDate(receipt.acceptedAt);
+    const receiptDigest = normalizeShareRepositoryHex(receipt.receiptDigest);
+    const direction = String(receipt.direction || context.direction || "").trim();
+    const actionHint = String(receipt.action || receipt.verificationAction || context.action || "").trim();
+    const forceRevokeDigest = direction === "revoke" || actionHint === "revoke";
+    const expectedWorkspaceId = context.expectedWorkspaceId
+      ? normalizeShareRepositoryWorkspaceId(context.expectedWorkspaceId)
+      : "";
+    const publishDigest = sourcePackageId && workspaceId && repositoryDigest && publicUrl && acceptedAt
+      ? sha256StableJson({
+        sourcePackageId,
+        workspaceId,
+        repositoryDigest,
+        publicUrl,
+        acceptedAt
+      })
+      : "";
+    const revokeDigest = sourcePackageId && workspaceId && shareId && repositoryDigest && publicUrl && acceptedAt
+      ? sha256StableJson({
+        action: "revoke",
+        sourcePackageId,
+        workspaceId,
+        shareId,
+        repositoryDigest,
+        publicUrl,
+        acceptedAt
+      })
+      : "";
+    const expectedDigest = forceRevokeDigest
+      ? revokeDigest
+      : receiptDigest && receiptDigest === revokeDigest
+      ? revokeDigest
+      : publishDigest;
+    const action = forceRevokeDigest || receiptDigest && receiptDigest === revokeDigest ? "revoke" : "publish";
+    const digestOk = Boolean(expectedDigest && receiptDigest && expectedDigest === receiptDigest);
+    const workspaceOk = !expectedWorkspaceId || expectedWorkspaceId === workspaceId;
+    const status = digestOk && workspaceOk
+      ? "verified"
+      : digestOk
+        ? "workspace-mismatch"
+        : "digest-mismatch";
+    const actionLabel = action === "revoke" ? "撤销" : "发布";
+    const messages = {
+      verified: `本机一致性校验通过：${actionLabel}回执 receiptDigest 与声明字段一致，Workspace 匹配当前空间。`,
+      "workspace-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执空间 ${workspaceId} 与当前空间 ${expectedWorkspaceId} 不一致。`,
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按分享回执声明字段重算匹配。"
+    };
+    return {
+      status,
+      message: messages[status],
+      digest: receiptDigest,
+      expectedDigest,
+      workspaceStatus: workspaceOk ? "matched" : "mismatch",
+      action
+    };
+  }
+
   function decorateShareRepositoryReceipt(receipt, context = {}) {
-    const normalized = normalizeShareRepositoryReceipt(receipt);
+    const normalized = normalizeShareRepositoryReceipt({
+      ...receipt,
+      workspaceId: receipt?.workspaceId || context.workspaceId,
+      expectedWorkspaceId: context.workspaceId || receipt?.expectedWorkspaceId,
+      direction: context.direction || receipt?.direction
+    });
     if (!normalized) return null;
     return {
       ...normalized,
       direction: context.direction || normalized.direction,
       endpoint: context.endpoint || normalized.endpoint,
-      workspaceId: context.workspaceId || normalized.workspaceId,
       receivedAt: context.receivedAt || normalized.receivedAt,
       message: context.message || normalized.message
     };
   }
 
   function appendShareRepositoryReceipt(repository, receipt) {
-    const normalized = normalizeShareRepositoryReceipt(receipt);
+    const normalized = normalizeShareRepositoryReceipt({
+      ...receipt,
+      expectedWorkspaceId: repository?.workspaceId || receipt?.expectedWorkspaceId
+    });
     const existing = Array.isArray(repository?.receipts) ? repository.receipts : [];
-    if (!normalized) return existing.slice(0, SHARE_REPOSITORY_MAX_RECEIPTS);
+    if (!normalized) {
+      return existing
+        .map((item) => normalizeShareRepositoryReceipt({
+          ...item,
+          expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+        }))
+        .filter(Boolean)
+        .slice(0, SHARE_REPOSITORY_MAX_RECEIPTS);
+    }
     const key = getShareRepositoryReceiptKey(normalized);
     return [
       normalized,
-      ...existing.filter((item) => getShareRepositoryReceiptKey(item) !== key)
+      ...existing
+        .map((item) => normalizeShareRepositoryReceipt({
+          ...item,
+          expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+        }))
+        .filter(Boolean)
+        .filter((item) => getShareRepositoryReceiptKey(item) !== key)
     ].slice(0, SHARE_REPOSITORY_MAX_RECEIPTS);
   }
 
@@ -7614,16 +7725,18 @@
   function getShareRepositoryReceiptAudit() {
     const service = normalizeShareService(state.shareService);
     const receipts = service.receipts;
+    const verifiedCount = receipts.filter((receipt) => receipt.verificationStatus === "verified").length;
     return {
       ok: true,
       kind: "mr-calligraphy-share-repository-receipt-audit-v1",
       workspaceId: service.workspaceId,
       total: receipts.length,
+      verifiedCount,
       latestReceipt: receipts[0] || null,
       receipts: clone(receipts),
       boundary: SHARE_REPOSITORY_BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条作品分享远端回执，当前空间 ${service.workspaceId}，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        ? `已保存 ${receipts.length} 条作品分享远端回执，本机校验通过 ${verifiedCount} 条，当前空间 ${service.workspaceId}，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
         : "暂无作品分享远端回执。"
     };
   }
@@ -7676,6 +7789,9 @@
             <dt>HTML Bytes</dt><dd>${escapeHtml(receipt.htmlBytes || 0)}</dd>
             <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
             <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>本机校验</dt><dd>${escapeHtml(formatShareRepositoryReceiptVerificationStatus(receipt.verificationStatus))}</dd>
+            <dt>校验说明</dt><dd>${escapeHtml(receipt.verificationMessage || "未执行")}</dd>
+            <dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "未知")}</dd>
             <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
             <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
             <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
@@ -7720,6 +7836,14 @@
       push: "发布",
       revoke: "撤销"
     }[direction] || "远端回执";
+  }
+
+  function formatShareRepositoryReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "workspace-mismatch": "空间不匹配",
+      "digest-mismatch": "摘要不匹配"
+    }[status] || "未校验";
   }
 
   function getShareServiceRemoteConfig() {

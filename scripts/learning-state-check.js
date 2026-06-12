@@ -1008,7 +1008,7 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
@@ -1045,12 +1045,15 @@ async function runShareRepositoryMockServerChecks(fetchApi) {
     assert(mock.state.package.shares[0].html.includes("MR 书法作品分享"), "作品分享 mock 应保存真实 HTML 分享页。");
     assert(mock.state.receipts[0].workspaceId === "share-alpha", "作品分享 mock 回执应包含 workspace。");
     assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].receiptDigest), "作品分享 mock 应返回 64 位 receiptDigest。");
+    assert(pushedMock.receipt.verificationStatus === "verified", "作品分享发布回执应标记本机校验通过。");
+    assert(pushedMock.receipt.verificationExpectedDigest === pushedMock.receipt.receiptDigest, "作品分享发布回执应保留重算摘要。");
 
     const shareStatus = window.MRAppState.getShareServiceStatus("artwork-3");
     assert(shareStatus.workspaceId === "share-alpha", "分享服务状态应保存当前 workspace。");
     assert(shareStatus.lastRemotePublicUrl === pushedMock.publicUrl, "分享服务状态应保存最近远端 publicUrl。");
     assert(shareStatus.receiptCount === 1, "分享服务状态应统计远端回执数量。");
     assert(shareStatus.lastReceipt.receiptDigest === mock.state.receipts[0].receiptDigest, "分享服务状态应持久化最近回执。");
+    assert(shareStatus.lastReceipt.verificationStatus === "verified", "分享服务状态应持久化回执校验状态。");
     const remoteShareRecord = shareStatus.records.find((record) => record.id === shareLinkForRemote.record.id);
     assert(remoteShareRecord.remoteWorkspaceId === "share-alpha", "分享记录应保存远端 workspace。");
     assert(remoteShareRecord.remotePublicUrl === pushedMock.publicUrl, "分享记录应保存自己的远端 publicUrl。");
@@ -1059,7 +1062,9 @@ async function runShareRepositoryMockServerChecks(fetchApi) {
     assert(shareReceiptAudit.kind === "mr-calligraphy-share-repository-receipt-audit-v1", "作品分享回执审计应包含稳定 kind。");
     assert(shareReceiptAudit.workspaceId === "share-alpha", "作品分享回执审计应返回当前 workspace。");
     assert(shareReceiptAudit.total === 1, "作品分享回执审计应统计最近回执。");
+    assert(shareReceiptAudit.verifiedCount === 1, "作品分享回执审计应统计本机校验通过数量。");
     assert(shareReceiptAudit.latestReceipt.publicUrl === pushedMock.publicUrl, "作品分享回执审计应保留 publicUrl。");
+    assert(shareReceiptAudit.latestReceipt.verificationStatus === "verified", "作品分享回执审计应保留校验状态。");
     const shareReceiptExport = window.MRAppState.getShareRepositoryReceiptAuditExport();
     assert(shareReceiptExport.ok, "作品分享远端回执应可导出 HTML 审计。");
     assert(shareReceiptExport.filename.includes("mr-calligraphy-share-repository-receipts"), "作品分享回执审计导出应返回稳定文件名。");
@@ -1067,6 +1072,8 @@ async function runShareRepositoryMockServerChecks(fetchApi) {
     assert(shareReceiptExport.html.includes("share-alpha"), "作品分享回执审计 HTML 应包含 workspace。");
     assert(shareReceiptExport.html.includes(pushedMock.publicUrl), "作品分享回执审计 HTML 应包含远端 publicUrl。");
     assert(shareReceiptExport.html.includes(mock.state.receipts[0].receiptDigest), "作品分享回执审计 HTML 应包含 receiptDigest。");
+    assert(shareReceiptExport.html.includes("本机校验通过"), "作品分享回执审计 HTML 应包含本机校验结果。");
+    assert(shareReceiptExport.html.includes("重算摘要"), "作品分享回执审计 HTML 应包含重算摘要字段。");
 
     const checkedAfterPush = await window.MRAppState.checkRemoteShareService();
     assert(checkedAfterPush.ok && checkedAfterPush.package.records.length === 1, "作品分享 mock GET 应返回最近 PUT 保存的分享包。");
@@ -1094,6 +1101,8 @@ async function runShareRepositoryMockServerChecks(fetchApi) {
     assert(revokedRemote.ok, "作品分享 mock 应接收真实 DELETE 撤销。");
     assert(revokedRemote.receipt.workspaceId === "share-alpha", "作品分享撤销回执应包含 workspace。");
     assert(revokedRemote.receipt.shareId === shareLinkForRemote.record.id, "远端撤销回执应指向分享 ID。");
+    assert(revokedRemote.receipt.verificationStatus === "verified", "作品分享撤销回执应标记本机校验通过。");
+    assert(revokedRemote.receipt.verificationAction === "revoke", "作品分享撤销回执应识别为撤销动作。");
     assert(mock.state.revokedShares[0].workspaceId === "share-alpha", "作品分享 mock 撤销记录应包含 workspace。");
     assert(mock.state.revokedShares[0].shareId === shareLinkForRemote.record.id, "作品分享 mock 应记录撤销过的分享 ID。");
     assert(mock.state.package.records[0].remoteRevokedAt, "作品分享 mock 最近包应标记分享已远端撤销。");
@@ -1106,8 +1115,24 @@ async function runShareRepositoryMockServerChecks(fetchApi) {
     assert(revokedShareStatus.receiptCount >= 2, "分享服务状态应同时保留发布和撤销回执。");
     const revokedShareReceiptAudit = window.MRAppState.getShareRepositoryReceiptAudit();
     assert(revokedShareReceiptAudit.latestReceipt.direction === "revoke", "作品分享回执审计应把撤销回执放在最近位置。");
+    assert(revokedShareReceiptAudit.latestReceipt.verificationStatus === "verified", "作品分享撤销回执审计应保留校验状态。");
     const revokedShareReceiptExport = window.MRAppState.getShareRepositoryReceiptAuditExport();
     assert(revokedShareReceiptExport.html.includes("撤销"), "作品分享回执审计 HTML 应包含撤销方向。");
+    assert(revokedShareReceiptExport.html.includes("本机校验通过"), "作品分享回执审计 HTML 应包含撤销校验结果。");
+
+    global.fetch = async () => createJsonResponse({
+      ok: true,
+      message: "远端返回了被篡改的作品分享回执。",
+      package: mock.state.workspaces["share-alpha"].package,
+      latestReceipt: {
+        ...mock.state.receipts[0],
+        receiptDigest: "0".repeat(64)
+      }
+    });
+    const tamperedShareReceiptCheck = await window.MRAppState.checkRemoteShareService();
+    assert(tamperedShareReceiptCheck.ok, "作品分享篡改回执检查仍应完成远端读取。");
+    assert(tamperedShareReceiptCheck.receipt.verificationStatus === "digest-mismatch", "作品分享篡改回执应被标记为摘要不匹配。");
+    global.fetch = fetchApi;
 
     const badTokenConfig = window.MRAppState.configureShareServiceRemote({
       remoteEndpoint: mock.endpoint,

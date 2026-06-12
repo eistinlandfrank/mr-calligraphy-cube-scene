@@ -64,7 +64,7 @@ node scripts/control-inventory.js --check
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放，生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码和页面关闭后的后台队列 | 增加转码 adapter、压缩、Service Worker/服务端导出队列 |
 | 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，签名回执审计还是本机列表和 mock/HMAC 开发验收，还没有账号教师端、生产证书签名、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、生产证书验真和服务端 PDF 渲染验收 |
-| 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接；远端分享 API adapter 已支持 endpoint/token、GET 检查、PUT 发布分享包、保存 publicUrl 和回执，本机 mock 服务可验收 | 远端 adapter 仍需用户自备服务端；没有内置公网托管、社群分享、课堂作品墙、账号权限或生产 CDN | 离线导出保持 `real-export`，本机分享服务和远端 adapter 标记 `real-local`；后续增加生产公开分享服务、权限控制和撤销审计 |
+| 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接；远端分享 API adapter 已支持 endpoint/token/Workspace、GET 检查、PUT 发布分享包、DELETE 撤销远端分享、保存 publicUrl、发布/撤销回执、回执审计和本机一致性校验，本机 mock 服务可验收 | 远端 adapter 仍需用户自备服务端；没有内置公网托管、社群分享、课堂作品墙、账号权限或生产 CDN | 离线导出保持 `real-export`，本机分享服务和远端 adapter 标记 `real-local`；后续增加生产公开分享服务、权限控制和撤销审计 |
 
 ### 4.3 主后台和写实后台
 
@@ -2751,3 +2751,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划仓库回执本机校验`
+
+## 78. 2026-06-12 新增作品分享回执本机校验
+
+本次把作品分享远端回执从“保存并展示”推进为“保存、展示并做本机一致性校验”。前端会分别按发布和撤销回执的字段重算 `receiptDigest`，判断回执字段是否自洽、workspace 是否匹配当前分享空间，并把结果显示在分享状态、回执列表和审计 HTML 中。
+
+完成内容：
+
+- `normalizeShareRepositoryReceipt()` 新增 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest`、`verificationWorkspaceStatus` 和 `verificationAction`。
+- 新增 `verifyShareRepositoryReceipt()`，发布回执按 `sourcePackageId`、`workspaceId`、`repositoryDigest`、`publicUrl` 和 `acceptedAt` 重算 `receiptDigest`。
+- 撤销回执按 `action: "revoke"`、`sourcePackageId`、`workspaceId`、`shareId`、`repositoryDigest`、`publicUrl` 和 `acceptedAt` 重算 `receiptDigest`。
+- 作品分享状态摘要新增“本机校验通过 / 空间不匹配 / 摘要不匹配”提示。
+- 作品分享回执列表显示校验状态和校验说明。
+- 作品分享回执审计 HTML 新增本机校验、校验说明和重算摘要字段。
+- `scripts/learning-state-check.js` 验证真实 mock 发布/撤销回执校验通过，并验证篡改 `receiptDigest` 的回执会被标记为摘要不匹配。
+- Playwright 前台作品分享用例验证回执状态、列表、localStorage 和审计 HTML 都显示本机校验通过。
+- `docs/share-repository-api-contract.md` 同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端作品分享 API 返回的 `receipt/latestReceipt`、公开访问 URL、分享 ID 与当前作品分享 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.shareService.lastReceipt` 与 `receipts[*]` 的校验字段。
+- 成功反馈：分享状态、回执列表和审计 HTML 显示“本机校验通过”。
+- 失败反馈：回执摘要无法重算时显示“摘要不匹配”；回执自洽但 workspace 不同则显示“空间不匹配”。
+- 刷新后复现方式：校验结果随本机学习状态持久化，刷新前台后仍能读取。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产私钥验签、公钥证书链、账号权限、公开分享 CDN 发布、教师端审批或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享回执本机校验`

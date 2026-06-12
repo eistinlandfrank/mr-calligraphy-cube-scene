@@ -232,11 +232,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     if (method === "PUT") {
       const shareId = body.records[0].id;
       const publicUrl = `https://share.example.test/${shareId}.html`;
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = "d".repeat(64);
       remoteSharePackage = {
         ...body,
         workspaceId: body.workspaceId,
         packageId: "e2e-share-package",
-        acceptedAt: new Date().toISOString(),
+        acceptedAt,
         publicUrl
       };
       latestShareReceipt = {
@@ -247,14 +249,20 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         workspaceId: body.workspaceId,
         shareId,
         artworkId: body.records[0].artworkId,
-        repositoryDigest: "d".repeat(64),
-        acceptedAt: remoteSharePackage.acceptedAt,
+        repositoryDigest,
+        acceptedAt,
         publicUrl,
         shareCount: body.records.length,
         htmlBytes: body.shares[0].html.length,
         warningCount: 0,
         warnings: [],
-        receiptDigest: "e".repeat(64)
+        receiptDigest: sha256StableJson({
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          repositoryDigest,
+          publicUrl,
+          acceptedAt
+        })
       };
       await route.fulfill({
         status: 201,
@@ -274,6 +282,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     }
     if (method === "DELETE") {
       const revokedAt = new Date().toISOString();
+      const repositoryDigest = "f".repeat(64);
       remoteSharePackage = remoteSharePackage
         ? {
           ...remoteSharePackage,
@@ -300,14 +309,22 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         workspaceId: body.workspaceId,
         shareId: body.shareId,
         artworkId: body.artworkId,
-        repositoryDigest: "f".repeat(64),
+        repositoryDigest,
         acceptedAt: revokedAt,
         publicUrl: body.publicUrl,
         shareCount: remoteSharePackage?.records?.length || 0,
         htmlBytes: 0,
         warningCount: 0,
         warnings: [],
-        receiptDigest: "a".repeat(64)
+        receiptDigest: sha256StableJson({
+          action: "revoke",
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          shareId: body.shareId,
+          repositoryDigest,
+          publicUrl: body.publicUrl,
+          acceptedAt: revokedAt
+        })
       };
       await route.fulfill({
         status: 200,
@@ -530,12 +547,16 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.shareService.workspaceId).toBe("share-e2e");
   expect(learningState.shareService.lastRemotePublicUrl).toContain(shareRecordId);
   expect(learningState.shareService.lastReceipt.workspaceId).toBe("share-e2e");
-  expect(learningState.shareService.lastReceipt.receiptDigest).toBe("e".repeat(64));
+  expect(learningState.shareService.lastReceipt.receiptDigest).toBe(latestShareReceipt.receiptDigest);
+  expect(learningState.shareService.lastReceipt.verificationStatus).toBe("verified");
+  expect(learningState.shareService.lastReceipt.verificationExpectedDigest).toBe(latestShareReceipt.receiptDigest);
   expect(learningState.shareService.records[0].remotePublicUrl).toContain(shareRecordId);
   expect(learningState.shareService.records[0].remoteWorkspaceId).toBe("share-e2e");
   await expect(page.locator("#shareRepositoryReceiptStatus")).toContainText("作品分享远端回执");
+  await expect(page.locator("#shareRepositoryReceiptStatus")).toContainText("本机校验通过 1 条");
   await expect(page.locator("#shareRepositoryReceiptStatus")).toContainText("share-e2e");
   await expect(page.locator("#shareRepositoryReceiptList")).toContainText("发布");
+  await expect(page.locator("#shareRepositoryReceiptList")).toContainText("本机校验通过");
   const shareReceiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#shareRepositoryReceiptExportButton").click();
   const shareReceiptDownload = await shareReceiptDownloadPromise;
@@ -545,7 +566,9 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(shareReceiptHtml).toContain("MR 书法作品分享远端回执审计");
   expect(shareReceiptHtml).toContain("share-e2e");
   expect(shareReceiptHtml).toContain("https://share.example.test/");
-  expect(shareReceiptHtml).toContain("e".repeat(64));
+  expect(shareReceiptHtml).toContain(latestShareReceipt.receiptDigest);
+  expect(shareReceiptHtml).toContain("本机校验通过");
+  expect(shareReceiptHtml).toContain("重算摘要");
   await page.locator("#shareRemoteRevokeButton").click();
   await expect(page.locator("#shareRemoteStatus")).toContainText("已请求远端撤销");
   await expect(page.locator("#shareRepositoryReceiptList")).toContainText("撤销");
@@ -559,14 +582,17 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.shareService.lastRemoteDirection).toBe("revoke");
   expect(learningState.shareService.records[0].remoteRevokedAt).toBeTruthy();
   expect(learningState.shareService.records[0].remoteWorkspaceId).toBe("share-e2e");
-  expect(learningState.shareService.records[0].remoteRevokeReceiptDigest).toBe("a".repeat(64));
+  expect(learningState.shareService.records[0].remoteRevokeReceiptDigest).toBe(latestShareReceipt.receiptDigest);
+  expect(learningState.shareService.lastReceipt.verificationStatus).toBe("verified");
+  expect(learningState.shareService.lastReceipt.verificationAction).toBe("revoke");
   const revokedReceiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#shareRepositoryReceiptExportButton").click();
   const revokedReceiptDownload = await revokedReceiptDownloadPromise;
   const revokedReceiptPath = await revokedReceiptDownload.path();
   const revokedReceiptHtml = fs.readFileSync(revokedReceiptPath, "utf8");
   expect(revokedReceiptHtml).toContain("撤销");
-  expect(revokedReceiptHtml).toContain("a".repeat(64));
+  expect(revokedReceiptHtml).toContain(latestShareReceipt.receiptDigest);
+  expect(revokedReceiptHtml).toContain("本机校验通过");
 
   await page.locator("#reviewCopyShareLink").click();
   await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);

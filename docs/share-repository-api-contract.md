@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端作品分享 API 接收的是浏览器本机生成的作品分享包，用来验证公开链接发布的真实 HTTP 闭环。它会把当前作品分享 HTML、分享记录和摘要发送到用户配置的 endpoint，并携带 Workspace 空间 ID 保存远端返回的 `publicUrl` 与回执。
+远端作品分享 API 接收的是浏览器本机生成的作品分享包，用来验证公开链接发布的真实 HTTP 闭环。它会把当前作品分享 HTML、分享记录和摘要发送到用户配置的 endpoint，并携带 Workspace 空间 ID 保存远端返回的 `publicUrl` 与回执；前端会重算发布/撤销回执的 `receiptDigest`，用于确认回执声明字段是否自洽、workspace 是否匹配当前空间。
 
 它仍不是内置账号系统、微信分享、班级作品墙、生产 CDN 或权限服务。生产服务端必须自己处理账号、空间、权限、撤销、访问统计、CDN 缓存和审计链。
 
@@ -102,9 +102,50 @@ X-MR-Workspace-Id: <workspaceId>
 - 回执会保留 `workspaceId`，回执审计 HTML 会显示当前空间。
 - `publicUrl` 必须是 HTTP/HTTPS URL。
 - 回执会补充本机收到方向、endpoint 和收到时间。
+- 回执会补充 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest`、`verificationWorkspaceStatus` 和 `verificationAction`，用于页面和审计导出显示本机一致性校验结果。
 - 当前回执保存在本机状态中，不是服务端不可篡改日志。
 
-## 5. 失败响应
+## 5. 本机一致性校验
+
+前端收到发布回执后，会使用稳定 JSON 重新计算：
+
+```json
+{
+  "sourcePackageId": "<receipt.sourcePackageId>",
+  "workspaceId": "<receipt.workspaceId>",
+  "repositoryDigest": "<receipt.repositoryDigest>",
+  "publicUrl": "<receipt.publicUrl>",
+  "acceptedAt": "<receipt.acceptedAt>"
+}
+```
+
+前端收到撤销回执后，会使用稳定 JSON 重新计算：
+
+```json
+{
+  "action": "revoke",
+  "sourcePackageId": "<receipt.sourcePackageId>",
+  "workspaceId": "<receipt.workspaceId>",
+  "shareId": "<receipt.shareId>",
+  "repositoryDigest": "<receipt.repositoryDigest>",
+  "publicUrl": "<receipt.publicUrl>",
+  "acceptedAt": "<receipt.acceptedAt>"
+}
+```
+
+重算结果必须等于 `receipt.receiptDigest`。同时，回执里的 `workspaceId` 必须匹配当前远端分享配置的 Workspace。
+
+校验结果：
+
+| 状态 | 说明 |
+| --- | --- |
+| `verified` | `receiptDigest` 与发布/撤销声明字段一致，且 Workspace 匹配当前空间 |
+| `workspace-mismatch` | `receiptDigest` 自洽，但回执空间不是当前空间 |
+| `digest-mismatch` | `receiptDigest` 无法按声明字段重算匹配，回执可能损坏或被篡改 |
+
+这个校验只能证明作品分享回执字段自洽和空间匹配，不能替代生产 HMAC 私钥验签、公钥验签、证书链、账号权限、公开链接权限或服务端不可篡改审计。
+
+## 6. 失败响应
 
 失败响应建议返回：
 
@@ -127,7 +168,7 @@ X-MR-Workspace-Id: <workspaceId>
 | `422` | 分享包结构校验失败 |
 | `500` | 服务端内部错误 |
 
-## 6. 本机 mock 服务
+## 7. 本机 mock 服务
 
 启动 mock server：
 
@@ -156,9 +197,9 @@ mock 服务会：
 - `DELETE` 校验 `mr-calligraphy-share-repository-revoke-v1` 撤销请求和 `workspaceId`，只把当前空间最近包里的对应记录标记为远端撤销，并返回撤销回执。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
-- 返回 `mr-calligraphy-share-repository-receipt-v1` 回执、`repositoryDigest` 和 `publicUrl`。
+- 返回 `mr-calligraphy-share-repository-receipt-v1` 回执、`repositoryDigest`、`publicUrl` 和可被前端重算匹配的 `receiptDigest`。
 
-## 7. 远端撤销请求
+## 8. 远端撤销请求
 
 前端点击“撤销远端”时，会向同一 endpoint 发送：
 
@@ -185,19 +226,19 @@ mock 服务会：
 
 当前 mock 服务会按 workspace 把撤销动作写入内存 `revokedShares`，并在当前空间最近包的对应 `records[*]` 上标记 `remoteRevokedAt`。生产服务端仍需要实现真正的 URL 失效、CDN purge、访问权限更新和不可篡改撤销审计。
 
-## 8. 回执审计导出
+## 9. 回执审计导出
 
 前台复盘区“远端分享 API”会显示最近作品分享远端回执，并提供“导出回执”按钮。
 
 导出内容来自 `mr-calligraphy-learning-state-v1.shareService.receipts`，不是临时页面状态。导出的 HTML 会包含：
 
 - `mr-calligraphy-share-repository-receipt-audit-v1` 审计来源。
-- 每条回执的方向（检查、发布、撤销）、Workspace、分享数量、`shareId`、`artworkId`、`publicUrl`、HTML 字节数、`repositoryDigest`、`receiptDigest`、远端版本、endpoint、接收时间和原始 JSON。
+- 每条回执的方向（检查、发布、撤销）、Workspace、分享数量、`shareId`、`artworkId`、`publicUrl`、HTML 字节数、`repositoryDigest`、`receiptDigest`、本机校验结果、校验说明、重算摘要、远端版本、endpoint、接收时间和原始 JSON。
 - 当前远端 adapter 边界说明：它是真实 HTTP 回执记录，但不是生产不可篡改审计、账号权限或 CDN 日志。
 
 没有任何远端回执时，导出 API 会返回失败状态，不生成空审计文件。
 
-## 9. 验收
+## 10. 验收
 
 脚本验收：
 
@@ -212,4 +253,4 @@ node scripts/smoke-test.js --base-url=http://localhost:41496/
 npm run test:e2e -- --grep "front practice saves real strokes and exports a report"
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` / `DELETE` 验证 endpoint、Bearer token、Workspace header、分享包 `workspaceId`、mock server 按空间隔离最近分享包、publicUrl、发布回执、撤销回执、回执审计导出和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` / `DELETE` 验证 endpoint、Bearer token、Workspace header、分享包 `workspaceId`、mock server 按空间隔离最近分享包、publicUrl、发布回执、撤销回执、回执本机一致性校验、篡改回执摘要不匹配、回执审计导出和错误 token 拒绝。

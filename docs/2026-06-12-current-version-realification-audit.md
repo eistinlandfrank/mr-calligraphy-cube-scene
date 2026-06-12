@@ -64,13 +64,13 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.6 分享能力只是导出文件
 
-当前作品分享页和报告分享已包含离线 HTML / PDF / WebM 文件导出，并新增本机分享链接服务：作品复盘区可以生成 `?share=...` 本机链接、复制链接、记录访问/复制次数、撤销链接，并在同一浏览器内通过分享路由打开作品详情。本轮又新增远端分享 API adapter：用户可配置 endpoint/token/workspace，前台真实 GET 检查服务、PUT 发布带 `workspaceId` 的 `mr-calligraphy-share-repository-v1` 分享包，保存远端 `publicUrl`、workspace 和回执。这些都属于真实本机/adapter 能力，但仍不是内置公网托管、课堂发布、社群分享、微信分享或生产权限服务。
+当前作品分享页和报告分享已包含离线 HTML / PDF / WebM 文件导出，并新增本机分享链接服务：作品复盘区可以生成 `?share=...` 本机链接、复制链接、记录访问/复制次数、撤销链接，并在同一浏览器内通过分享路由打开作品详情。本轮又新增远端分享 API adapter：用户可配置 endpoint/token/workspace，前台真实 GET 检查服务、PUT 发布带 `workspaceId` 的 `mr-calligraphy-share-repository-v1` 分享包，保存远端 `publicUrl`、workspace 和回执；作品分享发布/撤销回执也会做本机一致性校验，页面与审计导出会显示“本机校验通过 / 空间不匹配 / 摘要不匹配”。这些都属于真实本机/adapter 能力，但仍不是内置公网托管、课堂发布、社群分享、微信分享或生产权限服务。
 
 真实化方向：
 
 - 保持离线分享页按钮为 `real-export`。
 - 已新增本机 `ShareService`，支持生成本机链接、撤回链接、过期时间、复制/访问计数和 `ShareRecord` 留痕。
-- 已新增远端分享 API adapter，支持用户自备 endpoint、Bearer token、publicUrl 和回执留痕。
+- 已新增远端分享 API adapter，支持用户自备 endpoint、Bearer token、publicUrl、回执留痕和回执本机一致性校验。
 - 后续若接入生产后端，再把 `ShareService` 扩展为内置公开链接、访问权限、班级作品墙和跨设备发布。
 
 ### 2.7 后台还不是可协作的项目后台
@@ -88,7 +88,7 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST/DELETE 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布已补 Workspace 空间 ID，请求头、同步包或发布包、回执和 mock server 都能按空间隔离，计划仓库还能保存回执审计并重算 `receiptDigest` 做本机一致性校验；报告仓库、项目仓库、作品分享远端 API 和远端发布都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST/DELETE 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布已补 Workspace 空间 ID，请求头、同步包或发布包、回执和 mock server 都能按空间隔离，计划仓库与作品分享远端 API 还能保存回执审计并重算 `receiptDigest` 做本机一致性校验；报告仓库、项目仓库、作品分享远端 API 和远端发布都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
 
 真实化方向：
 
@@ -289,6 +289,7 @@ npm run test:e2e
 - 追加作品分享远端 API adapter：复盘区可配置远端分享 endpoint/token，真实 GET 检查、PUT 发布分享包，并保存 publicUrl、packageId 和回执；新增分享 API 合同、本机 mock server、数据层断言和 E2E 前台按钮验收。
 - 追加作品分享远端回执审计记录：远端分享 API 返回的 `receipt/latestReceipt` 会写入 `shareService.receipts`，复盘区可查看最近回执并导出 HTML 审计页；数据层和 E2E 已验证无回执不可导出、publicUrl、receiptDigest 和下载文件内容。
 - 追加作品分享远端撤销记录：复盘区新增“撤销远端”，会对分享 endpoint 发起真实 DELETE，请求 `mr-calligraphy-share-repository-revoke-v1`，并把 `remoteRevokedAt`、撤销回执和审计导出写回本机状态；数据层和 E2E 已验证撤销请求体、Bearer token、撤销回执和下载文件内容。
+- 追加作品分享回执本机校验记录：发布回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest`、`publicUrl` 和 `acceptedAt` 重算摘要；撤销回执会额外带 `action: revoke` 与 `shareId` 重算摘要；页面、localStorage 和回执审计 HTML 均显示校验结果，数据层已验证篡改摘要会被标记为不匹配。
 - 追加主后台基础物体更新记录：“更新所选”不再被 HTML 静态禁用，改由选中对象状态动态控制；E2E 已验证新增基础物体后修改名称、类型、颜色、半径和高度，并确认草稿、发布版本和前台发布布局都读取更新后的规格。
 - 追加写实后台删除恢复记录：E2E 已覆盖删除当前写实对象、恢复对象、再次删除后撤回，并读取 `mr-calligraphy-realistic-layout-v1` 确认 `deleted` 字段随 UI 操作持久化。
 - 追加主后台导入模型删除审计记录：导入模型删除后会写入 `mr-calligraphy-main-import-audit-v1`，记录模型 ID、文件名、SHA-256、文件大小、历史快照引用和清理结果；E2E 已验证真实 `.glb` 导入、删除、刷新持久化和 HTML 审计导出。
