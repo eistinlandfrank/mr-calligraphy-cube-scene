@@ -2030,6 +2030,30 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticPublishNote")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
+  const selectedDesignObjectId = await page.locator("#designObjectSelect").inputValue();
+
+  await expect(page.locator("#deleteObject")).toBeEnabled();
+  await expect(page.locator("#restoreObject")).toBeDisabled();
+  await page.locator("#deleteObject").click();
+  await expect(page.locator("#restoreObject")).toBeEnabled();
+  await expect(page.locator("#deleteObject")).toBeDisabled();
+  await expect(page.locator("#designObjectSelect option:checked")).toContainText("已删除");
+  let draftLayout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  expect(draftLayout[selectedDesignObjectId].deleted).toBe(true);
+
+  await page.locator("#restoreObject").click();
+  await expect(page.locator("#deleteObject")).toBeEnabled();
+  await expect(page.locator("#restoreObject")).toBeDisabled();
+  draftLayout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  expect(draftLayout[selectedDesignObjectId].deleted).toBe(false);
+
+  await page.locator("#deleteObject").click();
+  await expect(page.locator("#restoreObject")).toBeEnabled();
+  await page.locator("#undoAction").click();
+  await expect(page.locator("#deleteObject")).toBeEnabled();
+  await expect(page.locator("#restoreObject")).toBeDisabled();
+  draftLayout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  expect(draftLayout[selectedDesignObjectId].deleted).toBe(false);
 
   await page.locator("#realisticPublishNote").fill(firstNote);
   await page.locator("#realisticPublishLayout").click();

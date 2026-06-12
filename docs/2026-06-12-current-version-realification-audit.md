@@ -289,12 +289,13 @@ npm run test:e2e
 - 追加作品分享远端回执审计记录：远端分享 API 返回的 `receipt/latestReceipt` 会写入 `shareService.receipts`，复盘区可查看最近回执并导出 HTML 审计页；数据层和 E2E 已验证无回执不可导出、publicUrl、receiptDigest 和下载文件内容。
 - 追加作品分享远端撤销记录：复盘区新增“撤销远端”，会对分享 endpoint 发起真实 DELETE，请求 `mr-calligraphy-share-repository-revoke-v1`，并把 `remoteRevokedAt`、撤销回执和审计导出写回本机状态；数据层和 E2E 已验证撤销请求体、Bearer token、撤销回执和下载文件内容。
 - 追加主后台基础物体更新记录：“更新所选”不再被 HTML 静态禁用，改由选中对象状态动态控制；E2E 已验证新增基础物体后修改名称、类型、颜色、半径和高度，并确认草稿、发布版本和前台发布布局都读取更新后的规格。
+- 追加写实后台删除恢复记录：E2E 已覆盖删除当前写实对象、恢复对象、再次删除后撤回，并读取 `mr-calligraphy-realistic-layout-v1` 确认 `deleted` 字段随 UI 操作持久化。
 
 已知限制：
 
-- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计和撤销请求，以及主后台基础几何体更新闭环；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、CDN purge、不可篡改日志、导入模型材质编辑或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
+- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计和撤销请求、主后台基础几何体更新闭环、写实后台对象删除恢复验收；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、CDN purge、不可篡改日志、导入模型材质编辑、资产清理审计或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `真实化主后台物体更新`
+- `真实化写实后台删除恢复`

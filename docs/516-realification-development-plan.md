@@ -7175,3 +7175,38 @@
 提交：
 
 - 中文 commit message：`真实化主后台物体更新`
+
+### 2026-06-12：真实化写实后台删除恢复
+
+功能名：写实后台对象删除恢复验收。
+
+完成内容：
+
+- `scripts/smoke-test.js` 写实后台页面检查新增 `designX`、`designY`、`designZ`、`undoAction`、`deleteObject`、`restoreObject` 标记。
+- `tests/e2e/real-flows.spec.js` 写实后台发布回滚用例新增删除、恢复和撤回真实交互。
+- 删除操作后验证 UI 选项文字、删除/恢复按钮状态和本机 `deleted: true`。
+- 恢复操作后验证 `deleted: false`。
+- 再次删除后点击“撤回”，验证撤回栈把对象恢复并持久化。
+
+真实化说明：
+
+- 数据来源：写实后台当前选中对象、删除/恢复按钮和撤回栈。
+- 写入状态：`mr-calligraphy-realistic-layout-v1[objectId].deleted`。
+- 成功反馈：对象下拉显示“已删除”，按钮状态随对象删除状态改变。
+- 失败反馈：已删除对象的删除按钮禁用，未删除对象的恢复按钮禁用。
+- 刷新后复现方式：删除状态保存在写实草稿布局 localStorage 中。
+
+仍待补：
+
+- 当前只覆盖写实内置对象；导入模型的资产清理、删除审计和远端多人权限仍待补强。
+
+验收：
+
+- `node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "realistic admin keeps local publish releases and rollback history"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化写实后台删除恢复`
