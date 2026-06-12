@@ -83,6 +83,20 @@
         <input id="importModelInput" type="file" accept=".glb,.obj,model/gltf-binary,text/plain">
       </label>
       <p id="importStatus" class="import-status">导入后的模型会保存到本机浏览器，并同步到演示页。</p>
+      <section class="realistic-import-material-panel" aria-label="写实导入模型外观">
+        <div class="realistic-panel-title">
+          <span>Material</span>
+          <strong>导入模型外观</strong>
+        </div>
+        <div class="realistic-import-material-row">
+          <label>
+            <span>主色调</span>
+            <input id="realisticImportModelColor" type="color" value="#c8b08a">
+          </label>
+          <button data-feature-state="real-local" id="realisticImportModelMaterialUpdate" type="button">更新外观</button>
+        </div>
+        <p id="realisticImportMaterialStatus" class="realistic-panel-status">选中写实导入模型后，可调整颜色并写入草稿和发布版本。</p>
+      </section>
       <section class="realistic-import-audit-panel" aria-label="写实导入模型删除审计">
         <div class="realistic-panel-title">
           <span>Import Audit</span>

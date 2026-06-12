@@ -408,6 +408,7 @@ body.admin-page .design-panel {
 
 .realistic-publish-panel,
 .realistic-history-panel,
+.realistic-import-material-panel,
 .realistic-import-audit-panel {
   display: grid;
   gap: 9px;
@@ -447,6 +448,13 @@ body.admin-page .design-panel {
 
 .realistic-import-audit-actions {
   grid-template-columns: 1fr;
+}
+
+.realistic-import-material-row {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 7px;
+  align-items: end;
 }
 
 .realistic-publish-note {

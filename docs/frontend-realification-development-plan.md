@@ -1763,3 +1763,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化主后台导入外观编辑`
+
+## 54. 2026-06-12 真实化写实后台导入模型外观编辑
+
+本次把写实后台导入模型也补成可真实编辑外观，和主后台形成一致能力：导入 GLB / OBJ 后可选中模型、调整主色调、即时更新写实 Three.js 画布，并发布到写实演示页。
+
+完成内容：
+
+- `realistic-admin.html` 在导入模型区新增“导入模型外观”控件，包含主色调选择和“更新外观”按钮。
+- `realistic-scene.js` 的写实导入模型记录新增 `color` 字段，旧记录会归一化为默认 `#c8b08a`。
+- 导入时会读取当前主色调；选中写实导入模型时会回填已保存颜色。
+- 点击“更新外观”会克隆并更新导入模型 mesh 材质，后台画布即时变色。
+- 外观更新写入 `mr-calligraphy-realistic-layout-v1.importedModels[*].color`，并支持 Ctrl+Z / 撤回按钮回退。
+- 发布到演示后，`mr-calligraphy-realistic-published-v1.layout.importedModels[*].color` 会保留同一颜色。
+- `realistic-scene.js` 新增 `window.MRRealisticScene.getLayout()`，用于演示页验收当前读取的写实布局。
+- smoke test 写实后台页面检查新增外观编辑控件。
+- Playwright 新增真实 `.glb` 导入、更新主色调、草稿持久化、发布持久化和写实演示页发布布局读取测试。
+
+真实化说明：
+
+- 数据来源：写实后台真实导入模型记录、IndexedDB 模型文件、写实草稿布局和本机发布快照。
+- 写入状态：`mr-calligraphy-realistic-layout-v1.importedModels[*].color`，发布后进入 `mr-calligraphy-realistic-published-v1.layout.importedModels[*].color`。
+- 成功反馈：选中导入模型后状态显示“已载入”，更新后显示“已更新”，写实后台画布即时变色。
+- 失败反馈：未选中导入模型或导入模型已删除时，更新按钮禁用并显示明确提示。
+- 刷新后复现方式：颜色保存在写实 layout 中，刷新后台或打开写实演示发布页后仍能读取。
+
+仍待补：
+
+- 当前实现主色调覆盖；贴图替换、透明度、PBR 参数、导入文件替换、版本差异对比、服务端资产签名和多人审计仍待继续补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "realistic admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化写实导入外观编辑`

@@ -2193,6 +2193,48 @@ test("realistic admin keeps local publish releases and rollback history", async 
   expect(published.releases[0].note).toContain("回滚到 v1");
 });
 
+test("realistic admin updates imported model material and publishes it", async ({ page }) => {
+  test.setTimeout(60_000);
+  const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+
+  await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#designObjectSelect")).toBeVisible();
+  await expect(page.locator("#realisticImportModelMaterialUpdate")).toBeDisabled();
+
+  await page.locator("#importModelInput").setInputFiles(modelPath);
+  await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
+  await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已载入：books");
+  await expect(page.locator("#realisticImportModelMaterialUpdate")).toBeEnabled();
+
+  const importedObjectId = await page.locator("#designObjectSelect").inputValue();
+  await page.locator("#realisticImportModelColor").fill("#2255aa");
+  await page.locator("#realisticImportModelMaterialUpdate").click();
+  await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已更新：books");
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("books");
+
+  let layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(importedRecord).toBeTruthy();
+  expect(importedRecord.fileName).toBe("books.glb");
+  expect(importedRecord.color).toBe("#2255aa");
+
+  await page.locator("#realisticPublishLayout").click();
+  await expect(page.locator("#realisticPublishStatus")).toContainText("已发布到演示");
+  const published = await readJsonLocalStorage(page, REALISTIC_PUBLISHED_KEY);
+  const publishedImportedRecord = published.layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(publishedImportedRecord).toBeTruthy();
+  expect(publishedImportedRecord.color).toBe("#2255aa");
+  expect(published.stats.importedCount).toBeGreaterThan(0);
+
+  await page.goto("/realistic-demo.html", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.MR_REALISTIC_SCENE_SOURCE === "published");
+  await page.waitForFunction(() => window.MRRealisticScene?.getLayout);
+  layout = await page.evaluate(() => window.MRRealisticScene.getLayout());
+  const demoImportedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(demoImportedRecord).toBeTruthy();
+  expect(demoImportedRecord.color).toBe("#2255aa");
+});
+
 test("realistic admin records imported model deletion audit", async ({ page }) => {
   test.setTimeout(60_000);
   const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
