@@ -6859,7 +6859,7 @@ body.is-model-view .notice-panel {
 
 .history-filters {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 5px;
   margin-top: 8px;
 }
@@ -7134,6 +7134,10 @@ body.is-model-view .notice-panel {
 
 .history-trend-bar.is-report {
   background: linear-gradient(180deg, #7ec8ff, #3f6e9a);
+}
+
+.history-trend-bar.is-stage {
+  background: linear-gradient(180deg, #d6c5ff, #6e5797);
 }
 
 .history-daily-section {
@@ -7712,6 +7716,10 @@ body.is-model-view .notice-panel {
 
 .history-item.is-report {
   border-left-color: rgba(126, 200, 255, 0.68);
+}
+
+.history-item.is-stage {
+  border-left-color: rgba(214, 197, 255, 0.68);
 }
 
 .history-item:hover,

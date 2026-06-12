@@ -303,6 +303,9 @@ function validateHistoryRepositoryPackage(payload, options = {}) {
     validateRecordList(payload.records.sessions, "sessions", ["id", "glyph", "startedAt"], errors);
     validateRecordList(payload.records.artworks, "artworks", ["id", "title", "createdAt"], errors);
     validateRecordList(payload.records.reports, "reports", ["id", "createdAt"], errors);
+    if (payload.records.stages !== undefined) {
+      validateRecordList(payload.records.stages, "stages", ["id", "stage", "completedAt"], errors);
+    }
   }
 
   const recordCount = getRecordCount(payload);
@@ -373,7 +376,7 @@ function createReceipt(payload, validation, workspaceId = DEFAULT_WORKSPACE_ID) 
 
 function getRecordCount(payload) {
   const records = payload?.records || {};
-  return ["sessions", "artworks", "reports"].reduce((sum, key) => {
+  return ["sessions", "artworks", "reports", "stages"].reduce((sum, key) => {
     return sum + (Array.isArray(records[key]) ? records[key].length : 0);
   }, 0);
 }

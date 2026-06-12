@@ -1391,6 +1391,8 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
   assert(packageResult.package.records.sessions.length >= 3, "学习档案同步包应包含练习记录。");
   assert(packageResult.package.records.artworks.length >= 3, "学习档案同步包应包含作品记录。");
   assert(packageResult.package.records.reports.length >= 3, "学习档案同步包应包含报告记录。");
+  assert(packageResult.package.records.stages.length >= 3, "学习档案同步包应包含阶段记录。");
+  assert(packageResult.package.history.some((item) => item.type === "stage"), "学习档案详情快照应包含阶段记录。");
   assert(packageResult.package.summary.teacherReviewedReportCount === 1, "学习档案同步包应统计带教师批注报告数量。");
   const reviewedReportPackage = packageResult.package.records.reports.find((item) => item.id === "report-2");
   assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "学习档案同步包应保留报告教师批注内容。");

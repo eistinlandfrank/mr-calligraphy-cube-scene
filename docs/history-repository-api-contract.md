@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端会携带 Workspace 空间 ID 做同 endpoint 下的第一层隔离，拉取时也会按响应里的 `nextPageUrl` 追取分页；收到 `receipt/latestReceipt` 后会重算 `receiptDigest`，用于确认回执声明字段是否自洽、workspace 是否匹配当前空间。但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
+远端学习档案仓库 API 接收浏览器本机的练习、作品、报告和可选阶段记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端会携带 Workspace 空间 ID 做同 endpoint 下的第一层隔离，拉取时也会按响应里的 `nextPageUrl` 追取分页；收到 `receipt/latestReceipt` 后会重算 `receiptDigest`，用于确认回执声明字段是否自洽、workspace 是否匹配当前空间。但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
 
 生产服务端必须重新校验档案包结构，并在账号、空间、权限、数据版本和分页查询上做服务端隔离；前端 Workspace 只能作为 adapter 合同和本地开发保护，不能替代登录态和服务端授权。
 
@@ -50,12 +50,13 @@ Workspace 由前台“远端学习档案 API”面板配置，默认 `local-brow
 | `records.sessions` | 练习记录数组 |
 | `records.artworks` | 作品记录数组 |
 | `records.reports` | 报告记录数组；报告可包含 `teacherReview` 本机教师批注 |
+| `records.stages` | 可选。学习路径阶段记录数组，用于同步“笔画拆解 / 创作实践 / 复习巩固”等本机阶段日志 |
 | `history` | 用于展示的档案详情快照 |
 
 服务端应至少校验：
 
 - `kind`、`version`、`packageId`、`workspaceId`、`exportedAt` 和 `storageKey`。
-- `records.sessions`、`records.artworks` 和 `records.reports` 必须是数组。
+- `records.sessions`、`records.artworks` 和 `records.reports` 必须是数组；`records.stages` 如出现也必须是数组。
 - 练习记录必须包含 `id`、`glyph` 和 `startedAt`。
 - 作品记录必须包含 `id`、`title` 和 `createdAt`。
 - 报告记录必须包含 `id` 和 `createdAt`。

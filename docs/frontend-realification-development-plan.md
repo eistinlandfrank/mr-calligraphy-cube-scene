@@ -3686,3 +3686,46 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案批量操作回执`
+
+## 101. 2026-06-13 新增学习阶段档案记录
+
+本次把“进入笔画拆解 / 进入创作 / 复习巩固”产生的 `stageRecords` 从路径统计里的隐性记录，升级为学习档案面板中的一等记录。阶段记录现在能被筛选、打开详情、复制直达链接、批量导出、移入回收站、恢复，并随学习档案同步包的可选 `records.stages` 字段导出/拉取。
+
+完成内容：
+
+- `app-state.js` 新增 `stageToHistoryEntry()` 和阶段详情快照，`getHistory()` 会把 `stageRecords` 合并进学习档案列表。
+- 学习档案摘要、每日趋势、批量回执、回收站和恢复流程新增阶段数量。
+- 批量导出所选档案时会输出 `records.stages` 和 `history[*].type = "stage"`。
+- 学习档案同步包新增可选 `records.stages`，导入、远端拉取、字段冲突和远端副本另存都支持阶段记录。
+- `index.html` 新增“阶段”筛选按钮；`script.js` 新增阶段详情指标，并禁用阶段日志重命名。
+- `scripts/history-repository-mock-server.js` 统计和校验可选阶段数组；`docs/history-repository-api-contract.md` 同步合同说明。
+- Playwright 前台真实流程覆盖复习巩固阶段进入档案、阶段详情、阶段导出 JSON 和远端同步包包含阶段记录。
+
+真实化说明：
+
+- 数据来源：用户点击学习路径动作后写入的 `mr-calligraphy-learning-state-v1.stageRecords`。
+- 写入状态：继续复用现有 `stageRecords`，不新增演示数据；学习档案和同步包只读取真实阶段日志。
+- 成功反馈：用户能在学习档案中看到阶段记录，并能导出、同步、删除、恢复。
+- 失败反馈：旧同步包没有 `records.stages` 时按空数组兼容；`records.stages` 不是数组时明确拒绝导入。
+- 刷新后复现方式：点击“复习巩固”后刷新，进入学习档案并筛选“阶段”，仍可打开刚刚写入的阶段详情。
+
+仍待补：
+
+- 当前是本机学习阶段日志和可选同步字段，不是云端课程编排、教师下发任务、跨设备学情进度或服务端不可篡改阶段审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/history-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习阶段档案记录`

@@ -7241,7 +7241,7 @@ function renderHistoryPanel(sceneIndex = currentIndex) {
 
   const summary = history.summary;
   els.historySummary.textContent = history.total
-    ? `${summary.practiceCount} 次练习 / ${summary.artworkCount} 幅作品 / ${summary.reportCount} 份报告 / 平均 ${summary.averageScore} 分`
+    ? `${summary.practiceCount} 次练习 / ${summary.artworkCount} 幅作品 / ${summary.reportCount} 份报告 / ${summary.stageCount || 0} 条阶段 / 平均 ${summary.averageScore} 分`
     : "暂无记录";
   els.historyDownloadArchive.disabled = history.total === 0;
   renderHistoryRepositoryStatus(history);
@@ -7338,6 +7338,7 @@ function renderHistoryBatchReceipt() {
     ["练习", `${receipt.counts?.practice || 0}条`],
     ["作品", `${receipt.counts?.artwork || 0}条`],
     ["报告", `${receipt.counts?.report || 0}条`],
+    ["阶段", `${receipt.counts?.stage || 0}条`],
     ["所选", `${receipt.selectedIds?.length || 0}条`],
     ["状态", receipt.status || "success"]
   ].forEach(([label, value]) => {
@@ -9977,6 +9978,15 @@ function getHistoryDetailStats(detail) {
     ];
   }
 
+  if (detail.type === "stage") {
+    return [
+      ["阶段", detail.status || "-"],
+      ["字", detail.glyph || "-"],
+      ["步骤", `${Number(detail.targetStep || 0) + 1}`],
+      ["进度", detail.stageProgress ? `${detail.stageProgress.done}/${detail.stageProgress.total}` : "-"]
+    ];
+  }
+
   return [
     ["评分", `${detail.score || 0}分`],
     ["字", detail.glyph || "-"],
@@ -9988,6 +9998,7 @@ function getHistoryDetailStats(detail) {
 function getHistoryDetailTypeLabel(type) {
   if (type === "artwork") return "作品详情";
   if (type === "report") return "报告详情";
+  if (type === "stage") return "阶段详情";
   return "练习详情";
 }
 
@@ -9996,7 +10007,8 @@ function setHistoryDetailActions(detail) {
   const hasImage = Boolean(detail?.imageData);
   const hasReport = detail?.type === "report";
   const hasDetail = Boolean(detail);
-  if (els.historyDetailRename) els.historyDetailRename.disabled = !hasDetail;
+  const canRename = hasDetail && detail?.type !== "stage";
+  if (els.historyDetailRename) els.historyDetailRename.disabled = !canRename;
   if (els.historyDetailReplay) els.historyDetailReplay.disabled = !hasStrokes;
   if (els.historyDetailDownloadImage) els.historyDetailDownloadImage.disabled = !hasImage;
   if (els.historyDetailDownloadReport) els.historyDetailDownloadReport.disabled = !hasReport;
@@ -10016,6 +10028,10 @@ function renameHistoryDetail() {
   const detail = getActiveHistoryDetail();
   if (!detail) {
     showNotice("请选择一条记录。");
+    return;
+  }
+  if (detail.type === "stage") {
+    showNotice("阶段记录是学习路径日志，暂不支持重命名。");
     return;
   }
 

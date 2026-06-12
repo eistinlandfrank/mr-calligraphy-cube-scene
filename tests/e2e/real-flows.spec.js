@@ -997,6 +997,31 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toBeVisible();
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("复习巩固");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.stageRecords.at(-1).stage).toBe("review");
+
+  await page.getByRole("button", { name: /切换到步骤 7/ }).click();
+  await page.locator(".history-filters").getByRole("button", { name: "阶段" }).click();
+  await expect(page.locator("#historySummary")).toContainText("1 条阶段");
+  await expect(page.locator("#historyList")).toContainText("复习巩固");
+  await page.locator("#historyList .history-item").first().click();
+  await expect(page.locator("#historyDetailType")).toContainText("阶段详情");
+  await expect(page.locator("#historyDetailTitle")).toContainText("复习巩固");
+  await expect(page.locator("#historyDetailBody")).toContainText("阶段记录 ID");
+  await expect(page.locator("#historyDetailRename")).toBeDisabled();
+  await page.locator("#historySelectVisible").check();
+  const stageHistoryDownloadPromise = page.waitForEvent("download");
+  await page.locator("#historyExportSelected").click();
+  const stageHistoryDownload = await stageHistoryDownloadPromise;
+  expect(stageHistoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-selection-.*\.json$/);
+  const stageHistoryPath = await stageHistoryDownload.path();
+  const stageHistoryPackage = JSON.parse(fs.readFileSync(stageHistoryPath, "utf8"));
+  expect(stageHistoryPackage.records.stages).toHaveLength(1);
+  expect(stageHistoryPackage.records.stages[0].stage).toBe("review");
+  expect(stageHistoryPackage.history[0].type).toBe("stage");
+  await expect(page.locator("#historyBatchReceipt")).toContainText("阶段");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyBatchReceipts[0].counts.stage).toBe(1);
 
   await page.goto(`/?report=${learningState.reports[0].id}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
@@ -1188,7 +1213,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#historyRepositorySummary")).toContainText("E2E 可访问");
 
   await page.locator("#historyRepositoryPushButton").click();
-  await expect(page.locator("#historyRepositorySummary")).toContainText("已推送 3 条学习档案");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("已推送 4 条学习档案");
 
   const putRequest = historyRequests.find((item) => item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer history-token");
@@ -1196,8 +1221,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
   expect(putRequest.body.workspaceId).toBe("history-e2e");
   expect(putRequest.body.source.workspaceId).toBe("history-e2e");
-  expect(putRequest.body.summary.total).toBe(3);
+  expect(putRequest.body.summary.total).toBe(4);
   expect(putRequest.body.records.reports).toHaveLength(1);
+  expect(putRequest.body.records.stages).toHaveLength(1);
+  expect(putRequest.body.records.stages[0].stage).toBe("review");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("push");
@@ -1223,11 +1250,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(historyReceiptHtml).toContain("重算摘要");
 
   await page.locator("#historyRepositoryPullButton").click();
-  await expect(page.locator("#historyRepositorySummary")).toContainText("已从远端 API 拉取 3 条学习档案");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("已从远端 API 拉取 4 条学习档案");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
-  expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
+  expect(learningState.historyRepository.lastRemoteRecordCount).toBe(4);
+  expect(learningState.stageRecords.some((record) => record.stage === "review")).toBe(true);
   expect(learningState.historyRepository.lastReceipt.verificationStatus).toBe("verified");
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token" && item.workspaceId === "history-e2e")).toBe(true);
 

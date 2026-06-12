@@ -4175,3 +4175,42 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习档案批量操作回执`
+
+### 2026-06-13：新增学习阶段档案记录
+
+完成内容：
+
+- 学习档案列表新增阶段记录来源，`stageRecords` 不再只影响路径统计。
+- 新增“阶段”筛选，阶段详情显示阶段、字、目标步骤、阶段进度和阶段记录 ID。
+- 批量导出、批量删除、回收站、恢复和批量操作回执都统计阶段记录。
+- 学习档案同步包新增可选 `records.stages`，导入和远端拉取会合并阶段记录。
+- 本机历史仓库 mock server、API 合同、学习状态检查和浏览器 E2E 同步覆盖阶段记录。
+
+真实化说明：
+
+- 数据来源：真实点击学习路径动作后写入的 `stageRecords`。
+- 写入状态：不新增假阶段；继续使用 `mr-calligraphy-learning-state-v1.stageRecords`。
+- 成功反馈：用户可在学习档案中筛选、查看、导出、同步和恢复阶段日志。
+- 失败反馈：旧包无阶段字段时兼容；字段格式错误时导入失败并提示。
+- 刷新后复现方式：点击“复习巩固”后刷新，学习档案“阶段”筛选仍能看到该记录。
+
+仍待补：
+
+- 当前是本机阶段日志入档和可选同步字段，不是云端课程编排、教师端任务下发、跨设备实时进度或服务端不可篡改阶段审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/history-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习阶段档案记录`

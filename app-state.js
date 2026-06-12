@@ -30,7 +30,7 @@
   const PLAN_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
-  const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包、携带 Workspace 空间 ID 并按 nextPageUrl 追取分页，但仍不包含完整账号权限、教师批注审计或公开作品墙。";
+  const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品、报告和阶段记录；配置远端 API 后会通过 fetch 同步档案包、携带 Workspace 空间 ID 并按 nextPageUrl 追取分页，但仍不包含完整账号权限、教师批注审计或公开作品墙。";
   const HISTORY_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-history-repository-receipt-v1";
   const HISTORY_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
@@ -65,15 +65,21 @@
   const HISTORY_REPOSITORY_CONFLICT_FIELDS = {
     session: ["title", "glyph", "copybook", "score", "feedback", "metrics", "endedAt", "status"],
     artwork: ["title", "glyph", "style", "score", "feedback", "tags", "createdAt"],
-    report: ["title", "averageScore", "summary", "teacherReview", "createdAt"]
+    report: ["title", "averageScore", "summary", "teacherReview", "createdAt"],
+    stage: ["label", "glyph", "copybook", "targetStep", "note", "completedAt"]
   };
   const HISTORY_REPOSITORY_CONFLICT_LABELS = {
     session: "练习",
     artwork: "作品",
     report: "报告",
+    stage: "阶段",
     title: "标题",
+    label: "阶段",
     glyph: "字",
     copybook: "碑帖",
+    targetStep: "目标步骤",
+    note: "说明",
+    completedAt: "完成时间",
     score: "评分",
     feedback: "反馈",
     metrics: "能力指标",
@@ -1926,7 +1932,7 @@
   function normalizeHistoryRepositoryConflict(record) {
     if (!record || typeof record !== "object") return null;
     const id = String(record.id || "").trim();
-    const type = ["session", "artwork", "report"].includes(record.type) ? record.type : "";
+    const type = ["session", "artwork", "report", "stage"].includes(record.type) ? record.type : "";
     if (!id || !type) return null;
     const remoteRecord = normalizeHistoryConflictRemoteRecord(type, record.remoteRecord);
     if (!remoteRecord) return null;
@@ -1952,6 +1958,7 @@
     if (type === "session") return normalizeSession(record);
     if (type === "artwork") return normalizeArtwork(record);
     if (type === "report") return normalizeReport(record);
+    if (type === "stage") return normalizeStageRecord(record);
     return null;
   }
 
@@ -2050,14 +2057,15 @@
     const sessions = Array.isArray(records.sessions) ? records.sessions.map(normalizeSession).filter(Boolean) : [];
     const artworks = Array.isArray(records.artworks) ? records.artworks.map(normalizeArtwork).filter(Boolean) : [];
     const reports = Array.isArray(records.reports) ? records.reports.map(normalizeReport).filter(Boolean) : [];
-    const deletedCount = sessions.length + artworks.length + reports.length;
+    const stages = Array.isArray(records.stages) ? records.stages.map(normalizeStageRecord).filter(Boolean) : [];
+    const deletedCount = sessions.length + artworks.length + reports.length + stages.length;
     if (!deletedCount) return null;
 
     return {
       id: String(record.id || makeId("trash")),
       title: String(record.title || `已删除 ${deletedCount} 条学习档案`).slice(0, 72),
       deletedAt: Number.isFinite(Date.parse(record.deletedAt)) ? String(record.deletedAt) : new Date().toISOString(),
-      records: { sessions, artworks, reports },
+      records: { sessions, artworks, reports, stages },
       references: normalizeHistoryTrashReferences(record.references)
     };
   }
@@ -2096,7 +2104,8 @@
       record.recordCount,
       normalizeInteger(counts.practice, 0, 0, 9999)
         + normalizeInteger(counts.artwork, 0, 0, 9999)
-        + normalizeInteger(counts.report, 0, 0, 9999),
+        + normalizeInteger(counts.report, 0, 0, 9999)
+        + normalizeInteger(counts.stage, 0, 0, 9999),
       0,
       9999
     );
@@ -2111,7 +2120,8 @@
       counts: {
         practice: normalizeInteger(counts.practice, 0, 0, 9999),
         artwork: normalizeInteger(counts.artwork, 0, 0, 9999),
-        report: normalizeInteger(counts.report, 0, 0, 9999)
+        report: normalizeInteger(counts.report, 0, 0, 9999),
+        stage: normalizeInteger(counts.stage, 0, 0, 9999)
       },
       selectedIds,
       filename: record.filename ? String(record.filename).slice(0, 160) : "",
@@ -11563,7 +11573,8 @@
     const entries = [
       ...state.sessions.map(sessionToHistoryEntry),
       ...state.artworks.map(artworkToHistoryEntry),
-      ...state.reports.map(reportToHistoryEntry)
+      ...state.reports.map(reportToHistoryEntry),
+      ...state.stageRecords.map(stageToHistoryEntry)
     ]
       .filter(Boolean)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -11837,6 +11848,7 @@
           practiceCount: 0,
           artworkCount: 0,
           reportCount: 0,
+          stageCount: 0,
           totalCount: 0
         });
       }
@@ -11845,6 +11857,7 @@
       if (entry.type === "practice") group.practiceCount += 1;
       if (entry.type === "artwork") group.artworkCount += 1;
       if (entry.type === "report") group.reportCount += 1;
+      if (entry.type === "stage") group.stageCount += 1;
       if (Number.isFinite(entry.score) && entry.score > 0) {
         group.scores.push(entry.score);
       }
@@ -11863,6 +11876,7 @@
         practiceCount: group.practiceCount,
         artworkCount: group.artworkCount,
         reportCount: group.reportCount,
+        stageCount: group.stageCount,
         totalCount: group.totalCount
       }));
   }
@@ -12027,6 +12041,24 @@
     };
   }
 
+  function stageToHistoryEntry(stageRecord) {
+    const record = normalizeStageRecord(stageRecord);
+    if (!record) return null;
+    const config = LEARNING_STAGE_CONFIG[record.stage] || {};
+    return {
+      id: record.id,
+      type: "stage",
+      title: `${record.label || config.label || "学习阶段"}：${record.glyph}`,
+      shortLabel: "阶段",
+      createdAt: record.completedAt || record.createdAt,
+      score: 0,
+      meta: `${record.copybook} / 步骤 ${record.targetStep + 1}`,
+      status: record.label || config.label || "已记录",
+      stage: record.stage,
+      targetStep: record.targetStep
+    };
+  }
+
   function getHistoryDetail(id) {
     const recordId = String(id || "");
     const session = state.sessions.find((item) => item.id === recordId);
@@ -12100,6 +12132,34 @@
       };
     }
 
+    const stageRecord = state.stageRecords.find((item) => item.id === recordId);
+    if (stageRecord) {
+      const record = normalizeStageRecord(stageRecord);
+      const config = LEARNING_STAGE_CONFIG[record.stage] || {};
+      const stageProgress = getStageProgress(record.taskId || getCurrentTask()?.id);
+      return {
+        type: "stage",
+        id: record.id,
+        title: `${record.label || config.label || "学习阶段"}：${record.glyph}`,
+        createdAt: record.completedAt || record.createdAt,
+        score: 0,
+        status: record.label || config.label || "已记录",
+        summary: record.note || config.summary || "阶段记录会保存在当前浏览器本机学习档案中。",
+        glyph: record.glyph,
+        copybook: record.copybook,
+        mode: record.mode,
+        stage: record.stage,
+        targetStep: record.targetStep,
+        stageProgress: clone(stageProgress),
+        feedback: [
+          `阶段记录 ID：${record.id}。`,
+          `目标步骤：${record.targetStep + 1}。`,
+          `阶段进度：${stageProgress.done}/${stageProgress.total}。`,
+          "阶段记录来自用户点击学习路径按钮，不是静态演示条目。"
+        ]
+      };
+    }
+
     return null;
   }
 
@@ -12107,6 +12167,7 @@
     const practiceCount = entries.filter((entry) => entry.type === "practice").length;
     const artworkCount = entries.filter((entry) => entry.type === "artwork").length;
     const reportCount = entries.filter((entry) => entry.type === "report").length;
+    const stageCount = entries.filter((entry) => entry.type === "stage").length;
     const teacherReviewedReportCount = entries.filter((entry) => entry.type === "report" && entry.hasTeacherReview).length;
     const scored = entries.filter((entry) => entry.score > 0);
     const average = scored.length
@@ -12117,6 +12178,7 @@
       practiceCount,
       artworkCount,
       reportCount,
+      stageCount,
       teacherReviewedReportCount,
       averageScore: average
     };
@@ -12170,12 +12232,16 @@
     return {
       practice: state.sessions.filter((session) => selected.has(session.id)),
       artwork: state.artworks.filter((artwork) => selected.has(artwork.id)),
-      report: state.reports.filter((report) => selected.has(report.id))
+      report: state.reports.filter((report) => selected.has(report.id)),
+      stage: state.stageRecords.filter((record) => selected.has(record.id))
     };
   }
 
   function getDeletedHistoryCount(deleted) {
-    return (deleted.practice?.length || 0) + (deleted.artwork?.length || 0) + (deleted.report?.length || 0);
+    return (deleted.practice?.length || 0)
+      + (deleted.artwork?.length || 0)
+      + (deleted.report?.length || 0)
+      + (deleted.stage?.length || 0);
   }
 
   function collectHistoryDeleteReferences(deleted) {
@@ -12204,7 +12270,8 @@
       records: {
         sessions: (deleted.practice || []).map(clone),
         artworks: (deleted.artwork || []).map(clone),
-        reports: (deleted.report || []).map(clone)
+        reports: (deleted.report || []).map(clone),
+        stages: (deleted.stage || []).map(clone)
       },
       references
     });
@@ -12219,8 +12286,8 @@
 
   function summarizeHistoryTrash(deleted, deletedCount) {
     if (deletedCount === 1) {
-      const record = deleted.practice?.[0] || deleted.artwork?.[0] || deleted.report?.[0];
-      return `已删除：${record?.title || record?.glyph || "学习档案"}`;
+      const record = deleted.practice?.[0] || deleted.artwork?.[0] || deleted.report?.[0] || deleted.stage?.[0];
+      return `已删除：${record?.title || record?.label || record?.glyph || "学习档案"}`;
     }
     return `批量删除 ${deletedCount} 条学习档案`;
   }
@@ -12231,12 +12298,14 @@
     const selectedIds = new Set([
       ...deletedSessionIds,
       ...deletedArtworkIds,
-      ...(deleted.report || []).map((report) => report.id)
+      ...(deleted.report || []).map((report) => report.id),
+      ...(deleted.stage || []).map((record) => record.id)
     ]);
 
     state.sessions = state.sessions.filter((session) => !selectedIds.has(session.id));
     state.artworks = state.artworks.filter((artwork) => !selectedIds.has(artwork.id));
     state.reports = state.reports.filter((report) => !selectedIds.has(report.id));
+    state.stageRecords = state.stageRecords.filter((record) => !selectedIds.has(record.id));
 
     if (deletedSessionIds.has(state.currentSessionId)) {
       state.currentSessionId = null;
@@ -12272,8 +12341,9 @@
     const references = collectHistoryDeleteReferences(deleted);
     const trash = pushHistoryTrash(deleted, references);
     applyHistoryDeletion(deleted);
-    const deletedType = deleted.practice.length ? "practice" : deleted.artwork.length ? "artwork" : "report";
-    const record = deleted.practice[0] || deleted.artwork[0] || deleted.report[0];
+    const deletedType = deleted.practice.length ? "practice" : deleted.artwork.length ? "artwork" : deleted.report.length ? "report" : "stage";
+    const record = deleted.practice[0] || deleted.artwork[0] || deleted.report[0] || deleted.stage[0];
+    const recordTitle = record.title || record.label || record.glyph || "学习档案";
     const batchReceipt = appendHistoryBatchReceipt({
       action: "delete",
       label: "移入回收站",
@@ -12281,16 +12351,16 @@
       counts: getHistoryRecordCounts(deleted),
       selectedIds: [recordId],
       trashId: trash?.id || "",
-      message: `已移入回收站：${record.title || record.glyph || "学习档案"}。`
+      message: `已移入回收站：${recordTitle}。`
     });
-    addEvent("history-delete", `移入回收站：${record.title || record.glyph || "学习档案"}`);
+    addEvent("history-delete", `移入回收站：${recordTitle}`);
     saveState();
     return {
       ok: true,
       deletedType,
       trash: decorateHistoryTrashEntry(trash),
       batchReceipt: batchReceipt ? clone(batchReceipt) : null,
-      message: `已移入回收站：${record.title || record.glyph || "学习档案"}。可用“恢复最近删除”找回。`
+      message: `已移入回收站：${recordTitle}。可用“恢复最近删除”找回。`
     };
   }
 
@@ -12300,10 +12370,12 @@
     const sessions = state.sessions.filter((session) => selected.has(session.id));
     const artworks = state.artworks.filter((artwork) => selected.has(artwork.id));
     const reports = state.reports.filter((report) => selected.has(report.id));
+    const stages = state.stageRecords.filter((record) => selected.has(record.id));
     const history = [
       ...sessions.map(sessionToHistoryEntry),
       ...artworks.map(artworkToHistoryEntry),
-      ...reports.map(reportToHistoryEntry)
+      ...reports.map(reportToHistoryEntry),
+      ...stages.map(stageToHistoryEntry)
     ]
       .filter(Boolean)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
@@ -12315,7 +12387,8 @@
       records: {
         sessions: sessions.map(clone),
         artworks: artworks.map(clone),
-        reports: reports.map(clone)
+        reports: reports.map(clone),
+        stages: stages.map(clone)
       },
       history: history.map((entry) => getHistoryDetail(entry.id)).filter(Boolean)
     };
@@ -12350,7 +12423,7 @@
   }
 
   function getHistoryRepositoryRecordCount() {
-    return state.sessions.length + state.artworks.length + state.reports.length;
+    return state.sessions.length + state.artworks.length + state.reports.length + state.stageRecords.length;
   }
 
   function getHistoryRepositoryStatus() {
@@ -12406,6 +12479,7 @@
       sessionCount: state.sessions.length,
       artworkCount: state.artworks.length,
       reportCount: state.reports.length,
+      stageCount: state.stageRecords.length,
       tone,
       message,
       boundary: HISTORY_REPOSITORY_BOUNDARY,
@@ -12588,14 +12662,19 @@
       .filter((report) => !selectedIds || selectedIds.has(report.id))
       .map(normalizeReport)
       .filter(Boolean);
+    const stages = state.stageRecords
+      .filter((record) => !selectedIds || selectedIds.has(record.id))
+      .map(normalizeStageRecord)
+      .filter(Boolean);
     const history = [
       ...sessions.map(sessionToHistoryEntry),
       ...artworks.map(artworkToHistoryEntry),
-      ...reports.map(reportToHistoryEntry)
+      ...reports.map(reportToHistoryEntry),
+      ...stages.map(stageToHistoryEntry)
     ]
       .filter(Boolean)
       .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
-    const recordCount = sessions.length + artworks.length + reports.length;
+    const recordCount = sessions.length + artworks.length + reports.length + stages.length;
     if (!recordCount) {
       return {
         ok: false,
@@ -12625,7 +12704,8 @@
         records: {
           sessions: clone(sessions),
           artworks: clone(artworks),
-          reports: clone(reports)
+          reports: clone(reports),
+          stages: clone(stages)
         },
         history: history.map((entry) => getHistoryDetail(entry.id)).filter(Boolean)
       },
@@ -12684,6 +12764,9 @@
     if (!Array.isArray(source.records.sessions) || !Array.isArray(source.records.artworks) || !Array.isArray(source.records.reports)) {
       return { ok: false, message: "学习档案同步包缺少 sessions、artworks 或 reports 数组。" };
     }
+    if (source.records.stages !== undefined && !Array.isArray(source.records.stages)) {
+      return { ok: false, message: "学习档案同步包的 stages 字段必须是数组。" };
+    }
     return { ok: true, package: source };
   }
 
@@ -12728,6 +12811,7 @@
     if (type === "session") return record.endedAt || record.snapshotAt || record.startedAt || null;
     if (type === "artwork") return record.createdAt || null;
     if (type === "report") return record.generatedAt || record.createdAt || null;
+    if (type === "stage") return record.completedAt || record.createdAt || null;
     return null;
   }
 
@@ -12790,7 +12874,8 @@
     const sessions = Array.isArray(records.sessions) ? records.sessions : [];
     const artworks = Array.isArray(records.artworks) ? records.artworks : [];
     const reports = Array.isArray(records.reports) ? records.reports : [];
-    const incomingCount = sessions.length + artworks.length + reports.length;
+    const stages = Array.isArray(records.stages) ? records.stages : [];
+    const incomingCount = sessions.length + artworks.length + reports.length + stages.length;
     if (!incomingCount) {
       const message = "同步包里没有可导入的学习档案记录。";
       recordHistoryRepositoryError(message);
@@ -12800,13 +12885,15 @@
     const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession, "session");
     const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork, "artwork");
     const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport, "report");
-    const importedCount = sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount;
-    const updatedCount = sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount;
-    const skippedConflictCount = sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount;
+    const stageMerge = mergeHistoryRecords(state.stageRecords, stages, normalizeStageRecord, "stage");
+    const importedCount = sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount + stageMerge.importedCount;
+    const updatedCount = sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount + stageMerge.updatedCount;
+    const skippedConflictCount = sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount + stageMerge.skippedConflictCount;
     const conflictRecords = getHistoryRepositoryConflictRecords([
       ...sessionMerge.conflicts,
       ...artworkMerge.conflicts,
-      ...reportMerge.conflicts
+      ...reportMerge.conflicts,
+      ...stageMerge.conflicts
     ]);
     const now = new Date().toISOString();
 
@@ -13200,7 +13287,8 @@
     const sessions = Array.isArray(records.sessions) ? records.sessions.length : 0;
     const artworks = Array.isArray(records.artworks) ? records.artworks.length : 0;
     const reports = Array.isArray(records.reports) ? records.reports.length : 0;
-    return sessions + artworks + reports;
+    const stages = Array.isArray(records.stages) ? records.stages.length : 0;
+    return sessions + artworks + reports + stages;
   }
 
   function mergeHistoryRepositoryPackages(repositoryPackages = []) {
@@ -13216,7 +13304,8 @@
       const sessions = Array.isArray(records.sessions) ? records.sessions : [];
       const artworks = Array.isArray(records.artworks) ? records.artworks : [];
       const reports = Array.isArray(records.reports) ? records.reports : [];
-      processedRecordCount += sessions.length + artworks.length + reports.length;
+      const stages = Array.isArray(records.stages) ? records.stages : [];
+      processedRecordCount += sessions.length + artworks.length + reports.length + stages.length;
       if (repositoryPackage?.packageId) {
         latestPackageId = repositoryPackage.packageId;
       }
@@ -13224,10 +13313,11 @@
       const sessionMerge = mergeHistoryRecords(state.sessions, sessions, normalizeSession, "session");
       const artworkMerge = mergeHistoryRecords(state.artworks, artworks, normalizeArtwork, "artwork");
       const reportMerge = mergeHistoryRecords(state.reports, reports, normalizeReport, "report");
-      importedCount += sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount;
-      updatedCount += sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount;
-      skippedConflictCount += sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount;
-      conflicts.push(...sessionMerge.conflicts, ...artworkMerge.conflicts, ...reportMerge.conflicts);
+      const stageMerge = mergeHistoryRecords(state.stageRecords, stages, normalizeStageRecord, "stage");
+      importedCount += sessionMerge.importedCount + artworkMerge.importedCount + reportMerge.importedCount + stageMerge.importedCount;
+      updatedCount += sessionMerge.updatedCount + artworkMerge.updatedCount + reportMerge.updatedCount + stageMerge.updatedCount;
+      skippedConflictCount += sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount + reportMerge.skippedConflictCount + stageMerge.skippedConflictCount;
+      conflicts.push(...sessionMerge.conflicts, ...artworkMerge.conflicts, ...reportMerge.conflicts, ...stageMerge.conflicts);
     });
 
     return {
@@ -13504,6 +13594,7 @@
     if (type === "session") return { records: state.sessions, normalize: normalizeSession };
     if (type === "artwork") return { records: state.artworks, normalize: normalizeArtwork };
     if (type === "report") return { records: state.reports, normalize: normalizeReport };
+    if (type === "stage") return { records: state.stageRecords, normalize: normalizeStageRecord };
     return null;
   }
 
@@ -13553,7 +13644,8 @@
     const prefix = {
       session: "session-remote-copy",
       artwork: "artwork-remote-copy",
-      report: "report-remote-copy"
+      report: "report-remote-copy",
+      stage: "stage-remote-copy"
     }[conflict.type] || "history-remote-copy";
     copy.id = makeId(prefix);
     copy.title = appendHistoryRepositoryCopyTitle(copy.title || conflict.remoteTitle || conflict.title || "远端冲突档案");
@@ -13568,6 +13660,8 @@
       copy.latestSessionId = null;
       copy.latestArtworkId = null;
       state.reports.push(normalizeReport(copy));
+    } else if (conflict.type === "stage") {
+      state.stageRecords.push(normalizeStageRecord(copy));
     }
     return copy;
   }
@@ -13612,7 +13706,8 @@
       deleted: {
         practice: deleted.practice.length,
         artwork: deleted.artwork.length,
-        report: deleted.report.length
+        report: deleted.report.length,
+        stage: deleted.stage.length
       },
       message: `已将 ${deletedCount} 条学习档案移入回收站，可用“恢复最近删除”找回。`
     };
@@ -13633,7 +13728,8 @@
     const sessions = entry.records?.sessions || [];
     const artworks = entry.records?.artworks || [];
     const reports = entry.records?.reports || [];
-    const recordCount = sessions.length + artworks.length + reports.length;
+    const stages = entry.records?.stages || [];
+    const recordCount = sessions.length + artworks.length + reports.length + stages.length;
     return {
       id: entry.id,
       title: entry.title,
@@ -13642,7 +13738,8 @@
       counts: {
         practice: sessions.length,
         artwork: artworks.length,
-        report: reports.length
+        report: reports.length,
+        stage: stages.length
       }
     };
   }
@@ -13693,6 +13790,11 @@
         ? records.report.length
         : Array.isArray(records.reports)
           ? records.reports.length
+          : 0,
+      stage: Array.isArray(records.stage)
+        ? records.stage.length
+        : Array.isArray(records.stages)
+          ? records.stages.length
           : 0
     };
   }
@@ -13707,11 +13809,12 @@
     const restored = {
       practice: restoreRecords(state.sessions, trash.records.sessions, normalizeSession),
       artwork: restoreRecords(state.artworks, trash.records.artworks, normalizeArtwork),
-      report: restoreRecords(state.reports, trash.records.reports, normalizeReport)
+      report: restoreRecords(state.reports, trash.records.reports, normalizeReport),
+      stage: restoreRecords(state.stageRecords, trash.records.stages, normalizeStageRecord)
     };
     restoreHistoryReferences(trash.references);
     state.historyTrash = state.historyTrash.filter((entry) => entry.id !== trash.id);
-    const restoredCount = restored.practice + restored.artwork + restored.report;
+    const restoredCount = restored.practice + restored.artwork + restored.report + restored.stage;
     const batchReceipt = appendHistoryBatchReceipt({
       action: "restore",
       label: "恢复回收站学习档案",
@@ -13787,9 +13890,10 @@
       return {
         practice: sum.practice + entryCounts.practice,
         artwork: sum.artwork + entryCounts.artwork,
-        report: sum.report + entryCounts.report
+        report: sum.report + entryCounts.report,
+        stage: sum.stage + entryCounts.stage
       };
-    }, { practice: 0, artwork: 0, report: 0 });
+    }, { practice: 0, artwork: 0, report: 0, stage: 0 });
     state.historyTrash = [];
     const batchReceipt = appendHistoryBatchReceipt({
       action: "trash-clear",

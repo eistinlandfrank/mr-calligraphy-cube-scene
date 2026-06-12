@@ -9242,3 +9242,44 @@
 提交：
 
 - 中文 commit message：`新增学习档案批量操作回执`
+
+### 2026-06-13：新增学习阶段档案记录
+
+完成内容：
+
+- `app-state.js` 将 `stageRecords` 合并进 `getHistory()`，学习档案可显示笔画拆解、创作实践和复习巩固阶段日志。
+- 新增阶段历史条目和阶段详情，详情包含记录 ID、目标步骤、字帖、阶段进度和本机日志边界。
+- 批量选择、导出所选、删除、回收站、恢复、清空回收站和批量操作回执都支持阶段记录。
+- 学习档案同步包新增可选 `records.stages`；本机导入、远端拉取分页、冲突字段合并和远端副本另存支持阶段记录。
+- 前台新增“阶段”筛选按钮，并为阶段历史条目补充独立样式。
+- 本机历史仓库 mock server 和 API 合同支持可选阶段数组。
+- `learning-state-check.js` 和前台真实流程 E2E 验证阶段记录进入学习档案、JSON 导出和远端同步包。
+
+真实化说明：
+
+- 数据来源：`MRAppState.recordLearningStage()` 真实写入的 `stageRecords`。
+- 写入状态：使用现有 `mr-calligraphy-learning-state-v1.stageRecords`，同步包可选输出 `records.stages`。
+- 成功反馈：阶段动作完成后，学习档案能筛选、打开、导出、同步、删除和恢复对应阶段记录。
+- 失败反馈：旧包不含阶段字段时继续兼容；阶段字段类型不正确时明确拒绝导入。
+- 刷新后复现方式：点击“复习巩固”写入阶段记录后刷新，进入学习档案筛选“阶段”，仍能查看和导出该记录。
+
+仍待补：
+
+- 当前是浏览器本机阶段日志和可选同步字段，不是账号化课程编排、教师端派课、跨设备进度同步或服务端不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check scripts/history-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习阶段档案记录`
