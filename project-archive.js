@@ -11,6 +11,10 @@
   const PROJECT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const PROJECT_REPOSITORY_MAX_RECEIPTS = 12;
   const PROJECT_REPOSITORY_MAX_VERSIONS = 20;
+  const PROJECT_REPOSITORY_MAX_FAILURES = 12;
+  const PROJECT_REPOSITORY_REQUEST_TIMEOUT_MS = 8000;
+  const PROJECT_REPOSITORY_RETRY_BASE_MS = 15000;
+  const PROJECT_REPOSITORY_RETRY_MAX_MS = 300000;
   const PROJECT_REPOSITORY_REMOTE_BOUNDARY = "项目仓库远端 API adapter 会真实发送当前本机项目档案包，并携带 Workspace 空间 ID 做服务端隔离第一版；它不是账号权限、多人协作 CMS、CDN 资产库或生产服务端本身。";
   const STORAGE_ITEMS = [
     { key: "mr-calligraphy-learning-state-v1", label: "学习状态" },
@@ -149,6 +153,15 @@
       lastPackageDigest: normalizeSha256(source.lastPackageDigest),
       lastRepositoryDigest: normalizeSha256(source.lastRepositoryDigest),
       lastError: source.lastError ? String(source.lastError).slice(0, 220) : "",
+      lastRemoteFailureAt: normalizeIsoDate(source.lastRemoteFailureAt || source.lastFailureAt),
+      lastFailureAction: normalizeProjectRepositoryFailureAction(source.lastFailureAction || source.remoteFailureAction),
+      remoteRetryAfter: normalizeIsoDate(source.remoteRetryAfter || source.retryAfter),
+      remoteFailureHistory: Array.isArray(source.remoteFailureHistory || source.failureHistory)
+        ? (source.remoteFailureHistory || source.failureHistory)
+          .map((item) => normalizeProjectRepositoryRemoteFailure(item, { workspaceId }))
+          .filter(Boolean)
+          .slice(0, PROJECT_REPOSITORY_MAX_FAILURES)
+        : [],
       versions: Array.isArray(source.versions)
         ? mergeProjectRepositoryVersions(source.versions)
         : [],
@@ -165,6 +178,122 @@
       .replace(/[^a-zA-Z0-9_.:-]/g, "")
       .slice(0, 64);
     return normalized || PROJECT_REPOSITORY_DEFAULT_WORKSPACE;
+  }
+
+  function normalizeProjectRepositoryFailureAction(action) {
+    const value = String(action || "").trim();
+    return ["check", "push", "pull"].includes(value) ? value : "";
+  }
+
+  function normalizeProjectRepositoryFailureKind(kind) {
+    const value = String(kind || "").trim();
+    return ["http", "network", "timeout", "validation", "response", "unknown"].includes(value) ? value : "unknown";
+  }
+
+  function normalizeProjectRepositoryRemoteFailure(record = {}, context = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const failedAt = normalizeIsoDate(source.failedAt || source.createdAt || source.at) || new Date().toISOString();
+    const action = normalizeProjectRepositoryFailureAction(source.action || context.action);
+    const message = String(source.message || context.message || "远端项目仓库请求失败。").slice(0, 260);
+    if (!message && !action) {
+      return null;
+    }
+    const stableIdSource = [
+      action,
+      normalizeProjectRepositoryFailureKind(source.failureKind || source.kind || context.failureKind),
+      failedAt,
+      source.endpoint || context.endpoint || "",
+      source.packageId || context.packageId || "",
+      message
+    ].join("|");
+    return {
+      id: String(source.id || `project-repository-failure-${sha256StableJson(stableIdSource).slice(0, 16)}`).slice(0, 180),
+      action,
+      failureKind: normalizeProjectRepositoryFailureKind(source.failureKind || source.kind || context.failureKind),
+      message,
+      endpoint: String(source.endpoint || context.endpoint || "").trim().slice(0, 240),
+      workspaceId: normalizeProjectRepositoryWorkspaceId(source.workspaceId || context.workspaceId),
+      failedAt,
+      retryAfter: normalizeIsoDate(source.retryAfter || context.retryAfter),
+      attemptCount: Math.max(1, Math.round(Number(source.attemptCount || context.attemptCount || 1))),
+      packageId: String(source.packageId || context.packageId || "").slice(0, 160),
+      packageDigest: normalizeSha256(source.packageDigest || context.packageDigest),
+      sceneCount: Math.max(0, Math.round(Number(source.sceneCount ?? context.sceneCount ?? 0))),
+      modelCount: Math.max(0, Math.round(Number(source.modelCount ?? context.modelCount ?? 0)))
+    };
+  }
+
+  function classifyProjectRepositoryFailure(message, error = null) {
+    const raw = `${message || ""} ${error?.message || ""}`.toLowerCase();
+    if (error?.failureKind === "timeout" || error?.name === "ProjectRepositoryTimeoutError" || /超时|timeout|timed out|aborted/.test(raw)) {
+      return "timeout";
+    }
+    if (/http\s*\d{3}/i.test(message || "") || /http\s*\d{3}/i.test(error?.message || "")) {
+      return "http";
+    }
+    if (/网络请求异常|failed to fetch|networkerror|load failed|network request failed/.test(raw)) {
+      return "network";
+    }
+    if (/不是 json|没有返回 json|响应中没有|kind|版本|摘要|缺少|结构|校验|不匹配/.test(raw)) {
+      return "validation";
+    }
+    if (/response|响应/.test(raw)) {
+      return "response";
+    }
+    return "unknown";
+  }
+
+  function getProjectRepositoryRetryDelayMs(attemptCount, options = {}) {
+    const configured = Number(options.retryDelayMs);
+    if (Number.isFinite(configured) && configured >= 0) {
+      return Math.round(configured);
+    }
+    const attempts = Math.max(1, Math.min(6, Math.round(Number(attemptCount || 1))));
+    return Math.min(PROJECT_REPOSITORY_RETRY_MAX_MS, PROJECT_REPOSITORY_RETRY_BASE_MS * (2 ** (attempts - 1)));
+  }
+
+  function formatProjectRepositoryFailureAction(action) {
+    return {
+      check: "检查",
+      push: "推送",
+      pull: "拉取"
+    }[action] || "远端请求";
+  }
+
+  function formatProjectRepositoryFailureKind(kind) {
+    return {
+      http: "HTTP 拒收",
+      network: "网络异常",
+      timeout: "请求超时",
+      validation: "结构校验失败",
+      response: "响应异常",
+      unknown: "未知失败"
+    }[kind] || "未知失败";
+  }
+
+  function hasProjectRepositoryPushRetryPending(state = {}) {
+    const lastPushedAt = Date.parse(state.lastPushedAt || "");
+    return (Array.isArray(state.remoteFailureHistory) ? state.remoteFailureHistory : []).some((failure) => {
+      if (failure.action !== "push") {
+        return false;
+      }
+      const failedAt = Date.parse(failure.failedAt || "");
+      return Number.isFinite(failedAt) && (!Number.isFinite(lastPushedAt) || failedAt > lastPushedAt);
+    });
+  }
+
+  function getProjectRepositoryRemoteRetrySummary(state = readProjectRepositoryRemoteState()) {
+    const history = Array.isArray(state.remoteFailureHistory) ? state.remoteFailureHistory : [];
+    const latest = history[0] || null;
+    if (!latest) {
+      return "";
+    }
+    const retryText = latest.retryAfter || state.remoteRetryAfter
+      ? `下一次建议重试：${formatArchiveDate(latest.retryAfter || state.remoteRetryAfter)}`
+      : "修正 endpoint 或远端服务后可手动重试";
+    const actionLabel = formatProjectRepositoryFailureAction(latest.action);
+    const kindLabel = formatProjectRepositoryFailureKind(latest.failureKind);
+    return `失败历史 ${history.length} 次，最近${actionLabel}为${kindLabel}，${retryText}。`;
   }
 
   function normalizeProjectRepositoryReceipt(record = {}, context = {}) {
@@ -404,7 +533,7 @@
     }
     if (state.lastError) {
       tone = "warning";
-      message = state.lastError;
+      message = [state.lastError, getProjectRepositoryRemoteRetrySummary(state)].filter(Boolean).join(" ");
     }
     if (typeof fetch !== "function") {
       tone = "warning";
@@ -429,6 +558,13 @@
       lastPackageDigest: state.lastPackageDigest,
       lastRepositoryDigest: state.lastRepositoryDigest,
       lastError: state.lastError,
+      lastRemoteFailureAt: state.lastRemoteFailureAt,
+      lastFailureAction: state.lastFailureAction,
+      remoteRetryAfter: state.remoteRetryAfter,
+      remoteFailureCount: state.remoteFailureHistory.length,
+      remoteFailureHistory: state.remoteFailureHistory,
+      remoteRetrySummary: getProjectRepositoryRemoteRetrySummary(state),
+      pushRetryPending: hasProjectRepositoryPushRetryPending(state),
       latestReceipt: state.receipts[0] || null,
       receiptCount: state.receipts.length,
       receipts: state.receipts,
@@ -643,7 +779,8 @@
         receipts: [],
         lastCheckedAt: new Date().toISOString(),
         lastRemoteStatus: `已清除远端项目仓库 API 配置，空间 ${workspaceId} 回到本机项目档案。`,
-        lastError: ""
+        lastError: "",
+        remoteRetryAfter: ""
       });
       return {
         ok: true,
@@ -658,7 +795,8 @@
         ...state,
         workspaceId,
         lastCheckedAt: new Date().toISOString(),
-        lastError: validation.message
+        lastError: validation.message,
+        remoteRetryAfter: ""
       });
       return { ok: false, status: getProjectRepositoryRemoteStatus(), message: validation.message };
     }
@@ -678,7 +816,8 @@
       receipts: sameRemoteSpace ? state.receipts : [],
       lastCheckedAt: new Date().toISOString(),
       lastRemoteStatus: `远端项目仓库 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
-      lastError: ""
+      lastError: "",
+      remoteRetryAfter: ""
     });
     return {
       ok: true,
@@ -687,7 +826,7 @@
     };
   }
 
-  async function checkProjectRepositoryRemote() {
+  async function checkProjectRepositoryRemote(options = {}) {
     const state = readProjectRepositoryRemoteState();
     if (!state.endpoint) {
       return persistProjectRepositoryRemoteError("尚未配置远端项目仓库 API。");
@@ -697,10 +836,10 @@
     }
 
     try {
-      const response = await fetch(state.endpoint, {
+      const response = await requestProjectRepositoryRemote(state.endpoint, {
         method: "GET",
         headers: createProjectRepositoryRemoteHeaders(state)
-      });
+      }, options);
       const payload = await parseProjectRepositoryResponse(response, "远端项目仓库 API 检查失败。");
       const checkedAt = new Date().toISOString();
       const message = String(payload.message || "远端项目仓库 API 可访问。").slice(0, 220);
@@ -719,6 +858,7 @@
         lastRemoteVersion: String(payload.remoteVersion || payload.contract?.kind || "").slice(0, 120),
         lastRemoteStatus: `${message} 空间：${state.workspaceId}。`,
         lastError: "",
+        remoteRetryAfter: "",
         versions: remoteVersions,
         receipts: appendProjectRepositoryReceipt(state.receipts, receipt, { workspaceId: state.workspaceId })
       });
@@ -730,11 +870,15 @@
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
-      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("检查", error));
+      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("检查", error), {
+        action: "check",
+        error,
+        retryDelayMs: options.retryDelayMs
+      });
     }
   }
 
-  async function pushProjectRepositoryToRemote() {
+  async function pushProjectRepositoryToRemote(options = {}) {
     const state = readProjectRepositoryRemoteState();
     if (!state.endpoint) {
       return persistProjectRepositoryRemoteError("尚未配置远端项目仓库 API。");
@@ -746,11 +890,11 @@
     let repositoryPackage;
     try {
       repositoryPackage = await createProjectRepositoryPackage();
-      const response = await fetch(state.endpoint, {
+      const response = await requestProjectRepositoryRemote(state.endpoint, {
         method: "PUT",
         headers: createProjectRepositoryRemoteHeaders(state, true),
         body: JSON.stringify(repositoryPackage)
-      });
+      }, options);
       const payload = await parseProjectRepositoryResponse(response, "远端项目仓库推送失败。");
       const pushedAt = new Date().toISOString();
       const message = String(payload.message || "远端项目仓库已接收当前项目档案包。").slice(0, 220);
@@ -798,6 +942,7 @@
         lastPackageDigest: repositoryPackage.packageDigest,
         lastRepositoryDigest: receipt?.repositoryDigest || repositoryPackage.packageDigest,
         lastError: "",
+        remoteRetryAfter: "",
         versions: remoteVersions,
         receipts: appendProjectRepositoryReceipt(state.receipts, receipt, { workspaceId: state.workspaceId })
       });
@@ -810,7 +955,15 @@
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
-      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("推送", error));
+      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("推送", error), {
+        action: "push",
+        error,
+        retryDelayMs: options.retryDelayMs,
+        packageId: repositoryPackage?.packageId || "",
+        packageDigest: repositoryPackage?.packageDigest || "",
+        sceneCount: repositoryPackage?.summary?.sceneCount || 0,
+        modelCount: repositoryPackage?.summary?.importedModels || 0
+      });
     }
   }
 
@@ -825,10 +978,10 @@
 
     try {
       const requestedPackageId = String(options.packageId || options.versionPackageId || "").trim();
-      const response = await fetch(createProjectRepositoryRemoteRequestUrl(state.endpoint, requestedPackageId ? { packageId: requestedPackageId } : {}), {
+      const response = await requestProjectRepositoryRemote(createProjectRepositoryRemoteRequestUrl(state.endpoint, requestedPackageId ? { packageId: requestedPackageId } : {}), {
         method: "GET",
         headers: createProjectRepositoryRemoteHeaders(state)
-      });
+      }, options);
       const payload = await parseProjectRepositoryResponse(response, "远端项目仓库拉取失败。");
       const repositoryPackage = extractProjectRepositoryPackage(payload);
       await assertProjectRepositoryPackageDigest(repositoryPackage);
@@ -870,6 +1023,7 @@
         lastPackageDigest: normalizeSha256(repositoryPackage.packageDigest) || state.lastPackageDigest,
         lastRepositoryDigest: normalizeSha256(payload.repositoryDigest || repositoryPackage.repositoryDigest) || state.lastRepositoryDigest,
         lastError: "",
+        remoteRetryAfter: "",
         versions: remoteVersions,
         receipts: appendProjectRepositoryReceipt(state.receipts, receipt, { workspaceId: state.workspaceId })
       });
@@ -884,7 +1038,11 @@
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
-      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("拉取", error));
+      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("拉取", error), {
+        action: "pull",
+        error,
+        retryDelayMs: options.retryDelayMs
+      });
     }
   }
 
@@ -942,6 +1100,34 @@
     return url.href;
   }
 
+  function createProjectRepositoryTimeoutError(timeoutMs) {
+    const seconds = Math.max(1, Math.ceil(Number(timeoutMs || PROJECT_REPOSITORY_REQUEST_TIMEOUT_MS) / 1000));
+    const error = new Error(`请求超时，远端项目仓库 API 在 ${seconds} 秒内未响应`);
+    error.name = "ProjectRepositoryTimeoutError";
+    error.failureKind = "timeout";
+    error.timeoutMs = timeoutMs;
+    return error;
+  }
+
+  async function requestProjectRepositoryRemote(url, requestOptions = {}, options = {}) {
+    const timeoutMs = Math.max(0, Math.round(Number(options.timeoutMs ?? PROJECT_REPOSITORY_REQUEST_TIMEOUT_MS)));
+    const request = fetch(url, requestOptions);
+    if (!timeoutMs) {
+      return request;
+    }
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(createProjectRepositoryTimeoutError(timeoutMs)), timeoutMs);
+    });
+    try {
+      return await Promise.race([request, timeout]);
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
   async function parseProjectRepositoryResponse(response, fallbackMessage) {
     let payload = null;
     let text = "";
@@ -971,25 +1157,56 @@
   function formatProjectRepositoryRemoteError(action, error) {
     const raw = String(error?.message || "未知错误").trim();
     const normalized = raw.toLowerCase();
+    const isTimeout = error?.failureKind === "timeout" || error?.name === "ProjectRepositoryTimeoutError" || normalized.includes("timeout") || raw.includes("超时");
     const isNetworkError = error instanceof TypeError ||
       normalized.includes("failed to fetch") ||
       normalized.includes("networkerror") ||
       normalized.includes("load failed") ||
       normalized.includes("network request failed");
-    const reason = isNetworkError ? "网络请求异常" : raw;
+    const reason = isTimeout ? raw : isNetworkError ? "网络请求异常" : raw;
     return `远端项目仓库${action}失败：${reason}。`;
   }
 
-  function persistProjectRepositoryRemoteError(message) {
+  function persistProjectRepositoryRemoteError(message, context = {}) {
     const state = readProjectRepositoryRemoteState();
+    const failedAt = new Date().toISOString();
+    const action = normalizeProjectRepositoryFailureAction(context.action);
+    const shouldRecordFailure = Boolean(state.endpoint && action);
+    const attemptCount = shouldRecordFailure ? state.remoteFailureHistory.length + 1 : 0;
+    const retryAfter = shouldRecordFailure
+      ? new Date(Date.parse(failedAt) + getProjectRepositoryRetryDelayMs(attemptCount, context)).toISOString()
+      : "";
+    const failure = shouldRecordFailure
+      ? normalizeProjectRepositoryRemoteFailure({
+        action,
+        failureKind: classifyProjectRepositoryFailure(message, context.error),
+        message,
+        endpoint: state.endpoint,
+        workspaceId: state.workspaceId,
+        failedAt,
+        retryAfter,
+        attemptCount,
+        packageId: context.packageId,
+        packageDigest: context.packageDigest,
+        sceneCount: context.sceneCount,
+        modelCount: context.modelCount
+      })
+      : null;
     writeProjectRepositoryRemoteState({
       ...state,
-      lastCheckedAt: new Date().toISOString(),
-      lastError: message
+      lastCheckedAt: failedAt,
+      lastError: message,
+      lastRemoteFailureAt: failure ? failedAt : state.lastRemoteFailureAt,
+      lastFailureAction: failure ? action : state.lastFailureAction,
+      remoteRetryAfter: failure ? retryAfter : state.remoteRetryAfter,
+      remoteFailureHistory: failure
+        ? [failure, ...state.remoteFailureHistory].slice(0, PROJECT_REPOSITORY_MAX_FAILURES)
+        : state.remoteFailureHistory
     });
     return {
       ok: false,
       message,
+      failure,
       status: getProjectRepositoryRemoteStatus()
     };
   }
@@ -3918,6 +4135,9 @@
       if (repositoryRemoteStatus) {
         repositoryRemoteStatus.textContent = `${remote.message} 边界：${remote.boundary}`;
         repositoryRemoteStatus.dataset.remoteTone = remote.tone === "ready" ? "ready" : remote.tone === "warning" ? "warning" : "idle";
+      }
+      if (repositoryRemotePushButton) {
+        repositoryRemotePushButton.textContent = remote.pushRetryPending ? "重试推送" : "推送仓库包";
       }
       if (repositoryReceiptStatus) {
         repositoryReceiptStatus.textContent = receiptAudit.message;

@@ -3059,6 +3059,7 @@ test("main admin project repository keeps local data on remote failures", async 
   const emptyPullPath = "/e2e-project-repository-empty-pull";
   const rejectedPushPath = "/e2e-project-repository-rejected-push";
   const networkPushPath = "/e2e-project-repository-network-push";
+  const recoveryPushPath = "/e2e-project-repository-recovery-push";
   const projectRepositoryRequests = [];
   const objectLabel = `E2E 项目仓库失败保留 ${Date.now()}`;
 
@@ -3141,6 +3142,94 @@ test("main admin project repository keeps local data on remote failures", async 
     await route.abort("failed");
   });
 
+  await page.route(`**${recoveryPushPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    projectRepositoryRequests.push({
+      path: recoveryPushPath,
+      method,
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body
+    });
+    if (method !== "PUT") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: "项目仓库恢复端 E2E 可访问。",
+          remoteVersion: "e2e-project-recovery-check-v1",
+          versions: []
+        })
+      });
+      return;
+    }
+    const workspaceId = request.headers()["x-mr-workspace-id"] || "local-browser";
+    const validation = validateProjectRepositoryPackage(body, { workspaceId });
+    expect(validation.ok, validation.message).toBe(true);
+    const acceptedAt = new Date(Date.UTC(2026, 5, 13, 9, 15, 0)).toISOString();
+    const repositoryDigest = body.packageDigest;
+    const receiptDigest = sha256StableJson({
+      sourcePackageId: body.packageId,
+      workspaceId,
+      repositoryDigest,
+      acceptedAt
+    });
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "项目仓库恢复端 E2E 已接收。",
+        packageId: "e2e-project-recovery-package",
+        workspaceId,
+        packageDigest: body.packageDigest,
+        repositoryDigest,
+        remoteVersion: "e2e-project-recovery-v1",
+        selectedVersion: {
+          packageId: "e2e-project-recovery-package",
+          sourcePackageId: body.packageId,
+          workspaceId,
+          packageDigest: body.packageDigest,
+          repositoryDigest,
+          remoteVersion: "e2e-project-recovery-v1",
+          acceptedAt,
+          sceneCount: body.summary.sceneCount,
+          modelCount: body.summary.importedModels,
+          summary: body.summary
+        },
+        versions: [{
+          packageId: "e2e-project-recovery-package",
+          sourcePackageId: body.packageId,
+          workspaceId,
+          packageDigest: body.packageDigest,
+          repositoryDigest,
+          remoteVersion: "e2e-project-recovery-v1",
+          acceptedAt,
+          sceneCount: body.summary.sceneCount,
+          modelCount: body.summary.importedModels,
+          summary: body.summary
+        }],
+        receipt: {
+          receiptKind: "mr-calligraphy-project-repository-receipt-v1",
+          packageId: "e2e-project-recovery-package",
+          sourcePackageId: body.packageId,
+          workspaceId,
+          packageDigest: body.packageDigest,
+          repositoryDigest,
+          remoteVersion: "e2e-project-recovery-v1",
+          acceptedAt,
+          message: "项目仓库恢复端 E2E 回执。",
+          sceneCount: body.summary.sceneCount,
+          modelCount: body.summary.importedModels,
+          receiptDigest
+        }
+      })
+    });
+  });
+
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await unlockMainAdmin(page);
@@ -3174,8 +3263,14 @@ test("main admin project repository keeps local data on remote failures", async 
   await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, rejectedPushPath), "project-rejected-push-token");
   await page.locator("#projectRepositoryPushRemote").click();
   await expect(page.locator("#projectArchiveStatus")).toContainText("HTTP 422");
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("失败历史");
+  await expect(page.locator("#projectRepositoryPushRemote")).toHaveText("重试推送");
   projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(projectRepositoryState.lastError).toContain("HTTP 422");
+  expect(projectRepositoryState.lastFailureAction).toBe("push");
+  expect(projectRepositoryState.remoteRetryAfter).toBeTruthy();
+  expect(projectRepositoryState.remoteFailureHistory[0].failureKind).toBe("http");
+  expect(projectRepositoryState.remoteFailureHistory[0].action).toBe("push");
   const rejectedPut = projectRepositoryRequests.find((item) => item.path === rejectedPushPath && item.method === "PUT");
   expect(rejectedPut.authorization).toBe("Bearer project-rejected-push-token");
   expect(rejectedPut.body.kind).toBe("mr-calligraphy-project-repository-package-v1");
@@ -3187,7 +3282,58 @@ test("main admin project repository keeps local data on remote failures", async 
   await expect(page.locator("#projectArchiveStatus")).toContainText("网络请求异常");
   projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(projectRepositoryState.lastError).toContain("网络请求异常");
+  expect(projectRepositoryState.remoteFailureHistory[0].failureKind).toBe("network");
+  expect(projectRepositoryState.remoteFailureHistory[0].action).toBe("push");
   expect(projectRepositoryRequests.some((item) => item.path === networkPushPath && item.method === "PUT" && item.authorization === "Bearer project-network-push-token")).toBe(true);
+
+  const timeoutResult = await page.evaluate(async () => {
+    const originalFetch = window.fetch;
+    window.fetch = () => new Promise((resolve) => {
+      setTimeout(() => {
+        resolve(new Response(JSON.stringify({
+          ok: true,
+          message: "项目仓库远端 E2E 慢响应。",
+          remoteVersion: "e2e-project-timeout-late"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }));
+      }, 50);
+    });
+    try {
+      return await window.MRProjectArchive.checkProjectRepositoryRemote({
+        timeoutMs: 1,
+        retryDelayMs: 5
+      });
+    } finally {
+      window.fetch = originalFetch;
+    }
+  });
+  expect(timeoutResult.ok).toBe(false);
+  expect(timeoutResult.message).toContain("请求超时");
+  projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.remoteFailureHistory[0].failureKind).toBe("timeout");
+  expect(projectRepositoryState.remoteFailureHistory[0].action).toBe("check");
+  expect(projectRepositoryState.remoteRetryAfter).toBeTruthy();
+
+  await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, recoveryPushPath), "project-recovery-token");
+  await expect(page.locator("#projectRepositoryPushRemote")).toHaveText("重试推送");
+  await page.locator("#projectRepositoryPushRemote").click();
+  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库恢复端 E2E 已接收");
+  await expect(page.locator("#projectRepositoryPushRemote")).toHaveText("推送仓库包");
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("项目仓库恢复端 E2E 已接收");
+  projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.lastError).toBe("");
+  expect(projectRepositoryState.remoteRetryAfter).toBe("");
+  expect(projectRepositoryState.remoteFailureHistory.length).toBeGreaterThanOrEqual(5);
+  expect(projectRepositoryState.remoteFailureHistory[0].failureKind).toBe("timeout");
+  expect(projectRepositoryState.lastPackageId).toBe("e2e-project-recovery-package");
+  expect(projectRepositoryState.lastRemoteVersion).toBe("e2e-project-recovery-v1");
+  expect(projectRepositoryState.receipts[0].verificationStatus).toBe("verified");
+  const recoveryPut = projectRepositoryRequests.find((item) => item.path === recoveryPushPath && item.method === "PUT");
+  expect(recoveryPut.authorization).toBe("Bearer project-recovery-token");
+  expect(recoveryPut.workspaceId).toBe("local-browser");
+  expect(recoveryPut.body.kind).toBe("mr-calligraphy-project-repository-package-v1");
 
   const layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
   expect(layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);

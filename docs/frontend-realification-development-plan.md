@@ -70,7 +70,7 @@ node scripts/control-inventory.js --check
 
 | 模块 | 当前可用 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
-| 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用；主后台项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 真实 GET/PUT，支持拉取远端包进入恢复预览、回执审计导出和回执本机一致性校验 | 保存范围主要是当前浏览器，远端 adapter 还不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
+| 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用；主后台项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 真实 GET/PUT，支持拉取远端包进入恢复预览、回执审计导出、回执本机一致性校验、请求超时保护、失败历史和重试推送恢复 | 保存范围主要是当前浏览器，远端 adapter 还不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 写实对象、相机、导入模型、快照、发布到演示可用；已纳入 `project-scene-repository-v1` 统一视图 | 和主后台对象 schema 仍有字段差异 | 继续统一字段迁移、完整 diff 和资产引用规则 |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史、差异、回滚 | 只是本机发布，不是线上部署 | UI 保持“本机发布”；线上发布必须走远端发布合同 |
 | 远端发布 | 可配置 endpoint/token，生成发布包、manifest、模型/贴图资产清单，预检、审核锁、POST 推送、DELETE 撤销、服务端回执持久化、HMAC 开发资产签名回执、CDN upload 上传回执、CDN purge 撤销回执和 HTML 审计导出已有第一版 | 还不是账号权限、生产 CDN 托管、生产证书签名、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、生产证书资产签名、生产 CDN 回调和不可篡改审计日志 |
@@ -3811,3 +3811,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划同步重试恢复`
+
+## 104. 2026-06-13 新增项目仓库重试恢复
+
+本次把主后台“远端项目仓库 API”从“失败后只显示最近错误”推进到“失败原因、失败历史、建议重试时间和恢复推送都可追踪”。项目仓库远端检查、推送和拉取现在都带请求超时保护；推送失败后按钮会显示“重试推送”，修复 endpoint 后可继续发送当前本机项目仓库包。
+
+完成内容：
+
+- `project-archive.js` 新增项目仓库远端请求超时包装，默认 8 秒。
+- `mr-calligraphy-project-repository-remote-v1` 新增 `lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 失败历史记录动作类型、失败类型、endpoint、workspace、包 ID、包摘要、场景数、模型数、失败时间和建议重试时间。
+- 失败类型区分 HTTP 拒收、网络异常、请求超时、结构校验失败和未知失败。
+- 主后台远端项目仓库状态会显示失败历史摘要；推送失败未恢复时按钮显示“重试推送”。
+- 推送成功后清空当前错误和重试时间，但保留失败历史用于本机审计。
+- Playwright 已扩展项目仓库失败用例，覆盖 401、非 JSON、无项目包、PUT 422、网络中断、页面内超时注入、恢复 endpoint 后成功重试和本机布局保留。
+
+真实化说明：
+
+- 数据来源：主后台当前本机项目档案包、真实远端 API 响应、浏览器 fetch 错误和本机项目仓库远端状态。
+- 写入状态：`mr-calligraphy-project-repository-remote-v1.remoteFailureHistory`、`remoteRetryAfter`、`lastRemoteFailureAt` 和 `lastFailureAction`。
+- 成功反馈：恢复推送后页面显示远端已接收，按钮恢复为“推送仓库包”，回执列表显示本机校验通过。
+- 失败反馈：HTTP、网络、超时或结构错误都不会显示远端成功，会写入失败历史和下一次建议重试时间。
+- 刷新后复现方式：失败历史、最近错误和重试状态保存在 localStorage，刷新主后台后仍可读取。
+
+仍待补：
+
+- 当前是浏览器本机远端 adapter 的失败恢复，不是账号化项目仓库、服务端后台队列、多人三方合并、生产资产签名或不可篡改审计。
+
+验收：
+
+- `node --input-type=module --check < project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin project repository keeps local data on remote failures"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库重试恢复`

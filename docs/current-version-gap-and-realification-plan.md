@@ -65,7 +65,7 @@ node scripts/control-inventory.js
 
 | 模块 | 当前可用内容 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
-| 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局；项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 执行真实 GET/PUT，支持远端版本历史、指定版本拉取预览、回执审计导出和回执本机一致性校验 | 保存主体仍在 localStorage / IndexedDB，远端 adapter 不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
+| 主后台编辑 | 能编辑对象、图层、灯光、导入模型、保存布局；项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 执行真实 GET/PUT，支持远端版本历史、指定版本拉取预览、回执审计导出、回执本机一致性校验、请求超时保护、失败历史和重试推送恢复 | 保存主体仍在 localStorage / IndexedDB，远端 adapter 不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 能编辑写实样张对象、导入模型、保存快照和发布到演示；已纳入 `project-scene-repository-v1` 统一视图 | 与主后台对象模型仍有字段差异 | 继续做字段迁移、资产引用规则和完整 diff |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史和回滚，并可配置远端发布 API 真实 POST 当前发布包；远端推送前已有本机审核流、本机发布锁、服务端锁 / 最近回执预检、模型/贴图资产清单、远端资产签名回执、CDN upload 回执、DELETE 撤销发布和 CDN purge 回执审计 | 远端发布 adapter 已完成开发级闭环，但还不是服务端账号权限、生产 CDN 部署、生产证书签名或服务器托管 | 继续增加服务端审批合同、账号权限、生产证书资产签名、生产 CDN 回调和不可篡改审计 |
 | 项目档案 | 可导出/导入 JSON，含 schema、迁移、模型哈希、选择恢复、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、版本历史拉取预览、API 合同、本机 mock 服务、回执审计导出和回执本机一致性校验 | 三方合并、完整 JSON 树、账号权限和远端资产服务仍弱 | 增加账号化服务端 repository、多人合并策略和远端资产完整性校验 |
@@ -227,7 +227,7 @@ node scripts/control-inventory.js
 | P1 | 评分解释层 | 评分是核心信任点 | 第一版已完成：基础评分证据、缺数据状态、本机 `ScoreService` adapter 和模型替换接口 |
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
-| P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、回执审计导出、回执本机一致性校验、API 合同、mock 服务、E2E 和项目 Schema 检查 |
+| P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、回执审计导出、回执本机一致性校验、失败历史、重试推送恢复、API 合同、mock 服务、E2E 和项目 Schema 检查 |
 | P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 Workspace 空间隔离、报告仓库签名回执审计导出、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、生产证书签名验真、不可篡改审计和生产长期报告仓库 | 账号化 ReportRepository、教师端身份与服务端审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、模型/贴图资产清单哈希、HMAC 开发资产签名回执、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、生产证书资产签名和不可篡改审计 | 服务端审批合同强化、生产证书资产签名、账号权限和审计签名 |
@@ -4290,3 +4290,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划同步重试恢复`
+
+### 2026-06-13：新增项目仓库重试恢复
+
+完成内容：
+
+- 主后台远端项目仓库检查、推送和拉取新增 8 秒请求超时保护。
+- `mr-calligraphy-project-repository-remote-v1` 新增 `lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 远端失败会记录动作、失败类型、endpoint、workspace、项目仓库包 ID、包摘要、场景数、模型数、失败时间和建议重试时间。
+- 失败类型会区分 HTTP 拒收、网络异常、请求超时、结构校验失败和未知失败。
+- 主后台远端项目仓库状态会显示失败历史摘要；推送失败后按钮显示“重试推送”。
+- 修复 endpoint 后重试推送成功会清空当前错误和重试时间，保留失败历史和远端回执。
+- Playwright 项目仓库失败用例覆盖 401、非 JSON、无项目包、PUT 422、网络中断、超时注入、恢复 endpoint 后成功重试和本机布局保留。
+
+真实化说明：
+
+- 数据来源：本机项目档案包、真实 fetch 响应、远端错误和主后台项目仓库远端状态。
+- 写入状态：`mr-calligraphy-project-repository-remote-v1.remoteFailureHistory`、`remoteRetryAfter`、`lastRemoteFailureAt` 和 `lastFailureAction`。
+- 成功反馈：恢复成功后页面显示远端已接收，按钮恢复“推送仓库包”，回执本机校验通过。
+- 失败反馈：失败只写真实错误和失败历史，不伪造远端成功。
+- 刷新后复现方式：失败历史和最近错误随本机项目仓库远端状态持久化。
+
+仍待补：
+
+- 当前是浏览器本机 adapter 级失败恢复，不是账号化项目仓库、服务端重试队列、多人合并、生产资产签名或不可篡改审计。
+
+验收：
+
+- `node --input-type=module --check < project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin project repository keeps local data on remote failures"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库重试恢复`

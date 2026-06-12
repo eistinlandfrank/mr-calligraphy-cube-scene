@@ -9375,3 +9375,48 @@
 提交：
 
 - 中文 commit message：`新增计划同步重试恢复`
+
+### 2026-06-13：新增项目仓库重试恢复
+
+功能名：主后台项目仓库远端失败历史与重试恢复。
+
+开发原因：
+
+- 主后台项目仓库远端 adapter 已经能检查、推送、拉取、读取版本历史和导出回执，但失败后主要依赖最近错误提示。
+- 用户需要知道远端失败是否来自 HTTP、网络、超时还是结构校验，并且修复 endpoint 后能明确继续推送当前本机项目档案包。
+
+完成内容：
+
+- `project-archive.js` 新增项目仓库远端请求超时包装，默认 8 秒。
+- `mr-calligraphy-project-repository-remote-v1` 新增 `lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 失败历史记录动作、失败类型、endpoint、workspace、项目仓库包 ID、包摘要、场景数、模型数、失败时间和下一次建议重试时间。
+- `getProjectRepositoryRemoteStatus()` 返回失败历史数量、重试摘要和 `pushRetryPending`。
+- 主后台远端项目仓库状态显示失败历史摘要；推送失败未恢复时按钮文案改为“重试推送”。
+- 推送成功后清空当前错误和重试时间，保留失败历史和回执审计。
+- Playwright 扩展项目仓库失败用例，覆盖 HTTP 401、非 JSON、无项目包、PUT 422、网络中断、页面内慢 fetch 超时、恢复 endpoint 后成功推送和本机布局保留。
+
+验收方式：
+
+- 在主后台新增本机对象，打开“远端项目仓库 API”。
+- 配置会返回 422 的 PUT endpoint 并点击推送，应显示 HTTP 422，按钮变为“重试推送”，本机布局不丢失。
+- 配置网络中断 endpoint 并重试，应追加网络失败历史。
+- 触发慢 fetch 超时，应追加 timeout 失败历史和重试时间。
+- 配置可用 endpoint 后点击“重试推送”，应成功写入远端回执，按钮恢复“推送仓库包”。
+
+真实边界：
+
+- 数据来源：当前浏览器本机项目档案包、用户配置 endpoint 和真实 fetch 结果。
+- 这不是账号化项目仓库、服务端后台重试队列、多人三方合并、生产资产签名或不可篡改服务端审计。
+
+验收命令：
+
+- `node --input-type=module --check < project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin project repository keeps local data on remote failures"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库重试恢复`
