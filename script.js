@@ -7940,7 +7940,11 @@ function renderPlanRepositoryStatus(planHistory = []) {
   }
   if (els.planRepositoryPushButton) {
     els.planRepositoryPushButton.disabled = !status?.remoteConfigured || !planHistory.length;
-    els.planRepositoryPushButton.textContent = status?.pendingAutoSync ? "同步队列" : "推送计划";
+    els.planRepositoryPushButton.textContent = status?.pendingAutoSync
+      ? status?.lastError || status?.autoSyncFailureCount
+        ? "重试队列"
+        : "同步队列"
+      : "推送计划";
   }
   if (els.planRepositoryPullButton) {
     els.planRepositoryPullButton.disabled = !status?.remoteConfigured;

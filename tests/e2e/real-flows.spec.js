@@ -2060,6 +2060,7 @@ test("front plan repository shows real remote failure feedback", async ({ page }
 test("front plan repository keeps pending queue on push failures", async ({ page }) => {
   const rejectedPath = "/e2e-plan-repository-rejected-push";
   const networkPath = "/e2e-plan-repository-network-push";
+  const recoveryPath = "/e2e-plan-repository-recovery-push";
   const requests = [];
 
   await page.route(`**${rejectedPath}`, async (route) => {
@@ -2090,6 +2091,53 @@ test("front plan repository keeps pending queue on push failures", async ({ page
     await route.abort("failed");
   });
 
+  await page.route(`**${recoveryPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    requests.push({
+      path: recoveryPath,
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+    const acceptedAt = new Date().toISOString();
+    const repositoryDigest = "e".repeat(64);
+    const receipt = {
+      receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
+      remoteVersion: "e2e-plan-recovery-v1",
+      workspaceId: body?.workspaceId || "local-browser",
+      packageId: "e2e-plan-recovery-package",
+      sourcePackageId: body?.packageId || "",
+      repositoryDigest,
+      acceptedAt,
+      planCount: body?.summary?.planCount || 0,
+      warningCount: 0,
+      warnings: [],
+      receiptDigest: sha256StableJson({
+        sourcePackageId: body?.packageId || "",
+        workspaceId: body?.workspaceId || "local-browser",
+        repositoryDigest,
+        acceptedAt
+      })
+    };
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: `恢复计划仓库 E2E 已接收 ${body?.summary?.planCount || 0} 份计划。`,
+        remoteVersion: "e2e-plan-recovery-v1",
+        packageId: "e2e-plan-recovery-package",
+        package: {
+          ...body,
+          packageId: "e2e-plan-recovery-package"
+        },
+        receipt
+      })
+    });
+  });
+
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
   const seedPlan = await page.evaluate(() => {
@@ -2114,8 +2162,12 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.planRepository.lastError).toContain("HTTP 422");
   expect(learningState.planRepository.pendingAutoSync).toBe(true);
+  expect(learningState.planRepository.autoSyncRetryAfter).toBeTruthy();
+  expect(learningState.planRepository.autoSyncFailureHistory[0].failureKind).toBe("http");
+  expect(learningState.planRepository.autoSyncFailureHistory[0].message).toContain("HTTP 422");
   expect(learningState.plans).toHaveLength(1);
   expect(learningState.plans[0].id).toBe(seedPlan.id);
+  await expect(page.locator("#planRepositoryPushButton")).toHaveText("重试队列");
 
   const rejectedPut = requests.find((item) => item.path === rejectedPath && item.method === "PUT");
   expect(rejectedPut.authorization).toBe("Bearer plan-rejected-push-token");
@@ -2132,9 +2184,27 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.planRepository.lastError).toContain("网络请求异常");
   expect(learningState.planRepository.pendingAutoSync).toBe(true);
+  expect(learningState.planRepository.autoSyncFailureHistory).toHaveLength(2);
+  expect(learningState.planRepository.autoSyncFailureHistory[0].failureKind).toBe("network");
+  expect(learningState.planRepository.lastAutoSyncStatus).toContain("队列已保留");
   expect(learningState.plans).toHaveLength(1);
   expect(learningState.plans[0].id).toBe(seedPlan.id);
   expect(requests.some((item) => item.path === networkPath && item.method === "PUT" && item.authorization === "Bearer plan-network-push-token")).toBe(true);
+
+  const recoveryEndpoint = await getSameOriginEndpoint(page, recoveryPath);
+  await configurePlanRepositoryRemoteInUi(page, recoveryEndpoint, "plan-recovery-token");
+  await expect(page.locator("#planRepositoryPushButton")).toHaveText("重试队列");
+  await page.locator("#planRepositoryPushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已推送 1 份计划");
+  await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
+  await expect(page.locator("#planRepositoryPushButton")).toHaveText("推送计划");
+
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.pendingAutoSync).toBe(false);
+  expect(learningState.planRepository.autoSyncRetryAfter).toBeFalsy();
+  expect(learningState.planRepository.autoSyncFailureHistory).toHaveLength(2);
+  expect(learningState.planRepository.receipts[0].packageId).toBe("e2e-plan-recovery-package");
+  expect(requests.some((item) => item.path === recoveryPath && item.method === "PUT" && item.authorization === "Bearer plan-recovery-token")).toBe(true);
 });
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {

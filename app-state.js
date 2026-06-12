@@ -30,6 +30,9 @@
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，并携带 Workspace 空间 ID 做服务端隔离第一版，但仍不包含完整账号权限、教师端排课或后台推送。";
   const PLAN_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-plan-repository-receipt-v1";
   const PLAN_REPOSITORY_MAX_RECEIPTS = 12;
+  const PLAN_REPOSITORY_MAX_FAILURES = 8;
+  const PLAN_REPOSITORY_REQUEST_TIMEOUT_MS = 8000;
+  const PLAN_REPOSITORY_RETRY_BASE_MS = 15000;
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品、报告和阶段记录；配置远端 API 后会通过 fetch 同步档案包、携带 Workspace 空间 ID 并按 nextPageUrl 追取分页，但仍不包含完整账号权限、教师批注审计或公开作品墙。";
@@ -1224,6 +1227,11 @@
       autoSyncAttemptCount: normalizeInteger(source.autoSyncAttemptCount, 0, 0, 9999),
       lastAutoSyncAt: normalizePlanDate(source.lastAutoSyncAt),
       lastAutoSyncStatus: source.lastAutoSyncStatus ? String(source.lastAutoSyncStatus).slice(0, 180) : "",
+      lastAutoSyncFailureAt: normalizePlanDate(source.lastAutoSyncFailureAt),
+      autoSyncRetryAfter: normalizePlanDate(source.autoSyncRetryAfter),
+      autoSyncFailureHistory: Array.isArray(source.autoSyncFailureHistory)
+        ? source.autoSyncFailureHistory.map(normalizePlanRepositoryAutoSyncFailure).filter(Boolean).slice(0, PLAN_REPOSITORY_MAX_FAILURES)
+        : [],
       lastSyncConflictAt: normalizePlanDate(source.lastSyncConflictAt),
       lastSyncConflictCount: normalizeInteger(source.lastSyncConflictCount, 0, 0, 9999),
       lastSyncConflictPlanIds: Array.isArray(source.lastSyncConflictPlanIds)
@@ -1412,6 +1420,91 @@
   function normalizePlanRepositoryHex(value) {
     const hex = String(value || "").trim().toLowerCase();
     return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
+  }
+
+  function normalizePlanRepositoryAutoSyncFailure(record) {
+    if (!record || typeof record !== "object") return null;
+    const failedAt = normalizePlanDate(record.failedAt) || new Date().toISOString();
+    const message = String(record.message || "").trim().slice(0, 220);
+    if (!message) return null;
+    return {
+      id: String(record.id || `plan-sync-failure-${failedAt.replace(/[-:.TZ]/g, "").slice(0, 14)}`).slice(0, 120),
+      failedAt,
+      retryAfter: normalizePlanDate(record.retryAfter),
+      attemptCount: normalizeInteger(record.attemptCount, 0, 0, 9999),
+      planCount: normalizeInteger(record.planCount, 0, 0, 9999),
+      pendingReason: String(record.pendingReason || "").trim().slice(0, 160),
+      endpoint: String(record.endpoint || "").trim().slice(0, 240),
+      workspaceId: normalizePlanRepositoryWorkspaceId(record.workspaceId),
+      packageId: String(record.packageId || "").trim().slice(0, 120),
+      failureKind: ["http", "network", "timeout", "validation", "unknown"].includes(record.failureKind)
+        ? record.failureKind
+        : classifyPlanRepositoryFailure(message),
+      message
+    };
+  }
+
+  function classifyPlanRepositoryFailure(message = "") {
+    const text = String(message || "");
+    if (/超时|timeout/i.test(text)) return "timeout";
+    if (/HTTP\s+\d+/.test(text)) return "http";
+    if (/网络请求异常|Failed|Network/i.test(text)) return "network";
+    if (/格式|结构|JSON|缺少|不是/.test(text)) return "validation";
+    return "unknown";
+  }
+
+  function getPlanRepositoryRetryDelayMs(attemptCount, options = {}) {
+    if (Number.isFinite(Number(options.retryDelayMs))) {
+      return Math.max(0, Math.min(3600000, Math.round(Number(options.retryDelayMs))));
+    }
+    const attempt = normalizeInteger(attemptCount, 1, 1, 10);
+    return Math.min(10 * 60 * 1000, PLAN_REPOSITORY_RETRY_BASE_MS * Math.max(1, 2 ** (attempt - 1)));
+  }
+
+  function recordPlanRepositoryAutoSyncFailure(repository, message, options = {}) {
+    const current = normalizePlanRepository(repository || state.planRepository);
+    const now = new Date().toISOString();
+    const attemptCount = normalizeInteger(current.autoSyncAttemptCount, 0, 0, 9999);
+    const retryDelayMs = getPlanRepositoryRetryDelayMs(attemptCount || 1, options);
+    const retryAfter = retryDelayMs ? new Date(Date.now() + retryDelayMs).toISOString() : now;
+    const normalizedMessage = String(message || "计划自动同步失败。").trim().slice(0, 220);
+    const failure = normalizePlanRepositoryAutoSyncFailure({
+      failedAt: now,
+      retryAfter,
+      attemptCount,
+      planCount: current.pendingPlanCount || state.plans.length,
+      pendingReason: current.pendingReason || "本机计划待同步",
+      endpoint: current.remoteEndpoint,
+      workspaceId: current.workspaceId,
+      packageId: options.packageId || current.lastPackageId || "",
+      failureKind: options.failureKind || classifyPlanRepositoryFailure(normalizedMessage),
+      message: normalizedMessage
+    });
+    const history = [failure, ...current.autoSyncFailureHistory]
+      .filter(Boolean)
+      .slice(0, PLAN_REPOSITORY_MAX_FAILURES);
+    const retryText = retryAfter ? `下次可重试：${formatPlanDate(retryAfter)}。` : "可立即重试。";
+    state.planRepository = normalizePlanRepository({
+      ...current,
+      pendingAutoSync: true,
+      pendingSince: current.pendingSince || now,
+      pendingReason: current.pendingReason || "本机计划待同步",
+      pendingPlanCount: current.pendingPlanCount || state.plans.length,
+      lastCheckedAt: now,
+      lastAutoSyncAt: options.autoSync ? now : current.lastAutoSyncAt,
+      lastAutoSyncStatus: `自动同步第 ${attemptCount || 1} 次失败，队列已保留。${retryText}`,
+      lastAutoSyncFailureAt: now,
+      autoSyncRetryAfter: retryAfter,
+      autoSyncFailureHistory: history,
+      lastError: `${normalizedMessage} 队列已保留，${retryText}`
+    });
+    saveState();
+    return {
+      ok: false,
+      status: getPlanRepositoryStatus(),
+      failure: failure ? clone(failure) : null,
+      message: state.planRepository.lastError
+    };
   }
 
   function normalizePlanRepositoryConflict(record) {
@@ -3715,6 +3808,10 @@
     if (repository.lastError) {
       tone = "warning";
       message = repository.lastError;
+      const retrySummary = getPlanRepositoryAutoSyncRetrySummary(repository);
+      if (retrySummary) {
+        message = `${message} ${retrySummary}`;
+      }
     }
     const receiptSummary = getPlanRepositoryReceiptSummary(repository.lastReceipt);
     if (receiptSummary && !repository.lastError) {
@@ -3752,6 +3849,11 @@
       autoSyncAttemptCount: repository.autoSyncAttemptCount,
       lastAutoSyncAt: repository.lastAutoSyncAt,
       lastAutoSyncStatus: repository.lastAutoSyncStatus,
+      lastAutoSyncFailureAt: repository.lastAutoSyncFailureAt,
+      autoSyncRetryAfter: repository.autoSyncRetryAfter,
+      autoSyncFailureCount: repository.autoSyncFailureHistory.length,
+      autoSyncFailureHistory: clone(repository.autoSyncFailureHistory),
+      autoSyncRetrySummary: getPlanRepositoryAutoSyncRetrySummary(repository),
       lastSyncConflictAt: repository.lastSyncConflictAt,
       lastSyncConflictCount: repository.lastSyncConflictCount,
       lastSyncConflictPlanIds: [...repository.lastSyncConflictPlanIds],
@@ -3772,6 +3874,22 @@
     const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
     const verificationLabel = formatPlanRepositoryReceiptVerificationStatus(normalized.verificationStatus);
     return `已收到远端计划回执：仓库摘要 ${digestShort}，回执 ${receiptShort}${acceptedAt}；${verificationLabel}。`;
+  }
+
+  function getPlanRepositoryAutoSyncRetrySummary(repository = state.planRepository) {
+    const normalized = normalizePlanRepository(repository);
+    if (!normalized.pendingAutoSync || !normalized.autoSyncAttemptCount || !normalized.autoSyncRetryAfter) {
+      return "";
+    }
+    const latestFailure = normalized.autoSyncFailureHistory[0] || null;
+    const reason = latestFailure?.failureKind === "timeout"
+      ? "最近一次为请求超时"
+      : latestFailure?.failureKind === "http"
+        ? "最近一次为服务端拒收"
+        : latestFailure?.failureKind === "network"
+          ? "最近一次为网络异常"
+          : "最近一次同步未完成";
+    return `${reason}；已失败 ${normalized.autoSyncAttemptCount} 次，建议 ${formatPlanDate(normalized.autoSyncRetryAfter)} 后点击“重试队列”。`;
   }
 
   function getPlanRepositoryReceiptAudit() {
@@ -10924,6 +11042,7 @@
       pendingReason: reason,
       pendingPlanCount: state.plans.length,
       lastCheckedAt: now,
+      autoSyncRetryAfter: null,
       lastError: ""
     });
     if (options.schedule !== false) {
@@ -11139,6 +11258,10 @@
         pendingAutoSync: false,
         pendingSince: null,
         pendingReason: "",
+        pendingPlanCount: 0,
+        autoSyncAttemptCount: 0,
+        autoSyncRetryAfter: null,
+        lastAutoSyncFailureAt: null,
         lastSyncConflictAt: null,
         lastSyncConflictCount: 0,
         lastSyncConflictPlanIds: [],
@@ -11176,6 +11299,7 @@
       remoteToken,
       workspaceId,
       autoSyncEnabled: config.autoSyncEnabled === false ? false : true,
+      autoSyncRetryAfter: null,
       lastReceipt: validation.endpoint === repository.remoteEndpoint && workspaceId === repository.workspaceId ? repository.lastReceipt : null,
       receipts: validation.endpoint === repository.remoteEndpoint && workspaceId === repository.workspaceId ? repository.receipts : [],
       lastCheckedAt: new Date().toISOString(),
@@ -11222,6 +11346,25 @@
       headers,
       ...(options.body ? { body: JSON.stringify(options.body) } : {})
     };
+  }
+
+  function requestPlanRepository(repository, fetchApi, options = {}) {
+    const timeoutMs = normalizeInteger(options.timeoutMs, PLAN_REPOSITORY_REQUEST_TIMEOUT_MS, 1, 600000);
+    const request = buildPlanRepositoryRequest(repository, options);
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`请求超时 ${timeoutMs}ms`);
+        error.name = "TimeoutError";
+        reject(error);
+      }, timeoutMs);
+    });
+    const requestPromise = Promise.resolve().then(() => fetchApi(repository.remoteEndpoint, request));
+    return Promise.race([requestPromise, timeout]).finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
   }
 
   async function parseRemotePlanRepositoryResponse(response) {
@@ -11271,12 +11414,17 @@
 
   function formatPlanRepositoryNetworkError(action, error) {
     const detail = String(error?.message || "").trim();
+    if (error?.name === "TimeoutError" || /超时|timeout/i.test(detail)) {
+      return detail
+        ? `远端计划 API ${action}失败：请求超时（${detail}）。`
+        : `远端计划 API ${action}失败：请求超时。`;
+    }
     return detail
       ? `远端计划 API ${action}失败：网络请求异常（${detail}）。`
       : `远端计划 API ${action}失败：网络请求异常。`;
   }
 
-  function checkRemotePlanRepository() {
+  function checkRemotePlanRepository(options = {}) {
     const repository = normalizePlanRepository(state.planRepository);
     const now = new Date().toISOString();
     const remoteConfigured = Boolean(repository.remoteEndpoint);
@@ -11304,12 +11452,12 @@
           : `${status.message} ${PLAN_REPOSITORY_BOUNDARY}`
       };
     }
-    return checkRemotePlanRepositoryAsync(repository, fetchApi);
+    return checkRemotePlanRepositoryAsync(repository, fetchApi, options);
   }
 
-  async function checkRemotePlanRepositoryAsync(repository, fetchApi) {
+  async function checkRemotePlanRepositoryAsync(repository, fetchApi, options = {}) {
     try {
-      const response = await fetchApi(repository.remoteEndpoint, buildPlanRepositoryRequest(repository));
+      const response = await requestPlanRepository(repository, fetchApi, options);
       const parsed = await parseRemotePlanRepositoryResponse(response);
       const now = new Date().toISOString();
       if (!parsed.ok) {
@@ -11371,6 +11519,13 @@
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法推送计划到远端 API。";
+      if (repository.pendingAutoSync || options.autoSync) {
+        return recordPlanRepositoryAutoSyncFailure(repository, message, {
+          autoSync: options.autoSync,
+          retryDelayMs: options.retryDelayMs,
+          failureKind: "network"
+        });
+      }
       recordPlanRepositoryError(message);
       return { ok: false, status: getPlanRepositoryStatus(), message };
     }
@@ -11383,18 +11538,24 @@
 
   async function pushPlanRepositoryToRemoteAsync(repository, fetchApi, repositoryPackage, options = {}) {
     try {
-      const response = await fetchApi(
-        repository.remoteEndpoint,
-        buildPlanRepositoryRequest(repository, {
-          method: "PUT",
-          body: repositoryPackage
-        })
-      );
+      const response = await requestPlanRepository(repository, fetchApi, {
+        method: "PUT",
+        body: repositoryPackage,
+        timeoutMs: options.timeoutMs
+      });
       const parsed = await parseRemotePlanRepositoryResponse(response);
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const planCount = repositoryPackage.plans.length;
       const now = new Date().toISOString();
       if (!parsed.ok) {
+        if (repository.pendingAutoSync || options.autoSync) {
+          return recordPlanRepositoryAutoSyncFailure(repository, parsed.message, {
+            autoSync: options.autoSync,
+            retryDelayMs: options.retryDelayMs,
+            packageId: repositoryPackage.packageId,
+            failureKind: classifyPlanRepositoryFailure(parsed.message)
+          });
+        }
         state.planRepository = normalizePlanRepository({
           ...repository,
           lastCheckedAt: now,
@@ -11431,6 +11592,7 @@
         pendingReason: "",
         pendingPlanCount: 0,
         autoSyncAttemptCount: 0,
+        autoSyncRetryAfter: null,
         lastAutoSyncAt: options.autoSync ? now : repository.lastAutoSyncAt,
         lastAutoSyncStatus: options.autoSync ? `自动同步已推送 ${planCount} 份计划。` : repository.lastAutoSyncStatus,
         lastSyncConflictAt: null,
@@ -11455,6 +11617,14 @@
       };
     } catch (error) {
       const message = formatPlanRepositoryNetworkError("推送", error);
+      if (repository.pendingAutoSync || options.autoSync) {
+        return recordPlanRepositoryAutoSyncFailure(repository, message, {
+          autoSync: options.autoSync,
+          retryDelayMs: options.retryDelayMs,
+          packageId: repositoryPackage.packageId,
+          failureKind: classifyPlanRepositoryFailure(message)
+        });
+      }
       recordPlanRepositoryError(message);
       return { ok: false, status: getPlanRepositoryStatus(), message };
     }
@@ -11476,7 +11646,7 @@
 
   async function pullPlanRepositoryFromRemoteAsync(repository, fetchApi, options = {}) {
     try {
-      const response = await fetchApi(repository.remoteEndpoint, buildPlanRepositoryRequest(repository));
+      const response = await requestPlanRepository(repository, fetchApi, options);
       const parsed = await parseRemotePlanRepositoryResponse(response);
       if (!parsed.ok) {
         recordPlanRepositoryError(parsed.message);

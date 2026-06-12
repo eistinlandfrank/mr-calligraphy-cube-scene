@@ -54,7 +54,7 @@ node scripts/control-inventory.js --check
 | 学习路径 | 步骤导航、热点路由、阶段记录、本机任务进度已有第一版；本机 `LearningPathService` 已用任务、练习、作品、报告和计划推导 10 步标题、说明、完成状态、证据和下一步动作 | 还不是云端课程编排、教师下发任务或跨设备学习进度；视觉场景仍保留静态兜底 | 后续扩展课程包、教师端排课、班级进度和跨设备同步 |
 | AI 讲解 | 浏览器本机语音能朗读讲解段落；本机 `LectureService` 会记录语音能力、播放段落、文本降级、失败和完成状态 | 不是云端 AI 音频，也不是按真实笔迹实时生成 | 保留本机语音 fallback，后续在同一讲解服务接口扩展云端 AI 音频/文本 |
 | 书写练习 | 鼠标/触控笔迹、撤销、清空、回放、保存和基础评分可用；本机 `ScoreService` 会记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点；`local-heuristic-v2.2.0` 已保存第一版范字笔顺、逐笔轨迹匹配、路径误差热力和压感采样证据 | 仍缺高精度笔锋路径、硬件适配、教师标定和专业评分模型 | 继续扩展笔锋分析、硬件压感校准、服务端评分来源和教师标定 |
-| 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、`.ics` 日历导出、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、Workspace 空间隔离、远端回执审计、回执本机一致性校验、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒、教师端通知和服务端不可篡改审计 | 做账号化 repository、服务端合并策略、跨设备提醒、教师端视图和生产审计 |
+| 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、`.ics` 日历导出、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、Workspace 空间隔离、远端回执审计、回执本机一致性校验、自动同步队列、冲突检测、三策略冲突解决、字段级合并、请求超时保护、失败历史和重试队列恢复已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒、教师端通知和服务端不可篡改审计 | 做账号化 repository、服务端合并策略、跨设备提醒、教师端视图和生产审计 |
 | 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、Workspace 空间隔离、`nextPageUrl` 分页自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、远端回执审计导出、回执本机一致性校验、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、生产级分页查询、长期归档和服务端教师批注审计 | 做账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 
 ### 4.2 作品、报告和分享
@@ -3769,3 +3769,45 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增视频导出回执审计`
+
+## 103. 2026-06-13 新增计划同步重试恢复
+
+本次把学习计划远端同步从“失败后保留待同步队列”推进到“失败原因、重试时间和恢复动作都可追踪”。计划仓库现在会对远端请求设置超时保护，推送失败时写入失败历史和下一次可重试时间；前台按钮会从“同步队列”切换为“重试队列”，恢复 endpoint 后可继续把同一批本机计划推送出去。
+
+完成内容：
+
+- `app-state.js` 新增计划仓库请求超时包装，默认 8 秒，不让远端挂起造成页面无限等待。
+- `planRepository` 新增 `autoSyncRetryAfter`、`lastAutoSyncFailureAt` 和 `autoSyncFailureHistory`。
+- 自动同步失败会记录失败类型：HTTP 拒收、网络异常、请求超时或结构错误。
+- 失败后保留 `pendingAutoSync`、待同步原因、计划数量和失败历史。
+- 自动同步恢复成功后清空 `pendingAutoSync` 和 `autoSyncRetryAfter`，但保留最近失败历史，便于后续审计。
+- 前台计划仓库按钮在失败队列状态下显示“重试队列”。
+- `learning-state-check.js` 模拟远端超时，验证队列保留、失败历史、重试摘要和恢复成功。
+- Playwright 覆盖 422 拒收、网络中断、失败历史持久化、按钮切换和恢复 endpoint 后成功重试。
+
+真实化说明：
+
+- 数据来源：真实计划同步包、用户配置的远端 endpoint、真实 fetch 结果和本机计划仓库状态。
+- 写入状态：`mr-calligraphy-learning-state-v1.planRepository`。
+- 成功反馈：恢复成功后页面显示已推送计划，按钮回到“推送计划”，待同步队列清空。
+- 失败反馈：HTTP/网络/超时失败都写入失败历史和下一次可重试时间，不伪造远端成功。
+- 刷新后复现方式：失败历史和重试时间持久化在 localStorage，刷新后仍可看到重试队列状态。
+
+仍待补：
+
+- 当前是浏览器本机失败恢复，不是服务端重试任务、后台队列调度、账号化托管仓库、教师端通知或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front plan repository keeps pending queue on push failures"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划同步重试恢复`

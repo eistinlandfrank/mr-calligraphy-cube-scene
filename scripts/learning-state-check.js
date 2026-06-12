@@ -930,10 +930,31 @@ async function runRemoteRepositoryChecks() {
   assert(!copiedConflict.status.lastSyncConflictCount, "另存副本后应清理冲突状态。");
   assert(copiedConflict.status.pendingAutoSync, "另存副本后应进入待同步队列。");
 
+  const successFetch = global.fetch;
+  global.fetch = async () => new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(createJsonResponse({
+        ok: true,
+        message: "慢速计划仓库最终返回，但应先被本机超时保护截断。",
+        package: capturedPushPackage,
+        receipt: latestPlanReceipt
+      }));
+    }, 30);
+  });
+  const timedOutAutoSync = await window.MRAppState.flushPlanRepositoryAutoSync({ timeoutMs: 1, retryDelayMs: 5 });
+  assert(!timedOutAutoSync.ok, "自动同步超时时不应伪造成成功。");
+  assert(timedOutAutoSync.status.pendingAutoSync, "自动同步超时后应保留待同步队列。");
+  assert(timedOutAutoSync.status.autoSyncRetryAfter, "自动同步超时后应记录下一次可重试时间。");
+  assert(timedOutAutoSync.status.autoSyncFailureHistory[0].failureKind === "timeout", "自动同步超时应写入失败历史。");
+  assert(timedOutAutoSync.status.autoSyncRetrySummary.includes("重试队列"), "自动同步失败状态应提示重试队列。");
+  global.fetch = successFetch;
+
   const flushedAutoSync = await window.MRAppState.flushPlanRepositoryAutoSync();
   assert(flushedAutoSync.ok, "待同步队列应可通过 flush 推送到远端。");
   assert(!flushedAutoSync.status.pendingAutoSync, "自动同步 flush 成功后应清空队列。");
   assert(flushedAutoSync.status.lastAutoSyncAt, "自动同步 flush 成功后应记录时间。");
+  assert(!flushedAutoSync.status.autoSyncRetryAfter, "自动同步成功后应清除下一次重试时间。");
+  assert(flushedAutoSync.status.autoSyncFailureHistory[0].failureKind === "timeout", "自动同步成功后仍应保留最近失败历史。");
 
   remotePackage = createRemoteConflictPackageFromPush(capturedPushPackage, {
     packageId: "remote-keep-local-conflict-package",
@@ -1050,6 +1071,7 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.pendingAutoSync, "字段级合并后的混合版本应继续显示待同步。");
   assert(persistedPlanState.planRepository.pendingReason.includes("字段级合并"), "字段级合并待同步原因应持久化。");
   assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
+  assert(persistedPlanState.planRepository.autoSyncFailureHistory[0].failureKind === "timeout", "计划 repository 应持久化自动同步失败历史。");
   assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "字段级合并后应清理冲突计数。");
   const persistedRemotePlan = persistedPlanState.plans.find((plan) => plan.id === "plan-remote-pulled");
   assert(persistedRemotePlan.title === "字段合并远端计划标题", "字段级合并后的计划标题应持久化到 localStorage。");
@@ -1074,7 +1096,7 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
