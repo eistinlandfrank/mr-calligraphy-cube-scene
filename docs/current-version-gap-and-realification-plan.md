@@ -3535,3 +3535,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增后台服务边界状态面板`
+
+### 2026-06-12：新增本机后台操作者审计
+
+完成内容：
+
+- 新增 `admin-audit.js` 共享本机后台审计服务，负责操作者保存、操作记录、状态读取和 HTML 审计导出。
+- 主后台风险提示区新增 `mainAdminOperatorPanel`，可保存本机操作者姓名和角色，并展示最近后台操作。
+- 写实后台风险提示区新增 `realisticAdminOperatorPanel`，可保存本机操作者姓名和角色，并展示最近后台操作。
+- 主后台会在保存操作者、确认本机边界、保存快照和发布到前台时写入 `snapshot` / `publish-local` 等审计记录。
+- 写实后台会在保存操作者、确认本机边界、保存快照和发布到演示时写入 `snapshot` / `publish-local` 等审计记录。
+- 两个后台服务边界状态新增“本机审计”行，显示当前操作者和本机记录数量。
+- smoke test 和 Playwright 发布用例新增后台审计验收。
+
+真实化说明：
+
+- 数据来源：后台页面真实操作事件。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1`，按 `mainScene` / `realisticScene` 分桶保存操作者和最近 120 条记录。
+- 成功反馈：风险提示区显示操作者、角色和最近审计，可导出 `mr-calligraphy-admin-audit-*.html`。
+- 失败反馈：本机存储失败时显示失败消息，不写成功审计。
+- 刷新后复现方式：刷新后台后继续读取同一份 localStorage 审计状态。
+
+仍待补：
+
+- 这不是账号化生产后台；仍需真正登录、角色权限、服务端不可篡改审计、多人协作审计和审批流。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "realistic admin keeps local publish releases and rollback history"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台操作者审计`

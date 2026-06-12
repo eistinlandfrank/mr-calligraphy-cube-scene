@@ -2999,3 +2999,48 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增后台服务边界状态面板`
+
+## 84. 2026-06-12 新增本机后台操作者审计
+
+本次把两个后台的“无操作审计”缺口先补成可验证的本机审计闭环。主后台和写实后台都可以保存本机操作者姓名与角色，关键后台动作会写入 `localStorage`，并可导出 HTML 审计报告。它不是生产账号体系，但能让当前本机版本的编辑、快照和发布行为有可追踪记录。
+
+完成内容：
+
+- 新增 `admin-audit.js`，提供 `MRAdminAudit.configureOperator()`、`getStatus()`、`record()` 和 `getExport()`。
+- `main-admin.html` 新增 `mainAdminOperatorPanel`、操作者姓名/角色表单、保存按钮、审计导出按钮和最近审计列表。
+- `realistic-admin.html` 新增 `realisticAdminOperatorPanel`、操作者姓名/角色表单、保存按钮、审计导出按钮和最近审计列表。
+- `main-admin-scene.js` 在保存操作者、确认本机权限边界、保存快照和发布到前台时写入主后台操作审计。
+- `realistic-scene.js` 在保存操作者、确认本机权限边界、保存快照和发布到演示时写入写实后台操作审计。
+- 两个后台服务边界面板新增“本机审计”行，显示当前操作者与审计记录数。
+- `style.css` 和 `realistic-demo.css` 增加本机操作者审计面板样式，移动端折叠为单列表单。
+- smoke test 新增 `admin-audit.js` 和两个后台操作者审计 DOM 标记检查。
+- Playwright 主后台发布用例和写实发布用例新增 `mr-calligraphy-admin-operator-audit-v1` 持久化断言，验证 `snapshot` 与 `publish-local` 记录归属到保存的操作者。
+
+真实化说明：
+
+- 数据来源：后台页面实际操作、保存快照和本机发布动作。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1.scopes.mainScene` 与 `mr-calligraphy-admin-operator-audit-v1.scopes.realisticScene`，每个后台最多保留最近 120 条记录。
+- 成功反馈：风险提示区显示操作者、角色、最近 3 条审计，并可导出 `mr-calligraphy-admin-audit-*.html`。
+- 失败反馈：审计脚本缺失或本机存储写入失败时显示错误，不把失败伪装成已审计。
+- 刷新后复现方式：刷新后台后重新读取本机操作者和审计记录，列表继续显示最近操作。
+
+仍待补：
+
+- 本轮只是本机操作留痕，不是生产级账号登录、强制角色权限、服务端不可篡改日志、多人协作审计或管理员审批流。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "realistic admin keeps local publish releases and rollback history"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台操作者审计`

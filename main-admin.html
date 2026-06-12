@@ -34,6 +34,32 @@
           </div>
           <ul id="mainAdminBoundaryList" class="admin-boundary-list"></ul>
         </section>
+        <section id="mainAdminOperatorPanel" class="admin-operator-panel" aria-label="主后台本机操作者审计">
+          <div class="admin-operator-head">
+            <span>本机操作者</span>
+            <strong id="mainAdminOperatorStatus">尚未读取操作者。</strong>
+          </div>
+          <div class="admin-operator-fields">
+            <label>
+              <span>姓名</span>
+              <input id="mainAdminOperatorName" type="text" maxlength="40" autocomplete="off" placeholder="本机操作者">
+            </label>
+            <label>
+              <span>角色</span>
+              <select id="mainAdminOperatorRole">
+                <option value="local-admin">本机管理员</option>
+                <option value="owner">负责人</option>
+                <option value="editor">编辑</option>
+                <option value="reviewer">复核</option>
+              </select>
+            </label>
+          </div>
+          <div class="admin-operator-actions">
+            <button data-feature-state="real-local" id="mainAdminOperatorSave" type="button">保存操作者</button>
+            <button data-feature-state="real-export" id="mainAdminAuditExport" type="button">导出审计</button>
+          </div>
+          <ul id="mainAdminAuditList" class="admin-audit-list" aria-live="polite"></ul>
+        </section>
       </section>
 
       <aside class="main-object-panel" aria-label="主场景物体编辑">
@@ -409,6 +435,7 @@
   <script src="project-schema-utils.js?v=project-repository-history-20260612"></script>
   <script src="project-archive.js?v=project-repository-history-20260612"></script>
   <script src="project-remote-publish.js?v=remote-publish-cdn-upload-20260612"></script>
+  <script src="admin-audit.js?v=admin-operator-audit-20260612"></script>
   <script type="module" src="main-admin-scene.js?v=remote-publish-cdn-upload-20260612"></script>
 </body>
 </html>

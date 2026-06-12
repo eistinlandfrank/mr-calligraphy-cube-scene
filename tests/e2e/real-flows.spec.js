@@ -9,6 +9,7 @@ const MAIN_LAYOUT_KEY = "mr-calligraphy-main-scene-layout-v1";
 const MAIN_HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const MAIN_IMPORT_AUDIT_KEY = "mr-calligraphy-main-import-audit-v1";
 const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
+const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
@@ -44,6 +45,7 @@ test.beforeEach(async ({ page }) => {
     MAIN_HISTORY_KEY,
     MAIN_IMPORT_AUDIT_KEY,
     MAIN_PUBLISHED_KEY,
+    ADMIN_AUDIT_KEY,
     REMOTE_PUBLISH_KEY,
     PROJECT_REPOSITORY_REMOTE_KEY,
     REALISTIC_LAYOUT_KEY,
@@ -80,6 +82,9 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await expect(page.locator("#mainAdminBoundaryList")).toContainText("本机编辑");
   await expect(page.locator("#mainAdminBoundaryList")).toContainText("前台发布");
   await expect(page.locator("#mainAdminBoundaryList")).toContainText("远端 Adapter");
+  await expect(page.locator("#mainAdminBoundaryList")).toContainText("本机审计");
+  await expect(page.locator("#mainAdminOperatorPanel")).toBeVisible();
+  await expect(page.locator("#mainAdminOperatorStatus")).toContainText("本机操作者");
   await expectBoxInsideViewport(page, ".main-object-panel");
   await expectBoxesDoNotOverlap(page, ".main-admin-header", "#mainAdminRiskBanner", 4);
   await expectBoxesDoNotOverlap(page, "#mainAdminRiskBanner", ".main-object-panel", 12);
@@ -94,6 +99,9 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await expect(page.locator("#realisticAdminBoundaryList")).toContainText("本机编辑");
   await expect(page.locator("#realisticAdminBoundaryList")).toContainText("演示发布");
   await expect(page.locator("#realisticAdminBoundaryList")).toContainText("远端 Adapter");
+  await expect(page.locator("#realisticAdminBoundaryList")).toContainText("本机审计");
+  await expect(page.locator("#realisticAdminOperatorPanel")).toBeVisible();
+  await expect(page.locator("#realisticAdminOperatorStatus")).toContainText("本机操作者");
   await expectBoxInsideViewport(page, ".design-panel");
   await expectBoxesDoNotOverlap(page, ".demo-header", "#realisticAdminRiskBanner", 4);
   await expectBoxesDoNotOverlap(page, "#realisticAdminRiskBanner", ".design-panel", 12);
@@ -2072,6 +2080,11 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const remoteEndpoint = await getSameOriginEndpoint(page, remoteEndpointPath);
   const projectRepositoryEndpoint = await getSameOriginEndpoint(page, projectRepositoryEndpointPath);
 
+  await page.locator("#mainAdminOperatorName").fill("E2E 主后台");
+  await page.locator("#mainAdminOperatorRole").selectOption("editor");
+  await page.locator("#mainAdminOperatorSave").click();
+  await expect(page.locator("#mainAdminOperatorStatus")).toContainText("E2E 主后台");
+
   await page.locator("#mainNewObjectName").fill(objectLabel);
   await page.locator("#mainNewObjectType").selectOption("box");
   await page.locator("#mainNewObjectAdd").click();
@@ -2109,6 +2122,12 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(publishedUpdatedObject.type).toBe("cylinder");
   expect(publishedUpdatedObject.size.radius).toBeCloseTo(0.55, 2);
   expect(published.stats.customCount).toBeGreaterThan(0);
+  const adminAudit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
+  expect(adminAudit.scopes.mainScene.operator.name).toBe("E2E 主后台");
+  expect(adminAudit.scopes.mainScene.operator.role).toBe("editor");
+  expect(adminAudit.scopes.mainScene.records.some((record) => record.action === "publish-local" && record.operator.name === "E2E 主后台")).toBe(true);
+  expect(adminAudit.scopes.mainScene.records.some((record) => record.action === "snapshot" && record.operator.name === "E2E 主后台")).toBe(true);
+  await expect(page.locator("#mainAdminAuditList")).toContainText("本机发布");
 
   await page.locator("#projectRepositoryRefresh").click();
   await expect(page.locator("#projectRepositoryStatus")).toContainText("本机项目仓库 adapter");
@@ -2734,6 +2753,10 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticPublishNote")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
+  await page.locator("#realisticAdminOperatorName").fill("E2E 写实后台");
+  await page.locator("#realisticAdminOperatorRole").selectOption("reviewer");
+  await page.locator("#realisticAdminOperatorSave").click();
+  await expect(page.locator("#realisticAdminOperatorStatus")).toContainText("E2E 写实后台");
   const selectedDesignObjectId = await page.locator("#designObjectSelect").inputValue();
 
   await expect(page.locator("#deleteObject")).toBeEnabled();
@@ -2763,6 +2786,12 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await page.locator("#realisticPublishLayout").click();
   await expect(page.locator("#realisticPublishStatus")).toContainText("已发布");
   await expect(page.locator("#realisticPublishDiffSummary")).toContainText("一致");
+  let adminAudit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
+  expect(adminAudit.scopes.realisticScene.operator.name).toBe("E2E 写实后台");
+  expect(adminAudit.scopes.realisticScene.operator.role).toBe("reviewer");
+  expect(adminAudit.scopes.realisticScene.records.some((record) => record.action === "publish-local" && record.operator.name === "E2E 写实后台")).toBe(true);
+  expect(adminAudit.scopes.realisticScene.records.some((record) => record.action === "snapshot" && record.operator.name === "E2E 写实后台")).toBe(true);
+  await expect(page.locator("#realisticAdminAuditList")).toContainText("本机发布");
 
   const currentX = Number.parseFloat(await page.locator("#designX").inputValue());
   await page.locator("#designX").fill((currentX + 0.2).toFixed(2));

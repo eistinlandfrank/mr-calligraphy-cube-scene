@@ -92,11 +92,18 @@ const adminRiskAcknowledgeButton = document.getElementById("realisticAdminRiskAc
 const adminRiskStatus = document.getElementById("realisticAdminRiskStatus");
 const adminBoundaryStatus = document.getElementById("realisticAdminBoundaryStatus");
 const adminBoundaryList = document.getElementById("realisticAdminBoundaryList");
+const adminOperatorStatus = document.getElementById("realisticAdminOperatorStatus");
+const adminOperatorNameInput = document.getElementById("realisticAdminOperatorName");
+const adminOperatorRoleSelect = document.getElementById("realisticAdminOperatorRole");
+const adminOperatorSaveButton = document.getElementById("realisticAdminOperatorSave");
+const adminAuditExportButton = document.getElementById("realisticAdminAuditExport");
+const adminAuditList = document.getElementById("realisticAdminAuditList");
 const isDesignMode = Boolean(designObjectSelect && designXInput && designYInput && designZInput);
 const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
 const SCENE_HISTORY_STORAGE_KEY = "mr-calligraphy-realistic-history-v1";
 const SCENE_PUBLISHED_STORAGE_KEY = "mr-calligraphy-realistic-published-v1";
 const ADMIN_RISK_ACK_KEY = "mr-calligraphy-admin-risk-ack-v1";
+const ADMIN_AUDIT_SCOPE = "realisticScene";
 const IMPORT_AUDIT_KEY = "mr-calligraphy-realistic-import-audit-v1";
 const IMPORTED_MODEL_LIST_KEY = "importedModels";
 const IMPORT_DB_NAME = "mr-calligraphy-model-store";
@@ -110,6 +117,12 @@ const IMPORT_AUDIT_STATUS_LABELS = {
   "storage-deleted": "文件已清理",
   "delete-failed": "文件清理失败",
   restored: "已恢复显示"
+};
+const ADMIN_AUDIT_ACTION_LABELS = {
+  "confirm-boundary": "确认边界",
+  snapshot: "保存快照",
+  "publish-local": "本机发布",
+  "operator-save": "保存操作者"
 };
 const importedModelStore = createModelStore({
   dbName: IMPORT_DB_NAME,
@@ -1377,6 +1390,12 @@ function createLayoutSnapshot(label = "手动快照", options = {}) {
   if (options.status !== false) {
     setHistoryStatus(`已保存快照：${snapshot.label}`, "success");
   }
+  if (options.audit !== false) {
+    recordAdminOperation("snapshot", snapshot.label, `保存写实场景快照：${snapshot.label}`, "ok", {
+      snapshotId: snapshot.id,
+      stats: snapshot.stats
+    });
+  }
   return snapshot;
 }
 
@@ -1507,8 +1526,16 @@ function publishLayoutToDemo() {
     if (publishNoteInput) publishNoteInput.value = "";
     renderPublishPanel();
     setPublishStatus(`已发布到演示：v${release.releaseNumber} · ${formatDateTime(release.publishedAt)} · ${formatSnapshotStats(release.stats)}`, "success");
+    recordAdminOperation("publish-local", "写实演示页", `发布写实场景到演示：v${release.releaseNumber}。`, "ok", {
+      releaseId: release.id,
+      releaseNumber: release.releaseNumber,
+      stats: release.stats
+    });
   } catch (error) {
     console.warn("Published scene layout could not be saved.", error);
+    recordAdminOperation("publish-local", "写实演示页", "发布写实场景到演示失败。", "failed", {
+      message: error?.message || String(error)
+    });
     setPublishStatus("发布失败，可能是浏览器本机存储空间不足。", "error");
   }
 }
@@ -1645,6 +1672,7 @@ function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
   const context = createRemotePublishContext(record);
   const remoteStatus = adapter?.getStatus?.("realisticScene", { ...context, hasLocalRelease });
   const receiptAudit = adapter?.getReceiptAudit?.("realisticScene");
+  const operatorAudit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE);
   const draftStats = getLayoutStats(savedSceneLayout);
   const releaseCount = Array.isArray(record?.releases) ? record.releases.length : 0;
   const receiptCount = Number(receiptAudit?.total || 0);
@@ -1670,6 +1698,13 @@ function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
         : "远端发布 API 尚未配置；当前只保留本机草稿、快照和演示发布版本。"
     },
     {
+      label: "本机审计",
+      state: operatorAudit ? (operatorAudit.count ? "ready" : "idle") : "missing",
+      detail: operatorAudit
+        ? `操作者：${operatorAudit.operator.name} / ${operatorAudit.operator.roleLabel}；已记录 ${operatorAudit.count} 条本机后台操作，可导出 HTML。`
+        : "本机后台操作审计脚本未载入。"
+    },
+    {
       label: "生产后台",
       state: "missing",
       detail: "未接入账号登录、角色权限、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计。"
@@ -1693,6 +1728,112 @@ function createAdminBoundaryItem(item) {
   detail.textContent = item.detail;
   li.append(label, detail);
   return li;
+}
+
+function renderAdminOperatorPanel() {
+  if (!adminOperatorStatus || !adminAuditList) {
+    return;
+  }
+
+  const audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE);
+  if (!audit) {
+    adminOperatorStatus.textContent = "后台操作审计脚本未载入。";
+    return;
+  }
+
+  if (adminOperatorNameInput && document.activeElement !== adminOperatorNameInput) {
+    adminOperatorNameInput.value = audit.operator.name;
+  }
+  if (adminOperatorRoleSelect && document.activeElement !== adminOperatorRoleSelect) {
+    adminOperatorRoleSelect.value = audit.operator.role;
+  }
+  adminOperatorStatus.textContent = `${audit.operator.name} / ${audit.operator.roleLabel} · ${audit.count} 条本机审计`;
+  adminAuditList.innerHTML = "";
+
+  const records = audit.records.slice(0, 3);
+  if (!records.length) {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = "暂无操作审计";
+    const detail = document.createElement("span");
+    detail.textContent = "保存操作者、确认边界、保存快照或发布后会写入本机审计。";
+    item.append(title, detail);
+    adminAuditList.appendChild(item);
+    return;
+  }
+
+  records.forEach((record) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${record.actionLabel} · ${record.result === "failed" ? "失败" : "成功"}`;
+    const detail = document.createElement("span");
+    detail.textContent = `${formatDateTime(record.createdAt)} · ${record.operator.name} · ${record.target}${record.detail ? ` · ${record.detail}` : ""}`;
+    item.append(title, detail);
+    adminAuditList.appendChild(item);
+  });
+}
+
+function saveAdminOperator() {
+  const audit = window.MRAdminAudit;
+  if (!audit) {
+    setImportStatus("后台操作审计脚本未载入。");
+    return;
+  }
+  const result = audit.configureOperator(ADMIN_AUDIT_SCOPE, {
+    name: adminOperatorNameInput?.value || "",
+    role: adminOperatorRoleSelect?.value || "local-admin"
+  });
+  if (result.ok) {
+    audit.record(ADMIN_AUDIT_SCOPE, {
+      action: "operator-save",
+      actionLabel: "保存操作者",
+      target: "本机后台",
+      detail: `操作者设置为 ${result.operator.name} / ${result.operator.roleLabel}。`
+    });
+    setImportStatus("已保存本机后台操作者。");
+  } else {
+    setImportStatus(result.message || "保存本机后台操作者失败。");
+  }
+  renderAdminOperatorPanel();
+  renderAdminBoundaryPanel();
+}
+
+function recordAdminOperation(action, target, detail, result = "ok", metadata = {}) {
+  const audit = window.MRAdminAudit;
+  if (!audit) {
+    return null;
+  }
+  const record = audit.record(ADMIN_AUDIT_SCOPE, {
+    action,
+    actionLabel: ADMIN_AUDIT_ACTION_LABELS[action] || action,
+    target,
+    detail,
+    result,
+    metadata
+  });
+  renderAdminOperatorPanel();
+  renderAdminBoundaryPanel();
+  return record;
+}
+
+function exportAdminOperationAudit() {
+  const audit = window.MRAdminAudit;
+  const exportResult = audit?.getExport?.(ADMIN_AUDIT_SCOPE);
+  if (!exportResult?.ok) {
+    setImportStatus(exportResult?.message || "暂无后台操作审计记录可导出。");
+    renderAdminOperatorPanel();
+    return;
+  }
+  const blob = new Blob([exportResult.html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = exportResult.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  setImportStatus("已导出写实后台本机操作审计。");
 }
 
 function formatRemotePublishReceiptVerificationStatus(status) {
@@ -3357,12 +3498,16 @@ function renderAdminRiskBanner() {
 function acknowledgeAdminRisk() {
   writeAdminRiskAcknowledgement("realisticScene");
   renderAdminRiskBanner();
+  recordAdminOperation("confirm-boundary", "写实后台", "确认写实后台是本机静态编辑页，不含登录和角色权限。");
   setImportStatus("已记录：写实后台是本机静态编辑页，不含登录和角色权限。");
 }
 
 function bindUi() {
   renderAdminRiskBanner();
+  renderAdminOperatorPanel();
   adminRiskAcknowledgeButton?.addEventListener("click", acknowledgeAdminRisk);
+  adminOperatorSaveButton?.addEventListener("click", saveAdminOperator);
+  adminAuditExportButton?.addEventListener("click", exportAdminOperationAudit);
 
   resetButton.addEventListener("click", () => {
     camera.position.set(4.4, 3.1, 5.6);

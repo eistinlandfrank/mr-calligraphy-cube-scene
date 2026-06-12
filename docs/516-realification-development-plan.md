@@ -8563,3 +8563,45 @@
 提交：
 
 - 中文 commit message：`新增后台服务边界状态面板`
+
+### 2026-06-12：新增本机后台操作者审计
+
+功能名：主后台和写实后台本机操作者与操作审计。
+
+完成内容：
+
+- 新增 `admin-audit.js`，提供本机后台操作者、审计记录和 HTML 导出能力。
+- `main-admin.html` 新增主后台本机操作者审计面板，可保存姓名、角色、查看最近记录和导出审计。
+- `realistic-admin.html` 新增写实后台本机操作者审计面板，可保存姓名、角色、查看最近记录和导出审计。
+- `main-admin-scene.js` 将保存操作者、确认边界、保存快照和发布到前台写入审计。
+- `realistic-scene.js` 将保存操作者、确认边界、保存快照和发布到演示写入审计。
+- `style.css`、`realistic-demo.css`、`scripts/smoke-test.js` 和 `tests/e2e/real-flows.spec.js` 同步新增样式与验收。
+
+真实化说明：
+
+- 数据来源：后台页面真实交互。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1.scopes.mainScene` 与 `mr-calligraphy-admin-operator-audit-v1.scopes.realisticScene`。
+- 成功反馈：后台风险提示区显示本机操作者、角色、审计数量和最近操作。
+- 失败反馈：存储失败时显示错误；无记录时导出按钮提示暂无审计可导出。
+- 刷新后复现方式：刷新后台后继续读取本机操作者和审计记录。
+
+仍待补：
+
+- 该能力只是本机审计留痕，不替代账号登录、强制角色权限、服务端不可篡改审计或多人协作审批。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "mobile viewports keep core panels usable without overlap"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "realistic admin keeps local publish releases and rollback history"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台操作者审计`

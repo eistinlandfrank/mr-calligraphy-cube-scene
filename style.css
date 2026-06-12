@@ -506,6 +506,107 @@ button {
   background: rgba(122, 91, 35, 0.2);
 }
 
+.admin-operator-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(116, 255, 219, 0.18);
+  border-radius: 8px;
+  background: rgba(7, 18, 18, 0.28);
+}
+
+.admin-operator-head {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.admin-operator-head span,
+.admin-operator-fields span {
+  color: rgba(255, 244, 223, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-operator-head strong {
+  min-width: 0;
+  color: #fff8ea;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-operator-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(132px, 0.42fr);
+  gap: 8px;
+}
+
+.admin-operator-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-operator-fields input,
+.admin-operator-fields select {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(255, 224, 168, 0.28);
+  border-radius: 6px;
+  color: #fff8ea;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-operator-fields input {
+  padding: 0 10px;
+}
+
+.admin-operator-fields select {
+  padding: 0 8px;
+}
+
+.admin-operator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-audit-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-audit-list li {
+  display: grid;
+  gap: 3px;
+  padding: 7px 8px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(49, 74, 122, 0.14);
+}
+
+.admin-audit-list strong {
+  color: rgba(255, 248, 234, 0.84);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.admin-audit-list span {
+  min-width: 0;
+  color: rgba(255, 248, 234, 0.7);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .main-object-panel {
   right: 24px;
   top: 24px;
@@ -8777,6 +8878,10 @@ body.is-model-view .notice-panel {
     max-height: 248px;
     overflow-y: auto;
     min-width: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .admin-operator-fields {
     grid-template-columns: 1fr;
   }
 
