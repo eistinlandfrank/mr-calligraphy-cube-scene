@@ -9082,6 +9082,262 @@
     };
   }
 
+  function getReviewEvidenceExport(sourceId = null) {
+    const source = findReviewEvidenceSource(sourceId);
+    if (!source) {
+      return {
+        ok: false,
+        message: "还没有可导出的复盘证据。请先完成书写并保存评分证据。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const scoreEvidence = normalizeScoreEvidence(source.rawScoreEvidence, source.record);
+    const evidence = scoreEvidence.evidence || {};
+    const metrics = pickRealMetrics(source.session?.metrics || source.artwork?.metrics || source.record?.metrics) || {};
+    const packageData = {
+      kind: "mr-calligraphy-review-evidence-v1",
+      version: VERSION,
+      storageKey: STORAGE_KEY,
+      exportedAt,
+      sourceType: source.sourceType,
+      sourceId: source.record.id,
+      artwork: source.artwork ? decorateArtworkGalleryItem(source.artwork) : null,
+      session: source.session
+        ? {
+            id: source.session.id,
+            title: source.session.title || `${source.session.glyph}字练习`,
+            glyph: source.session.glyph,
+            copybook: source.session.copybook,
+            trainingMode: source.session.trainingMode,
+            score: source.session.score || 0,
+            strokeCount: source.session.strokeCount || 0,
+            pointCount: source.session.pointCount || 0,
+            createdAt: source.session.endedAt || source.session.snapshotAt || source.session.startedAt,
+            feedback: clone(source.session.feedback || [])
+          }
+        : null,
+      metrics,
+      scoreEvidence,
+      features: {
+        heatmap: Array.isArray(evidence.pathErrorHotspots) && evidence.pathErrorHotspots.length > 0,
+        strokePathErrors: Array.isArray(evidence.strokePathErrors) && evidence.strokePathErrors.length > 0,
+        strokeMatches: Array.isArray(evidence.strokeMatches) && evidence.strokeMatches.length > 0,
+        pressure: normalizeInteger(evidence.pressurePointCount, 0, 0, 99999) > 0
+      }
+    };
+    const html = createReviewEvidenceHtml(packageData);
+    const glyph = source.artwork?.glyph || source.session?.glyph || scoreEvidence.glyph || "review";
+    return {
+      ok: true,
+      evidencePackage: clone(packageData),
+      html,
+      filename: `mr-calligraphy-review-evidence-${makeDownloadSlug(glyph)}-${source.record.id}.html`,
+      message: `已生成“${source.artwork?.title || source.session?.title || `${glyph}字练习`}”的复盘证据页，包含评分依据、路径热力和逐笔证据。`
+    };
+  }
+
+  function downloadReviewEvidence(sourceId = null) {
+    const result = getReviewEvidenceExport(sourceId);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      message: `${result.message} 已下载：${result.filename}。`
+    };
+  }
+
+  function findReviewEvidenceSource(sourceId = null) {
+    const requestedId = String(sourceId || "").trim();
+    const fromArtwork = (artwork) => {
+      if (!artwork) return null;
+      const session = findArtworkSession(artwork);
+      const rawScoreEvidence = hasUsableScoreEvidence(artwork.scoreEvidence)
+        ? artwork.scoreEvidence
+        : hasUsableScoreEvidence(session?.scoreEvidence)
+          ? session.scoreEvidence
+          : null;
+      if (!rawScoreEvidence) return null;
+      return { sourceType: "artwork", record: artwork, artwork, session, rawScoreEvidence };
+    };
+    const fromSession = (session) => {
+      if (!session || !hasUsableScoreEvidence(session.scoreEvidence)) return null;
+      return { sourceType: "session", record: session, artwork: null, session, rawScoreEvidence: session.scoreEvidence };
+    };
+
+    if (requestedId) {
+      return fromArtwork(state.artworks.find((item) => item.id === requestedId))
+        || fromSession(state.sessions.find((item) => item.id === requestedId));
+    }
+    return fromArtwork(state.artworks[state.artworks.length - 1])
+      || fromSession(state.sessions[state.sessions.length - 1]);
+  }
+
+  function hasUsableScoreEvidence(scoreEvidence) {
+    if (!scoreEvidence || typeof scoreEvidence !== "object") return false;
+    const evidence = scoreEvidence.evidence && typeof scoreEvidence.evidence === "object" ? scoreEvidence.evidence : {};
+    return normalizePathErrorHotspots(evidence.pathErrorHotspots).length > 0
+      || normalizeStrokePathErrors(evidence.strokePathErrors).length > 0
+      || normalizeStrokeMatchList(evidence.strokeMatches).length > 0
+      || normalizeInteger(evidence.pressurePointCount, 0, 0, 99999) > 0;
+  }
+
+  function createReviewEvidenceHtml(packageData) {
+    const scoreEvidence = packageData.scoreEvidence || {};
+    const evidence = scoreEvidence.evidence || {};
+    const artwork = packageData.artwork;
+    const session = packageData.session;
+    const title = artwork?.title || session?.title || `${scoreEvidence.glyph || "书法"}复盘证据`;
+    const metricRows = SCORE_METRICS.map((metric) => {
+      const value = normalizeScore(packageData.metrics?.[metric.key] || scoreEvidence.reasons?.find((item) => item.key === metric.key)?.score, 0);
+      return `<li><span>${escapeHtml(metric.label)}</span><b><i style="width:${value}%"></i></b><strong>${value || "-"}</strong></li>`;
+    }).join("");
+    const heatmap = createReviewEvidenceHeatmapHtml(evidence.pathErrorHotspots);
+    const strokePathRows = Array.isArray(evidence.strokePathErrors) && evidence.strokePathErrors.length
+      ? evidence.strokePathErrors.slice(0, 12).map((item) => `<li><span>第 ${item.index} 笔 ${escapeHtml(item.expected || "")}</span><strong>贴合 ${item.fitPercent || 0}%</strong><small>误差 ${item.errorPercent || 0}% / ${item.sampleCount || 0} 点</small></li>`).join("")
+      : `<li><span>暂无逐笔路径误差。</span><strong>-</strong><small>没有真实路径点时不生成假数据。</small></li>`;
+    const strokeMatchRows = Array.isArray(evidence.strokeMatches) && evidence.strokeMatches.length
+      ? evidence.strokeMatches.slice(0, 12).map((item) => `<li><span>第 ${item.index} 笔 ${escapeHtml(item.expected || "")}</span><strong>${escapeHtml(getStrokeMatchStatusLabel(item.status))}</strong><small>匹配 ${item.matchScore || 0} 分 / 最佳 ${escapeHtml(item.matched || "-")}</small></li>`).join("")
+      : `<li><span>暂无逐笔轨迹匹配。</span><strong>-</strong><small>旧记录缺少该字段时不补造。</small></li>`;
+    const reasonRows = Array.isArray(scoreEvidence.reasons) && scoreEvidence.reasons.length
+      ? scoreEvidence.reasons.map((reason) => `<li>${escapeHtml(reason.label || reason.key)} ${normalizeScore(reason.score, 0)} 分：${escapeHtml(reason.evidence || "")}</li>`).join("")
+      : `<li>暂无评分理由。</li>`;
+    const artworkImage = artwork?.imageData
+      ? `<figure class="artwork"><img src="${escapeAttr(artwork.imageData)}" alt="${escapeAttr(artwork.title)}"><figcaption>${escapeHtml(artwork.title)} · ${artwork.score || 0} 分</figcaption></figure>`
+      : `<div class="artwork-empty">${escapeHtml(scoreEvidence.glyph || session?.glyph || "证据")}</div>`;
+    const sourceText = packageData.sourceType === "artwork" ? "最近作品" : "最近练习";
+    const watermarkText = `MR 书法复盘证据 · ${packageData.sourceId} · ${formatDateTime(packageData.exportedAt)}`;
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>${escapeHtml(title)} · MR 书法复盘证据</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#5f6f69; --line:#d9e6df; --jade:#247a67; --gold:#b98238; --paper:#fbf7ee; --wash:#eef8f3; --hot:#f07b4b; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { position: relative; z-index: 1; width: min(980px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 42px; }
+    .watermark { position: fixed; inset: 0; z-index: 0; display: grid; place-items: center; pointer-events: none; color: rgba(36, 122, 103, 0.08); font-size: clamp(26px, 6vw, 64px); font-weight: 900; text-align: center; transform: rotate(-26deg); }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; margin-bottom: 14px; padding: 9px 0; background: var(--paper); }
+    button { min-height: 38px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 8px; color: #fff; background: var(--ink); font: inherit; cursor: pointer; }
+    header { display: grid; gap: 9px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p, figure { margin: 0; }
+    h1 { font-size: clamp(30px, 6vw, 58px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 18px; }
+    .meta, .muted { color: var(--muted); }
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 0.9fr); gap: 18px; align-items: start; margin-top: 18px; }
+    .artwork, .box, .stat { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .artwork { padding: 12px; }
+    .artwork img { display: block; width: 100%; max-height: 520px; object-fit: contain; border-radius: 6px; background: var(--wash); }
+    .artwork figcaption { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .artwork-empty { display: grid; min-height: 360px; place-items: center; border: 1px dashed var(--line); border-radius: 8px; color: rgba(23, 34, 31, 0.62); background: #fff; font-size: 72px; font-weight: 900; }
+    .panel { display: grid; gap: 14px; }
+    .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .stat, .box { padding: 14px; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 25px; line-height: 1.1; }
+    .metrics, .evidence-list, .reason-list { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+    .metrics li { display: grid; grid-template-columns: 56px 1fr 38px; gap: 9px; align-items: center; }
+    .metrics b { height: 11px; overflow: hidden; border-radius: 99px; background: var(--line); }
+    .metrics i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--jade), var(--gold)); }
+    .evidence-list li { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; padding: 8px; border-radius: 7px; background: var(--wash); }
+    .evidence-list small { grid-column: 1 / -1; color: var(--muted); }
+    .reason-list li { padding-left: 10px; border-left: 3px solid rgba(36, 122, 103, 0.28); color: var(--muted); }
+    .heatmap { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
+    .heat-cell { position: relative; display: grid; place-items: center; min-height: 72px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .heat-cell::before { content: ""; position: absolute; inset: 18%; border-radius: 999px; opacity: var(--heat-alpha, 0.12); transform: scale(var(--heat-scale, 0.45)); background: radial-gradient(circle, #f4c96f 0%, var(--hot) 56%, rgba(240, 123, 75, 0) 72%); }
+    .heat-cell[data-active="true"] { border-color: rgba(185, 130, 56, 0.56); background: #fff8eb; }
+    .heat-cell em, .heat-cell small { position: relative; z-index: 1; max-width: 100%; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+    .heat-cell em { display: block; font-style: normal; font-weight: 900; }
+    .heat-cell small { color: var(--muted); font-size: 11px; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media print { @page { size: A4; margin: 14mm; } body { background: #fff; font-size: 12px; } main { width: 100%; padding: 0; } .toolbar { display: none; } .watermark { color: rgba(36, 122, 103, 0.08); font-size: 40px; } .box, .stat, .artwork { break-inside: avoid; page-break-inside: avoid; } }
+    @media (max-width: 760px) { main { width: min(100% - 20px, 980px); padding-top: 18px; } .layout, .stats { grid-template-columns: 1fr; } .heat-cell { min-height: 62px; } }
+  </style>
+</head>
+<body>
+  <div class="watermark" aria-hidden="true">${escapeHtml(watermarkText)}</div>
+  <main>
+    <div class="toolbar"><button type="button" onclick="window.print()">打印 / 保存 PDF</button></div>
+    <header>
+      <p class="meta">MR Calligraphy Review Evidence · ${escapeHtml(formatDateTime(packageData.exportedAt))}</p>
+      <h1>${escapeHtml(title)}</h1>
+      <p class="muted">这是一份本机离线复盘证据页，来源为${escapeHtml(sourceText)}；包含真实保存的评分证据，不是云端教师评级。</p>
+    </header>
+    <section class="layout">
+      ${artworkImage}
+      <div class="panel">
+        <div class="stats">
+          <div class="stat"><span>算法</span><strong>${escapeHtml(scoreEvidence.algorithmVersion || scoreEvidence.kind || DEFAULT_SCORE_ALGORITHM_VERSION)}</strong></div>
+          <div class="stat"><span>综合评分</span><strong>${artwork?.score || session?.score || 0}</strong></div>
+          <div class="stat"><span>路径贴合</span><strong>${evidence.pathFitPercent || 0}%</strong></div>
+          <div class="stat"><span>热力采样</span><strong>${evidence.pathErrorSampleCount || 0}</strong></div>
+        </div>
+        <section class="box">
+          <h2>路径误差热力</h2>
+          <p class="muted">按 4×4 区域聚合真实笔迹采样点到本机范字参考线的误差。</p>
+          ${heatmap}
+        </section>
+        <section class="box">
+          <h2>能力维度</h2>
+          <ul class="metrics">${metricRows}</ul>
+        </section>
+        <section class="box">
+          <h2>逐笔路径贴合</h2>
+          <ul class="evidence-list">${strokePathRows}</ul>
+        </section>
+        <section class="box">
+          <h2>逐笔轨迹匹配</h2>
+          <ul class="evidence-list">${strokeMatchRows}</ul>
+        </section>
+        <section class="box">
+          <h2>评分理由</h2>
+          <ol class="reason-list">${reasonRows}</ol>
+        </section>
+      </div>
+    </section>
+    <footer>数据来自本机浏览器存储：${escapeHtml(STORAGE_KEY)}。证据来源：${escapeHtml(packageData.sourceType)} / ${escapeHtml(packageData.sourceId)}。导出时间：${escapeHtml(formatDateTime(packageData.exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function createReviewEvidenceHeatmapHtml(hotspots) {
+    const records = normalizePathErrorHotspots(hotspots);
+    if (!records.length) {
+      return `<p class="muted">暂无可视化热力点。没有真实路径误差时不生成假热力图。</p>`;
+    }
+    const byZone = new Map(records.map((item) => [item.zone, item]));
+    const cells = [];
+    for (let y = 1; y <= 4; y += 1) {
+      for (let x = 1; x <= 4; x += 1) {
+        const zone = `${x}-${y}`;
+        const item = byZone.get(zone);
+        const error = normalizeInteger(item?.errorPercent, 0, 0, 100);
+        const alpha = Number((0.1 + error / 120).toFixed(2));
+        const scale = Number((0.35 + error / 100).toFixed(2));
+        cells.push(item
+          ? `<span class="heat-cell" data-active="true" style="--heat-alpha:${alpha};--heat-scale:${scale}" title="${escapeAttr(`${item.label || zone}，误差 ${error}%，${item.sampleCount} 点`)}"><em>${error}%</em><small>${escapeHtml(item.label || zone)}</small></span>`
+          : `<span class="heat-cell" aria-label="${escapeAttr(`${zone} 暂无集中误差`)}"></span>`);
+      }
+    }
+    return `<div class="heatmap" role="img" aria-label="4乘4路径误差热力格">${cells.join("")}</div>`;
+  }
+
+  function getStrokeMatchStatusLabel(status) {
+    return {
+      match: "匹配",
+      "weak-match": "形态偏弱",
+      "possible-misorder": "疑似错序",
+      extra: "超出目标"
+    }[status] || "需复核";
+  }
+
   function createArtworkShareHtml(share) {
     const artwork = share.artwork;
     const metrics = share.metrics || {};
@@ -13355,6 +13611,7 @@
     getPracticeVideoExportStatus,
     getPracticeVideoRetrySource,
     getLatestReview,
+    getReviewEvidenceExport,
     getHistory,
     getHistoryDetail,
     getArtworkGallery,
@@ -13446,6 +13703,7 @@
     downloadReportPdf,
     downloadReportComparison,
     downloadShareRepositoryReceiptAudit,
+    downloadReviewEvidence,
     downloadArtworkSharePage,
     downloadArchive
   };

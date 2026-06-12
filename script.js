@@ -835,6 +835,7 @@ const els = {
   reviewDownloadVideo: document.getElementById("reviewDownloadVideo"),
   reviewDownloadVideoCover: document.getElementById("reviewDownloadVideoCover"),
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
+  reviewDownloadEvidence: document.getElementById("reviewDownloadEvidence"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
   reviewDownloadShare: document.getElementById("reviewDownloadShare"),
   videoExportSummary: document.getElementById("videoExportSummary"),
@@ -4005,6 +4006,7 @@ function bindReviewControls() {
   els.reviewDownloadVideo?.addEventListener("click", downloadLatestPracticeVideo);
   els.reviewDownloadVideoCover?.addEventListener("click", downloadLatestPracticeVideoCover);
   els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
+  els.reviewDownloadEvidence?.addEventListener("click", downloadLatestReviewEvidence);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
   els.reviewDownloadShare?.addEventListener("click", downloadLatestArtworkSharePage);
   els.videoExportRecords?.addEventListener("click", handleVideoExportAction);
@@ -4888,6 +4890,7 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   els.reviewReplay.disabled = !hasStrokes;
   if (els.reviewDownloadVideo) els.reviewDownloadVideo.disabled = !hasStrokes;
   els.reviewDownloadImage.disabled = !hasImage;
+  if (els.reviewDownloadEvidence) els.reviewDownloadEvidence.disabled = !scoreEvidence;
   els.reviewDownloadReport.disabled = !report;
   if (els.reviewDownloadShare) els.reviewDownloadShare.disabled = !artwork;
   renderVideoExportPanel(artwork, session);
@@ -5055,6 +5058,15 @@ function downloadLatestArtworkImage() {
   }
   downloadDataUrl(artwork.imageData, `${sanitizeFilename(artwork.title)}.jpg`);
   showNotice("已下载最近保存的作品图片。");
+}
+
+function downloadLatestReviewEvidence() {
+  const result = window.MRAppState?.downloadReviewEvidence?.();
+  if (result?.message) {
+    showNotice(result.message);
+    return;
+  }
+  showNotice("还没有可导出的复盘证据。请先完成书写并保存评分证据。");
 }
 
 function downloadLatestReport() {

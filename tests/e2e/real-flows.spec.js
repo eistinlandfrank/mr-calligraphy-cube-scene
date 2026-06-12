@@ -641,6 +641,16 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reviewEvidenceMap")).toContainText("路径误差热力");
   await expect(page.locator("#reviewEvidenceMap")).toContainText("路径贴合");
   await expect(page.locator("#reviewEvidenceMap")).toContainText("最高误差");
+  await expect(page.locator("#reviewDownloadEvidence")).toBeEnabled();
+  const evidenceDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reviewDownloadEvidence").click();
+  const evidenceDownload = await evidenceDownloadPromise;
+  expect(evidenceDownload.suggestedFilename()).toMatch(/^mr-calligraphy-review-evidence-.*\.html$/);
+  const evidenceDownloadPath = await evidenceDownload.path();
+  const evidenceHtml = fs.readFileSync(evidenceDownloadPath, "utf8");
+  expect(evidenceHtml).toContain("MR 书法复盘证据");
+  expect(evidenceHtml).toContain("路径误差热力");
+  expect(evidenceHtml).toContain("逐笔路径贴合");
   const savedPracticeSession = learningState.sessions.find((session) => session.status === "saved" && session.strokeCount > 0);
   expect(savedPracticeSession?.scoreEvidence?.algorithmVersion).toBe("local-heuristic-v2.2.0");
   expect(savedPracticeSession?.scoreEvidence?.evidence?.targetStrokeNames?.length).toBeGreaterThan(0);

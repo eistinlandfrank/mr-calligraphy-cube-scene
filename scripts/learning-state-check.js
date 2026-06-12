@@ -539,6 +539,14 @@ assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("范字永字八�
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("笔顺匹配67%"), "评分服务摘要应包含逐笔匹配率。");
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("路径贴合72%"), "评分服务摘要应包含路径贴合率。");
 assert(scoreServiceAfterPractice.lastEvidenceSummary.includes("压感4点"), "评分服务摘要应包含压感采样。");
+const reviewEvidenceExport = window.MRAppState.getReviewEvidenceExport();
+assert(reviewEvidenceExport.ok, "复盘证据页应可从最新评分证据生成。");
+assert(reviewEvidenceExport.filename.includes("mr-calligraphy-review-evidence"), "复盘证据页应返回稳定文件名。");
+assert(reviewEvidenceExport.evidencePackage.kind === "mr-calligraphy-review-evidence-v1", "复盘证据页应返回稳定 kind。");
+assert(reviewEvidenceExport.evidencePackage.features.heatmap, "复盘证据页应声明包含路径热力。");
+assert(reviewEvidenceExport.html.includes("MR 书法复盘证据"), "复盘证据页 HTML 应包含标题。");
+assert(reviewEvidenceExport.html.includes("路径误差热力") && reviewEvidenceExport.html.includes("逐笔路径贴合"), "复盘证据页 HTML 应包含热力和逐笔路径证据。");
+assert(reviewEvidenceExport.html.includes("local-heuristic-v2.2.0"), "复盘证据页 HTML 应包含评分算法版本。");
 assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
 assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.2.0"), "评分服务状态消息应显示算法版本。");
 const persistedScoreService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).scoreService;

@@ -3448,3 +3448,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增复盘路径热力可视化`
+
+## 95. 2026-06-12 新增复盘证据离线导出
+
+本次把复盘热力和评分证据从“可看”推进到“可带走”。用户保存作品后，可以点击“导出证据”下载一份本机离线 HTML，里面包含作品图、评分算法、路径热力、逐笔路径贴合、逐笔轨迹匹配和评分理由。
+
+完成内容：
+
+- `index.html` 作品复盘操作区新增“导出证据”按钮。
+- `script.js` 新增 `downloadLatestReviewEvidence()`，按钮调用 `MRAppState.downloadReviewEvidence()`。
+- `app-state.js` 新增 `getReviewEvidenceExport()`、`downloadReviewEvidence()` 和复盘证据 HTML 生成逻辑。
+- 复盘证据页包含作品截图、4×4 路径误差热力、逐笔路径贴合、逐笔轨迹匹配、能力维度和评分理由。
+- 导出源会优先选择最近作品；若最近旧作品只有迁移生成的基础字段，则回退到最近带热力、逐笔匹配或压感细节的练习。
+- 数据层脚本和 Playwright 前台真实流程新增断言，确认离线 HTML 证据页可生成和下载。
+
+真实化说明：
+
+- 数据来源：真实书写保存后的 `scoreEvidence`，尤其是 `pathErrorHotspots`、`strokePathErrors`、`strokeMatches` 和压感采样。
+- 写入状态：不新增状态；下载时从 `mr-calligraphy-learning-state-v1` 即时生成 HTML。
+- 成功反馈：下载文件名为 `mr-calligraphy-review-evidence-*.html`，离线页可打印或保存 PDF。
+- 失败反馈：没有真实细节证据时按钮禁用或返回失败消息，不生成空壳报告。
+- 刷新后复现方式：保存作品并刷新，点击“导出证据”仍能下载同一来源的证据页。
+
+仍待补：
+
+- 目前是本机离线 HTML，不是服务端验签、教师签章、专业模型解释或云端证据托管。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘证据离线导出`

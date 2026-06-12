@@ -9011,3 +9011,43 @@
 提交：
 
 - 中文 commit message：`新增复盘路径热力可视化`
+
+### 2026-06-12：新增复盘证据离线导出
+
+功能名：作品复盘证据 HTML 导出。
+
+完成内容：
+
+- 前台作品复盘区新增“导出证据”按钮。
+- `MRAppState` 新增 `getReviewEvidenceExport()`，返回稳定 kind：`mr-calligraphy-review-evidence-v1`。
+- `MRAppState.downloadReviewEvidence()` 生成并下载 `mr-calligraphy-review-evidence-*.html`。
+- 离线证据页包含作品截图、评分算法版本、综合评分、路径贴合率、热力采样数、4×4 路径误差热力、逐笔路径贴合、逐笔轨迹匹配和评分理由。
+- 导出来源优先最近作品，若最近作品缺少真实评分细节，则回退到最近练习。
+- 可导出证据必须包含热力、逐笔匹配、逐笔路径或压感细节，避免旧记录迁移字段生成空壳证据页。
+- 数据层和前台 E2E 覆盖 HTML 内容、下载文件名和真实按钮流程。
+
+真实化说明：
+
+- 数据来源：真实笔迹采样生成的 `scoreEvidence` 细节字段。
+- 写入状态：不新增状态字段，导出时从本机学习状态即时生成。
+- 成功反馈：点击“导出证据”可下载离线 HTML 并打印保存。
+- 失败反馈：没有真实证据时按钮禁用或返回失败，不伪造证据页。
+- 刷新后复现方式：保存作品后刷新，仍可导出本机持久化的复盘证据。
+
+仍待补：
+
+- 当前是本机 HTML 证据页，不是生产级证据签名、云端存证、教师签章或专业模型证书。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘证据离线导出`
