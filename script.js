@@ -10452,6 +10452,32 @@ function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {
   };
 }
 
+function mergeLearningPathStatusIntoPoint(sceneIndex, pointIndex, pointView) {
+  const step = getLearningPathStatus()?.steps?.[sceneIndex];
+  if (!step) return pointView;
+
+  const evidence = Array.isArray(step.evidence) ? step.evidence.filter(Boolean) : [];
+  const evidenceText = evidence[pointIndex] || evidence[0] || "";
+  const statusText = step.statusLabel || "路径状态";
+  const actionText = step.actionHint || (step.nextActionLabel ? `下一步：${step.nextActionLabel}` : "");
+  const pathBody = [
+    `路径状态：${statusText}。`,
+    actionText,
+    evidenceText ? `本机证据：${evidenceText}。` : ""
+  ].filter(Boolean).join(" ");
+  const tags = [
+    ...(Array.isArray(pointView.tags) ? pointView.tags : []),
+    statusText,
+    evidenceText
+  ].filter(Boolean).slice(0, 4);
+
+  return {
+    ...pointView,
+    body: `${pointView.body || ""} ${pathBody}`.trim(),
+    tags
+  };
+}
+
 function getLearningPointView(sceneIndex, pointIndex, point) {
   const stats = window.MRAppState?.getStats?.();
   if (!stats) {
@@ -10488,7 +10514,7 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
         tags: ["记录", `${stats.practicedGlyphCount || 0}字`, "复盘入口"]
       }
     ];
-    return { ...point, ...views[pointIndex] };
+    return mergeLearningPathStatusIntoPoint(sceneIndex, pointIndex, { ...point, ...views[pointIndex] });
   }
 
   if (sceneIndex === 7) {
@@ -10512,7 +10538,7 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
         tags: ["分享", `${stats.artworkCount}幅作品`, "成果"]
       }
     ];
-    return { ...point, ...views[pointIndex] };
+    return mergeLearningPathStatusIntoPoint(sceneIndex, pointIndex, { ...point, ...views[pointIndex] });
   }
 
   if (sceneIndex === 8) {
@@ -10534,7 +10560,7 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
         tags: [averageScore, planLabel, "建议"]
       }
     ];
-    return { ...point, ...views[pointIndex] };
+    return mergeLearningPathStatusIntoPoint(sceneIndex, pointIndex, { ...point, ...views[pointIndex] });
   }
 
   if (sceneIndex === 9) {
@@ -10556,7 +10582,7 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
         tags: [averageScore, planLabel, "总结"]
       }
     ];
-    return { ...point, ...views[pointIndex] };
+    return mergeLearningPathStatusIntoPoint(sceneIndex, pointIndex, { ...point, ...views[pointIndex] });
   }
 
   return point;

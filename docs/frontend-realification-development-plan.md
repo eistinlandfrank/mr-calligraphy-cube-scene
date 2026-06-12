@@ -3213,3 +3213,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增本机后台访问门禁`
+
+## 89. 2026-06-12 扩展后四步学习路径热点状态
+
+本次把第 7-10 步的学习记录、作品复盘、学习报告和复习巩固热点从“只读取统计文案”推进到继续叠加 `LearningPath` 状态。后四步现在会把本机路径完成状态、下一步动作和本机证据直接写进热点内容，和前 6 步保持同一套任务驱动逻辑。
+
+完成内容：
+
+- `script.js` 新增 `mergeLearningPathStatusIntoPoint()`，统一把路径状态、行动提示和本机证据合并进热点说明。
+- 第 7 步“本机学习档案”热点显示路径状态与练习/作品/报告证据。
+- 第 8 步“作品复盘与分享”热点显示路径状态与分享/作品证据。
+- 第 9 步“学习报告”热点显示路径状态与报告、平均分和最近记录证据。
+- 第 10 步“复习巩固”热点显示路径状态与任务完成、复习阶段和计划证据。
+- Playwright 前台真实流程新增第 7-10 步断言，确认完成真实书写、保存作品和导出报告后，热点内容包含“路径状态”和“本机证据”。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getLearningPathStatus().steps[index]`。
+- 写入状态：本轮不新增存储，只把既有 `LearningTask`、练习、作品、报告和计划派生状态透出到后四步 UI。
+- 成功反馈：后四步热点正文显示路径状态、下一步动作和证据来源。
+- 失败反馈：若路径服务未初始化，继续回退到原本的本机统计文案，不返回虚假的完成证据。
+- 刷新后复现方式：刷新后从 `mr-calligraphy-learning-state-v1` 重新推导路径状态，后四步热点继续显示同一份证据。
+
+仍待补：
+
+- 当前仍是本机学习路径推导，不是云端课程编排、教师端下发任务或跨设备学情看板。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`扩展后四步学习路径热点状态`

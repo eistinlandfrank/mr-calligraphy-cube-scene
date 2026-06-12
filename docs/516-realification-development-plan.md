@@ -8772,3 +8772,39 @@
 提交：
 
 - 中文 commit message：`新增本机后台访问门禁`
+
+### 2026-06-12：扩展后四步学习路径热点状态
+
+功能名：第 7-10 步学习路径热点状态真实化。
+
+完成内容：
+
+- `script.js` 新增后四步热点状态合并逻辑。
+- 第 7 步学习记录、第 8 步作品复盘、第 9 步学习报告、第 10 步复习巩固会读取 `LearningPath` 对应步骤。
+- 热点正文追加“路径状态”、下一步动作和本机证据。
+- 证据来自当前浏览器中的练习、作品、报告、分享和计划状态。
+- 前台 E2E 主流程新增后四步热点断言，避免回退为纯静态场景文案。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getLearningPathStatus().steps`。
+- 写入状态：不新增存储，依赖既有本机学习记录。
+- 成功反馈：热点内容直接展示路径状态和本机证据。
+- 失败反馈：路径服务不可用时只显示统计文案，不生成虚假证据。
+- 刷新后复现方式：刷新后由 `mr-calligraphy-learning-state-v1` 重新推导。
+
+仍待补：
+
+- 这仍是本机任务路径，不是云端课程编排、教师下发任务或跨设备学情进度。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`扩展后四步学习路径热点状态`

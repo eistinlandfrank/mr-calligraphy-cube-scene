@@ -3731,3 +3731,36 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增本机后台访问门禁`
+
+### 2026-06-12：扩展后四步学习路径热点状态
+
+完成内容：
+
+- 前台第 7-10 步热点现在叠加 `LearningPath` 推导结果。
+- 新增 `mergeLearningPathStatusIntoPoint()`，把路径状态、下一步动作和本机证据合并到热点正文。
+- 学习档案、作品复盘、学习报告和复习巩固四个后段场景不再只显示本机统计文案，也会显示对应路径步骤的完成/进行/待完成状态。
+- Playwright 前台真实流程新增断言，完成书写、保存作品、分享和导出报告后，第 7-10 步热点必须包含“路径状态”和“本机证据”。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getLearningPathStatus()`。
+- 写入状态：无新增存储，复用 `mr-calligraphy-learning-state-v1` 派生状态。
+- 成功反馈：后四步热点正文能看到路径状态和本机证据。
+- 失败反馈：路径服务不可用时保留原本统计说明，不伪造证据。
+- 刷新后复现方式：刷新页面后重新从本机学习状态推导同一热点证据。
+
+仍待补：
+
+- 仍不是云端课程编排、教师端学习路径发布或跨设备进度同步。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`扩展后四步学习路径热点状态`

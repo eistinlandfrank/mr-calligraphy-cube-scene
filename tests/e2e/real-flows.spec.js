@@ -790,6 +790,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(pathAfterReport.steps[8].done).toBe(true);
   expect(pathAfterReport.steps[8].title).toContain("学习报告");
 
+  for (const stepNumber of [7, 8, 9, 10]) {
+    await page.getByRole("button", { name: new RegExp(`切换到步骤 ${stepNumber}`) }).click();
+    await expect(page.locator("#contentBody")).toContainText("路径状态");
+    await expect(page.locator("#contentBody")).toContainText("本机证据");
+  }
+
   await page.getByRole("button", { name: /切换到步骤 10/ }).click();
   await page.getByRole("button", { name: "查看详情" }).click();
   await expect(page.locator("#actionFeedback")).toContainText("已读取本机学习详情");
