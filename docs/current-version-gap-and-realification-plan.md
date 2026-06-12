@@ -4955,3 +4955,47 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习档案包摘要验真`
+
+## 121. 2026-06-13 新增报告仓库包摘要验真
+
+本次补齐前台报告仓库 JSON 同步包的包级完整性校验。此前报告仓库已经包含每份报告的本机验真摘要，也能保存远端签名回执，但整个 `mr-calligraphy-report-repository-v1` 包被手工改动后仍可能进入导入/拉取流程。
+
+完成内容：
+
+- `MRAppState.getReportRepositoryPackage()` 生成 `digestAlgorithm: "sha256-stable-json"` 和顶层 `packageDigest`。
+- `packageDigest` 按去除自身后的稳定 JSON 计算 SHA-256，覆盖报告、报告验真摘要、summary、Workspace、来源边界和远端接受元数据。
+- `parseReportRepositoryPackage()` 导入前校验摘要；声明摘要与实际内容不一致时拒绝导入，不写入任何报告。
+- 旧版没有 `packageDigest` 的报告仓库包仍兼容导入，避免历史 JSON 包失效。
+- 本机导出、导入、远端检查、推送、拉取都会把最近 `lastPackageDigest` 写入 `reportRepository` 状态，并在状态提示中显示摘要短码。
+- 远端报告 API 如果返回了包但摘要无效，会明确失败，不再被当成“空报告仓库”。
+- `scripts/report-repository-mock-server.js` 会校验请求包摘要；服务端改写 `packageId/acceptedAt/repositoryDigest` 后会重新生成 `packageDigest`。
+- Node 状态层脚本覆盖篡改包拒绝、mock server 保存摘要、推送结果返回摘要和状态持久化。
+- Playwright 前台用例覆盖报告仓库下载包摘要、远端 PUT body 摘要、远端接受包摘要、拉取后摘要保留和失败历史摘要。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机 `ReportRecord`、本机报告验真摘要、远端报告 API 返回包和本机 JSON 同步包。
+- 写入状态：摘要通过后才导入报告；成功同步后写入 `mr-calligraphy-learning-state-v1.reportRepository.lastPackageDigest`。
+- 成功反馈：报告仓库摘要显示报告数、Workspace、签名回执和摘要短码。
+- 失败反馈：摘要校验失败会显示声明摘要和实际摘要短码，并明确“未导入任何报告”。
+- 刷新后复现方式：最近包摘要、远端状态、签名回执和失败历史都持久化在 `mr-calligraphy-learning-state-v1.reportRepository`。
+
+仍待补：
+
+- 当前是本机 SHA-256 完整性校验，不是教师账号签名、公钥证书链、生产签章、云端不可篡改审计或账号权限系统。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front report repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库包摘要验真`

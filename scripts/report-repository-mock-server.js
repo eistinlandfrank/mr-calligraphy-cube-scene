@@ -11,6 +11,7 @@ const SIGNATURE_ALGORITHM = "HMAC-SHA256";
 const DEFAULT_SIGNING_KEY_ID = "report-repository-mock-hmac-v1";
 const DEFAULT_SIGNING_SECRET = "mr-calligraphy-report-repository-mock-signing-secret";
 const DEFAULT_WORKSPACE_ID = "local-browser";
+const PACKAGE_DIGEST_ALGORITHM = "sha256-stable-json";
 const RECEIPT_SIGNED_FIELDS = [
   "receiptKind",
   "remoteVersion",
@@ -93,13 +94,13 @@ function createReportRepositoryMockServer(options = {}) {
 
         const receipt = createReceipt(payload, validation, { signingSecret, signingKeyId, workspaceId });
         const workspace = getWorkspaceState(state, workspaceId);
-        workspace.package = {
+        workspace.package = withPackageDigest({
           ...clone(payload),
           workspaceId,
           packageId: receipt.packageId,
           acceptedAt: receipt.acceptedAt,
           repositoryDigest: receipt.repositoryDigest
-        };
+        });
         workspace.receipts.unshift(receipt);
         state.latestWorkspaceId = workspaceId;
         state.package = workspace.package;
@@ -288,7 +289,7 @@ function createContract() {
     },
     packageKind: PACKAGE_KIND,
     defaultWorkspaceId: DEFAULT_WORKSPACE_ID,
-    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "reports", "verifications"],
+    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "reports", "verifications", "digestAlgorithm", "packageDigest"],
     requiredReportFields: ["id", "createdAt", "averageScore"],
     receiptFields: [
       "ok",
@@ -321,6 +322,7 @@ function validateReportRepositoryPackage(payload, options = {}) {
 
   if (payload.kind !== PACKAGE_KIND) errors.push("报告仓库包 kind 不匹配");
   if (Number(payload.version) !== VERSION) errors.push("报告仓库包版本不匹配");
+  validatePackageDigest(payload, errors, warnings);
   if (!payload.packageId) errors.push("缺少 packageId");
   if (!payload.workspaceId) {
     warnings.push(`缺少 workspaceId，mock 将按请求空间 ${workspaceId} 保存。`);
@@ -391,6 +393,23 @@ function validateVerificationList(value, reports, errors, warnings) {
   });
 }
 
+function validatePackageDigest(payload, errors, warnings) {
+  const claimedDigest = normalizeHex(payload.packageDigest);
+  const algorithm = String(payload.digestAlgorithm || "").trim();
+  if (claimedDigest && algorithm && algorithm !== PACKAGE_DIGEST_ALGORITHM) {
+    errors.push(`报告仓库包摘要算法不受支持：${algorithm}`);
+    return;
+  }
+  if (!claimedDigest) {
+    warnings.push("缺少 packageDigest，mock 按旧版报告仓库包接收。");
+    return;
+  }
+  const actualDigest = createPackageDigest(payload);
+  if (actualDigest !== claimedDigest) {
+    errors.push(`报告仓库包摘要不匹配：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}`);
+  }
+}
+
 function createReceipt(payload, validation, signatureOptions = {}) {
   const workspaceId = normalizeWorkspaceId(signatureOptions.workspaceId || payload.workspaceId);
   const repositoryDigest = sha256StableJson({
@@ -434,6 +453,28 @@ function createReceipt(payload, validation, signatureOptions = {}) {
     signedFields,
     signature: signReceiptPayload(signaturePayload, signatureOptions.signingSecret || DEFAULT_SIGNING_SECRET)
   };
+}
+
+function withPackageDigest(packageRecord) {
+  if (!packageRecord || typeof packageRecord !== "object") return packageRecord;
+  if (!packageRecord.packageDigest && !packageRecord.digestAlgorithm) {
+    return packageRecord;
+  }
+  const next = clone(packageRecord);
+  next.digestAlgorithm = PACKAGE_DIGEST_ALGORITHM;
+  next.packageDigest = createPackageDigest(next);
+  return next;
+}
+
+function createPackageDigest(packageRecord) {
+  const payload = clone(packageRecord || {});
+  delete payload.packageDigest;
+  return sha256StableJson(payload);
+}
+
+function normalizeHex(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : "";
 }
 
 function createReceiptSignaturePayload(receipt, signedFields) {

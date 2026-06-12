@@ -10138,3 +10138,50 @@
 提交：
 
 - 中文 commit message：`新增学习档案包摘要验真`
+
+### 2026-06-13：新增报告仓库包摘要验真
+
+功能名：前台报告仓库 JSON 同步包 SHA-256 摘要验真。
+
+开发原因：
+
+- 报告仓库已经支持本机 JSON 导出、远端推送、远端拉取、签名回执和冲突审计，但包级完整性仍缺口。
+- 每份报告虽然有本机验真摘要，如果整个仓库包被手工改动，导入层仍需要先识别并拒绝，才算真实可用的数据同步。
+
+完成内容：
+
+- `MRAppState.getReportRepositoryPackage()` 输出 `digestAlgorithm: "sha256-stable-json"` 和 64 位 `packageDigest`。
+- 摘要覆盖报告、报告验真摘要、summary、Workspace、来源边界和远端接受元数据。
+- `parseReportRepositoryPackage()` 会在导入前验证 `packageDigest`；不匹配时拒绝导入并保留本机报告不变。
+- 无摘要旧包继续兼容导入。
+- `downloadReportRepository()`、`importReportRepositoryPackage()`、`checkRemoteReportRepository()`、`pushReportRepositoryToRemote()` 和 `pullReportRepositoryFromRemote()` 都会持久化最近包摘要。
+- 远端失败历史会记录当前推送包摘要，便于排查失败请求。
+- `scripts/report-repository-mock-server.js` 校验请求摘要，并在服务端改写接受包后重新生成摘要。
+- Node 状态层脚本和 Playwright 用例新增摘要字段、篡改拒绝、远端持久化和失败历史摘要验收。
+
+验收方式：
+
+- 导出报告仓库 JSON，确认顶层包含 `digestAlgorithm` 和 64 位 `packageDigest`。
+- 修改 JSON 任意报告字段但不更新摘要，重新导入应提示“报告仓库同步包摘要校验失败”，且本机报告不新增、不覆盖。
+- 配置远端报告 API 后推送，服务端收到的 PUT body 应包含本机包摘要；如果远端返回带服务端 `packageId` 的接受包，localStorage 的 `reportRepository.lastPackageDigest` 应持久化远端接受包摘要。
+- 拉取带摘要的远端报告包后，状态栏显示摘要短码并保留签名回执与冲突审计。
+
+真实边界：
+
+- 这是本机 SHA-256 完整性校验，不是教师账号签名、生产证书链、云端审计、班级权限或多人协同自动合并。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front report repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库包摘要验真`

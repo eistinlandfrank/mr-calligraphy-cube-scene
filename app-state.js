@@ -63,6 +63,7 @@
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
   const REPORT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，携带 Workspace 空间 ID 做服务端隔离第一版，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
+  const REPORT_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
   const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
   const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
@@ -2075,6 +2076,7 @@
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictReports,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastPackageDigest: normalizeReportRepositoryHex(source.lastPackageDigest || source.packageDigest || source.repositoryDigest),
       lastSignedReceipt,
       signedReceipts: appendReportRepositorySignedReceipt({ signedReceipts, workspaceId }, lastSignedReceipt),
       lastRemoteFailureAt: normalizePlanDate(source.lastRemoteFailureAt),
@@ -6750,10 +6752,10 @@
       message = repository.lastRemoteStatus;
     } else if (repository.lastImportedAt) {
       tone = "ready";
-      message = `最近导入 ${repository.lastImportedReportCount} 份报告：${formatPlanDate(repository.lastImportedAt)}。`;
+      message = `最近导入 ${repository.lastImportedReportCount} 份报告：${formatPlanDate(repository.lastImportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`;
     } else if (repository.lastExportedAt) {
       tone = "ready";
-      message = `最近导出 ${repository.lastExportedReportCount} 份报告：${formatPlanDate(repository.lastExportedAt)}。`;
+      message = `最近导出 ${repository.lastExportedReportCount} 份报告：${formatPlanDate(repository.lastExportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`;
     }
     if (repository.lastSkippedConflictCount > 0) {
       tone = "warning";
@@ -6803,6 +6805,7 @@
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictReports: clone(repository.lastConflictReports),
       lastPackageId: repository.lastPackageId,
+      lastPackageDigest: repository.lastPackageDigest,
       lastSignedReceipt: repository.lastSignedReceipt ? clone(repository.lastSignedReceipt) : null,
       signedReceiptCount: repository.signedReceipts.length,
       signedReceipts: clone(repository.signedReceipts),
@@ -6986,27 +6989,36 @@
     const verifications = reports
       .map(createReportVerification)
       .filter(Boolean);
+    const packageRecord = {
+      kind: REPORT_REPOSITORY_KIND,
+      version: VERSION,
+      packageId,
+      workspaceId,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      source: {
+        mode: repository.mode,
+        workspaceId,
+        boundary: REPORT_REPOSITORY_BOUNDARY
+      },
+      summary: getReportRepositorySummary(reports, verifications),
+      reports: clone(reports),
+      verifications: clone(verifications),
+      digestAlgorithm: REPORT_REPOSITORY_DIGEST_ALGORITHM
+    };
+    packageRecord.packageDigest = createReportRepositoryPackageDigest(packageRecord);
     return {
       ok: true,
       filename: `mr-calligraphy-report-repository-${Date.now()}.json`,
-      package: {
-        kind: REPORT_REPOSITORY_KIND,
-        version: VERSION,
-        packageId,
-        workspaceId,
-        exportedAt,
-        storageKey: STORAGE_KEY,
-        source: {
-          mode: repository.mode,
-          workspaceId,
-          boundary: REPORT_REPOSITORY_BOUNDARY
-        },
-        summary: getReportRepositorySummary(reports, verifications),
-        reports: clone(reports),
-        verifications: clone(verifications)
-      },
-      message: `已生成 ${reports.length} 份报告的本机报告仓库同步包。${REPORT_REPOSITORY_BOUNDARY}`
+      package: packageRecord,
+      message: `已生成 ${reports.length} 份报告的本机报告仓库同步包，摘要 ${packageRecord.packageDigest.slice(0, 12)}。${REPORT_REPOSITORY_BOUNDARY}`
     };
+  }
+
+  function createReportRepositoryPackageDigest(packageRecord = {}) {
+    const payload = clone(packageRecord || {});
+    delete payload.packageDigest;
+    return sha256StableJson(payload);
   }
 
   function downloadReportRepository(options = {}) {
@@ -7023,6 +7035,7 @@
       lastCheckedAt: now,
       lastExportedReportCount: result.package.reports.length,
       lastPackageId: result.package.packageId,
+      lastPackageDigest: result.package.packageDigest,
       lastSignedReceipt: null,
       signedReceipts: [],
       lastRemoteStatus: "",
@@ -7035,7 +7048,7 @@
       filename: result.filename,
       exportedReportCount: result.package.reports.length,
       status: getReportRepositoryStatus(),
-      message: `已下载报告仓库 JSON 同步包：${result.filename}。${REPORT_REPOSITORY_BOUNDARY}`
+      message: `已下载报告仓库 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${REPORT_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -7072,10 +7085,63 @@
     if (source.kind !== REPORT_REPOSITORY_KIND) {
       return { ok: false, message: "这不是 MR 书法学习报告仓库同步包。" };
     }
+    const digestVerification = verifyReportRepositoryPackageDigest(source);
+    if (!digestVerification.ok) {
+      return {
+        ok: false,
+        message: digestVerification.message
+      };
+    }
     if (!Array.isArray(source.reports)) {
       return { ok: false, message: "报告仓库同步包缺少 reports 数组。" };
     }
-    return { ok: true, package: source };
+    return {
+      ok: true,
+      package: {
+        ...source,
+        packageDigest: digestVerification.packageDigest || normalizeReportRepositoryHex(source.packageDigest),
+        digestAlgorithm: source.digestAlgorithm || (digestVerification.packageDigest ? REPORT_REPOSITORY_DIGEST_ALGORITHM : "")
+      },
+      digestVerification
+    };
+  }
+
+  function verifyReportRepositoryPackageDigest(packageRecord = {}) {
+    const claimedDigest = normalizeReportRepositoryHex(packageRecord.packageDigest);
+    const algorithm = String(packageRecord.digestAlgorithm || "").trim();
+    if (claimedDigest && algorithm && algorithm !== REPORT_REPOSITORY_DIGEST_ALGORITHM) {
+      return {
+        ok: false,
+        status: "unsupported-algorithm",
+        packageDigest: claimedDigest,
+        message: `报告仓库同步包摘要算法不受支持：${algorithm}。未导入任何报告。`
+      };
+    }
+    if (!claimedDigest) {
+      return {
+        ok: true,
+        status: "missing",
+        packageDigest: "",
+        message: "报告仓库同步包未声明摘要，按旧版同步包导入。"
+      };
+    }
+    const actualDigest = createReportRepositoryPackageDigest(packageRecord);
+    if (actualDigest !== claimedDigest) {
+      return {
+        ok: false,
+        status: "digest-mismatch",
+        packageDigest: claimedDigest,
+        actualDigest,
+        message: `报告仓库同步包摘要校验失败：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}。未导入任何报告。`
+      };
+    }
+    return {
+      ok: true,
+      status: "verified",
+      packageDigest: claimedDigest,
+      actualDigest,
+      message: `报告仓库同步包摘要校验通过：${claimedDigest.slice(0, 12)}。`
+    };
   }
 
   function recordReportRepositoryError(message, options = {}) {
@@ -7222,6 +7288,7 @@
       lastSkippedConflictCount: merged.skippedConflictCount,
       lastConflictReports: merged.conflicts,
       lastPackageId: parsed.package.packageId || null,
+      lastPackageDigest: parsed.package.packageDigest || "",
       lastSignedReceipt: null,
       signedReceipts: [],
       lastRemoteStatus: "",
@@ -7229,7 +7296,7 @@
         ? `有 ${merged.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
         : ""
     });
-    addEvent("report-repository-import", `导入报告仓库同步包：新增 ${merged.importedCount}，跳过冲突 ${merged.skippedConflictCount}`);
+    addEvent("report-repository-import", `导入报告仓库同步包：新增 ${merged.importedCount}，跳过冲突 ${merged.skippedConflictCount}${parsed.package.packageDigest ? `，摘要 ${parsed.package.packageDigest.slice(0, 12)}` : ""}`);
     saveState();
     return {
       ok: true,
@@ -7239,8 +7306,8 @@
       totalReportCount: state.reports.length,
       status: getReportRepositoryStatus(),
       message: merged.skippedConflictCount
-        ? `已导入报告仓库同步包：新增 ${merged.importedCount} 份，跳过 ${merged.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
-        : `已导入报告仓库同步包：新增 ${merged.importedCount} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
+        ? `已导入报告仓库同步包：新增 ${merged.importedCount} 份，跳过 ${merged.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${REPORT_REPOSITORY_BOUNDARY}`
+        : `已导入报告仓库同步包：新增 ${merged.importedCount} 份报告。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${REPORT_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -7367,6 +7434,10 @@
       return { ok: false, message: "远端报告 API 返回的不是可解析 JSON。" };
     }
 
+    const hasWrappedPackage = Boolean(
+      (payload.package && typeof payload.package === "object")
+      || (payload.repository && typeof payload.repository === "object")
+    );
     const candidate = payload.package && typeof payload.package === "object"
       ? payload.package
       : payload.repository && typeof payload.repository === "object"
@@ -7380,6 +7451,13 @@
         package: parsed.package,
         signedReceipt,
         message: payload.message || `远端报告仓库包含 ${parsed.package.reports.length} 份报告。`
+      };
+    }
+    if (hasWrappedPackage) {
+      return {
+        ok: false,
+        signedReceipt,
+        message: parsed.message || "远端报告 API 返回的报告包格式无效。"
       };
     }
     if (payload.ok === true) {
@@ -7457,6 +7535,7 @@
         })
         : null;
       const signedReceipt = parsedReceipt || repository.lastSignedReceipt || null;
+      const checkedPackageDigest = parsed.package?.packageDigest || repository.lastPackageDigest || "";
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
@@ -7466,6 +7545,7 @@
         lastRemoteDirection: "check",
         lastRemoteReportCount: reportCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastPackageDigest: checkedPackageDigest,
         lastSignedReceipt: signedReceipt,
         signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
@@ -7524,9 +7604,11 @@
       const parsed = await parseRemoteReportRepositoryResponse(response);
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const reportCount = repositoryPackage.reports.length;
+      const pushedPackageDigest = parsed.package?.packageDigest || repositoryPackage.packageDigest || createReportRepositoryPackageDigest(repositoryPackage);
+      const pushedPackageDigestText = pushedPackageDigest ? `，摘要 ${pushedPackageDigest.slice(0, 12)}` : "";
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        const packageDigest = sha256StableJson(repositoryPackage);
+        const packageDigest = repositoryPackage.packageDigest || createReportRepositoryPackageDigest(repositoryPackage);
         recordReportRepositoryError(parsed.message, {
           action: "push",
           packageId: repositoryPackage.packageId,
@@ -7548,8 +7630,8 @@
         })
         : null;
       const remoteStatus = signedReceipt
-        ? `已推送 ${reportCount} 份报告到远端 API，空间 ${repository.workspaceId}，并收到签名回执 ${signedReceipt.signature.slice(0, 12)}。`
-        : `已推送 ${reportCount} 份报告到远端 API，空间 ${repository.workspaceId}，远端未返回签名回执。`;
+        ? `已推送 ${reportCount} 份报告到远端 API，空间 ${repository.workspaceId}${pushedPackageDigestText}，并收到签名回执 ${signedReceipt.signature.slice(0, 12)}。`
+        : `已推送 ${reportCount} 份报告到远端 API，空间 ${repository.workspaceId}${pushedPackageDigestText}，远端未返回签名回执。`;
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
@@ -7562,6 +7644,7 @@
         lastExportedAt: now,
         lastExportedReportCount: reportCount,
         lastPackageId: acceptedPackageId,
+        lastPackageDigest: pushedPackageDigest,
         lastSignedReceipt: signedReceipt,
         signedReceipts: appendReportRepositorySignedReceipt(repository, signedReceipt),
         lastSkippedConflictCount: 0,
@@ -7576,13 +7659,14 @@
         ok: true,
         status: getReportRepositoryStatus(),
         packageId: acceptedPackageId,
+        packageDigest: pushedPackageDigest,
         pushedReportCount: reportCount,
         signedReceipt: signedReceipt ? clone(signedReceipt) : null,
         message: `${remoteStatus} ${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("推送", error);
-      const packageDigest = sha256StableJson(repositoryPackage);
+      const packageDigest = repositoryPackage.packageDigest || createReportRepositoryPackageDigest(repositoryPackage);
       recordReportRepositoryError(message, {
         action: "push",
         packageId: repositoryPackage.packageId,
@@ -7637,6 +7721,8 @@
 
       const imported = importReportRepositoryPackage(parsed.package);
       const now = new Date().toISOString();
+      const pulledPackageDigest = parsed.package.packageDigest || repository.lastPackageDigest || "";
+      const pulledPackageDigestText = pulledPackageDigest ? `，摘要 ${pulledPackageDigest.slice(0, 12)}` : "";
       const parsedReceipt = parsed.signedReceipt
         ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
           direction: "pull",
@@ -7660,10 +7746,11 @@
         lastImportedAt: now,
         lastImportedReportCount: imported.importedCount || 0,
         lastPackageId: parsed.package.packageId || repository.lastPackageId || null,
+        lastPackageDigest: pulledPackageDigest,
         lastSignedReceipt: signedReceipt,
         signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastSkippedConflictCount: imported.skippedConflictCount || 0,
-        lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，空间 ${repository.workspaceId}，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
+        lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，空间 ${repository.workspaceId}${pulledPackageDigestText}，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
         remoteRetryAfter: null,
         lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
@@ -7679,8 +7766,8 @@
         pulledReportCount: parsed.package.reports.length,
         signedReceipt: signedReceipt ? clone(signedReceipt) : null,
         message: imported.skippedConflictCount
-          ? `已从远端 API 拉取报告，空间 ${repository.workspaceId}：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
-          : `已从远端 API 拉取报告，空间 ${repository.workspaceId}：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
+          ? `已从远端 API 拉取报告，空间 ${repository.workspaceId}${pulledPackageDigestText}：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
+          : `已从远端 API 拉取报告，空间 ${repository.workspaceId}${pulledPackageDigestText}：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("拉取", error);

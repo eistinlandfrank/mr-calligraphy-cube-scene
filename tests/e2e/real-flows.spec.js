@@ -397,12 +397,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
       body
     });
     if (method === "PUT") {
-      remoteReportPackage = {
+      remoteReportPackage = withPackageDigest({
         ...body,
         workspaceId: body.workspaceId,
         packageId: "e2e-report-package",
         acceptedAt: new Date().toISOString()
-      };
+      });
       latestReportReceipt = {
         receiptKind: "mr-calligraphy-report-repository-receipt-v1",
         remoteVersion: "e2e-report-v1",
@@ -1131,10 +1131,18 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.locator("#reportRepositoryExportButton").click();
   const reportRepositoryDownload = await reportRepositoryDownloadPromise;
   expect(reportRepositoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-repository-.*\.json$/);
+  const reportRepositoryPath = await reportRepositoryDownload.path();
+  const reportRepositoryJson = JSON.parse(fs.readFileSync(reportRepositoryPath, "utf8"));
+  expect(reportRepositoryJson.digestAlgorithm).toBe("sha256-stable-json");
+  expect(reportRepositoryJson.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  const reportRepositoryDigestPayload = cloneJson(reportRepositoryJson);
+  delete reportRepositoryDigestPayload.packageDigest;
+  expect(reportRepositoryJson.packageDigest).toBe(sha256StableJson(reportRepositoryDigestPayload));
   await expect(page.locator("#reportRepositorySummary")).toContainText("最近导出 1 份报告");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastExportedReportCount).toBe(1);
   expect(learningState.reportRepository.lastPackageId).toMatch(/^report-repository-/);
+  expect(learningState.reportRepository.lastPackageDigest).toBe(reportRepositoryJson.packageDigest);
 
   await page.locator(".report-repository-remote summary").click();
   await page.locator("#reportRepositoryEndpointInput").fill(reportEndpoint);
@@ -1161,6 +1169,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportPutRequest.body.kind).toBe("mr-calligraphy-report-repository-v1");
   expect(reportPutRequest.body.workspaceId).toBe("report-e2e");
   expect(reportPutRequest.body.source.workspaceId).toBe("report-e2e");
+  expect(reportPutRequest.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(reportPutRequest.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(reportPutRequest.body.summary.total).toBe(1);
   expect(reportPutRequest.body.reports[0].teacherReview.note).toContain("竖钩");
   expect(reportPutRequest.body.verifications).toHaveLength(1);
@@ -1169,6 +1179,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastRemoteDirection).toBe("push");
   expect(learningState.reportRepository.lastPackageId).toBe("e2e-report-package");
+  expect(remoteReportPackage.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportRepository.lastPackageDigest).toBe(remoteReportPackage.packageDigest);
   expect(learningState.reportRepository.workspaceId).toBe("report-e2e");
   expect(learningState.reportRepository.lastSignedReceipt.signatureAlgorithm).toBe("HMAC-SHA256");
   expect(learningState.reportRepository.lastSignedReceipt.signingKeyId).toBe("e2e-report-signing-key-v1");
@@ -1197,8 +1209,9 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportRequests.some((item) => item.method === "GET" && item.authorization === "Bearer report-token" && item.workspaceId === "report-e2e")).toBe(true);
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
+  expect(learningState.reportRepository.lastPackageDigest).toBe(remoteReportPackage.packageDigest);
 
-  remoteReportPackage = {
+  remoteReportPackage = withPackageDigest({
     ...remoteReportPackage,
     reports: remoteReportPackage.reports.map((report, index) => index === 0
       ? {
@@ -1207,7 +1220,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         title: "远端 E2E 冲突报告"
       }
       : report)
-  };
+  });
   await page.locator("#reportRepositoryPullButton").click();
   await expect(page.locator("#reportRepositoryConflictPanel")).toBeVisible();
   await expect(page.locator("#reportRepositoryConflictStatus")).toContainText("1 份远端同 ID 差异报告");
@@ -2306,9 +2319,11 @@ test("front report repository shows retryable remote failure recovery", async ({
   expect(putRequest.workspaceId).toBe("local-browser");
   expect(putRequest.body.kind).toBe("mr-calligraphy-report-repository-v1");
   expect(putRequest.body.workspaceId).toBe("local-browser");
+  expect(putRequest.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(putRequest.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(putRequest.body.summary.total).toBe(1);
   expect(learningState.reportRepository.remoteFailureHistory[0].packageId).toBe(putRequest.body.packageId);
-  expect(learningState.reportRepository.remoteFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportRepository.remoteFailureHistory[0].packageDigest).toBe(putRequest.body.packageDigest);
 
   const networkPushEndpoint = await getSameOriginEndpoint(page, networkPushPath);
   await configureReportRepositoryRemoteInUi(page, networkPushEndpoint, "report-network-push-token");

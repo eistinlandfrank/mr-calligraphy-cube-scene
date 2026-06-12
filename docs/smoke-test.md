@@ -86,6 +86,7 @@ node scripts/learning-state-check.js
 本轮新增报告仓库 Workspace 验收：`getReportRepositoryPackage()` 输出顶层 `workspaceId` 和 `source.workspaceId`；远端报告 API 配置保存 endpoint/token/workspace；检查、推送和拉取携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 `report-alpha` / `report-beta` 分桶保存报告包和签名回执；切回原空间能读取原 package；回执审计 HTML 会包含 workspace。
 
 本轮新增报告仓库回执本机校验验收：报告仓库签名回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`；真实 mock 回执应显示“本机校验通过”，篡改摘要的回执应显示“摘要不匹配”；报告仓库状态、回执列表和回执审计 HTML 都会保留校验状态和重算摘要。
+本轮新增报告仓库包摘要验真验收：`getReportRepositoryPackage()` 会生成 `digestAlgorithm` 和 64 位 `packageDigest`；篡改报告仓库 JSON 但保留旧摘要会被导入层拒绝；远端推送、检查和拉取会把 `reportRepository.lastPackageDigest` 持久化到 localStorage。
 
 本轮新增项目仓库 Workspace 验收：主后台远端项目仓库面板新增 `projectRepositoryWorkspace`；项目仓库包输出顶层 `workspaceId`；检查、推送和拉取携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存项目仓库包、回执和版本历史；回执审计 HTML 会包含 workspace。
 本轮新增项目仓库回执本机校验验收：项目仓库回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，回执审计 HTML 会保留重算摘要。
@@ -126,7 +127,7 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 站内报告点击“下载 PDF”会产生 PDF 下载，并读取文件确认包含能力雷达图标记、分数趋势图标记和最近作品截图 Image XObject。
 - 站内报告点击“导出同步包”会产生报告仓库 JSON 下载；点击“导入同步包”会通过文件选择器导入 JSON 包，并把报告和教师批注写入本机学习状态。
 - 站内报告填写本机教师批注并选择角色后，确认批注人、角色、内容、批注摘要和本机签名摘要写入 `ReportRecord`，审计 HTML 和 PDF 注释保留同一份签名摘要，刷新页面后仍能复现，并可清除回到空批注状态。
-- 站内报告配置远端 endpoint/token/Workspace 后，用浏览器路由模拟报告仓库 API，覆盖检查远端、推送带 `workspaceId` 的报告包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId、签名回执 workspace 持久化、回执审计 HTML 导出、拉取当前空间远端包、教师批注和本机验真摘要随包同步，并验证同 ID 差异报告会出现冲突审计且可按字段合并。
+- 站内报告配置远端 endpoint/token/Workspace 后，用浏览器路由模拟报告仓库 API，覆盖检查远端、推送带 `workspaceId`、`digestAlgorithm` 和 `packageDigest` 的报告包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId 和 `lastPackageDigest` 持久化、签名回执 workspace 持久化、回执审计 HTML 导出、拉取当前空间远端包后摘要保留、教师批注和本机验真摘要随包同步，并验证同 ID 差异报告会出现冲突审计且可按字段合并。
 - 前台学习档案配置远端 endpoint/token/Workspace 后，用浏览器路由模拟学习档案仓库，覆盖检查远端、推送带 `workspaceId`、`digestAlgorithm` 和 `packageDigest` 的档案包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId 和 `lastPackageDigest` 持久化、拉取远端包后摘要保留、分页第二页自动追取、冲突审计面板、字段级合并表单和 `historyRepository` 状态更新。
 - 前台生成学习计划后点击“导出日历”，确认下载 `.ics` 文件，并读取内容确认包含 `VCALENDAR`、`VEVENT`、`VALARM` 和计划任务标题。
 - 前台计划仓库配置远端 endpoint/token/Workspace 后，用浏览器路由模拟计划仓库 API，覆盖推送带 `workspaceId` 的计划包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId、回执持久化、回执本机校验、回执审计 HTML 导出和冲突拉取不覆盖本机计划。
