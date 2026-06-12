@@ -4611,3 +4611,38 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增远端分享仓库包摘要验真`
+
+## 124. 2026-06-13 新增静态控件处理器覆盖验收
+
+本次把前端控件状态清单从“有真实/导出/本机发布状态标签”推进到“真实状态控件必须能追踪到处理器”。这直接针对用户反馈的“很多按钮像假的”：以后新增静态按钮如果只写了 `data-feature-state="real-local"`，但没有实际 `click`、`submit`、批量 selector 或初始化绑定，smoke 会失败。
+
+完成内容：
+
+- `scripts/control-inventory.js` 对四个入口页面新增 `handled` 和 `missingHandler` 统计。
+- 前台页面同时扫描 `practice-canvas.js` 和 `script.js`；主后台同时扫描 `project-archive.js` 和 `main-admin-scene.js`；写实页面扫描 `realistic-scene.js`。
+- `real`、`real-local`、`real-export`、`real-published-local` 控件必须有可追踪处理。
+- 支持变量绑定、`els.xxx` 绑定、直接 DOM 绑定、批量 `data-*` selector 绑定、表单 submit 绑定和练习画布初始化参数绑定。
+- 导航链接保留按 `href` 验收，避免把真实跳转误判为缺少 JS 处理。
+- 当前清单通过：前台 103 个真实控件、主后台 53 个真实控件、写实演示 3 个真实控件、写实后台 34 个真实控件均 `missingHandler 0`。
+
+真实化说明：
+
+- 数据来源：HTML 控件、页面实际加载脚本和静态可追踪的本机处理器。
+- 成功反馈：控件清单输出每页 handled 数量。
+- 失败反馈：缺少处理器会指出页面、行号和控件标签。
+- 刷新后复现方式：`scripts/smoke-test.js` 已运行 `node scripts/control-inventory.js --check`，后续提交自动覆盖。
+
+仍待补：
+
+- 静态处理器覆盖只能证明按钮接入了处理路径，不证明每条路径都完成真实业务；具体行为仍需要 Playwright 和状态层脚本持续补全。
+
+验收：
+
+- `node --check scripts/control-inventory.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增静态控件处理器覆盖验收`

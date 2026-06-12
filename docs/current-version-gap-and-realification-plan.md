@@ -5087,3 +5087,42 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增远端分享仓库包摘要验真`
+
+## 124. 2026-06-13 新增静态控件处理器覆盖验收
+
+本次继续回应“前端很多按钮像假的”的问题，把已有控件状态清单从“按钮有 `data-feature-state` 标记”升级为“标记为真实能力的按钮必须能追踪到处理器”。此前 `scripts/control-inventory.js` 只确认四个入口 HTML 的按钮和导航链接有状态标签，不能证明这些按钮真的被 JS 绑定。
+
+完成内容：
+
+- `scripts/control-inventory.js` 新增真实控件处理器覆盖检查。
+- 四个入口页面按实际加载脚本映射：前台检查 `practice-canvas.js` + `script.js`，主后台检查 `project-archive.js` + `main-admin-scene.js`，写实演示和写实后台检查 `realistic-scene.js`。
+- 对 `real`、`real-local`、`real-export`、`real-published-local` 控件强制检查处理器。
+- 导航链接只要有真实 `href` 即视为可跳转；无 `href` 的 `<a>` 不计入按钮能力。
+- 普通按钮会追踪 `document.getElementById()`、`els.xxx`、变量 `.addEventListener()`、直接 `querySelector/getElementById().addEventListener()`。
+- 批量按钮会识别 `data-*` selector，例如 `data-learning-mode` 和 `data-history-filter` 的 `forEach(... addEventListener)` 绑定。
+- 表单提交按钮会追踪父级 `<form>` 的 `submit` 处理器。
+- 练习画布按钮会识别传入 `MRPracticeCanvas.init({ undoButton, clearButton, replayButton })` 的真实初始化模式。
+- 输出新增 `handled` 和 `missingHandler` 统计；当前验收为前台 103 个、主后台 53 个、写实演示 3 个、写实后台 34 个真实控件全部有处理器。
+
+真实化说明：
+
+- 数据来源：静态 HTML 控件、实际加载的本机 JS 文件和可追踪的事件绑定/初始化模式。
+- 成功反馈：`node scripts/control-inventory.js --check` 会输出每页真实控件数量和 `missingHandler 0`。
+- 失败反馈：新增真实按钮但没有处理器时，脚本会输出具体页面行号和控件标签，阻止 smoke 通过。
+- 刷新后复现方式：该门禁已进入 `scripts/smoke-test.js`，每次 smoke 都会重新检查。
+
+仍待补：
+
+- 这是静态处理器覆盖门禁，不等价于完整用户流程验收；具体点击后的数据写入、下载文件、远端请求和失败恢复仍要依赖状态脚本和 Playwright。
+
+验收：
+
+- `node --check scripts/control-inventory.js`
+- `node scripts/control-inventory.js --check`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增静态控件处理器覆盖验收`

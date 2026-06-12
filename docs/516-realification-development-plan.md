@@ -10279,3 +10279,43 @@
 提交：
 
 - 中文 commit message：`新增远端分享仓库包摘要验真`
+
+### 2026-06-13：新增静态控件处理器覆盖验收
+
+功能名：四个入口静态控件真实处理器覆盖门禁。
+
+开发原因：
+
+- 用户此前反馈前端操作界面里很多按钮只是假的、不可用。
+- 现有控件清单只能确认按钮有 `data-feature-state`，不能确认标记为真实能力的按钮是否真的接入 JS 处理器。
+
+完成内容：
+
+- `scripts/control-inventory.js` 新增真实控件处理器覆盖检查。
+- 按入口页面扫描实际加载脚本：前台扫描 `practice-canvas.js` 和 `script.js`，主后台扫描 `project-archive.js` 和 `main-admin-scene.js`，写实演示和写实后台扫描 `realistic-scene.js`。
+- `real`、`real-local`、`real-export` 和 `real-published-local` 控件必须能追踪到真实处理路径。
+- 支持变量 `.addEventListener()`、`els.xxx.addEventListener()`、直接 DOM 绑定、批量 `data-*` selector 绑定、表单 submit 绑定和传入初始化对象的按钮绑定。
+- 导航链接按有效 `href` 验收。
+- 输出新增 `handled` 和 `missingHandler`；当前四个入口均为 `missingHandler 0`。
+
+验收方式：
+
+- 新增一个真实状态按钮但不写 JS 处理器，`node scripts/control-inventory.js --check` 应失败并指出页面行号。
+- 现有前台、主后台、写实演示和写实后台全部真实控件应能通过处理器覆盖统计。
+- smoke test 会自动运行该门禁，防止后续提交把控件退回“有标签但没处理”的状态。
+
+真实边界：
+
+- 这是静态覆盖检查，不是完整点击流自动化；按钮处理器内部是否真的完成业务，仍要继续靠状态脚本、mock server 和 Playwright 用例证明。
+
+验收命令：
+
+- `node --check scripts/control-inventory.js`
+- `node scripts/control-inventory.js --check`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增静态控件处理器覆盖验收`
