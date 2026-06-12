@@ -103,7 +103,9 @@
       publishedSceneCount: Number(repositorySummary.publishedSceneCount || 0),
       readySceneCount: Number(repositorySummary.readySceneCount || 0),
       importedModels: Number(schemaSummary.importedModels || repositorySummary.importedModelCount || 0),
+      textureAssets: Number(schemaSummary.textureAssets || repositorySummary.textureAssetCount || 0),
       missingModelBinaries: Number(schemaSummary.missingModelBinaries || repositorySummary.missingBinaryCount || 0),
+      missingTextureBinaries: Number(schemaSummary.missingTextureBinaries || 0),
       unknownModelBinaries: Number(schemaSummary.unknownModelBinaries || repositorySummary.unknownBinaryCount || 0),
       missingModelHashes: Number(schemaSummary.missingModelHashes || repositorySummary.missingHashCount || 0),
       repositoryStatus: String(repository?.status || ""),
@@ -1306,9 +1308,7 @@
     const total = added.length + updated.length + removed.length;
     return {
       total,
-      summary: total
-        ? `${added.length} 新增模型 / ${updated.length} 修改模型 / ${removed.length} 删除模型`
-        : "模型无变化",
+      summary: formatDbAssetDiffSummary(added, updated, removed),
       items: [
         ...formatDbModelDiffItems("新增模型", added),
         ...formatDbModelDiffItems("修改模型", updated),
@@ -1320,6 +1320,28 @@
         ...createDbModelSelections("remove", removed, currentMap, incomingMap)
       ]
     };
+  }
+
+  function formatDbAssetDiffSummary(added, updated, removed) {
+    const total = added.length + updated.length + removed.length;
+    if (!total) {
+      return "模型无变化";
+    }
+    const parts = [
+      ...formatDbAssetDiffCount("新增", added),
+      ...formatDbAssetDiffCount("修改", updated),
+      ...formatDbAssetDiffCount("删除", removed)
+    ];
+    return parts.join(" / ");
+  }
+
+  function formatDbAssetDiffCount(action, records) {
+    const modelCount = records.filter((record) => record.assetKind !== "texture").length;
+    const textureCount = records.filter((record) => record.assetKind === "texture").length;
+    return [
+      modelCount ? `${modelCount} ${action}模型` : "",
+      textureCount ? `${textureCount} ${action}贴图` : ""
+    ].filter(Boolean);
   }
 
   function mapDbModelRecords(item, records, isArchiveRecord) {
@@ -1345,25 +1367,62 @@
     ).trim();
     const label = String(data.label || data.fileName || key || `模型 ${index + 1}`).trim();
     const bytes = Number(record?.bytes || data.metrics?.fileBytes || data.fileBytes || record?.arrayBuffer?.byteLength || data.arrayBuffer?.byteLength || 0);
+    const assetKind = getDbImportAssetKind(data, key);
+    const texture = normalizeDbModelTextureRef(data.texture);
     const model = {
       key: key || `model-${index + 1}`,
+      assetKind,
       label: label || `模型 ${index + 1}`,
       fileName: String(data.fileName || "").trim(),
       type: String(data.type || "").trim(),
       bytes: Number.isFinite(bytes) ? bytes : 0,
       sha256: normalizeSha256(record?.sha256 || data.sha256),
-      metrics: normalizeModelMetricsForDiff(data.metrics)
+      metrics: normalizeModelMetricsForDiff(data.metrics),
+      texture
     };
     model.signature = stableStringify({
+      assetKind: model.assetKind,
       label: model.label,
       fileName: model.fileName,
       type: model.type,
       bytes: model.bytes,
       sha256: model.sha256,
-      metrics: model.metrics
+      metrics: model.metrics,
+      texture: model.texture
     });
     model.fullPreview = createDbModelRecordFullPreview(record);
     return model;
+  }
+
+  function getDbImportAssetKind(data, key = "") {
+    const type = String(data?.type || data?.mimeType || "").toLowerCase();
+    const fileName = String(data?.fileName || "").toLowerCase();
+    const assetKey = String(key || data?.dbKey || data?.id || "").toLowerCase();
+    if (["png", "jpg", "jpeg", "webp"].includes(type) ||
+        ["image/png", "image/jpeg", "image/webp"].includes(type) ||
+        /\.(png|jpe?g|webp)$/.test(fileName) ||
+        assetKey.includes(":texture-")) {
+      return "texture";
+    }
+    return "model";
+  }
+
+  function normalizeDbModelTextureRef(texture) {
+    if (!texture || typeof texture !== "object") {
+      return null;
+    }
+    const dbKey = String(texture.dbKey || "").trim();
+    const fileName = String(texture.fileName || "").trim();
+    if (!dbKey || !fileName) {
+      return null;
+    }
+    return {
+      dbKey,
+      fileName,
+      type: String(texture.type || "").trim(),
+      sha256: normalizeSha256(texture.sha256),
+      fileBytes: Number(texture.fileBytes || 0) || 0
+    };
   }
 
   function normalizeModelMetricsForDiff(metrics) {
@@ -1386,13 +1445,15 @@
 
   function formatDbModelDiffItems(action, models) {
     return models.map((model) => {
+      const actionLabel = model.assetKind === "texture" ? action.replace("模型", "贴图") : action;
       const details = [
         model.fileName || "",
         model.type ? model.type.toUpperCase() : "",
         model.bytes ? formatBytes(model.bytes) : "",
-        model.sha256 ? "SHA-256" : ""
+        model.sha256 ? "SHA-256" : "",
+        model.texture ? `贴图 ${model.texture.fileName}` : ""
       ].filter(Boolean).join(" · ");
-      return `${action}：${model.label}${details ? `（${details}）` : ""}`;
+      return `${actionLabel}：${model.label}${details ? `（${details}）` : ""}`;
     });
   }
 
@@ -1400,12 +1461,12 @@
     return models.map((model) => {
       const currentModel = action === "add" ? null : currentMap.get(model.key);
       const incomingModel = action === "remove" ? null : incomingMap.get(model.key);
-      const conflicts = action === "remove" ? [] : findDbModelNameConflicts(model, currentMap, new Set([model.key]));
+      const conflicts = action === "remove" || model.assetKind === "texture" ? [] : findDbModelNameConflicts(model, currentMap, new Set([model.key]));
       const conflictSummary = summarizeDbModelNameConflicts(conflicts);
       return {
         action,
         key: model.key,
-        label: `${getDbModelActionLabel(action)}：${model.label}`,
+        label: `${getDbModelActionLabel(action, model.assetKind)}：${model.label}`,
         detail: formatDbModelSelectionDetail(model),
         conflictSummary,
         conflictCount: conflicts.length,
@@ -1420,10 +1481,11 @@
     });
   }
 
-  function getDbModelActionLabel(action) {
-    if (action === "add") return "新增模型";
-    if (action === "remove") return "删除模型";
-    return "修改模型";
+  function getDbModelActionLabel(action, assetKind = "model") {
+    const noun = assetKind === "texture" ? "贴图" : "模型";
+    if (action === "add") return `新增${noun}`;
+    if (action === "remove") return `删除${noun}`;
+    return `修改${noun}`;
   }
 
   function formatDbModelSelectionDetail(model) {
@@ -1431,7 +1493,8 @@
       model.fileName || "",
       model.type ? model.type.toUpperCase() : "",
       model.bytes ? formatBytes(model.bytes) : "",
-      model.sha256 ? "SHA-256" : ""
+      model.sha256 ? "SHA-256" : "",
+      model.texture ? `关联贴图 ${model.texture.fileName}` : ""
     ].filter(Boolean).join(" · ") || model.key;
   }
 
@@ -1442,6 +1505,7 @@
 
     const preview = {
       key: model.key,
+      assetKind: model.assetKind,
       label: model.label
     };
     if (model.fileName) {
@@ -1459,6 +1523,9 @@
     }
     if (model.metrics && Object.keys(model.metrics).length) {
       preview.metrics = model.metrics;
+    }
+    if (model.texture) {
+      preview.texture = model.texture;
     }
     return createJsonPreview(preview, missingLabel);
   }
@@ -1775,7 +1842,9 @@
       realisticSnapshots: Number(summary.realisticSnapshots) || 0,
       realisticReleases: Number(summary.realisticReleases) || 0,
       importedModels: Number(summary.importedModels) || 0,
+      textureAssets: Number(summary.textureAssets) || Number(schema?.assetManifest?.textureAssetCount) || 0,
       missingModelBinaries: Number(summary.missingModelBinaries) || 0,
+      missingTextureBinaries: Number(summary.missingTextureBinaries) || Number(schema?.assetManifest?.missingTextureBinaryCount) || 0,
       unknownModelBinaries: Number(summary.unknownModelBinaries) || 0,
       missingModelHashes: Number(summary.missingModelHashes) || 0,
       repositoryStatus: String(summary.repositoryStatus || schema?.repository?.status || ""),
@@ -1972,9 +2041,15 @@
   async function importSelectedDbModels(item, db, archiveRecords, selectedModels) {
     const archiveRecordMap = mapArchiveDbRecords(item, archiveRecords);
     const currentModelMap = mapDbModelRecords(item, await readAllRecords(db, item.storeName), false);
+    const dependencyKeys = expandSelectedDbRecordKeys(item, archiveRecords, selectedModels);
+    const explicitSelectionKeys = new Set(selectedModels
+      .filter((selection) => selection.action !== "remove")
+      .map((selection) => String(selection.key || "").trim())
+      .filter(Boolean));
     const explicitRemoveKeys = new Set(selectedModels
       .filter((selection) => selection.action === "remove")
-      .map((selection) => selection.key));
+      .map((selection) => String(selection.key || "").trim())
+      .filter((key) => key && !dependencyKeys.has(key)));
     const replacementRemoveKeys = new Set();
     const restoredEntries = [];
     const restoredRecords = new Map();
@@ -2000,9 +2075,26 @@
       restoredEntries.push({ selection, record: restoredRecord });
     }
 
+    for (const dependencyKey of dependencyKeys) {
+      if (explicitSelectionKeys.has(dependencyKey)) {
+        continue;
+      }
+      const archiveRecord = archiveRecordMap.get(dependencyKey);
+      if (!archiveRecord) {
+        continue;
+      }
+      restoredEntries.push({
+        selection: { action: "dependency", key: dependencyKey },
+        record: await deserializeDbRecord(archiveRecord, item.label),
+        dependency: true
+      });
+    }
+
     const selectedRemoveKeys = new Set([...explicitRemoveKeys, ...replacementRemoveKeys]);
-    restoredEntries.forEach(({ selection, record }) => {
-      resolveDbModelRestoreConflict(item, record, currentModelMap, selectedRemoveKeys, restoredRecords);
+    restoredEntries.forEach(({ selection, record, dependency }) => {
+      if (!dependency && getDbImportAssetKind(record, selection.key) !== "texture") {
+        resolveDbModelRestoreConflict(item, record, currentModelMap, selectedRemoveKeys, restoredRecords);
+      }
       restoredRecords.set(selection.key, record);
     });
 
@@ -2014,13 +2106,14 @@
       });
       selectedModels.forEach((selection) => {
         if (selection.action === "remove") {
-          store.delete(selection.key);
+          if (!dependencyKeys.has(selection.key)) {
+            store.delete(selection.key);
+          }
           return;
         }
-        const record = restoredRecords.get(selection.key);
-        if (record) {
-          store.put(record);
-        }
+      });
+      restoredRecords.forEach((record) => {
+        store.put(record);
       });
       transaction.oncomplete = resolve;
       transaction.onerror = () => reject(transaction.error || new Error(`无法恢复 ${item.label}。`));
@@ -2040,9 +2133,7 @@
       return records;
     }
 
-    const selectedKeys = new Set(selectedModels
-      .filter((selection) => selection.action !== "remove")
-      .map((selection) => selection.key));
+    const selectedKeys = expandSelectedDbRecordKeys(item, records, selectedModels);
     if (!selectedKeys.size) {
       return [];
     }
@@ -2050,6 +2141,35 @@
       const model = normalizeDbModelRecord(item, record, index, true);
       return selectedKeys.has(model.key);
     });
+  }
+
+  function expandSelectedDbRecordKeys(item, records, selectedModels) {
+    const selectedKeys = new Set(selectedModels
+      .filter((selection) => selection.action !== "remove")
+      .map((selection) => String(selection.key || "").trim())
+      .filter(Boolean));
+    if (!selectedKeys.size) {
+      return selectedKeys;
+    }
+
+    const archiveRecordMap = mapArchiveDbRecords(item, records);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      Array.from(selectedKeys).forEach((key) => {
+        const textureKey = getDbRecordTextureDependencyKey(archiveRecordMap.get(key));
+        if (textureKey && archiveRecordMap.has(textureKey) && !selectedKeys.has(textureKey)) {
+          selectedKeys.add(textureKey);
+          changed = true;
+        }
+      });
+    }
+    return selectedKeys;
+  }
+
+  function getDbRecordTextureDependencyKey(record) {
+    const data = record?.data && typeof record.data === "object" ? record.data : record || {};
+    return String(data.texture?.dbKey || "").trim();
   }
 
   function resolveDbModelRestoreConflict(item, record, currentModelMap, selectedRemoveKeys, pendingRecords) {
@@ -2223,7 +2343,7 @@
       try {
         arrayBuffer = base64ToArrayBuffer(record.arrayBufferBase64);
       } catch (error) {
-        throw new Error(`${label} 中有模型文件无法解码，已阻止恢复。`);
+        throw new Error(`${label} 中有导入资产文件无法解码，已阻止恢复。`);
       }
       await assertArrayBufferSha256(arrayBuffer, expectedHash, record.data?.label || record.data?.fileName || label);
       summary.hashCount += 1;
@@ -2235,7 +2355,7 @@
   async function assertArrayBufferSha256(arrayBuffer, expectedHash, label) {
     const actualHash = await createArrayBufferSha256(arrayBuffer);
     if (actualHash !== expectedHash) {
-      throw new Error(`模型文件哈希校验失败：${label}。`);
+      throw new Error(`导入资产文件哈希校验失败：${label}。`);
     }
   }
 
@@ -2251,7 +2371,7 @@
       if (nodeDigest) {
         return nodeDigest;
       }
-      throw new Error("当前浏览器不支持 SHA-256 哈希校验，无法安全处理项目档案模型文件。");
+      throw new Error("当前浏览器不支持 SHA-256 哈希校验，无法安全处理项目档案导入资产文件。");
     }
 
     const digest = await cryptoApi.subtle.digest("SHA-256", arrayBuffer);
@@ -2515,7 +2635,10 @@
       const pack = archive.indexedDb?.[item.id];
       const selectedModels = restoreOptions.dbRecords[item.id];
       if (Array.isArray(selectedModels) && selectedModels.length) {
-        return sum + selectedModels.length;
+        const selectedRecords = Array.isArray(pack?.records)
+          ? filterArchiveDbRecordsBySelection(item, pack.records, selectedModels)
+          : [];
+        return sum + selectedRecords.length;
       }
       return sum + (Array.isArray(pack?.records) ? pack.records.length : 0);
     }, 0);
@@ -2528,10 +2651,10 @@
     }, 0);
     const migrationCount = Array.isArray(archive.migrations) ? archive.migrations.length : 0;
     const migrationText = migrationCount ? `，${migrationCount} 条迁移记录` : "";
-    const hashText = modelHashCount ? `、${modelHashCount} 个模型哈希` : "";
+    const hashText = modelHashCount ? `、${modelHashCount} 个资产哈希` : "";
     return {
       ok: true,
-      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入模型${hashText}${migrationText}，并写入统一项目 schema。`,
+      message: `${prefix} 已包含 ${storageCount} 组本机配置、${modelCount} 个导入资产${hashText}${migrationText}，并写入统一项目 schema。`,
       storageCount,
       modelCount,
       modelHashCount,
@@ -2737,15 +2860,15 @@
   function createRestoreAuditHtml(records, exportedAt) {
     const rows = records.length
       ? records.map((record) => `<article class="card">
-        <div class="item-head"><h2>${escapeHtml(formatArchiveDate(record.createdAt))}</h2><span>${escapeHtml(record.storageCount)} 配置 / ${escapeHtml(record.modelCount)} 模型</span></div>
+        <div class="item-head"><h2>${escapeHtml(formatArchiveDate(record.createdAt))}</h2><span>${escapeHtml(record.storageCount)} 配置 / ${escapeHtml(record.modelCount)} 资产</span></div>
         <p>${escapeHtml(record.message || "项目档案恢复完成。")}</p>
         <ul>
           <li>档案时间：${escapeHtml(formatArchiveDate(record.archiveExportedAt))}</li>
           <li>档案来源：${escapeHtml(record.archiveSource || "未知")}</li>
           <li>恢复配置：${escapeHtml(record.storageKeys.join("、") || "无")}</li>
           <li>恢复模型库：${escapeHtml(record.dbIds.join("、") || "无")}</li>
-          <li>字段级选择：${escapeHtml(record.storageFieldCount)}；模型级选择：${escapeHtml(record.dbModelCount)}</li>
-          <li>模型哈希：${escapeHtml(record.modelHashCount)}；缺哈希：${escapeHtml(record.missingHashCount)}；迁移记录：${escapeHtml(record.migrationCount)}</li>
+          <li>字段级选择：${escapeHtml(record.storageFieldCount)}；资产级选择：${escapeHtml(record.dbModelCount)}</li>
+          <li>资产哈希：${escapeHtml(record.modelHashCount)}；缺哈希：${escapeHtml(record.missingHashCount)}；迁移记录：${escapeHtml(record.migrationCount)}</li>
           <li>摘要算法：${escapeHtml(record.digestAlgorithm || "旧记录未生成")}</li>
           <li>档案摘要：${escapeHtml(record.archiveDigest || "旧记录未生成")}</li>
           <li>选择摘要：${escapeHtml(record.selectionDigest || "旧记录未生成")}</li>
@@ -2903,13 +3026,13 @@
       <div class="stat"><span>新增配置</span><strong>${escapeHtml(summary.storageAdded || 0)}</strong></div>
       <div class="stat"><span>覆盖配置</span><strong>${escapeHtml(summary.storageUpdated || 0)}</strong></div>
       <div class="stat"><span>清空配置</span><strong>${escapeHtml(summary.storageRemoved || 0)}</strong></div>
-      <div class="stat"><span>档案模型</span><strong>${escapeHtml(summary.incomingModelCount || 0)}</strong></div>
+      <div class="stat"><span>档案资产</span><strong>${escapeHtml(summary.incomingModelCount || 0)}</strong></div>
     </div>
 
     <section class="card plan">
       <h2>恢复选择</h2>
       <p>${escapeHtml(selectedText)}</p>
-      <p class="muted">档案时间：${escapeHtml(formatArchiveDate(preview.exportedAt))}；来源：${escapeHtml(preview.source || "未知")}；schema v${escapeHtml(schema.version || "-")}；模型哈希 ${escapeHtml(summary.assetHashCount || 0)}，缺哈希 ${escapeHtml(summary.missingAssetHashCount || 0)}。</p>
+      <p class="muted">档案时间：${escapeHtml(formatArchiveDate(preview.exportedAt))}；来源：${escapeHtml(preview.source || "未知")}；schema v${escapeHtml(schema.version || "-")}；资产哈希 ${escapeHtml(summary.assetHashCount || 0)}，缺哈希 ${escapeHtml(summary.missingAssetHashCount || 0)}。</p>
     </section>
 
     ${migrationRows}
@@ -3104,7 +3227,7 @@
   function describeDbChange(item) {
     const label = item.change === "replace" ? "替换" : "数量相同";
     const hashDetail = item.incomingBinaryCount
-      ? ` · 哈希 ${item.incomingHashCount}/${item.incomingBinaryCount}${item.missingHashCount ? `，${item.missingHashCount} 个旧模型缺少哈希` : ""}`
+      ? ` · 哈希 ${item.incomingHashCount}/${item.incomingBinaryCount}${item.missingHashCount ? `，${item.missingHashCount} 个旧资产缺少哈希` : ""}`
       : "";
     return `${label} · 当前 ${item.currentCount} 个 → 档案 ${item.incomingCount} 个${hashDetail}`;
   }
@@ -3307,7 +3430,7 @@
       }
       if (selectionStatus) {
         const fieldText = fieldInputs.length ? `，字段 ${selectedFieldCount}/${fieldInputs.length}` : "";
-        const modelText = modelInputs.length ? `，模型 ${selectedModelCount}/${modelInputs.length}` : "";
+        const modelText = modelInputs.length ? `，资产 ${selectedModelCount}/${modelInputs.length}` : "";
         selectionStatus.textContent = pendingArchive
           ? `将恢复 ${selectedCount}/${inputs.length} 项${fieldText}${modelText}。未勾选的本机内容会保持不变。`
           : "尚未选择恢复内容。";
@@ -3379,7 +3502,8 @@
         const repository = await getCurrentProjectRepositoryStatus();
         if (repositoryStatus) {
           const summary = repository.summary || {};
-          repositoryStatus.textContent = `${repository.statusLabel}：${summary.draftSceneCount}/${summary.sceneCount} 个后台有草稿，${summary.publishedSceneCount}/${summary.sceneCount} 个后台已本机发布，${summary.importedModelCount} 个导入模型。边界：本机项目仓库 adapter，尚未接账号后端。`;
+          const textureText = summary.textureAssetCount ? `，${summary.textureAssetCount} 个贴图` : "";
+          repositoryStatus.textContent = `${repository.statusLabel}：${summary.draftSceneCount}/${summary.sceneCount} 个后台有草稿，${summary.publishedSceneCount}/${summary.sceneCount} 个后台已本机发布，${summary.importedModelCount} 个导入模型${textureText}。边界：本机项目仓库 adapter，尚未接账号后端。`;
           repositoryStatus.dataset.tone = repository.status === "blocked" ? "error" : repository.status === "ready" ? "success" : "normal";
         }
         if (repositoryList) {
@@ -3396,8 +3520,9 @@
             if (scene.assets.missingBinaryCount) assetWarnings.push(`${scene.assets.missingBinaryCount} 个缺文件`);
             if (scene.assets.unknownBinaryCount) assetWarnings.push(`${scene.assets.unknownBinaryCount} 个待校验`);
             if (scene.assets.missingHashCount) assetWarnings.push(`${scene.assets.missingHashCount} 个缺哈希`);
+            const textureText = scene.assets.textureAssetCount ? `，贴图 ${scene.assets.textureAssetCount} 个` : "";
             assets.textContent = scene.assets.importedModelCount
-              ? `导入模型 ${scene.assets.importedModelCount} 个${assetWarnings.length ? `，${assetWarnings.join("，")}` : "，资产可校验"}`
+              ? `导入模型 ${scene.assets.importedModelCount} 个${textureText}${assetWarnings.length ? `，${assetWarnings.join("，")}` : "，资产可校验"}`
               : "未使用导入模型";
             const next = document.createElement("span");
             next.textContent = `下一步：${scene.nextActionLabel}`;
@@ -3745,7 +3870,8 @@
         const hashText = summary.incomingModelCount
           ? ` / ${summary.assetHashCount} 哈希${summary.missingAssetHashCount ? ` / ${summary.missingAssetHashCount} 缺哈希` : ""}`
           : "";
-        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型${hashText}`;
+        const textureText = schema.textureAssets ? ` / ${schema.textureAssets} 贴图` : "";
+        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型${textureText}${hashText}`;
       }
 
       const fragment = document.createDocumentFragment();

@@ -2221,6 +2221,7 @@
 - `node --check tests/e2e/real-flows.spec.js`
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
 - `git diff --check`
 
 已知限制：
@@ -7663,7 +7664,7 @@
 
 仍待补：
 
-- 当前完成本机贴图替换闭环；贴图删除按钮、项目档案完整贴图打包恢复、远端资产签名、云端垃圾回收、CDN purge、账号权限和多人协作审计仍待补齐。
+- 当前完成本机贴图替换闭环；项目档案完整贴图打包恢复已在后续“真实化项目档案贴图资产恢复”记录完成；贴图删除按钮、远端资产签名、云端垃圾回收、CDN purge、账号权限和多人协作审计仍待补齐。
 
 验收：
 
@@ -7676,3 +7677,44 @@
 提交：
 
 - 中文 commit message：`真实化导入模型贴图替换`
+
+### 2026-06-12：真实化项目档案贴图资产恢复
+
+功能名：项目档案导入模型贴图资产恢复。
+
+完成内容：
+
+- `project-schema-utils.js` 的资产清单把导入模型贴图作为独立资产统计，包含 `assetKind: "texture"`、`modelId`、`textureAssetCount` 和缺失贴图二进制数量。
+- 资产查找同时按 `id`、`dbKey` 和 `key` 建索引，避免主后台、写实后台或旧档案的 keyPath 差异造成误判。
+- 项目仓库 summary 和后台状态显示导入贴图数量。
+- 项目档案预览把贴图显示为“新增贴图/修改贴图/删除贴图”，不再混入模型数量。
+- 选择性恢复导入模型时，恢复器会自动跟随 `texture.dbKey` 把同档案内贴图记录一起写回 IndexedDB。
+- 哈希校验对选择恢复模型的贴图依赖同步生效，错误贴图哈希会阻止恢复并避免提前写入 localStorage。
+- 恢复审计、导入摘要和 HTML 审计导出统一使用“资产/资产哈希”口径。
+- `scripts/project-schema-check.js`、`scripts/archive-asset-hash-check.js` 和 `scripts/archive-migration-check.js` 增加贴图资产回归覆盖。
+
+真实化说明：
+
+- 数据来源：项目档案里的真实 IndexedDB 模型记录、贴图记录、ArrayBuffer base64 和 SHA-256。
+- 写入状态：选择恢复模型时，模型记录和贴图记录都写入对应模型仓库；本机布局保留 `texture.dbKey` 与摘要。
+- 成功反馈：导入预览可见贴图差异，项目仓库能显示贴图数量，恢复后刷新页面仍能读取贴图二进制。
+- 失败反馈：贴图哈希错误会抛出哈希校验失败并停止恢复。
+- 刷新后复现方式：只勾选带贴图的导入模型恢复，刷新后台或发布页后贴图仍存在。
+
+仍待补：
+
+- 当前完成项目档案贴图资产打包、校验与选择恢复；贴图删除按钮、远端资产签名、云端垃圾回收、CDN purge、账号权限和多人协作审计仍待补齐。
+
+验收：
+
+- `node --check project-archive.js && node --check project-schema-utils.js`
+- `node scripts/project-schema-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node scripts/archive-migration-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化项目档案贴图资产恢复`

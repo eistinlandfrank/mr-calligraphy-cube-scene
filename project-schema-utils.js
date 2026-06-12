@@ -350,8 +350,8 @@
 
   function createAssetManifest(mainScene, realisticScene, indexedDb) {
     const hasIndexedDbSnapshot = Boolean(indexedDb?.mainModels || indexedDb?.realisticModels);
-    const mainDbKeys = new Set(getDbRecords(indexedDb?.mainModels).map((record) => String(record?.data?.key || record?.data?.id || "")));
-    const realisticDbKeys = new Set(getDbRecords(indexedDb?.realisticModels).map((record) => String(record?.data?.id || record?.data?.dbKey || "")));
+    const mainDbKeys = createDbRecordKeySet(getDbRecords(indexedDb?.mainModels));
+    const realisticDbKeys = createDbRecordKeySet(getDbRecords(indexedDb?.realisticModels));
     const mainLayoutIds = uniqueStrings([
       ...(mainScene?.draft?.importedIds || []),
       ...(mainScene?.published?.layout?.importedIds || []),
@@ -371,12 +371,17 @@
         stored: null,
         hashStatus: "unknown"
       }));
+    const modelAssets = assets.filter((asset) => asset.assetKind !== "texture");
+    const textureAssets = assets.filter((asset) => asset.assetKind === "texture");
 
     return {
       version: 1,
       assetCoverage: hasIndexedDbSnapshot ? "indexed-db-snapshot" : "storage-only",
-      importedModelCount: assets.length,
+      assetCount: assets.length,
+      importedModelCount: modelAssets.length,
+      textureAssetCount: textureAssets.length,
       missingBinaryCount: hasIndexedDbSnapshot ? assets.filter((asset) => !asset.stored).length : 0,
+      missingTextureBinaryCount: hasIndexedDbSnapshot ? textureAssets.filter((asset) => !asset.stored).length : 0,
       unknownBinaryCount: hasIndexedDbSnapshot ? 0 : assets.length,
       missingHashCount: hasIndexedDbSnapshot ? assets.filter((asset) => asset.stored && !asset.sha256).length : 0,
       assets
@@ -399,26 +404,102 @@
     return Array.isArray(pack?.records) ? pack.records : [];
   }
 
+  function createDbRecordKeySet(records) {
+    return new Set(records.flatMap((record) => {
+      const data = record?.data || {};
+      return [data.key, data.id, data.dbKey, record.key, record.id, record.dbKey]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+    }));
+  }
+
   function collectImportedAssets(scene, layoutIds, records, dbKeys) {
-    const byId = new Map(records.map((record) => [String(record.id || record.dbKey || record.key || ""), record]));
-    return layoutIds.map((id) => {
+    const byId = createImportedAssetRecordMap(records);
+    return layoutIds.flatMap((id) => {
       const record = byId.get(id) || byId.get(String(id).replace(/^imported-/, "import-")) || {};
       const dbKey = String(record.dbKey || record.key || record.id || id);
-      const stored = dbKeys.has(dbKey) || dbKeys.has(String(id));
-      const sha256 = normalizeSha256(record.sha256);
-      return {
+      const assets = [createImportedAssetRecord({
         scene,
+        assetKind: "model",
         id: String(id),
         dbKey,
-        label: String(record.label || record.fileName || id),
-        fileName: String(record.fileName || ""),
-        type: String(record.type || ""),
-        stored,
-        sha256,
-        hashStatus: !stored ? "missing-binary" : sha256 ? "sha256" : "missing-hash",
-        bytes: normalizeCount(record.metrics?.fileBytes || record.metrics?.fileSize || record.size || record.archiveBytes || 0)
-      };
+        record,
+        stored: dbKeys.has(dbKey) || dbKeys.has(String(id))
+      })];
+      const texture = normalizeImportTextureRef(record.texture);
+      if (texture) {
+        const textureRecord = byId.get(texture.dbKey) || {};
+        assets.push(createImportedAssetRecord({
+          scene,
+          assetKind: "texture",
+          id: texture.dbKey,
+          modelId: String(id),
+          dbKey: texture.dbKey,
+          record: {
+            ...texture,
+            ...textureRecord,
+            fileName: texture.fileName || textureRecord.fileName,
+            type: texture.type || textureRecord.type,
+            sha256: texture.sha256 || textureRecord.sha256,
+            archiveBytes: textureRecord.archiveBytes || texture.fileBytes,
+            metrics: textureRecord.metrics || { fileBytes: texture.fileBytes }
+          },
+          stored: dbKeys.has(texture.dbKey)
+        }));
+      }
+      return assets;
     });
+  }
+
+  function createImportedAssetRecordMap(records) {
+    const byId = new Map();
+    records.forEach((record) => {
+      [record.id, record.dbKey, record.key]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .forEach((key) => {
+          if (!byId.has(key)) {
+            byId.set(key, record);
+          }
+        });
+    });
+    return byId;
+  }
+
+  function createImportedAssetRecord({ scene, assetKind, id, modelId = "", dbKey, record, stored }) {
+    const sha256 = normalizeSha256(record.sha256);
+    return {
+      scene,
+      assetKind,
+      id: String(id),
+      modelId: String(modelId || id),
+      dbKey,
+      label: String(record.label || record.fileName || id),
+      fileName: String(record.fileName || ""),
+      type: String(record.type || ""),
+      stored,
+      sha256,
+      hashStatus: !stored ? "missing-binary" : sha256 ? "sha256" : "missing-hash",
+      bytes: normalizeCount(record.metrics?.fileBytes || record.metrics?.fileSize || record.size || record.archiveBytes || 0)
+    };
+  }
+
+  function normalizeImportTextureRef(texture) {
+    if (!texture || typeof texture !== "object") {
+      return null;
+    }
+    const dbKey = String(texture.dbKey || "").trim();
+    const fileName = String(texture.fileName || "").trim();
+    if (!dbKey || !fileName) {
+      return null;
+    }
+    return {
+      dbKey,
+      fileName,
+      type: String(texture.type || "").trim(),
+      sha256: normalizeSha256(texture.sha256),
+      fileBytes: normalizeCount(texture.fileBytes || texture.metrics?.fileBytes)
+    };
   }
 
   function flattenImportedIds(records) {
@@ -466,6 +547,7 @@
         publishedReleaseCount: scenes.reduce((sum, scene) => sum + scene.published.releaseCount, 0),
         snapshotCount: scenes.reduce((sum, scene) => sum + scene.history.snapshotCount, 0),
         importedModelCount: scenes.reduce((sum, scene) => sum + scene.assets.importedModelCount, 0),
+        textureAssetCount: scenes.reduce((sum, scene) => sum + scene.assets.textureAssetCount, 0),
         missingBinaryCount: scenes.reduce((sum, scene) => sum + scene.assets.missingBinaryCount, 0),
         unknownBinaryCount: scenes.reduce((sum, scene) => sum + scene.assets.unknownBinaryCount, 0),
         missingHashCount: scenes.reduce((sum, scene) => sum + scene.assets.missingHashCount, 0)
@@ -505,7 +587,9 @@
       ...flattenImportedIds(published.releases)
     ]);
     const assets = (Array.isArray(assetManifest?.assets) ? assetManifest.assets : [])
-      .filter((asset) => asset.scene === sceneId && (!importedIds.length || importedIds.includes(asset.id)));
+      .filter((asset) => asset.scene === sceneId && (!importedIds.length || importedIds.includes(asset.id) || importedIds.includes(asset.modelId)));
+    const modelAssetCount = assets.filter((asset) => asset.assetKind !== "texture").length;
+    const textureAssetCount = assets.filter((asset) => asset.assetKind === "texture").length;
     const missingBinaryCount = assets.filter((asset) => asset.hashStatus === "missing-binary").length;
     const unknownBinaryCount = assets.filter((asset) => asset.hashStatus === "unknown").length;
     const missingHashCount = assets.filter((asset) => asset.hashStatus === "missing-hash").length;
@@ -553,7 +637,8 @@
       },
       assets: {
         importedIds,
-        importedModelCount: importedIds.length,
+        importedModelCount: modelAssetCount || importedIds.length,
+        textureAssetCount,
         manifestCount: assets.length,
         missingBinaryCount,
         unknownBinaryCount,
@@ -593,21 +678,21 @@
       risks.push({
         level: "error",
         code: "asset-binary-missing",
-        message: `${missingBinaryCount} 个导入模型缺少本机二进制，导出或远端发布前需要补齐。`
+        message: `${missingBinaryCount} 个导入资产缺少本机二进制，导出或远端发布前需要补齐。`
       });
     }
     if (unknownBinaryCount) {
       risks.push({
         level: "warning",
         code: "asset-binary-unknown",
-        message: `${unknownBinaryCount} 个导入模型尚未随 IndexedDB 快照校验，导出项目档案后可确认文件完整性。`
+        message: `${unknownBinaryCount} 个导入资产尚未随 IndexedDB 快照校验，导出项目档案后可确认文件完整性。`
       });
     }
     if (missingHashCount) {
       risks.push({
         level: "warning",
         code: "asset-hash-missing",
-        message: `${missingHashCount} 个导入模型缺少 SHA-256 哈希，恢复和远端发布校验会变弱。`
+        message: `${missingHashCount} 个导入资产缺少 SHA-256 哈希，恢复和远端发布校验会变弱。`
       });
     }
     return risks;
@@ -641,9 +726,9 @@
   }
 
   function getSceneRepositoryNextAction(status, missingBinaryCount, unknownBinaryCount, missingHashCount) {
-    if (missingBinaryCount) return "补齐导入模型文件";
-    if (unknownBinaryCount) return "导出项目档案校验模型资产";
-    if (missingHashCount) return "重新导入或校验模型哈希";
+    if (missingBinaryCount) return "补齐导入资产文件";
+    if (unknownBinaryCount) return "导出项目档案校验导入资产";
+    if (missingHashCount) return "重新导入或校验资产哈希";
     if (status === "empty") return "先保存本机场景草稿";
     if (status === "draft-only") return "发布本机版本";
     if (status === "warning") return "查看仓库提醒后再导出";
@@ -689,7 +774,9 @@
       realisticReleases: sections.realisticScene.published.releaseCount || 0,
       roomRoles: sections.room.roleCount || 0,
       importedModels: assetManifest.importedModelCount || 0,
+      textureAssets: assetManifest.textureAssetCount || 0,
       missingModelBinaries: assetManifest.missingBinaryCount || 0,
+      missingTextureBinaries: assetManifest.missingTextureBinaryCount || 0,
       unknownModelBinaries: assetManifest.unknownBinaryCount || 0,
       missingModelHashes: assetManifest.missingHashCount || 0,
       repositoryStatus: String(repository?.status || ""),

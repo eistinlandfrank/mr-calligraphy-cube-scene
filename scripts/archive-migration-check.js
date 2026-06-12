@@ -92,6 +92,13 @@ const legacyArchive = {
             label: "档案新增模型",
             fileName: "new-model.obj",
             type: "obj",
+            texture: {
+              dbKey: "model-2:texture-e2e",
+              fileName: "new-model-texture.png",
+              type: "png",
+              sha256: "3".repeat(64),
+              fileBytes: 12
+            },
             metrics: {
               fileBytes: 30,
               meshCount: 3,
@@ -100,6 +107,18 @@ const legacyArchive = {
             }
           },
           bytes: 30
+        },
+        {
+          data: {
+            id: "model-2:texture-e2e",
+            dbKey: "model-2:texture-e2e",
+            label: "new-model-texture.png",
+            fileName: "new-model-texture.png",
+            type: "png",
+            sha256: "3".repeat(64),
+            metrics: { fileBytes: 12 }
+          },
+          bytes: 12
         },
         {
           data: {
@@ -201,8 +220,9 @@ async function main() {
   assert(mainModelPreview, "导入预览应包含主场景模型仓库。");
   assert(
     mainModelPreview.modelDiffSummary.includes("2 新增模型") &&
+      mainModelPreview.modelDiffSummary.includes("1 新增贴图") &&
       mainModelPreview.modelDiffSummary.includes("1 修改模型"),
-    "主场景模型仓库预览应显示单模型新增和修改摘要。"
+    "主场景模型仓库预览应显示单模型、贴图新增和修改摘要。"
   );
   assert(
     mainModelPreview.modelDiffs.some((item) => item.includes("修改模型：档案更新模型")),
@@ -213,8 +233,16 @@ async function main() {
     "主场景模型仓库预览应显示新增的单个模型。"
   );
   assert(
+    mainModelPreview.modelDiffs.some((item) => item.includes("新增贴图：new-model-texture.png")),
+    "主场景模型仓库预览应显示新增的模型贴图。"
+  );
+  assert(
     mainModelPreview.modelSelections.some((item) => item.key === "model-2" && item.action === "add"),
     "主场景模型仓库预览应允许勾选单个新增模型。"
+  );
+  assert(
+    mainModelPreview.modelSelections.some((item) => item.key === "model-2:texture-e2e" && item.action === "add" && item.label.includes("新增贴图")),
+    "主场景模型仓库预览应把贴图作为可见资产差异。"
   );
   assert(
     mainModelPreview.modelSelections.some((item) => item.key === "model-1" && item.action === "update"),
@@ -349,6 +377,10 @@ async function main() {
   assert(
     modelRecords.some((record) => record.key === "model-2" && record.label === "档案新增模型"),
     "单模型恢复应写入已勾选的新增模型。"
+  );
+  assert(
+    modelRecords.some((record) => record.id === "model-2:texture-e2e" && record.fileName === "new-model-texture.png"),
+    "单模型恢复应自动写入已勾选模型依赖的贴图资产。"
   );
   assert(
     modelRecords.some((record) => record.key === "model-1" && record.label === "本机旧模型"),

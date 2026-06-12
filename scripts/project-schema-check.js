@@ -8,7 +8,18 @@ const publishedLayout = {
   objects: { "main-table": { hidden: false, locked: false } },
   layerOrder: [],
   customObjects: [],
-  importedModels: [{ id: "asset-1", key: "asset-1", label: "发布模型" }]
+  importedModels: [{
+    id: "asset-1",
+    key: "asset-1",
+    label: "发布模型",
+    texture: {
+      dbKey: "asset-1:texture-e2e",
+      fileName: "asset-texture.png",
+      type: "png",
+      sha256: "3".repeat(64),
+      fileBytes: 4
+    }
+  }]
 };
 const realisticPublishedLayout = {
   paper: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0 },
@@ -23,7 +34,18 @@ const archive = {
         objects: { "main-table": { hidden: false, locked: false } },
         layerOrder: ["main-table"],
         customObjects: [{ id: "custom-paper", label: "自定义宣纸" }],
-        importedModels: [{ id: "asset-1", key: "asset-1", label: "发布模型" }],
+        importedModels: [{
+          id: "asset-1",
+          key: "asset-1",
+          label: "发布模型",
+          texture: {
+            dbKey: "asset-1:texture-e2e",
+            fileName: "asset-texture.png",
+            type: "png",
+            sha256: "3".repeat(64),
+            fileBytes: 4
+          }
+        }],
         lighting: { ambient: 0.5 }
       })
     },
@@ -117,12 +139,32 @@ const archive = {
           id: "asset-1",
           key: "asset-1",
           label: "发布模型",
-          fileName: "release.glb"
+          fileName: "release.glb",
+          texture: {
+            dbKey: "asset-1:texture-e2e",
+            fileName: "asset-texture.png",
+            type: "png",
+            sha256: "3".repeat(64),
+            fileBytes: 4
+          }
         },
         arrayBufferBase64: "AAAA",
         bytes: 3,
-          sha256: "1".repeat(64)
-        }]
+        sha256: "1".repeat(64)
+      },
+      {
+        data: {
+          id: "asset-1:texture-e2e",
+          dbKey: "asset-1:texture-e2e",
+          label: "asset-texture.png",
+          fileName: "asset-texture.png",
+          type: "png",
+          metrics: { fileBytes: 4 }
+        },
+        arrayBufferBase64: "CCCC",
+        bytes: 3,
+        sha256: "3".repeat(64)
+      }]
     },
     realisticModels: {
       records: [{
@@ -144,6 +186,7 @@ const schema = window.MRProjectSchema.createProjectSchema(archive);
 const published = schema.sections.mainScene.published;
 const realisticPublished = schema.sections.realisticScene.published;
 const mainAsset = schema.assetManifest.assets.find((asset) => asset.scene === "main" && asset.id === "asset-1");
+const mainTextureAsset = schema.assetManifest.assets.find((asset) => asset.scene === "main" && asset.id === "asset-1:texture-e2e");
 const realisticAsset = schema.assetManifest.assets.find((asset) => asset.scene === "realistic" && asset.id === "realistic-asset-1");
 const repository = schema.repository;
 const repositoryStatus = window.MRProjectSchema.createProjectRepositoryStatus(archive);
@@ -162,17 +205,28 @@ assert(realisticPublished.latestAction === "rollback", "应保留当前写实发
 assert(schema.summary.mainReleases === 2, "summary.mainReleases 应为 2。");
 assert(schema.summary.realisticReleases === 2, "summary.realisticReleases 应为 2。");
 assert(schema.assetManifest.assetCoverage === "indexed-db-snapshot", "资产清单应来自 IndexedDB 快照。");
+assert(schema.assetManifest.importedModelCount === 2, "资产清单应统计 2 个导入模型。");
+assert(schema.assetManifest.textureAssetCount === 1, "资产清单应统计主场景导入贴图。");
+assert(schema.summary.textureAssets === 1, "summary 应包含贴图资产数量。");
 assert(mainAsset?.hashStatus === "sha256", "主场景资产清单应识别 SHA-256。");
+assert(
+  mainTextureAsset?.assetKind === "texture" &&
+    mainTextureAsset.modelId === "asset-1" &&
+    mainTextureAsset.hashStatus === "sha256",
+  "主场景资产清单应把模型贴图作为关联资产并识别 SHA-256。"
+);
 assert(realisticAsset?.hashStatus === "sha256", "写实资产清单应识别 SHA-256。");
 assert(repository.kind === "mr-calligraphy-project-repository-v1", "schema 应包含项目仓库状态。");
 assert(repository.status === "ready", "项目仓库状态应为 ready。");
 assert(repository.summary.sceneCount === 2, "项目仓库应统一统计两个后台场景。");
 assert(repository.summary.readySceneCount === 2, "两个后台场景都应为 ready。");
 assert(repository.summary.snapshotCount === 2, "项目仓库应统计主后台和写实后台快照。");
+assert(repository.summary.textureAssetCount === 1, "项目仓库应统计导入模型贴图资产。");
 assert(repository.summary.unknownBinaryCount === 0, "完整档案快照不应出现未知模型二进制。");
 assert(repository.parity.unifiedSceneSchema === "project-scene-repository-v1", "项目仓库应暴露统一场景 schema。");
 assert(mainRepositoryScene?.draft.objectCount === 3, "主场景仓库草稿应统计对象、自定义物体和导入模型。");
 assert(mainRepositoryScene?.published.releaseCount === 2, "主场景仓库应统计发布版本。");
+assert(mainRepositoryScene?.assets.textureAssetCount === 1, "主场景仓库应统计模型贴图资产。");
 assert(realisticRepositoryScene?.draft.objectCount === 2, "写实仓库草稿应统计基础对象和导入模型。");
 assert(realisticRepositoryScene?.assets.missingBinaryCount === 0, "写实仓库不应误报已归档模型缺文件。");
 assert(repositoryStatus.summary.readySceneCount === repository.summary.readySceneCount, "独立仓库状态接口应与 schema 内状态一致。");

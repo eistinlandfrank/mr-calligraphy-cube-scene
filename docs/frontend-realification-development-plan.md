@@ -261,6 +261,7 @@ git diff --check
 
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
 - `git diff --check`
 
 提交：
@@ -2099,7 +2100,7 @@ git diff --check
 
 仍待补：
 
-- 当前完成本机贴图替换和发布读取；贴图删除/恢复成原材质按钮、贴图随项目档案导出导入的完整资产打包、服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
+- 当前完成本机贴图替换和发布读取；贴图随项目档案导出导入的完整资产打包已在第 63 节完成；贴图删除/恢复成原材质按钮、服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
 
 验收：
 
@@ -2112,3 +2113,44 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化导入模型贴图替换`
+
+## 63. 2026-06-12 真实化项目档案贴图资产恢复
+
+本次把项目档案里的导入模型贴图从“布局摘要里看得到”推进到“资产清单、哈希校验、选择恢复和审计摘要都能真实覆盖”：只选择恢复某个导入模型时，系统会自动把该模型引用的贴图 IndexedDB 记录一起纳入校验与恢复，避免发布页刷新后模型存在但贴图丢失。
+
+完成内容：
+
+- `project-schema-utils.js` 的 `assetManifest` 新增 `assetCount`、`textureAssetCount` 和 `missingTextureBinaryCount`，并把导入贴图作为 `assetKind: "texture"` 的关联资产。
+- 资产索引同时按 `id`、`dbKey` 和 `key` 建立映射，避免主后台与写实后台 keyPath 不同导致贴图误判缺文件。
+- 项目仓库状态新增 `summary.textureAssetCount`，场景资产状态会显示导入模型数量和贴图数量。
+- `project-archive.js` 的导入预览把贴图区分为“新增贴图/修改贴图/删除贴图”，不再把贴图混算成模型。
+- 选择性恢复 IndexedDB 模型时，会递归扩展 `texture.dbKey` 依赖；显式只勾模型，也会自动恢复同档案内的贴图记录。
+- `validateArchiveAssetHashes()` 现在会对选择恢复模型的关联贴图一起做 SHA-256 校验，贴图哈希错误会阻止恢复且不会先写 localStorage。
+- 恢复审计和导入预览文案改为“导入资产/资产哈希”，审计摘要会计入自动依赖的贴图资产。
+- `scripts/project-schema-check.js`、`scripts/archive-asset-hash-check.js` 和 `scripts/archive-migration-check.js` 增加贴图资产清单、选择恢复依赖和哈希阻断覆盖。
+
+真实化说明：
+
+- 数据来源：项目档案 IndexedDB 快照中的真实模型二进制记录、贴图二进制记录、布局中的 `importedModels[*].texture` 摘要和 SHA-256。
+- 写入状态：选择恢复模型时，贴图资产会写回同一 IndexedDB 模型仓库；布局仍只保留 `texture.dbKey` 与可校验摘要。
+- 成功反馈：导入预览可见新增贴图，项目仓库状态显示贴图数量，恢复后同一模型能继续读取贴图资产。
+- 失败反馈：贴图二进制哈希不匹配时恢复被阻止，并且不会先覆盖 localStorage。
+- 刷新后复现方式：导入带贴图的项目档案，只勾选模型恢复，刷新后台或前台发布页后贴图仍能从 IndexedDB 读取。
+
+仍待补：
+
+- 当前完成项目档案本机贴图资产打包、校验和选择恢复；贴图删除/恢复成原材质按钮、服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
+
+验收：
+
+- `node --check project-archive.js && node --check project-schema-utils.js`
+- `node scripts/project-schema-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node scripts/archive-migration-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化项目档案贴图资产恢复`

@@ -2698,7 +2698,7 @@ GitHub 状态：
 
 仍待补：
 
-- 当前完成本机导入模型贴图替换；贴图删除按钮、项目档案完整贴图打包、服务端资产签名、CDN purge、账号权限和多人协作审计仍待补齐。
+- 当前完成本机导入模型贴图替换；项目档案完整贴图打包和选择恢复已在后续“真实化项目档案贴图资产恢复”记录完成；贴图删除按钮、服务端资产签名、CDN purge、账号权限和多人协作审计仍待补齐。
 
 验收：
 
@@ -2711,3 +2711,43 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`真实化导入模型贴图替换`
+
+### 2026-06-12：真实化项目档案贴图资产恢复
+
+完成内容：
+
+- `projectSchema.assetManifest` 把导入模型贴图纳入资产清单，新增 `assetKind: "texture"`、`modelId`、`textureAssetCount` 和 `missingTextureBinaryCount`。
+- 资产记录按 `id/dbKey/key` 多键索引，兼容主后台和写实后台不同 IndexedDB keyPath。
+- 项目仓库 summary 新增贴图资产数量，场景资产状态显示“导入模型 + 贴图”。
+- 项目档案导入预览区分新增/修改/删除模型和新增/修改/删除贴图。
+- 选择性恢复模型时自动扩展 `texture.dbKey` 依赖，把同档案内的贴图记录一起恢复。
+- 资产哈希校验覆盖自动依赖贴图；贴图二进制哈希不匹配时会阻止恢复并保持 localStorage 未写入。
+- 恢复审计摘要改为“导入资产/资产哈希”，统计自动依赖的贴图资产。
+- 脚本测试覆盖资产清单贴图统计、选择恢复模型携带贴图、错误贴图哈希阻断恢复。
+
+真实化说明：
+
+- 数据来源：真实项目档案 IndexedDB 快照、模型记录中的 `texture.dbKey`、贴图记录的二进制与 SHA-256。
+- 写入状态：恢复时模型和贴图写回同一 IndexedDB 模型仓库，布局记录继续保存可校验摘要。
+- 成功反馈：导入预览能看见贴图差异，项目仓库能显示贴图数量，只恢复模型也不会丢贴图。
+- 失败反馈：贴图记录缺二进制会进入资产缺失提醒；贴图哈希错误会直接阻断恢复。
+- 刷新后复现方式：恢复带贴图项目档案后刷新后台/发布页，模型贴图仍从 IndexedDB 读取。
+
+仍待补：
+
+- 当前完成本机项目档案贴图资产打包、校验和选择恢复；贴图删除按钮、远端资产签名、CDN purge、账号权限和多人协作审计仍未完成。
+
+验收：
+
+- `node --check project-archive.js && node --check project-schema-utils.js`
+- `node scripts/project-schema-check.js`
+- `node scripts/archive-asset-hash-check.js`
+- `node scripts/archive-migration-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化项目档案贴图资产恢复`
