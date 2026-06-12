@@ -6946,6 +6946,69 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.06);
 }
 
+.history-batch-receipt {
+  display: grid;
+  gap: 7px;
+  margin-top: 8px;
+  padding: 9px;
+  border: 1px solid rgba(116, 255, 219, 0.18);
+  border-radius: 8px;
+  background: rgba(47, 111, 104, 0.2);
+}
+
+.history-batch-receipt[hidden] {
+  display: none;
+}
+
+.history-batch-receipt-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.history-batch-receipt-head strong,
+.history-batch-receipt-head em {
+  overflow-wrap: anywhere;
+}
+
+.history-batch-receipt-head strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.history-batch-receipt-head em {
+  flex: 0 0 auto;
+  color: #9defbd;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.history-batch-receipt p {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.72);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.history-batch-receipt-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.history-batch-receipt-metrics span {
+  min-width: 0;
+  padding: 6px;
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.72);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  font-weight: 850;
+  overflow-wrap: anywhere;
+}
+
 .history-trash-list {
   display: grid;
   gap: 6px;

@@ -3,6 +3,7 @@
   const VERSION = 1;
   const MAX_EVENTS = 120;
   const MAX_HISTORY_TRASH = 12;
+  const MAX_HISTORY_BATCH_RECEIPTS = 20;
   const MAX_ARTWORK_TAGS = 8;
   const MAX_SHARE_RECORDS = 24;
   const MAX_VIDEO_EXPORT_RECORDS = 18;
@@ -396,6 +397,7 @@
       reportRepository: normalizeReportRepository(source?.reportRepository),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
+      historyBatchReceipts: Array.isArray(source?.historyBatchReceipts) ? source.historyBatchReceipts.map(normalizeHistoryBatchReceipt).filter(Boolean).slice(0, MAX_HISTORY_BATCH_RECEIPTS) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
       updatedAt: typeof source?.updatedAt === "string" ? source.updatedAt : new Date().toISOString()
     };
@@ -2078,6 +2080,55 @@
         [rightKey]: String(item?.[rightKey] || "").trim()
       }))
       .filter((item) => item[leftKey] && item[rightKey]);
+  }
+
+  function normalizeHistoryBatchReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const action = String(record.action || "history-action").slice(0, 48);
+    const createdAt = Number.isFinite(Date.parse(record.createdAt))
+      ? String(record.createdAt)
+      : new Date().toISOString();
+    const counts = record.counts && typeof record.counts === "object" ? record.counts : {};
+    const selectedIds = Array.isArray(record.selectedIds)
+      ? record.selectedIds.map((id) => String(id || "").trim()).filter(Boolean).slice(0, 60)
+      : [];
+    const recordCount = normalizeInteger(
+      record.recordCount,
+      normalizeInteger(counts.practice, 0, 0, 9999)
+        + normalizeInteger(counts.artwork, 0, 0, 9999)
+        + normalizeInteger(counts.report, 0, 0, 9999),
+      0,
+      9999
+    );
+
+    return {
+      id: String(record.id || makeId("history-batch")),
+      action,
+      label: String(record.label || formatHistoryBatchActionLabel(action)).slice(0, 80),
+      status: String(record.status || "success").slice(0, 24),
+      createdAt,
+      recordCount,
+      counts: {
+        practice: normalizeInteger(counts.practice, 0, 0, 9999),
+        artwork: normalizeInteger(counts.artwork, 0, 0, 9999),
+        report: normalizeInteger(counts.report, 0, 0, 9999)
+      },
+      selectedIds,
+      filename: record.filename ? String(record.filename).slice(0, 160) : "",
+      trashId: record.trashId ? String(record.trashId).slice(0, 120) : "",
+      message: String(record.message || "").slice(0, 240),
+      boundary: String(record.boundary || "学习档案批量操作回执保存在当前浏览器本机状态中，不是服务端不可篡改审计。").slice(0, 240)
+    };
+  }
+
+  function formatHistoryBatchActionLabel(action) {
+    return {
+      export: "导出所选",
+      delete: "移入回收站",
+      restore: "恢复回收站",
+      "trash-delete": "永久删除",
+      "trash-clear": "清空回收站"
+    }[action] || "学习档案操作";
   }
 
   function normalizeEvent(record) {
@@ -12223,12 +12274,22 @@
     applyHistoryDeletion(deleted);
     const deletedType = deleted.practice.length ? "practice" : deleted.artwork.length ? "artwork" : "report";
     const record = deleted.practice[0] || deleted.artwork[0] || deleted.report[0];
+    const batchReceipt = appendHistoryBatchReceipt({
+      action: "delete",
+      label: "移入回收站",
+      recordCount: deletedCount,
+      counts: getHistoryRecordCounts(deleted),
+      selectedIds: [recordId],
+      trashId: trash?.id || "",
+      message: `已移入回收站：${record.title || record.glyph || "学习档案"}。`
+    });
     addEvent("history-delete", `移入回收站：${record.title || record.glyph || "学习档案"}`);
     saveState();
     return {
       ok: true,
       deletedType,
       trash: decorateHistoryTrashEntry(trash),
+      batchReceipt: batchReceipt ? clone(batchReceipt) : null,
       message: `已移入回收站：${record.title || record.glyph || "学习档案"}。可用“恢复最近删除”找回。`
     };
   }
@@ -12265,8 +12326,27 @@
     if (!payload.history.length) {
       return { ok: false, message: "请选择要导出的学习档案记录。" };
     }
-    downloadJson(payload, `mr-calligraphy-history-selection-${Date.now()}.json`);
-    return { ok: true, count: payload.history.length, message: `已导出 ${payload.history.length} 条所选学习档案。` };
+    const filename = `mr-calligraphy-history-selection-${Date.now()}.json`;
+    downloadJson(payload, filename);
+    const counts = getHistoryRecordCounts(payload.records);
+    const batchReceipt = appendHistoryBatchReceipt({
+      action: "export",
+      label: "导出所选学习档案",
+      recordCount: payload.history.length,
+      counts,
+      selectedIds: payload.selectedIds,
+      filename,
+      message: `已导出 ${payload.history.length} 条所选学习档案。`
+    });
+    addEvent("history-selection-export", `导出所选学习档案：${payload.history.length} 条`);
+    saveState();
+    return {
+      ok: true,
+      count: payload.history.length,
+      filename,
+      batchReceipt: batchReceipt ? clone(batchReceipt) : null,
+      message: `已导出 ${payload.history.length} 条所选学习档案。`
+    };
   }
 
   function getHistoryRepositoryRecordCount() {
@@ -13513,12 +13593,22 @@
     const references = collectHistoryDeleteReferences(deleted);
     const trash = pushHistoryTrash(deleted, references, `批量删除 ${deletedCount} 条学习档案`);
     applyHistoryDeletion(deleted);
+    const batchReceipt = appendHistoryBatchReceipt({
+      action: "delete",
+      label: "批量移入回收站",
+      recordCount: deletedCount,
+      counts: getHistoryRecordCounts(deleted),
+      selectedIds,
+      trashId: trash?.id || "",
+      message: `已将 ${deletedCount} 条学习档案移入回收站。`
+    });
     addEvent("history-batch-delete", `移入回收站：${deletedCount} 条学习档案`);
     saveState();
     return {
       ok: true,
       deletedCount,
       trash: decorateHistoryTrashEntry(trash),
+      batchReceipt: batchReceipt ? clone(batchReceipt) : null,
       deleted: {
         practice: deleted.practice.length,
         artwork: deleted.artwork.length,
@@ -13557,6 +13647,56 @@
     };
   }
 
+  function appendHistoryBatchReceipt(record = {}) {
+    const receipt = normalizeHistoryBatchReceipt({
+      ...record,
+      id: record.id || makeId("history-batch"),
+      createdAt: record.createdAt || new Date().toISOString()
+    });
+    if (!receipt) return null;
+    state.historyBatchReceipts = [
+      receipt,
+      ...state.historyBatchReceipts.filter((item) => item.id !== receipt.id)
+    ].slice(0, MAX_HISTORY_BATCH_RECEIPTS);
+    return receipt;
+  }
+
+  function getHistoryBatchReceipts() {
+    const records = (state.historyBatchReceipts || [])
+      .map(normalizeHistoryBatchReceipt)
+      .filter(Boolean)
+      .slice(0, MAX_HISTORY_BATCH_RECEIPTS);
+    const latest = records[0] || null;
+    return {
+      total: records.length,
+      latest: latest ? clone(latest) : null,
+      records: clone(records),
+      message: latest
+        ? `最近学习档案批量操作：${latest.label}，${latest.recordCount} 条。`
+        : "暂无学习档案批量操作回执。"
+    };
+  }
+
+  function getHistoryRecordCounts(records = {}) {
+    return {
+      practice: Array.isArray(records.practice)
+        ? records.practice.length
+        : Array.isArray(records.sessions)
+          ? records.sessions.length
+          : 0,
+      artwork: Array.isArray(records.artwork)
+        ? records.artwork.length
+        : Array.isArray(records.artworks)
+          ? records.artworks.length
+          : 0,
+      report: Array.isArray(records.report)
+        ? records.report.length
+        : Array.isArray(records.reports)
+          ? records.reports.length
+          : 0
+    };
+  }
+
   function restoreHistoryTrash(trashId = null) {
     const targetId = trashId ? String(trashId) : state.historyTrash[0]?.id;
     const trash = state.historyTrash.find((entry) => entry.id === targetId);
@@ -13572,12 +13712,23 @@
     restoreHistoryReferences(trash.references);
     state.historyTrash = state.historyTrash.filter((entry) => entry.id !== trash.id);
     const restoredCount = restored.practice + restored.artwork + restored.report;
+    const batchReceipt = appendHistoryBatchReceipt({
+      action: "restore",
+      label: "恢复回收站学习档案",
+      recordCount: restoredCount,
+      counts: restored,
+      trashId: trash.id,
+      message: restoredCount
+        ? `已恢复 ${restoredCount} 条学习档案：${trash.title}。`
+        : `回收站条目“${trash.title}”已清理；原记录当前已存在。`
+    });
     addEvent("history-restore", `恢复学习档案：${trash.title}`);
     saveState();
     return {
       ok: true,
       restored,
       restoredCount,
+      batchReceipt: batchReceipt ? clone(batchReceipt) : null,
       message: restoredCount
         ? `已恢复 ${restoredCount} 条学习档案：${trash.title}。`
         : `回收站条目“${trash.title}”已清理；原记录当前已存在，无需重复恢复。`
@@ -13631,10 +13782,31 @@
     if (!count) {
       return { ok: false, message: "回收站已经是空的。" };
     }
+    const counts = state.historyTrash.reduce((sum, entry) => {
+      const entryCounts = getHistoryRecordCounts(entry.records || {});
+      return {
+        practice: sum.practice + entryCounts.practice,
+        artwork: sum.artwork + entryCounts.artwork,
+        report: sum.report + entryCounts.report
+      };
+    }, { practice: 0, artwork: 0, report: 0 });
     state.historyTrash = [];
+    const batchReceipt = appendHistoryBatchReceipt({
+      action: "trash-clear",
+      label: "清空学习档案回收站",
+      recordCount,
+      counts,
+      message: `已清空回收站：${recordCount} 条学习档案。`
+    });
     addEvent("history-trash-clear", `清空回收站：${recordCount} 条记录`);
     saveState();
-    return { ok: true, count, recordCount, message: `已清空回收站：${recordCount} 条学习档案。` };
+    return {
+      ok: true,
+      count,
+      recordCount,
+      batchReceipt: batchReceipt ? clone(batchReceipt) : null,
+      message: `已清空回收站：${recordCount} 条学习档案。`
+    };
   }
 
   function deleteHistoryTrashEntry(trashId) {
@@ -13646,12 +13818,21 @@
 
     const recordCount = decorateHistoryTrashEntry(trash)?.recordCount || 0;
     state.historyTrash = state.historyTrash.filter((entry) => entry.id !== trash.id);
+    const batchReceipt = appendHistoryBatchReceipt({
+      action: "trash-delete",
+      label: "永久删除回收站记录",
+      recordCount,
+      counts: getHistoryRecordCounts(trash.records || {}),
+      trashId: trash.id,
+      message: `已永久删除回收站记录：${trash.title}。`
+    });
     addEvent("history-trash-delete", `永久删除回收站记录：${trash.title}`);
     saveState();
     return {
       ok: true,
       deletedId: trash.id,
       recordCount,
+      batchReceipt: batchReceipt ? clone(batchReceipt) : null,
       message: `已永久删除回收站记录：${trash.title}。`
     };
   }
@@ -13696,6 +13877,7 @@
     getPlanRepositoryReceiptAuditExport,
     getPlanCalendarExport,
     getHistoryRepositoryStatus,
+    getHistoryBatchReceipts,
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,

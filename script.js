@@ -932,6 +932,7 @@ const els = {
   historyRestoreTrash: document.getElementById("historyRestoreTrash"),
   historyClearTrash: document.getElementById("historyClearTrash"),
   historyTrashStatus: document.getElementById("historyTrashStatus"),
+  historyBatchReceipt: document.getElementById("historyBatchReceipt"),
   historyTrashList: document.getElementById("historyTrashList"),
   historyTrend: document.getElementById("historyTrend"),
   historyArtworkCompare: document.getElementById("historyArtworkCompare"),
@@ -7300,6 +7301,7 @@ function renderHistoryBatchControls(history) {
       ? `回收站 ${trash.recordCount} 条`
       : "回收站 0 条";
   }
+  renderHistoryBatchReceipt();
   renderHistoryTrashList(trash);
   if (els.historyLoadMore) {
     els.historyLoadMore.hidden = !history.hasMore;
@@ -7307,6 +7309,46 @@ function renderHistoryBatchControls(history) {
       ? `加载更多记录（${history.entries.length}/${history.filteredTotal}）`
       : "已显示全部记录";
   }
+}
+
+function renderHistoryBatchReceipt() {
+  if (!els.historyBatchReceipt) return;
+  const receipt = window.MRAppState?.getHistoryBatchReceipts?.()?.latest || null;
+  els.historyBatchReceipt.hidden = !receipt;
+  els.historyBatchReceipt.innerHTML = "";
+  if (!receipt) return;
+
+  const head = document.createElement("div");
+  head.className = "history-batch-receipt-head";
+  const title = document.createElement("strong");
+  title.textContent = receipt.label || "学习档案批量操作";
+  const time = document.createElement("em");
+  time.textContent = formatHistoryTime(receipt.createdAt);
+  head.append(title, time);
+
+  const summary = document.createElement("p");
+  const fileText = receipt.filename ? ` 文件：${receipt.filename}。` : "";
+  const trashText = receipt.trashId ? ` 回收站：${receipt.trashId}。` : "";
+  summary.textContent = `${receipt.message || "已记录学习档案批量操作。"}${fileText}${trashText}`;
+
+  const metrics = document.createElement("div");
+  metrics.className = "history-batch-receipt-metrics";
+  [
+    ["总数", `${receipt.recordCount || 0}条`],
+    ["练习", `${receipt.counts?.practice || 0}条`],
+    ["作品", `${receipt.counts?.artwork || 0}条`],
+    ["报告", `${receipt.counts?.report || 0}条`],
+    ["所选", `${receipt.selectedIds?.length || 0}条`],
+    ["状态", receipt.status || "success"]
+  ].forEach(([label, value]) => {
+    const item = document.createElement("span");
+    item.textContent = `${label}：${value}`;
+    metrics.appendChild(item);
+  });
+
+  const boundary = document.createElement("p");
+  boundary.textContent = receipt.boundary || "学习档案批量操作回执保存在当前浏览器本机状态中。";
+  els.historyBatchReceipt.append(head, summary, metrics, boundary);
 }
 
 function renderHistoryRepositoryStatus(history) {
@@ -9623,6 +9665,7 @@ function exportSelectedHistoryRecords() {
   }
   const result = window.MRAppState?.downloadHistoryRecords?.([...selectedHistoryIds]);
   if (result?.ok) {
+    renderHistoryPanel(currentIndex);
     showNotice(result.message);
     return;
   }

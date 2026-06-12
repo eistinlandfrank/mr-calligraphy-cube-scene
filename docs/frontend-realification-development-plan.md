@@ -3646,3 +3646,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习过程动作详情`
+
+## 100. 2026-06-13 新增学习档案批量操作回执
+
+本次把前台学习档案的批量操作从“按钮能触发但结果不够可见”推进到“每次操作都有本机持久回执”。导出所选、批量移入回收站、恢复回收站、永久删除回收站记录和清空回收站都会写入 `historyBatchReceipts`，并在学习档案区显示最近一次操作的时间、数量、类型分布、文件名或回收站记录 ID。
+
+完成内容：
+
+- `app-state.js` 新增 `historyBatchReceipts` 归一化、上限裁剪和批量回执读取接口。
+- 学习档案导出所选会记录导出文件名、所选 ID、练习/作品/报告数量和本机边界说明。
+- 批量删除、单条删除、恢复回收站、永久删除和清空回收站都会追加真实操作回执。
+- `index.html` 新增 `historyBatchReceipt` 回执面板，放在学习档案批量操作区。
+- `script.js` 新增最近批量操作回执渲染，历史面板刷新后仍能展示最近一次操作结果。
+- `style.css` 新增回执面板和数量指标样式，避免操作结果只停留在临时 toast。
+- Playwright 前台真实流程覆盖学习档案导出、批量删除和恢复回收站，并断言回执写入 `localStorage`。
+
+真实化说明：
+
+- 数据来源：`MRAppState` 中真实的 `sessions`、`artworks`、`reports`、`historyTrash` 和所选档案 ID。
+- 写入状态：新增 `mr-calligraphy-learning-state-v1.historyBatchReceipts`，最多保留 20 条本机回执。
+- 成功反馈：用户可以看到最近操作的动作名称、数量、类型分布、文件名或回收站 ID。
+- 失败反馈：没有选中档案、没有回收站记录或找不到目标记录时不写入假回执，只返回真实失败提示。
+- 刷新后复现方式：完成一次学习档案导出、删除或恢复后刷新页面，学习档案区仍会显示最近批量操作回执。
+
+仍待补：
+
+- 当前是浏览器本机操作回执，不是服务端不可篡改审计、跨设备同步、账号权限日志或教师端归档流水。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案批量操作回执`

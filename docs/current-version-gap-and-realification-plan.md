@@ -4139,3 +4139,39 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习过程动作详情`
+
+### 2026-06-13：新增学习档案批量操作回执
+
+完成内容：
+
+- 前台学习档案新增 `historyBatchReceipts` 本机持久回执，记录最近 20 次批量操作。
+- “导出所选”写入导出文件名、所选档案 ID、档案数量和练习/作品/报告分布。
+- 批量移入回收站、单条移入回收站、恢复回收站、永久删除回收站记录和清空回收站都写入操作回执。
+- 学习档案批量操作区新增最近回执面板，展示操作名称、时间、总数、类型分布、所选数量、状态和本机边界。
+- 前台 E2E 覆盖导出所选、批量删除和恢复回收站，并验证回执持久写入 `localStorage`。
+
+真实化说明：
+
+- 数据来源：真实学习会话、作品、报告、回收站记录和当前选择状态。
+- 写入状态：新增 `mr-calligraphy-learning-state-v1.historyBatchReceipts`；回执随浏览器本机状态保存，刷新后可见。
+- 成功反馈：批量操作后用户能看到具体数量、文件名或回收站记录 ID，不再只有瞬时提示。
+- 失败反馈：无选中项、无回收站项或目标不存在时不追加成功回执。
+- 刷新后复现方式：执行一次导出、删除或恢复后刷新，再打开学习档案仍可看到最近回执。
+
+仍待补：
+
+- 当前是本机持久回执，不是服务端审计日志、账号级权限流水、跨设备同步或教师端监管记录。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案批量操作回执`

@@ -9205,3 +9205,40 @@
 提交：
 
 - 中文 commit message：`新增学习过程动作详情`
+
+### 2026-06-13：新增学习档案批量操作回执
+
+完成内容：
+
+- `app-state.js` 新增学习档案批量操作回执模型，覆盖导出、移入回收站、恢复、永久删除和清空回收站。
+- `MRAppState.downloadHistoryRecords()` 会返回并保存导出回执，包含下载文件名、所选 ID 和档案类型统计。
+- `deleteHistoryRecord()`、`deleteHistoryRecords()`、`restoreHistoryTrash()`、`clearHistoryTrash()` 和 `deleteHistoryTrashEntry()` 会写入对应操作回执。
+- 前台学习档案批量操作区新增最近回执面板，刷新历史面板时从本机状态恢复显示。
+- 回执明确标注本机浏览器边界，避免把本地状态误读成服务端不可篡改审计。
+- 前台真实流程 E2E 验收导出、批量删除、恢复回收站和 `localStorage.historyBatchReceipts` 持久化。
+
+真实化说明：
+
+- 数据来源：`MRAppState` 的真实学习会话、作品、报告、历史回收站和当前批量选择。
+- 写入状态：`mr-calligraphy-learning-state-v1.historyBatchReceipts` 最多保留 20 条最近回执。
+- 成功反馈：用户可以看到动作、时间、状态、数量、文件名或回收站记录 ID。
+- 失败反馈：没有真实目标时不写入成功回执，只返回失败消息。
+- 刷新后复现方式：完成档案批量操作后刷新页面，进入学习档案区可继续看到最近回执。
+
+仍待补：
+
+- 当前只完成本机学习档案批量操作回执，不包含服务端审计、账号权限、跨设备历史同步或教师端批量审批。
+
+验收：
+
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案批量操作回执`

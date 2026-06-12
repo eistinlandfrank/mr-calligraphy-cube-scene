@@ -943,6 +943,40 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("计划 ID");
   await expect(page.locator("#actionDetail")).toContainText("下一项");
 
+  await page.getByRole("button", { name: /切换到步骤 7/ }).click();
+  await page.locator(".history-filters").getByRole("button", { name: "全部" }).click();
+  await page.locator("#historySelectVisible").check();
+  await expect(page.locator("#historySelectionStatus")).toContainText("已选");
+  const selectedHistoryDownloadPromise = page.waitForEvent("download");
+  await page.locator("#historyExportSelected").click();
+  const selectedHistoryDownload = await selectedHistoryDownloadPromise;
+  expect(selectedHistoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-selection-.*\.json$/);
+  await expect(page.locator("#historyBatchReceipt")).toBeVisible();
+  await expect(page.locator("#historyBatchReceipt")).toContainText("导出所选学习档案");
+  await expect(page.locator("#historyBatchReceipt")).toContainText("总数");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyBatchReceipts[0].action).toBe("export");
+  expect(learningState.historyBatchReceipts[0].filename).toMatch(/^mr-calligraphy-history-selection-/);
+  expect(learningState.historyBatchReceipts[0].recordCount).toBeGreaterThanOrEqual(3);
+
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#historyDeleteSelected").click();
+  await expect(page.locator("#historyBatchReceipt")).toContainText("批量移入回收站");
+  await expect(page.locator("#historyTrashStatus")).toContainText("回收站");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyBatchReceipts[0].action).toBe("delete");
+  expect(learningState.historyBatchReceipts[0].trashId).toBeTruthy();
+  expect(learningState.historyTrash[0].id).toBe(learningState.historyBatchReceipts[0].trashId);
+
+  await page.locator("#historyRestoreTrash").click();
+  await expect(page.locator("#historyBatchReceipt")).toContainText("恢复回收站学习档案");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyBatchReceipts[0].action).toBe("restore");
+  expect(learningState.historyBatchReceipts[0].recordCount).toBeGreaterThanOrEqual(3);
+  expect(learningState.historyTrash).toHaveLength(0);
+  expect(learningState.reports).toHaveLength(1);
+  expect(learningState.artworks).toHaveLength(1);
+
   for (const stepNumber of [7, 8, 9, 10]) {
     await page.getByRole("button", { name: new RegExp(`切换到步骤 ${stepNumber}`) }).click();
     await expect(page.locator("#contentBody")).toContainText("路径状态");
