@@ -8410,3 +8410,40 @@
 提交：
 
 - 中文 commit message：`新增学习档案回执本机校验`
+
+### 2026-06-12：新增项目仓库回执本机校验
+
+功能名：主后台项目仓库远端回执本机一致性校验。
+
+完成内容：
+
+- `project-archive.js` 为 `normalizeProjectRepositoryReceipt()` 新增本机校验字段：`verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 新增 `verifyProjectRepositoryReceipt()`，用 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 项目仓库回执审计状态摘要、后台回执列表和回执审计 HTML 都会展示“本机校验通过 / 空间不匹配 / 摘要不匹配”。
+- `tests/e2e/real-flows.spec.js` 的主后台项目仓库用例改为生成真实可重算 receipt，并验证页面、localStorage 和 HTML 审计导出。
+- `docs/project-repository-api-contract.md`、`docs/smoke-test.md` 和当前开发文档同步验收范围与生产边界。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 API 返回的 `receipt/latestReceipt` 与当前项目仓库 Workspace。
+- 写入状态：写入 `mr-calligraphy-project-repository-remote-v1.receipts[*]`。
+- 成功反馈：项目仓库摘要、回执列表和审计 HTML 显示“本机校验通过”。
+- 失败反馈：回执摘要无法重算时显示“摘要不匹配”；回执自洽但 workspace 不同则显示“空间不匹配”。
+- 刷新后复现方式：校验结果随本机远端项目仓库状态持久化，刷新主后台后仍能读取。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产私钥验签、公钥证书链、账号权限、服务端资产完整性复核、多人合并审计或服务端不可篡改日志。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库回执本机校验`

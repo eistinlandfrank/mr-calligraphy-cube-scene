@@ -70,11 +70,11 @@ node scripts/control-inventory.js --check
 
 | 模块 | 当前可用 | 不完善点 | 真实化方向 |
 | --- | --- | --- | --- |
-| 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用；主后台项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 真实 GET/PUT，支持拉取远端包进入恢复预览 | 保存范围主要是当前浏览器，远端 adapter 还不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
+| 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用；主后台项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 真实 GET/PUT，支持拉取远端包进入恢复预览、回执审计导出和回执本机一致性校验 | 保存范围主要是当前浏览器，远端 adapter 还不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 写实对象、相机、导入模型、快照、发布到演示可用；已纳入 `project-scene-repository-v1` 统一视图 | 和主后台对象 schema 仍有字段差异 | 继续统一字段迁移、完整 diff 和资产引用规则 |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史、差异、回滚 | 只是本机发布，不是线上部署 | UI 保持“本机发布”；线上发布必须走远端发布合同 |
 | 远端发布 | 可配置 endpoint/token，生成发布包、manifest、模型/贴图资产清单，预检、审核锁、POST 推送、DELETE 撤销、服务端回执持久化、HMAC 开发资产签名回执、CDN upload 上传回执、CDN purge 撤销回执和 HTML 审计导出已有第一版 | 还不是账号权限、生产 CDN 托管、生产证书签名、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、生产证书资产签名、生产 CDN 回调和不可篡改审计日志 |
-| 项目档案 | JSON 导出/导入、schema、迁移、字段恢复、模型哈希、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、拉取预览、API 合同和本机 mock 服务可用 | 三方合并、完整 JSON 树、账号权限和远端资产校验仍弱 | 增加账号化服务端 repository、多人冲突解决和远端资产完整性校验 |
+| 项目档案 | JSON 导出/导入、schema、迁移、字段恢复、模型哈希、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、拉取预览、API 合同、本机 mock 服务、回执审计导出和回执本机一致性校验可用 | 三方合并、完整 JSON 树、账号权限和远端资产校验仍弱 | 增加账号化服务端 repository、多人冲突解决和远端资产完整性校验 |
 | 后台权限 | 已显示“本机静态后台”风险提示 | 任何能打开页面的人都能编辑本机内容 | 后端版加入账号、角色、权限和操作审计 |
 
 ## 5. 最像“假的”的界面来源
@@ -2841,3 +2841,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案回执本机校验`
+
+## 80. 2026-06-12 新增项目仓库回执本机校验
+
+本次把主后台远端项目仓库回执从“保存并展示”推进为“保存、展示并做本机一致性校验”。前端会重算 `receiptDigest`，判断回执字段是否自洽、workspace 是否匹配当前项目仓库空间，并把结果显示在主后台回执状态、回执列表和审计 HTML 中。
+
+完成内容：
+
+- `normalizeProjectRepositoryReceipt()` 新增 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 新增 `verifyProjectRepositoryReceipt()`，按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 项目仓库回执审计状态摘要新增“本机校验通过 / 空间不匹配 / 摘要不匹配”提示。
+- 主后台项目仓库回执列表显示校验状态。
+- 项目仓库回执审计 HTML 新增本机校验、校验说明和重算摘要字段。
+- Playwright 主后台项目仓库用例改为生成真实可重算 receipt，并验证页面、localStorage 和 HTML 审计导出。
+- `docs/project-repository-api-contract.md` 同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 API 返回的 `receipt/latestReceipt` 与当前项目仓库 Workspace。
+- 写入状态：写入 `mr-calligraphy-project-repository-remote-v1.receipts[*]` 的校验字段。
+- 成功反馈：项目仓库回执摘要、回执列表和审计 HTML 显示“本机校验通过”。
+- 失败反馈：回执摘要无法重算时显示“摘要不匹配”；回执自洽但 workspace 不同则显示“空间不匹配”。
+- 刷新后复现方式：校验结果随本机远端项目仓库状态持久化，刷新主后台后仍能读取。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产私钥验签、公钥证书链、账号权限、服务端资产完整性复核、多人合并审计或服务端不可篡改日志。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库回执本机校验`

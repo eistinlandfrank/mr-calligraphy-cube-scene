@@ -6,6 +6,7 @@
   const MAX_RESTORE_AUDIT_RECORDS = 50;
   const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
+  const PROJECT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-project-repository-receipt-v1";
   const PROJECT_REPOSITORY_REMOTE_VERSION = 1;
   const PROJECT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const PROJECT_REPOSITORY_MAX_RECEIPTS = 12;
@@ -134,11 +135,12 @@
 
   function normalizeProjectRepositoryRemoteState(state = {}) {
     const source = state && typeof state === "object" ? state : {};
+    const workspaceId = normalizeProjectRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
     return {
       version: PROJECT_REPOSITORY_REMOTE_VERSION,
       endpoint: typeof source.endpoint === "string" ? source.endpoint.trim() : "",
       token: typeof source.token === "string" ? source.token.trim() : "",
-      workspaceId: normalizeProjectRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId),
+      workspaceId,
       lastCheckedAt: normalizeIsoDate(source.lastCheckedAt),
       lastPushedAt: normalizeIsoDate(source.lastPushedAt),
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : "",
@@ -151,7 +153,7 @@
         ? mergeProjectRepositoryVersions(source.versions)
         : [],
       receipts: Array.isArray(source.receipts)
-        ? mergeProjectRepositoryReceipts(source.receipts)
+        ? mergeProjectRepositoryReceipts(source.receipts, [], { workspaceId })
         : []
     };
   }
@@ -165,7 +167,7 @@
     return normalized || PROJECT_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
-  function normalizeProjectRepositoryReceipt(record = {}) {
+  function normalizeProjectRepositoryReceipt(record = {}, context = {}) {
     const source = record && typeof record === "object" ? record : {};
     const receipt = source.receipt && typeof source.receipt === "object" ? source.receipt : {};
     const packageId = String(source.packageId || receipt.packageId || "").slice(0, 160);
@@ -178,6 +180,15 @@
     const message = String(source.message || receipt.message || "").slice(0, 220);
     const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest);
     const workspaceId = normalizeProjectRepositoryWorkspaceId(source.workspaceId || receipt.workspaceId || source.remoteWorkspaceId || receipt.remoteWorkspaceId || source.accountId || receipt.accountId);
+    const verification = verifyProjectRepositoryReceipt({
+      sourcePackageId,
+      workspaceId,
+      repositoryDigest,
+      acceptedAt,
+      receiptDigest
+    }, {
+      workspaceId: context.workspaceId || source.expectedWorkspaceId || receipt.expectedWorkspaceId
+    });
     if (!packageId && !sourcePackageId && !packageDigest && !repositoryDigest && !acceptedAt && !pushedAt && !receivedAt && !message) {
       return null;
     }
@@ -197,18 +208,59 @@
       endpoint: String(source.endpoint || receipt.endpoint || "").trim().slice(0, 240),
       direction: ["check", "push", "pull"].includes(source.direction || receipt.direction) ? (source.direction || receipt.direction) : "",
       message,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationDigest: verification.digest,
+      verificationExpectedDigest: verification.expectedDigest,
+      verificationWorkspaceStatus: verification.workspaceStatus,
       sceneCount: Math.max(0, Math.round(Number(source.sceneCount ?? receipt.sceneCount ?? 0))),
       modelCount: Math.max(0, Math.round(Number(source.modelCount ?? receipt.modelCount ?? 0))),
-      receiptKind: String(source.receiptKind || receipt.receiptKind || "").slice(0, 120),
+      receiptKind: String(source.receiptKind || receipt.receiptKind || PROJECT_REPOSITORY_RECEIPT_KIND).slice(0, 120),
       receipt: cloneJsonValue(receipt)
     };
   }
 
-  function mergeProjectRepositoryReceipts(primary = [], secondary = []) {
+  function verifyProjectRepositoryReceipt(receipt = {}, context = {}) {
+    const sourcePackageId = String(receipt.sourcePackageId || "").slice(0, 160);
+    const workspaceId = normalizeProjectRepositoryWorkspaceId(receipt.workspaceId);
+    const expectedWorkspaceId = normalizeProjectRepositoryWorkspaceId(context.workspaceId || workspaceId);
+    const repositoryDigest = normalizeSha256(receipt.repositoryDigest);
+    const acceptedAt = normalizeIsoDate(receipt.acceptedAt);
+    const receiptDigest = normalizeSha256(receipt.receiptDigest);
+    const expectedDigest = sourcePackageId && workspaceId && repositoryDigest && acceptedAt
+      ? sha256StableJson({
+        sourcePackageId,
+        workspaceId,
+        repositoryDigest,
+        acceptedAt
+      })
+      : "";
+    const digestMatches = Boolean(expectedDigest && receiptDigest && expectedDigest === receiptDigest);
+    const workspaceMatches = workspaceId === expectedWorkspaceId;
+    const status = digestMatches && workspaceMatches
+      ? "verified"
+      : digestMatches
+        ? "workspace-mismatch"
+        : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 可按 sourcePackageId、workspaceId、repositoryDigest 和 acceptedAt 重算匹配。",
+      "workspace-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执空间 ${workspaceId} 与当前空间 ${expectedWorkspaceId} 不一致。`,
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按项目仓库回执声明字段重算匹配。"
+    };
+    return {
+      status,
+      message: messages[status],
+      digest: receiptDigest,
+      expectedDigest,
+      workspaceStatus: workspaceMatches ? "matched" : "mismatched"
+    };
+  }
+
+  function mergeProjectRepositoryReceipts(primary = [], secondary = [], context = {}) {
     const merged = [];
     const seen = new Set();
     [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])].forEach((item) => {
-      const receipt = normalizeProjectRepositoryReceipt(item);
+      const receipt = normalizeProjectRepositoryReceipt(item, context);
       if (!receipt) {
         return;
       }
@@ -222,8 +274,8 @@
     return merged.slice(0, PROJECT_REPOSITORY_MAX_RECEIPTS);
   }
 
-  function appendProjectRepositoryReceipt(receipts, receipt) {
-    return mergeProjectRepositoryReceipts(receipt ? [receipt] : [], receipts);
+  function appendProjectRepositoryReceipt(receipts, receipt, context = {}) {
+    return mergeProjectRepositoryReceipts(receipt ? [receipt] : [], receipts, context);
   }
 
   function getProjectRepositoryReceiptKey(receipt) {
@@ -403,13 +455,14 @@
       packageDigest: context.packageDigest || payload?.packageDigest || candidate.packageDigest || "",
       repositoryDigest: context.repositoryDigest || payload?.repositoryDigest || candidate.repositoryDigest || "",
       remoteVersion: context.remoteVersion || payload?.remoteVersion || candidate.remoteVersion || ""
-    });
+    }, { workspaceId: context.workspaceId || payload?.workspaceId || candidate.workspaceId || "" });
   }
 
   function getProjectRepositoryReceiptAudit() {
     const state = readProjectRepositoryRemoteState();
     const receipts = state.receipts;
     const latestReceipt = receipts[0] || null;
+    const verifiedCount = receipts.filter((receipt) => receipt.verificationStatus === "verified").length;
     return {
       ok: true,
       kind: "mr-calligraphy-project-repository-receipt-audit-v1",
@@ -418,11 +471,12 @@
       hasToken: Boolean(state.token),
       workspaceId: state.workspaceId,
       total: receipts.length,
+      verifiedCount,
       latestReceipt: latestReceipt ? cloneJsonValue(latestReceipt) : null,
       receipts: cloneJsonValue(receipts),
       boundary: PROJECT_REPOSITORY_REMOTE_BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条项目仓库回执，当前空间 ${state.workspaceId}，最近一次：${formatArchiveDate(latestReceipt.receivedAt || latestReceipt.acceptedAt || latestReceipt.pushedAt)}。`
+        ? `已保存 ${receipts.length} 条项目仓库回执，本机校验通过 ${verifiedCount} 条，当前空间 ${state.workspaceId}，最近一次：${formatArchiveDate(latestReceipt.receivedAt || latestReceipt.acceptedAt || latestReceipt.pushedAt)}。`
         : "暂无远端项目仓库回执。"
     };
   }
@@ -485,6 +539,9 @@
           <li>Package Digest：${escapeHtml(receipt.packageDigest || "未知")}</li>
           <li>Repository Digest：${escapeHtml(digest || "未知")}</li>
           <li>Receipt Digest：${escapeHtml(receipt.receiptDigest || "未返回")}</li>
+          <li>本机校验：${escapeHtml(formatProjectRepositoryReceiptVerificationStatus(receipt.verificationStatus))}</li>
+          <li>校验说明：${escapeHtml(receipt.verificationMessage || "未生成校验说明")}</li>
+          <li>重算摘要：${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</li>
         </ul>
         <details>
           <summary>查看原始回执 JSON</summary>
@@ -529,7 +586,7 @@
       <p class="muted">本报告来自当前浏览器保存的远端项目仓库回执；它证明前端 adapter 曾向配置 endpoint 发送或读取项目仓库包，但不替代生产账号、权限和不可篡改审计。</p>
     </header>
     <section class="stack">${rows}</section>
-    <footer>Endpoint：${escapeHtml(audit.endpoint || "未配置")}。Workspace：${escapeHtml(audit.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE)}。回执数量：${escapeHtml(audit.total)}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+    <footer>Endpoint：${escapeHtml(audit.endpoint || "未配置")}。Workspace：${escapeHtml(audit.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE)}。回执数量：${escapeHtml(audit.total)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
   </main>
 </body>
 </html>`;
@@ -541,6 +598,14 @@
       push: "仓库推送",
       pull: "仓库拉取"
     }[direction] || "远端回执";
+  }
+
+  function formatProjectRepositoryReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "workspace-mismatch": "空间不匹配",
+      "digest-mismatch": "摘要不匹配"
+    }[status] || "未校验";
   }
 
   function validateProjectRepositoryEndpoint(endpoint) {
@@ -655,7 +720,7 @@
         lastRemoteStatus: `${message} 空间：${state.workspaceId}。`,
         lastError: "",
         versions: remoteVersions,
-        receipts: appendProjectRepositoryReceipt(state.receipts, receipt)
+        receipts: appendProjectRepositoryReceipt(state.receipts, receipt, { workspaceId: state.workspaceId })
       });
       return {
         ok: true,
@@ -706,7 +771,7 @@
         direction: "push",
         sceneCount: repositoryPackage.summary.sceneCount,
         modelCount: repositoryPackage.summary.importedModels
-      });
+      }, { workspaceId: state.workspaceId });
       const pushedVersion = normalizeProjectRepositoryVersion({
         ...(payload.selectedVersion && typeof payload.selectedVersion === "object" ? payload.selectedVersion : {}),
         packageId: payload.packageId || receipt?.packageId || "",
@@ -734,7 +799,7 @@
         lastRepositoryDigest: receipt?.repositoryDigest || repositoryPackage.packageDigest,
         lastError: "",
         versions: remoteVersions,
-        receipts: appendProjectRepositoryReceipt(state.receipts, receipt)
+        receipts: appendProjectRepositoryReceipt(state.receipts, receipt, { workspaceId: state.workspaceId })
       });
       return {
         ok: true,
@@ -806,7 +871,7 @@
         lastRepositoryDigest: normalizeSha256(payload.repositoryDigest || repositoryPackage.repositoryDigest) || state.lastRepositoryDigest,
         lastError: "",
         versions: remoteVersions,
-        receipts: appendProjectRepositoryReceipt(state.receipts, receipt)
+        receipts: appendProjectRepositoryReceipt(state.receipts, receipt, { workspaceId: state.workspaceId })
       });
       return {
         ok: true,
@@ -1354,6 +1419,120 @@
       return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
     }
     return JSON.stringify(value);
+  }
+
+  function sha256StableJson(value) {
+    return sha256Hex(stableStringify(value));
+  }
+
+  function sha256Hex(text) {
+    const bytes = utf8Bytes(String(text || ""));
+    const words = [
+      0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
+      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
+    ];
+    const constants = [
+      0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+      0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+      0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+      0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+      0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+      0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+      0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+      0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+    ];
+    const message = bytes.slice();
+    const bitLength = message.length * 8;
+    message.push(0x80);
+    while ((message.length % 64) !== 56) message.push(0);
+    const highLength = Math.floor(bitLength / 0x100000000);
+    const lowLength = bitLength >>> 0;
+    [highLength, lowLength].forEach((part) => {
+      message.push((part >>> 24) & 0xff, (part >>> 16) & 0xff, (part >>> 8) & 0xff, part & 0xff);
+    });
+
+    const schedule = new Array(64);
+    for (let offset = 0; offset < message.length; offset += 64) {
+      for (let index = 0; index < 16; index += 1) {
+        const cursor = offset + index * 4;
+        schedule[index] = (
+          (message[cursor] << 24)
+          | (message[cursor + 1] << 16)
+          | (message[cursor + 2] << 8)
+          | message[cursor + 3]
+        ) >>> 0;
+      }
+      for (let index = 16; index < 64; index += 1) {
+        const sigma0 = rotateRight(schedule[index - 15], 7) ^ rotateRight(schedule[index - 15], 18) ^ (schedule[index - 15] >>> 3);
+        const sigma1 = rotateRight(schedule[index - 2], 17) ^ rotateRight(schedule[index - 2], 19) ^ (schedule[index - 2] >>> 10);
+        schedule[index] = (schedule[index - 16] + sigma0 + schedule[index - 7] + sigma1) >>> 0;
+      }
+
+      let [a, b, c, d, e, f, g, h] = words;
+      for (let index = 0; index < 64; index += 1) {
+        const sigma1 = rotateRight(e, 6) ^ rotateRight(e, 11) ^ rotateRight(e, 25);
+        const choice = (e & f) ^ (~e & g);
+        const temp1 = (h + sigma1 + choice + constants[index] + schedule[index]) >>> 0;
+        const sigma0 = rotateRight(a, 2) ^ rotateRight(a, 13) ^ rotateRight(a, 22);
+        const majority = (a & b) ^ (a & c) ^ (b & c);
+        const temp2 = (sigma0 + majority) >>> 0;
+        h = g;
+        g = f;
+        f = e;
+        e = (d + temp1) >>> 0;
+        d = c;
+        c = b;
+        b = a;
+        a = (temp1 + temp2) >>> 0;
+      }
+
+      words[0] = (words[0] + a) >>> 0;
+      words[1] = (words[1] + b) >>> 0;
+      words[2] = (words[2] + c) >>> 0;
+      words[3] = (words[3] + d) >>> 0;
+      words[4] = (words[4] + e) >>> 0;
+      words[5] = (words[5] + f) >>> 0;
+      words[6] = (words[6] + g) >>> 0;
+      words[7] = (words[7] + h) >>> 0;
+    }
+
+    return words.map((word) => word.toString(16).padStart(8, "0")).join("");
+  }
+
+  function rotateRight(value, bits) {
+    return (value >>> bits) | (value << (32 - bits));
+  }
+
+  function utf8Bytes(text) {
+    if (typeof TextEncoder !== "undefined") {
+      return Array.from(new TextEncoder().encode(text));
+    }
+    const bytes = [];
+    for (let index = 0; index < text.length; index += 1) {
+      let codePoint = text.charCodeAt(index);
+      if (codePoint >= 0xd800 && codePoint <= 0xdbff && index + 1 < text.length) {
+        const next = text.charCodeAt(index + 1);
+        if (next >= 0xdc00 && next <= 0xdfff) {
+          codePoint = 0x10000 + ((codePoint - 0xd800) << 10) + (next - 0xdc00);
+          index += 1;
+        }
+      }
+      if (codePoint <= 0x7f) {
+        bytes.push(codePoint);
+      } else if (codePoint <= 0x7ff) {
+        bytes.push(0xc0 | (codePoint >> 6), 0x80 | (codePoint & 0x3f));
+      } else if (codePoint <= 0xffff) {
+        bytes.push(0xe0 | (codePoint >> 12), 0x80 | ((codePoint >> 6) & 0x3f), 0x80 | (codePoint & 0x3f));
+      } else {
+        bytes.push(
+          0xf0 | (codePoint >> 18),
+          0x80 | ((codePoint >> 12) & 0x3f),
+          0x80 | ((codePoint >> 6) & 0x3f),
+          0x80 | (codePoint & 0x3f)
+        );
+      }
+    }
+    return bytes;
   }
 
   async function createStableJsonSha256(value) {
@@ -3797,7 +3976,8 @@
         detail.textContent = receipt.message || "远端已接收项目仓库包。";
         const meta = document.createElement("span");
         const digest = receipt.repositoryDigest || receipt.packageDigest;
-        meta.textContent = `${receipt.acceptedAt ? formatArchiveDate(receipt.acceptedAt) : "接收时间未知"} · 空间 ${receipt.workspaceId || remote.workspaceId}${digest ? ` · 摘要 ${digest.slice(0, 12)}` : ""}${receipt.modelCount ? ` · 模型 ${receipt.modelCount}` : ""}`;
+        const verificationLabel = formatProjectRepositoryReceiptVerificationStatus(receipt.verificationStatus);
+        meta.textContent = `${receipt.acceptedAt ? formatArchiveDate(receipt.acceptedAt) : "接收时间未知"} · 空间 ${receipt.workspaceId || remote.workspaceId}${digest ? ` · 摘要 ${digest.slice(0, 12)}` : ""}${receipt.modelCount ? ` · 模型 ${receipt.modelCount}` : ""} · ${verificationLabel}`;
         item.append(title, detail, meta);
         repositoryReceiptList.appendChild(item);
       });
