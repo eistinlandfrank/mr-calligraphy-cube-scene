@@ -12,7 +12,7 @@
   const MAX_STAGE_RECORDS = 80;
   const LEARNING_PATH_BOUNDARY = "学习路径服务由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是云端课程编排、教师下发任务或跨设备学习进度。";
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
-  const DEFAULT_SCORE_ALGORITHM_VERSION = "local-heuristic-v2.1.0";
+  const DEFAULT_SCORE_ALGORITHM_VERSION = "local-heuristic-v2.2.0";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
   const SHARE_REPOSITORY_KIND = "mr-calligraphy-share-repository-v1";
@@ -2233,6 +2233,8 @@
     const pressurePointCount = normalizeInteger(rawEvidence.pressurePointCount, 0, 0, 99999);
     const strokeMatches = normalizeStrokeMatchList(rawEvidence.strokeMatches);
     const strokeOrderWarnings = normalizeStringList(rawEvidence.strokeOrderWarnings);
+    const pathErrorHotspots = normalizePathErrorHotspots(rawEvidence.pathErrorHotspots);
+    const strokePathErrors = normalizeStrokePathErrors(rawEvidence.strokePathErrors);
     const normalized = {
       kind: String(source.kind || algorithmVersion || DEFAULT_SCORE_ALGORITHM_VERSION).slice(0, 80),
       algorithmVersion,
@@ -2252,6 +2254,11 @@
         strokeOrderVerdict: normalizeStrokeOrderVerdict(rawEvidence.strokeOrderVerdict),
         strokeOrderWarnings,
         strokeMatches,
+        pathFitPercent: normalizeInteger(rawEvidence.pathFitPercent, 0, 0, 100),
+        pathErrorPercent: normalizeInteger(rawEvidence.pathErrorPercent, 0, 0, 100),
+        pathErrorSampleCount: normalizeInteger(rawEvidence.pathErrorSampleCount, 0, 0, 99999),
+        pathErrorHotspots,
+        strokePathErrors,
         strokeCount,
         strokeCountDelta: normalizeInteger(rawEvidence.strokeCountDelta, Math.abs(strokeCount - targetStrokeCount), 0, 999),
         pointCount,
@@ -2274,6 +2281,8 @@
         targetStrokeNames,
         strokeOrderMatchPercent: normalizeInteger(rawEvidence.strokeOrderMatchPercent, 0, 0, 100),
         strokeOrderCoveragePercent: normalizeInteger(rawEvidence.strokeOrderCoveragePercent, 0, 0, 100),
+        pathFitPercent: normalizeInteger(rawEvidence.pathFitPercent, 0, 0, 100),
+        pathErrorPercent: normalizeInteger(rawEvidence.pathErrorPercent, 0, 0, 100),
         strokeCount,
         pointCount,
         pressurePointCount
@@ -2342,10 +2351,13 @@
     const strokeOrderText = normalizeInteger(detail.strokeOrderMatchPercent, 0, 0, 100)
       ? `，笔顺匹配${normalizeInteger(detail.strokeOrderMatchPercent, 0, 0, 100)}%`
       : "";
+    const pathText = normalizeInteger(detail.pathFitPercent, 0, 0, 100)
+      ? `，路径贴合${normalizeInteger(detail.pathFitPercent, 0, 0, 100)}%`
+      : "";
     const pressureText = normalizeInteger(detail.pressurePointCount, 0, 0, 99999)
       ? `，压感${normalizeInteger(detail.pressurePointCount, 0, 0, 99999)}点`
       : "";
-    return `采样${normalizeInteger(detail.pointCount, 0, 0, 99999)}点，${normalizeInteger(detail.strokeCount, 0, 0, 999)}笔，覆盖${normalizeInteger(detail.coveragePercent, 0, 0, 100)}%，重心偏移${normalizeInteger(detail.centerOffsetPercent, 0, 0, 100)}%${copybookText}${strokeOrderText}${pressureText}${weakText}`;
+    return `采样${normalizeInteger(detail.pointCount, 0, 0, 99999)}点，${normalizeInteger(detail.strokeCount, 0, 0, 999)}笔，覆盖${normalizeInteger(detail.coveragePercent, 0, 0, 100)}%，重心偏移${normalizeInteger(detail.centerOffsetPercent, 0, 0, 100)}%${copybookText}${strokeOrderText}${pathText}${pressureText}${weakText}`;
   }
 
   function normalizeScoreWeights(weights = {}) {
@@ -2368,8 +2380,8 @@
     };
     const defaults = {
       structure: "依据重心偏移、书写覆盖和字形范围估算。",
-      stroke: `依据 ${fallback.strokeCount || 0} 笔、目标 ${fallback.targetStrokeCount || 0} 笔、逐笔匹配 ${fallback.strokeOrderMatchPercent || 0}%、目标覆盖 ${fallback.strokeOrderCoveragePercent || 0}%${fallback.targetStrokeNames?.length ? `和范字笔顺 ${fallback.targetStrokeNames.slice(0, 6).join("、")}` : ""}估算。`,
-      technique: `依据笔迹长度和 ${fallback.pointCount || 0} 个采样点估算。`,
+      stroke: `依据 ${fallback.strokeCount || 0} 笔、目标 ${fallback.targetStrokeCount || 0} 笔、逐笔匹配 ${fallback.strokeOrderMatchPercent || 0}%、目标覆盖 ${fallback.strokeOrderCoveragePercent || 0}%、路径贴合 ${fallback.pathFitPercent || 0}%${fallback.targetStrokeNames?.length ? `和范字笔顺 ${fallback.targetStrokeNames.slice(0, 6).join("、")}` : ""}估算。`,
+      technique: `依据笔迹长度、${fallback.pointCount || 0} 个采样点和路径误差 ${fallback.pathErrorPercent || 0}%估算。`,
       fluency: "依据线段变化和长停顿次数估算。",
       force: `依据压感跨度、${fallback.pressurePointCount || 0} 个压感采样和笔画数量差估算。`
     };
@@ -2502,6 +2514,34 @@
     return ["aligned", "partial", "needs-shape-review", "needs-order-review"].includes(value)
       ? value
       : "partial";
+  }
+
+  function normalizePathErrorHotspots(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((item) => item && typeof item === "object")
+      .map((item) => ({
+        zone: String(item.zone || "").slice(0, 12),
+        label: String(item.label || "").slice(0, 24),
+        errorPercent: normalizeInteger(item.errorPercent, 0, 0, 100),
+        sampleCount: normalizeInteger(item.sampleCount, 0, 0, 99999)
+      }))
+      .filter((item) => item.zone || item.label)
+      .slice(0, 8);
+  }
+
+  function normalizeStrokePathErrors(value) {
+    if (!Array.isArray(value)) return [];
+    return value
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        index: normalizeInteger(item.index, index + 1, 1, 80),
+        expected: String(item.expected || "").slice(0, 24),
+        errorPercent: normalizeInteger(item.errorPercent, 0, 0, 100),
+        fitPercent: normalizeInteger(item.fitPercent, 0, 0, 100),
+        sampleCount: normalizeInteger(item.sampleCount, 0, 0, 99999)
+      }))
+      .slice(0, 80);
   }
 
   function normalizeArtworkTags(value) {

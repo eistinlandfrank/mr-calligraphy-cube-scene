@@ -10835,12 +10835,14 @@ function getScoreEvidenceMetrics(scoreEvidence) {
   const evidence = scoreEvidence.evidence;
   return [
     { label: "评分类型", value: scoreEvidence.label || "基础练习评分" },
-    { label: "算法版本", value: scoreEvidence.algorithmVersion || scoreEvidence.kind || "local-heuristic-v2.1.0" },
+    { label: "算法版本", value: scoreEvidence.algorithmVersion || scoreEvidence.kind || "local-heuristic-v2.2.0" },
     { label: "范字来源", value: scoreEvidence.copybook || evidence.copybook || "通用范字" },
     { label: "目标笔画", value: `${evidence.targetStrokeCount || 0}笔` },
     { label: "笔顺匹配", value: `${evidence.strokeOrderMatchPercent || 0}%` },
     { label: "笔顺覆盖", value: `${evidence.strokeOrderCoveragePercent || 0}%` },
     { label: "形态匹配", value: `${evidence.strokeShapeMatchPercent || 0}%` },
+    { label: "路径贴合", value: `${evidence.pathFitPercent || 0}%` },
+    { label: "路径误差", value: `${evidence.pathErrorPercent || 0}%` },
     { label: "覆盖范围", value: `${evidence.coveragePercent || 0}%` },
     { label: "重心偏移", value: `${evidence.centerOffsetPercent || 0}%` },
     { label: "长停顿", value: `${evidence.longBreaks || 0}次` },
@@ -10868,6 +10870,12 @@ function getScoreEvidenceItems(scoreEvidence) {
   const strokeWarningText = Array.isArray(evidence.strokeOrderWarnings) && evidence.strokeOrderWarnings.length
     ? `笔顺提醒：${evidence.strokeOrderWarnings.join("；")}。`
     : "";
+  const pathErrorText = Array.isArray(evidence.strokePathErrors) && evidence.strokePathErrors.length
+    ? `路径误差：${evidence.strokePathErrors.slice(0, 5).map((item) => `第${item.index}笔${item.expected || ""}贴合${item.fitPercent || 0}%`).join("；")}。`
+    : "";
+  const pathHotspotText = Array.isArray(evidence.pathErrorHotspots) && evidence.pathErrorHotspots.length
+    ? `误差热力：${evidence.pathErrorHotspots.map((item) => `${item.label || item.zone}${item.errorPercent || 0}%`).join("；")}。`
+    : "";
   const pressureText = evidence.pressurePointCount
     ? `压感证据：${evidence.pressurePointCount} 个采样点，平均约 ${evidence.pressureAveragePercent || 0}%，范围 ${evidence.pressureMinPercent || 0}% - ${evidence.pressureMaxPercent || 0}%。`
     : "";
@@ -10882,6 +10890,8 @@ function getScoreEvidenceItems(scoreEvidence) {
     evidence.strokeOrderVerdict ? `笔顺判定：${getStrokeOrderVerdictLabel(evidence.strokeOrderVerdict)}。` : "",
     strokeMatchText,
     strokeWarningText,
+    pathErrorText,
+    pathHotspotText,
     pressureText,
     ...reasons
   ].filter(Boolean);

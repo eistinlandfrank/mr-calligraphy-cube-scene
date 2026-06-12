@@ -1,5 +1,5 @@
 (function () {
-  const SCORE_ALGORITHM_VERSION = "local-heuristic-v2.1.0";
+  const SCORE_ALGORITHM_VERSION = "local-heuristic-v2.2.0";
   const COPYBOOK_STROKE_LIBRARY = {
     "永": {
       copybook: "永字八法",
@@ -554,6 +554,7 @@
           totalLength: 0,
           segmentStats: { variation: 0, pressureSpread: 0, longBreaks: 0 },
           strokeOrderAnalysis: analyzeStrokeOrder([], copybookProfile),
+          pathErrorAnalysis: analyzePathError([], copybookProfile),
           bounds: null
         })
       };
@@ -568,6 +569,8 @@
     const coverage = Math.sqrt(Math.max(0.001, width * height));
     const totalLength = getTotalLength(strokes);
     const segmentStats = getSegmentStats(strokes);
+    const strokeOrderAnalysis = analyzeStrokeOrder(strokes, copybookProfile);
+    const pathErrorAnalysis = analyzePathError(strokes, copybookProfile);
     const strokeCompleteness = clamp(100 - Math.abs(strokes.length - targetCount) * 8, 45, 100);
     const structure = clamp(100 - centerOffset * 150 - Math.abs(coverage - 0.58) * 58, 35, 100);
     const stroke = clamp(strokeCompleteness - Math.max(0, 0.36 - coverage) * 45, 35, 100);
@@ -611,16 +614,18 @@
         centerOffset,
         totalLength,
         segmentStats,
-        strokeOrderAnalysis: analyzeStrokeOrder(strokes, copybookProfile),
+        strokeOrderAnalysis,
+        pathErrorAnalysis,
         bounds
       }),
       feedback: buildFeedback({ metrics, strokes, targetCount, coverage, centerOffset })
     };
   }
 
-  function buildScoreEvidence({ glyph, targetCount, strokeCount, pointCount, metrics, coverage, centerOffset, totalLength, segmentStats, strokeOrderAnalysis, bounds }) {
+  function buildScoreEvidence({ glyph, targetCount, strokeCount, pointCount, metrics, coverage, centerOffset, totalLength, segmentStats, strokeOrderAnalysis, pathErrorAnalysis, bounds }) {
     const copybookProfile = getCopybookProfile(glyph);
     const orderAnalysis = strokeOrderAnalysis || analyzeStrokeOrder([], copybookProfile);
+    const pathAnalysis = pathErrorAnalysis || analyzePathError([], copybookProfile);
     const coveragePercent = Math.round(clamp(coverage, 0, 1) * 100);
     const centerOffsetPercent = Math.round(clamp(centerOffset, 0, 1) * 100);
     const variationPercent = Math.round(clamp(segmentStats.variation || 0, 0, 3) * 100);
@@ -656,6 +661,11 @@
         strokeOrderVerdict: orderAnalysis.verdict,
         strokeOrderWarnings: [...orderAnalysis.warnings],
         strokeMatches: orderAnalysis.matches.map((item) => ({ ...item })),
+        pathFitPercent: pathAnalysis.fitPercent,
+        pathErrorPercent: pathAnalysis.errorPercent,
+        pathErrorSampleCount: pathAnalysis.sampleCount,
+        pathErrorHotspots: pathAnalysis.hotspots.map((item) => ({ ...item })),
+        strokePathErrors: pathAnalysis.strokeErrors.map((item) => ({ ...item })),
         strokeCount,
         strokeCountDelta,
         pointCount,
@@ -684,13 +694,13 @@
           key: "stroke",
           label: "笔画",
           score: metrics.stroke || 0,
-          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔；逐笔匹配 ${orderAnalysis.matchPercent}%，覆盖 ${orderAnalysis.coveragePercent}%；范字笔顺：${copybookProfile.strokeOrder.slice(0, 6).join("、")}。`
+          evidence: `当前 ${strokeCount} 笔，目标约 ${targetCount} 笔；逐笔匹配 ${orderAnalysis.matchPercent}%，轨迹贴合 ${pathAnalysis.fitPercent}%，覆盖 ${orderAnalysis.coveragePercent}%；范字笔顺：${copybookProfile.strokeOrder.slice(0, 6).join("、")}。`
         },
         {
           key: "technique",
           label: "笔法",
           score: metrics.technique || 0,
-          evidence: `笔迹总长度 ${Number((totalLength || 0).toFixed(2))}，采样点 ${pointCount} 个。`
+          evidence: `笔迹总长度 ${Number((totalLength || 0).toFixed(2))}，采样点 ${pointCount} 个，路径误差约 ${pathAnalysis.errorPercent}%。`
         },
         {
           key: "fluency",
@@ -776,6 +786,116 @@
     };
   }
 
+  function analyzePathError(strokes, copybookProfile) {
+    const expectedFeatures = copybookProfile.strokeOrder.map((name, index) => getExpectedStrokeFeature(name, index, copybookProfile.strokeOrder.length));
+    const cells = new Map();
+    const strokeErrors = [];
+    let totalError = 0;
+    let sampleCount = 0;
+
+    strokes.forEach((stroke, strokeIndex) => {
+      const expected = expectedFeatures[strokeIndex] || expectedFeatures.at(-1) || getExpectedStrokeFeature("", strokeIndex, Math.max(1, strokes.length));
+      const target = getExpectedStrokeSegment(expected);
+      const samples = sampleStrokePoints(stroke, 16);
+      let strokeError = 0;
+      let strokeSampleCount = 0;
+
+      samples.forEach((point) => {
+        const distanceValue = distanceToSegment(point, target.start, target.end);
+        const errorPercent = Math.round(clamp(distanceValue / 0.42, 0, 1) * 100);
+        strokeError += errorPercent;
+        totalError += errorPercent;
+        sampleCount += 1;
+        strokeSampleCount += 1;
+        addPathHeatCell(cells, point, errorPercent);
+      });
+
+      strokeErrors.push({
+        index: strokeIndex + 1,
+        expected: expected.name,
+        errorPercent: strokeSampleCount ? Math.round(strokeError / strokeSampleCount) : 0,
+        fitPercent: strokeSampleCount ? Math.max(0, 100 - Math.round(strokeError / strokeSampleCount)) : 0,
+        sampleCount: strokeSampleCount
+      });
+    });
+
+    const errorPercent = sampleCount ? Math.round(totalError / sampleCount) : 0;
+    const hotspots = Array.from(cells.values())
+      .map((cell) => ({
+        zone: cell.zone,
+        label: getPathHeatZoneLabel(cell.x, cell.y),
+        errorPercent: Math.round(cell.error / cell.count),
+        sampleCount: cell.count
+      }))
+      .sort((a, b) => b.errorPercent - a.errorPercent || b.sampleCount - a.sampleCount)
+      .slice(0, 4);
+
+    return {
+      fitPercent: Math.max(0, 100 - errorPercent),
+      errorPercent,
+      sampleCount,
+      hotspots,
+      strokeErrors
+    };
+  }
+
+  function getExpectedStrokeSegment(expected) {
+    const angle = normalizeAngle(expected.angles[0] || 45) * Math.PI / 180;
+    const length = expected.lengthClass === "long" ? 0.62 : expected.lengthClass === "short" ? 0.22 : 0.42;
+    const center = {
+      x: expected.centerX || 0.5,
+      y: expected.centerY || 0.5
+    };
+    const dx = Math.cos(angle) * length / 2;
+    const dy = Math.sin(angle) * length / 2;
+    return {
+      start: { x: clamp(center.x - dx, 0.08, 0.92), y: clamp(center.y - dy, 0.08, 0.92) },
+      end: { x: clamp(center.x + dx, 0.08, 0.92), y: clamp(center.y + dy, 0.08, 0.92) }
+    };
+  }
+
+  function sampleStrokePoints(stroke, maxSamples) {
+    if (!Array.isArray(stroke) || !stroke.length) return [];
+    const step = Math.max(1, Math.ceil(stroke.length / maxSamples));
+    const samples = stroke.filter((_, index) => index % step === 0);
+    const last = stroke[stroke.length - 1];
+    if (last && samples[samples.length - 1] !== last) {
+      samples.push(last);
+    }
+    return samples;
+  }
+
+  function distanceToSegment(point, start, end) {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (!lengthSquared) {
+      return Math.hypot(point.x - start.x, point.y - start.y);
+    }
+    const t = clamp(((point.x - start.x) * dx + (point.y - start.y) * dy) / lengthSquared, 0, 1);
+    const projection = {
+      x: start.x + dx * t,
+      y: start.y + dy * t
+    };
+    return Math.hypot(point.x - projection.x, point.y - projection.y);
+  }
+
+  function addPathHeatCell(cells, point, errorPercent) {
+    const x = Math.min(3, Math.max(0, Math.floor(point.x * 4)));
+    const y = Math.min(3, Math.max(0, Math.floor(point.y * 4)));
+    const zone = `${x + 1}-${y + 1}`;
+    const existing = cells.get(zone) || { zone, x, y, error: 0, count: 0 };
+    existing.error += errorPercent;
+    existing.count += 1;
+    cells.set(zone, existing);
+  }
+
+  function getPathHeatZoneLabel(x, y) {
+    const columns = ["左", "中左", "中右", "右"];
+    const rows = ["上", "中上", "中下", "下"];
+    return `${rows[y] || "中"}${columns[x] || "中"}区`;
+  }
+
   function getActualStrokeFeature(stroke, index) {
     if (!Array.isArray(stroke) || stroke.length < 2) return null;
     const start = stroke[0];
@@ -812,6 +932,7 @@
       name: text,
       label: "通用",
       angles: [45, 90],
+      centerX: 0.5,
       centerY: 0.16 + normalizedIndex * 0.68,
       lengthClass: "medium"
     };

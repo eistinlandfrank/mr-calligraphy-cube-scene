@@ -8835,7 +8835,7 @@
 仍待补：
 
 - 该能力仍是本机启发式评分，不是专业书法评级、云端识别模型、硬件压感校准或教师评分标定。
-- 逐笔轨迹匹配已在下一节完成第一版；仍缺专业错序模型、逐点范字路径误差、笔锋路径分析和服务端模型校验。
+- 逐笔轨迹匹配和路径误差热力已在后续小节完成第一版；仍缺专业错序模型、笔锋路径分析和服务端模型校验。
 
 验收：
 
@@ -8876,7 +8876,7 @@
 
 仍待补：
 
-- 当前是浏览器本机启发式轨迹匹配，不是专业逐笔识别模型、逐点范字路径误差、笔锋压力热力图、教师人工标定或服务端评分。
+- 路径误差热力已在下一节完成第一版；当前仍不是专业逐笔识别模型、笔锋压力热力图、教师人工标定或服务端评分。
 
 验收：
 
@@ -8891,3 +8891,45 @@
 提交：
 
 - 中文 commit message：`新增逐笔轨迹匹配证据`
+
+### 2026-06-12：新增路径误差热力证据
+
+功能名：基础评分路径误差热力证据。
+
+完成内容：
+
+- `practice-canvas.js` 将评分算法升级为 `local-heuristic-v2.2.0`。
+- 新增 `analyzePathError()`，按真实采样点到本机范字参考线的距离计算路径误差。
+- 评分证据新增 `pathFitPercent`、`pathErrorPercent`、`pathErrorSampleCount`。
+- 评分证据新增 `pathErrorHotspots`，按 4×4 区域输出误差热力点。
+- 评分证据新增 `strokePathErrors`，记录每一笔的路径误差、贴合率和采样点数。
+- `app-state.js` 归一化和持久化路径热力证据，旧记录缺字段时保持兼容。
+- `MRAppState.getScoreServiceStatus()` 的摘要增加“路径贴合xx%”。
+- 前台“查看笔画分析”详情新增路径贴合率、路径误差率、逐笔路径误差和误差热力区说明。
+- 数据层脚本和 Playwright 前台真实流程新增路径热力字段断言。
+
+真实化说明：
+
+- 数据来源：真实笔迹采样点、本机范字参考线和 4×4 误差区域聚合。
+- 写入状态：`mr-calligraphy-learning-state-v1.sessions[*].scoreEvidence.evidence.pathErrorHotspots`、`strokePathErrors` 与评分服务摘要。
+- 成功反馈：评分分析中展示路径贴合、误差热力区和逐笔路径误差。
+- 失败反馈：没有笔迹时不伪造路径热力；旧记录没有路径热力字段时只显示已有评分解释。
+- 刷新后复现方式：保存作品后刷新，笔画分析继续读取持久化路径热力证据。
+
+仍待补：
+
+- 当前是浏览器本机参考线距离估算，不是专业范字轮廓识别、笔锋压力热力图、硬件校准、教师人工标定或服务端评分。
+
+验收：
+
+- `node --check practice-canvas.js`
+- `node --check app-state.js`
+- `node --input-type=module --check < script.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增路径误差热力证据`
