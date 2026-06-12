@@ -4999,3 +4999,47 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告仓库包摘要验真`
+
+## 122. 2026-06-13 新增计划仓库包摘要验真
+
+本次补齐前台学习计划仓库 JSON 同步包的包级完整性校验。计划仓库已经有本机 JSON 包、远端 API、回执审计、自动同步队列和冲突合并，但此前整个 `mr-calligraphy-plan-repository-v1` 包被手工改动后仍可能进入导入或远端拉取流程。
+
+完成内容：
+
+- `MRAppState.getPlanRepositoryPackage()` 生成 `digestAlgorithm: "sha256-stable-json"` 和顶层 `packageDigest`。
+- `packageDigest` 按去除自身后的稳定 JSON 计算 SHA-256，覆盖计划、任务项、summary、Workspace、来源边界和远端接受元数据。
+- `parsePlanRepositoryPackage()` 导入前校验摘要；声明摘要与实际内容不一致时拒绝导入，不写入任何计划。
+- 旧版没有 `packageDigest` 的计划仓库包仍兼容导入，避免历史 JSON 包失效。
+- 本机导出、导入、远端检查、推送、拉取都会把最近 `lastPackageDigest` 写入 `planRepository` 状态，并在状态提示中显示摘要短码。
+- 远端计划 API 如果返回了包但摘要无效，会明确失败，不再被当成“空计划仓库”。
+- `scripts/plan-repository-mock-server.js` 会校验请求包摘要；服务端改写 `packageId/acceptedAt/repositoryDigest` 后会重新生成 `packageDigest`。
+- 自动同步失败历史记录会保存本次待推送包摘要，方便把超时、401、422 和网络失败关联到具体计划包。
+- Node 状态层脚本覆盖篡改包拒绝、mock server 保存摘要、推送结果返回摘要、失败历史摘要和状态持久化。
+- Playwright 前台用例覆盖计划仓库远端 PUT body 摘要、远端接受包摘要、localStorage 持久化、失败队列摘要和冲突包重算摘要。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机学习计划、远端计划 API 返回包和本机 JSON 同步包。
+- 写入状态：摘要通过后才导入 plans；成功同步后写入 `mr-calligraphy-learning-state-v1.planRepository.lastPackageDigest`。
+- 成功反馈：计划仓库摘要显示计划数、Workspace、回执校验状态和摘要短码。
+- 失败反馈：摘要校验失败会显示声明摘要和实际摘要短码，并明确“未导入任何计划”。
+- 刷新后复现方式：最近包摘要、远端状态、回执和自动同步失败历史都持久化在 `mr-calligraphy-learning-state-v1.planRepository`。
+
+仍待补：
+
+- 当前是本机 SHA-256 完整性校验，不是账号签名、公钥证书链、生产云端审计、教师排课权限或多人协同自动合并。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/plan-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front plan repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库包摘要验真`

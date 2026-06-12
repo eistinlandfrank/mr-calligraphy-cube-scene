@@ -44,6 +44,7 @@
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，并携带 Workspace 空间 ID 做服务端隔离第一版，但仍不包含完整账号权限、教师端排课或后台推送。";
+  const PLAN_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
   const PLAN_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-plan-repository-receipt-v1";
   const PLAN_REPOSITORY_MAX_RECEIPTS = 12;
   const PLAN_REPOSITORY_MAX_FAILURES = 8;
@@ -1401,6 +1402,7 @@
       lastExportedPlanCount: normalizeInteger(source.lastExportedPlanCount, 0, 0, 9999),
       lastImportedPlanCount: normalizeInteger(source.lastImportedPlanCount, 0, 0, 9999),
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastPackageDigest: normalizePlanRepositoryHex(source.lastPackageDigest || source.packageDigest || source.repositoryDigest),
       autoSyncEnabled: source.autoSyncEnabled === true,
       pendingAutoSync: source.pendingAutoSync === true,
       pendingSince: normalizePlanDate(source.pendingSince),
@@ -1619,6 +1621,7 @@
       endpoint: String(record.endpoint || "").trim().slice(0, 240),
       workspaceId: normalizePlanRepositoryWorkspaceId(record.workspaceId),
       packageId: String(record.packageId || "").trim().slice(0, 120),
+      packageDigest: normalizePlanRepositoryHex(record.packageDigest),
       failureKind: ["http", "network", "timeout", "validation", "unknown"].includes(record.failureKind)
         ? record.failureKind
         : classifyPlanRepositoryFailure(message),
@@ -1659,6 +1662,7 @@
       endpoint: current.remoteEndpoint,
       workspaceId: current.workspaceId,
       packageId: options.packageId || current.lastPackageId || "",
+      packageDigest: options.packageDigest || current.lastPackageDigest || "",
       failureKind: options.failureKind || classifyPlanRepositoryFailure(normalizedMessage),
       message: normalizedMessage
     });
@@ -4237,10 +4241,10 @@
         || `最近${directionLabel}远端计划仓库：${formatPlanDate(repository.lastRemoteSyncAt)}，${repository.lastRemotePlanCount} 份计划。`;
     } else if (repository.lastImportedAt) {
       tone = "ready";
-      message = `最近导入 ${repository.lastImportedPlanCount} 份计划：${formatPlanDate(repository.lastImportedAt)}。`;
+      message = `最近导入 ${repository.lastImportedPlanCount} 份计划：${formatPlanDate(repository.lastImportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`;
     } else if (repository.lastExportedAt) {
       tone = "ready";
-      message = `最近导出 ${repository.lastExportedPlanCount} 份计划：${formatPlanDate(repository.lastExportedAt)}。`;
+      message = `最近导出 ${repository.lastExportedPlanCount} 份计划：${formatPlanDate(repository.lastExportedAt)}${repository.lastPackageDigest ? `，摘要 ${repository.lastPackageDigest.slice(0, 12)}` : ""}。`;
     }
     if (repository.pendingAutoSync) {
       tone = "warning";
@@ -4288,6 +4292,7 @@
       lastExportedPlanCount: repository.lastExportedPlanCount,
       lastImportedPlanCount: repository.lastImportedPlanCount,
       lastPackageId: repository.lastPackageId,
+      lastPackageDigest: repository.lastPackageDigest,
       autoSyncEnabled: repository.autoSyncEnabled,
       pendingAutoSync: repository.pendingAutoSync,
       pendingSince: repository.pendingSince,
@@ -7460,7 +7465,7 @@
         message: parsed.message || "远端报告 API 返回的报告包格式无效。"
       };
     }
-    if (payload.ok === true) {
+    if (payload.ok === true && !hasWrappedPackage) {
       return {
         ok: true,
         package: null,
@@ -9336,6 +9341,10 @@
       return { ok: false, message: "远端分享 API 返回的不是可解析 JSON。" };
     }
 
+    const hasWrappedPackage = Boolean(
+      (payload.package && typeof payload.package === "object")
+      || (payload.repository && typeof payload.repository === "object")
+    );
     const candidate = payload.package && typeof payload.package === "object"
       ? payload.package
       : payload.repository && typeof payload.repository === "object"
@@ -9353,7 +9362,7 @@
         message: payload.message || `远端分享仓库包含 ${parsed.package.records.length} 条分享记录。`
       };
     }
-    if (payload.ok === true) {
+    if (payload.ok === true && !hasWrappedPackage) {
       return {
         ok: true,
         package: null,
@@ -11651,30 +11660,39 @@
     const exportedAt = new Date().toISOString();
     const packageId = `plan-repository-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
     const repository = getPlanRepositoryStatus();
+    const packageRecord = {
+      kind: PLAN_REPOSITORY_KIND,
+      version: VERSION,
+      packageId,
+      workspaceId: repository.workspaceId,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      source: {
+        mode: repository.mode,
+        workspaceId: repository.workspaceId,
+        boundary: PLAN_REPOSITORY_BOUNDARY
+      },
+      summary: {
+        planCount: plans.length,
+        latestPlanId: plans[plans.length - 1]?.id || null,
+        latestPlanTitle: plans[plans.length - 1]?.title || ""
+      },
+      plans: clone(plans),
+      digestAlgorithm: PLAN_REPOSITORY_DIGEST_ALGORITHM
+    };
+    packageRecord.packageDigest = createPlanRepositoryPackageDigest(packageRecord);
     return {
       ok: true,
       filename: `mr-calligraphy-plan-repository-${Date.now()}.json`,
-      package: {
-        kind: PLAN_REPOSITORY_KIND,
-        version: VERSION,
-        packageId,
-        workspaceId: repository.workspaceId,
-        exportedAt,
-        storageKey: STORAGE_KEY,
-        source: {
-          mode: repository.mode,
-          workspaceId: repository.workspaceId,
-          boundary: PLAN_REPOSITORY_BOUNDARY
-        },
-        summary: {
-          planCount: plans.length,
-          latestPlanId: plans[plans.length - 1]?.id || null,
-          latestPlanTitle: plans[plans.length - 1]?.title || ""
-        },
-        plans: clone(plans)
-      },
-      message: `已生成 ${plans.length} 份计划的本机 JSON 同步包。${PLAN_REPOSITORY_BOUNDARY}`
+      package: packageRecord,
+      message: `已生成 ${plans.length} 份计划的本机 JSON 同步包，摘要 ${packageRecord.packageDigest.slice(0, 12)}。${PLAN_REPOSITORY_BOUNDARY}`
     };
+  }
+
+  function createPlanRepositoryPackageDigest(packageRecord = {}) {
+    const payload = clone(packageRecord || {});
+    delete payload.packageDigest;
+    return sha256StableJson(payload);
   }
 
   function downloadPlanRepository(options = {}) {
@@ -11691,6 +11709,7 @@
       lastCheckedAt: now,
       lastExportedPlanCount: result.package.plans.length,
       lastPackageId: result.package.packageId,
+      lastPackageDigest: result.package.packageDigest,
       lastReceipt: null,
       receipts: [],
       lastRemoteStatus: "",
@@ -11702,7 +11721,7 @@
       ok: true,
       filename: result.filename,
       status: getPlanRepositoryStatus(),
-      message: `已下载计划 JSON 同步包：${result.filename}。${PLAN_REPOSITORY_BOUNDARY}`
+      message: `已下载计划 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${PLAN_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -11750,6 +11769,7 @@
       lastCheckedAt: now,
       lastImportedPlanCount: incomingPlans.length,
       lastPackageId: parsed.package.packageId || null,
+      lastPackageDigest: parsed.package.packageDigest || "",
       lastReceipt: null,
       receipts: [],
       lastRemoteStatus: "",
@@ -11758,7 +11778,7 @@
     if (options.skipAutoSync !== true) {
       queuePlanRepositorySync(`导入计划同步包：${incomingPlans.length} 份计划`, { save: false });
     }
-    addEvent("plan-repository-import", `导入计划同步包：新增 ${importedCount}，更新 ${updatedCount}`);
+    addEvent("plan-repository-import", `导入计划同步包：新增 ${importedCount}，更新 ${updatedCount}${parsed.package.packageDigest ? `，摘要 ${parsed.package.packageDigest.slice(0, 12)}` : ""}`);
     saveState();
     return {
       ok: true,
@@ -11767,7 +11787,8 @@
       updatedCount,
       totalPlanCount: state.plans.length,
       status: getPlanRepositoryStatus(),
-      message: `已导入计划同步包：新增 ${importedCount} 份，更新 ${updatedCount} 份。${PLAN_REPOSITORY_BOUNDARY}`
+      packageDigest: parsed.package.packageDigest || "",
+      message: `已导入计划同步包：新增 ${importedCount} 份，更新 ${updatedCount} 份。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}${PLAN_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -11786,10 +11807,63 @@
     if (source.kind !== PLAN_REPOSITORY_KIND) {
       return { ok: false, message: "这不是 MR 书法学习计划同步包。" };
     }
+    const digestVerification = verifyPlanRepositoryPackageDigest(source);
+    if (!digestVerification.ok) {
+      return {
+        ok: false,
+        message: digestVerification.message
+      };
+    }
     if (!Array.isArray(source.plans)) {
       return { ok: false, message: "计划同步包缺少 plans 数组。" };
     }
-    return { ok: true, package: source };
+    return {
+      ok: true,
+      package: {
+        ...source,
+        packageDigest: digestVerification.packageDigest || normalizePlanRepositoryHex(source.packageDigest),
+        digestAlgorithm: source.digestAlgorithm || (digestVerification.packageDigest ? PLAN_REPOSITORY_DIGEST_ALGORITHM : "")
+      },
+      digestVerification
+    };
+  }
+
+  function verifyPlanRepositoryPackageDigest(packageRecord = {}) {
+    const claimedDigest = normalizePlanRepositoryHex(packageRecord.packageDigest);
+    const algorithm = String(packageRecord.digestAlgorithm || "").trim();
+    if (claimedDigest && algorithm && algorithm !== PLAN_REPOSITORY_DIGEST_ALGORITHM) {
+      return {
+        ok: false,
+        status: "unsupported-algorithm",
+        packageDigest: claimedDigest,
+        message: `计划同步包摘要算法不受支持：${algorithm}。未导入任何计划。`
+      };
+    }
+    if (!claimedDigest) {
+      return {
+        ok: true,
+        status: "missing",
+        packageDigest: "",
+        message: "计划同步包未声明摘要，按旧版同步包导入。"
+      };
+    }
+    const actualDigest = createPlanRepositoryPackageDigest(packageRecord);
+    if (actualDigest !== claimedDigest) {
+      return {
+        ok: false,
+        status: "digest-mismatch",
+        packageDigest: claimedDigest,
+        actualDigest,
+        message: `计划同步包摘要校验失败：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}。未导入任何计划。`
+      };
+    }
+    return {
+      ok: true,
+      status: "verified",
+      packageDigest: claimedDigest,
+      actualDigest,
+      message: `计划同步包摘要校验通过：${claimedDigest.slice(0, 12)}。`
+    };
   }
 
   function recordPlanRepositoryError(message) {
@@ -12166,6 +12240,10 @@
       return { ok: false, message: "远端计划 API 返回的不是可解析 JSON。" };
     }
 
+    const hasWrappedPackage = Boolean(
+      (payload.package && typeof payload.package === "object")
+      || (payload.repository && typeof payload.repository === "object")
+    );
     const candidate = payload.package && typeof payload.package === "object"
       ? payload.package
       : payload.repository && typeof payload.repository === "object"
@@ -12181,7 +12259,7 @@
         message: payload.message || `远端计划仓库包含 ${parsed.package.plans.length} 份计划。`
       };
     }
-    if (payload.ok === true) {
+    if (payload.ok === true && !hasWrappedPackage) {
       return {
         ok: true,
         package: null,
@@ -12265,6 +12343,8 @@
         })
         : null;
       const receipt = parsedReceipt || repository.lastReceipt || null;
+      const checkedPackageDigest = parsed.package?.packageDigest || repository.lastPackageDigest || "";
+      const checkedPackageDigestText = checkedPackageDigest ? ` 摘要：${checkedPackageDigest.slice(0, 12)}。` : "";
       state.planRepository = normalizePlanRepository({
         ...repository,
         mode: "remote-api",
@@ -12273,9 +12353,10 @@
         lastRemoteDirection: "check",
         lastRemotePlanCount: remotePlanCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastPackageDigest: checkedPackageDigest,
         lastReceipt: receipt,
         receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
-        lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
+        lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。${checkedPackageDigestText}`,
         lastError: ""
       });
       addEvent("plan-repository-remote-check", `检查远端计划 API：${remotePlanCount} 份计划`);
@@ -12329,13 +12410,17 @@
       const parsed = await parseRemotePlanRepositoryResponse(response);
       const acceptedPackageId = parsed.package?.packageId || repositoryPackage.packageId;
       const planCount = repositoryPackage.plans.length;
+      const pushedPackageDigest = parsed.package?.packageDigest || repositoryPackage.packageDigest || createPlanRepositoryPackageDigest(repositoryPackage);
+      const pushedPackageDigestText = pushedPackageDigest ? `，摘要 ${pushedPackageDigest.slice(0, 12)}` : "";
       const now = new Date().toISOString();
       if (!parsed.ok) {
+        const packageDigest = repositoryPackage.packageDigest || createPlanRepositoryPackageDigest(repositoryPackage);
         if (repository.pendingAutoSync || options.autoSync) {
           return recordPlanRepositoryAutoSyncFailure(repository, parsed.message, {
             autoSync: options.autoSync,
             retryDelayMs: options.retryDelayMs,
             packageId: repositoryPackage.packageId,
+            packageDigest,
             failureKind: classifyPlanRepositoryFailure(parsed.message)
           });
         }
@@ -12358,8 +12443,8 @@
         })
         : null;
       const remoteStatus = receipt
-        ? `已推送 ${planCount} 份计划到远端 API 空间 ${repository.workspaceId}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
-        : `已推送 ${planCount} 份计划到远端 API 空间 ${repository.workspaceId}，远端未返回完整回执。`;
+        ? `已推送 ${planCount} 份计划到远端 API 空间 ${repository.workspaceId}${pushedPackageDigestText}，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
+        : `已推送 ${planCount} 份计划到远端 API 空间 ${repository.workspaceId}${pushedPackageDigestText}，远端未返回完整回执。`;
       state.planRepository = normalizePlanRepository({
         ...repository,
         mode: "remote-api",
@@ -12370,6 +12455,7 @@
         lastExportedAt: now,
         lastExportedPlanCount: planCount,
         lastPackageId: acceptedPackageId,
+        lastPackageDigest: pushedPackageDigest,
         pendingAutoSync: false,
         pendingSince: null,
         pendingReason: "",
@@ -12394,17 +12480,20 @@
         ok: true,
         status: getPlanRepositoryStatus(),
         packageId: acceptedPackageId,
+        packageDigest: pushedPackageDigest,
         pushedPlanCount: planCount,
         receipt: receipt ? clone(receipt) : null,
         message: `${remoteStatus} ${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatPlanRepositoryNetworkError("推送", error);
+      const packageDigest = repositoryPackage.packageDigest || createPlanRepositoryPackageDigest(repositoryPackage);
       if (repository.pendingAutoSync || options.autoSync) {
         return recordPlanRepositoryAutoSyncFailure(repository, message, {
           autoSync: options.autoSync,
           retryDelayMs: options.retryDelayMs,
           packageId: repositoryPackage.packageId,
+          packageDigest,
           failureKind: classifyPlanRepositoryFailure(message)
         });
       }
@@ -12443,6 +12532,8 @@
 
       const now = new Date().toISOString();
       const incomingPlans = parsed.package.plans.map(normalizePlan).filter(Boolean);
+      const pulledPackageDigest = parsed.package.packageDigest || repository.lastPackageDigest || "";
+      const pulledPackageDigestText = pulledPackageDigest ? `，摘要 ${pulledPackageDigest.slice(0, 12)}` : "";
       const parsedReceipt = parsed.receipt
         ? decoratePlanRepositoryReceipt(parsed.receipt, {
           direction: "pull",
@@ -12462,6 +12553,8 @@
           mode: "remote-api",
           lastCheckedAt: now,
           lastRemotePlanCount: incomingPlans.length,
+          lastPackageId: parsed.package.packageId || repository.lastPackageId,
+          lastPackageDigest: pulledPackageDigest,
           lastSyncConflictAt: now,
           lastSyncConflictCount: conflicts.length,
           lastSyncConflictPlanIds: conflicts.map((item) => item.id),
@@ -12505,6 +12598,7 @@
         lastRemoteDirection: "pull",
         lastRemotePlanCount: planCount,
         lastPackageId: parsed.package.packageId || imported.status?.lastPackageId || null,
+        lastPackageDigest: pulledPackageDigest,
         pendingAutoSync: options.force === true ? false : state.planRepository.pendingAutoSync,
         pendingSince: options.force === true ? null : state.planRepository.pendingSince,
         pendingReason: options.force === true ? "" : state.planRepository.pendingReason,
@@ -12516,7 +12610,7 @@
         lastSyncConflictPlans: [],
         lastReceipt: receipt,
         receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
-        lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，空间 ${repository.workspaceId}，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
+        lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，空间 ${repository.workspaceId}${pulledPackageDigestText}，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
         lastError: ""
       });
       addEvent("plan-repository-remote-pull", `从远端 API 拉取计划：${planCount} 份计划`);
@@ -12527,8 +12621,9 @@
         importedCount: imported.importedCount,
         updatedCount: imported.updatedCount,
         pulledPlanCount: planCount,
+        packageDigest: pulledPackageDigest,
         receipt: receipt ? clone(receipt) : null,
-        message: `已从远端 API 拉取计划，空间 ${repository.workspaceId}：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
+        message: `已从远端 API 拉取计划，空间 ${repository.workspaceId}${pulledPackageDigestText}：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatPlanRepositoryNetworkError("拉取", error);

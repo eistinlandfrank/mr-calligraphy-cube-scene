@@ -4525,3 +4525,46 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告仓库包摘要验真`
+
+## 122. 2026-06-13 新增计划仓库包摘要验真
+
+本次把前台计划仓库从“能同步计划和处理冲突”推进到“整个同步包可验真”。计划仓库 JSON 包现在会携带稳定 SHA-256 摘要，导入和远端拉取会先校验摘要，避免计划标题、任务项、日期或 Workspace 元数据被改动后静默写入本机状态。
+
+完成内容：
+
+- `mr-calligraphy-plan-repository-v1` 新增 `digestAlgorithm: "sha256-stable-json"`。
+- 导出包新增 `packageDigest`，按稳定 JSON 计算 SHA-256。
+- 导入时如果包声明了 `packageDigest`，会重新计算并比对；不匹配时返回“摘要校验失败”并不写入任何计划。
+- 无摘要的旧版计划仓库包仍可导入。
+- `planRepository` 新增最近包摘要持久化路径，导出、导入、推送、检查和拉取都会保留 `lastPackageDigest`。
+- 远端返回无效包时会返回校验失败，不再按空仓库处理。
+- 计划仓库 mock server 会校验传入包摘要，并在服务端改写接受包后重新签摘要。
+- 自动同步失败历史会记录待推送包摘要，便于把失败队列与具体 JSON 包关联。
+- E2E 断言计划仓库远端 PUT body、远端接受包、失败队列和冲突包都包含或保留摘要字段。
+
+真实化说明：
+
+- 数据来源：当前本机学习计划、JSON 同步包和远端 API 返回包。
+- 写入状态：摘要通过后才写入本机 `plans` 与 `planRepository`。
+- 成功反馈：计划仓库摘要显示计划数、Workspace、回执校验和摘要短码。
+- 失败反馈：篡改包会显示声明摘要与实际摘要短码，并阻止导入。
+- 刷新后复现方式：`mr-calligraphy-learning-state-v1.planRepository.lastPackageDigest` 会保留最近成功同步或最近看到的远端冲突包摘要。
+
+仍待补：
+
+- 摘要只能证明包内容没有在导出后被改动，不能证明教师身份、排课权限、公网服务可信或跨设备冲突自动合并正确性。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check scripts/plan-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front plan repository"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库包摘要验真`

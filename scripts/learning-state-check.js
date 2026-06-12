@@ -783,19 +783,26 @@ assert(planRepositoryStatus.pendingReason, "待自动同步队列应记录变更
 const planRepositoryPackage = window.MRAppState.getPlanRepositoryPackage();
 assert(planRepositoryPackage.ok, "计划 repository 应能生成 JSON 同步包。");
 assert(planRepositoryPackage.package.kind === "mr-calligraphy-plan-repository-v1", "计划同步包应包含稳定 kind。");
+assert(planRepositoryPackage.package.digestAlgorithm === "sha256-stable-json", "计划同步包应声明稳定 JSON 摘要算法。");
+assert(/^[a-f0-9]{64}$/.test(planRepositoryPackage.package.packageDigest), "计划同步包应包含 64 位 packageDigest。");
 assert(planRepositoryPackage.package.plans.length >= 2, "计划同步包应包含本机计划列表。");
 assert(planRepositoryPackage.message.includes("本机 JSON 同步包"), "计划同步包应明确本机边界。");
+const tamperedPlanPackage = JSON.parse(JSON.stringify(planRepositoryPackage.package));
+tamperedPlanPackage.plans[0].title = "被篡改的计划同步包标题";
+const tamperedPlanImport = window.MRAppState.importPlanRepositoryPackage(tamperedPlanPackage, { skipAutoSync: true });
+assert(!tamperedPlanImport.ok && tamperedPlanImport.message.includes("摘要校验失败"), "篡改计划同步包但保留旧摘要时应拒绝导入。");
 const importedPlan = {
   ...planRepositoryPackage.package.plans[0],
   id: "plan-imported-cross-device",
   title: "导入的跨设备计划草案",
   createdAt: "2026-06-12T08:00:00.000Z"
 };
-const repositoryImport = window.MRAppState.importPlanRepositoryPackage(JSON.stringify({
+const repositoryImportPackage = refreshPackageDigestInPlace({
   ...planRepositoryPackage.package,
   packageId: "plan-package-test",
   plans: [importedPlan]
-}));
+});
+const repositoryImport = window.MRAppState.importPlanRepositoryPackage(JSON.stringify(repositoryImportPackage));
 assert(repositoryImport.ok && repositoryImport.importedCount === 1, "计划同步包应能导入新增计划。");
 assert(window.MRAppState.getPlan("plan-imported-cross-device").title === "导入的跨设备计划草案", "导入计划应可从计划历史读取。");
 const remoteCheck = window.MRAppState.checkRemotePlanRepository();
@@ -828,12 +835,12 @@ async function runRemoteRepositoryChecks() {
     title: "远端拉取的跨设备计划",
     createdAt: "2026-06-13T08:00:00.000Z"
   };
-  let remotePackage = {
+  let remotePackage = refreshPackageDigestInPlace({
     ...planRepositoryPackage.package,
     packageId: "remote-package-test",
     exportedAt: "2026-06-13T08:10:00.000Z",
     plans: [remotePlan]
-  };
+  });
   let capturedPushPackage = null;
   let latestPlanReceipt = null;
   const fetchCalls = [];
@@ -861,13 +868,14 @@ async function runRemoteRepositoryChecks() {
           acceptedAt
         })
       };
+      const acceptedPackage = refreshPackageDigestInPlace({
+        ...capturedPushPackage,
+        packageId: "remote-accepted-package"
+      });
       return createJsonResponse({
         ok: true,
         message: "远端已接收计划仓库。",
-        package: {
-          ...capturedPushPackage,
-          packageId: "remote-accepted-package"
-        },
+        package: acceptedPackage,
         receipt: latestPlanReceipt
       });
     }
@@ -890,8 +898,11 @@ async function runRemoteRepositoryChecks() {
   assert(pushedRemote.ok, "推送计划应真实调用远端 PUT。");
   assert(capturedPushPackage.kind === "mr-calligraphy-plan-repository-v1", "远端推送应发送稳定计划仓库包。");
   assert(capturedPushPackage.workspaceId === "class-alpha", "远端推送包应包含计划仓库 workspaceId。");
+  assert(capturedPushPackage.digestAlgorithm === "sha256-stable-json", "远端推送包应声明计划仓库摘要算法。");
+  assert(/^[a-f0-9]{64}$/.test(capturedPushPackage.packageDigest), "远端推送包应包含 64 位 packageDigest。");
   assert(capturedPushPackage.plans.length >= 3, "远端推送应包含当前本机计划列表。");
   assert(pushedRemote.packageId === "remote-accepted-package", "推送结果应记录远端接收的 packageId。");
+  assert(/^[a-f0-9]{64}$/.test(pushedRemote.packageDigest), "推送结果应返回计划仓库包摘要。");
   assert(pushedRemote.receipt.verificationStatus === "verified", "计划仓库推送回执应标记本机校验通过。");
   assert(pushedRemote.receipt.verificationExpectedDigest === pushedRemote.receipt.receiptDigest, "计划仓库推送回执应保留重算摘要。");
   assert(pushedRemote.status.message.includes("本机校验通过"), "计划仓库状态摘要应提示回执本机校验结果。");
@@ -907,7 +918,7 @@ async function runRemoteRepositoryChecks() {
   });
   assert(conflictUpdate.ok, "本机修改远端拉取计划应成功。");
   assert(window.MRAppState.getPlanRepositoryStatus().pendingAutoSync, "本机修改远端计划后应重新进入待同步队列。");
-  remotePackage = {
+  remotePackage = refreshPackageDigestInPlace({
     ...remotePackage,
     packageId: "remote-conflict-package",
     exportedAt: "2030-01-01T00:00:00.000Z",
@@ -916,7 +927,7 @@ async function runRemoteRepositoryChecks() {
       title: "远端也修改过的跨设备计划",
       updatedAt: "2030-01-01T00:00:00.000Z"
     }]
-  };
+  });
   const conflictPull = await window.MRAppState.pullPlanRepositoryFromRemote();
   assert(!conflictPull.ok && conflictPull.conflict, "本机待同步变更和远端同计划更新冲突时不应静默覆盖。");
   assert(conflictPull.conflicts[0].id === "plan-remote-pulled", "冲突结果应指出具体计划 ID。");
@@ -948,6 +959,7 @@ async function runRemoteRepositoryChecks() {
   assert(timedOutAutoSync.status.pendingAutoSync, "自动同步超时后应保留待同步队列。");
   assert(timedOutAutoSync.status.autoSyncRetryAfter, "自动同步超时后应记录下一次可重试时间。");
   assert(timedOutAutoSync.status.autoSyncFailureHistory[0].failureKind === "timeout", "自动同步超时应写入失败历史。");
+  assert(/^[a-f0-9]{64}$/.test(timedOutAutoSync.status.autoSyncFailureHistory[0].packageDigest), "自动同步失败历史应记录待推送计划包摘要。");
   assert(timedOutAutoSync.status.autoSyncRetrySummary.includes("重试队列"), "自动同步失败状态应提示重试队列。");
   global.fetch = successFetch;
 
@@ -1065,7 +1077,8 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
   assert(persistedPlanState.planRepository.workspaceId === "class-alpha", "计划 repository 应持久化远端 workspace。");
   assert(persistedPlanState.planRepository.lastImportedPlanCount === remotePackage.plans.length, "计划 repository 导入状态应持久化到 localStorage。");
-  assert(persistedPlanState.planRepository.lastPackageId === "remote-accepted-package", "字段合并前的远端基线推送 packageId 应持久化。");
+  assert(persistedPlanState.planRepository.lastPackageId === remotePackage.packageId, "计划 repository 应持久化最近看到的远端冲突包 packageId。");
+  assert(persistedPlanState.planRepository.lastPackageDigest === remotePackage.packageDigest, "计划 repository 应持久化最近看到的远端冲突包摘要。");
   assert(persistedPlanState.planRepository.lastRemoteDirection === "push", "字段级合并后最近远端方向应保留为基线推送。");
   assert(persistedPlanState.planRepository.lastRemotePlanCount === remotePackage.plans.length, "计划 repository 应记录最近远端计划数量。");
   assert(persistedPlanState.planRepository.lastReceipt.verificationStatus === "verified", "计划 repository 应持久化回执本机校验状态。");
@@ -1074,6 +1087,7 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.pendingReason.includes("字段级合并"), "字段级合并待同步原因应持久化。");
   assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
   assert(persistedPlanState.planRepository.autoSyncFailureHistory[0].failureKind === "timeout", "计划 repository 应持久化自动同步失败历史。");
+  assert(/^[a-f0-9]{64}$/.test(persistedPlanState.planRepository.autoSyncFailureHistory[0].packageDigest), "计划 repository 应持久化自动同步失败包摘要。");
   assert(persistedPlanState.planRepository.lastSyncConflictCount === 0, "字段级合并后应清理冲突计数。");
   const persistedRemotePlan = persistedPlanState.plans.find((plan) => plan.id === "plan-remote-pulled");
   assert(persistedRemotePlan.title === "字段合并远端计划标题", "字段级合并后的计划标题应持久化到 localStorage。");
@@ -1092,6 +1106,7 @@ async function runRemoteRepositoryChecks() {
   const tamperedPlanReceiptCheck = await window.MRAppState.checkRemotePlanRepository();
   assert(tamperedPlanReceiptCheck.ok, "计划仓库篡改回执检查仍应完成远端读取。");
   assert(tamperedPlanReceiptCheck.receipt.verificationStatus === "digest-mismatch", "计划仓库篡改回执应被标记为摘要不匹配。");
+  global.fetch = nativeFetch;
 
   await runReportRepositoryMockServerChecks(nativeFetch);
   await runHistoryRepositoryMockServerChecks(nativeFetch);
@@ -1121,7 +1136,7 @@ async function runShareRepositoryMockServerChecks(fetchApi) {
     assert(configuredMock.status.workspaceId === "share-alpha", "作品分享 mock 配置应保存 workspace。");
 
     const checkedBeforePush = await window.MRAppState.checkRemoteShareService();
-    assert(checkedBeforePush.ok, "作品分享 mock GET 检查应真实可访问。");
+    assert(checkedBeforePush.ok, `作品分享 mock GET 检查应真实可访问：${checkedBeforePush.message || "无错误详情"}`);
     assert(checkedBeforePush.package === null, "作品分享 mock 初始未接收包时不应伪造远端分享。");
     const emptyShareReceiptExport = window.MRAppState.getShareRepositoryReceiptAuditExport();
     assert(!emptyShareReceiptExport.ok, "作品分享远端无回执时不应生成空审计导出。");
@@ -1627,6 +1642,9 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.packageId.startsWith("mock-plan-repository-alpha-class-"), "计划仓库 mock 应返回包含 workspace 的服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "计划仓库 mock 应在内存中保存最近计划包。");
     assert(mock.state.package.workspaceId === "alpha-class", "计划仓库 mock 应把计划包保存到 alpha workspace。");
+    assert(mock.state.package.digestAlgorithm === "sha256-stable-json", "计划仓库 mock 应保存摘要算法。");
+    assert(/^[a-f0-9]{64}$/.test(mock.state.package.packageDigest), "计划仓库 mock 应保存 64 位包摘要。");
+    assert(pushedMock.packageDigest === mock.state.package.packageDigest, "计划仓库推送结果应返回服务端接受包摘要。");
     assert(mock.state.workspaces["alpha-class"].package.packageId === pushedMock.packageId, "计划仓库 mock 应按 workspace 隔离保存 alpha 包。");
     assert(mock.state.receipts[0].repositoryDigest, "计划仓库 mock 应返回 repositoryDigest 回执。");
     assert(mock.state.receipts[0].workspaceId === "alpha-class", "计划仓库 mock 回执应包含 workspace。");
@@ -1636,6 +1654,7 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.receipt.verificationStatus === "verified", "计划仓库 mock 推送结果应标记本机校验通过。");
     assert(pushedMock.receipt.verificationExpectedDigest === pushedMock.receipt.receiptDigest, "计划仓库 mock 推送结果应保留重算摘要。");
     const receiptStatus = window.MRAppState.getPlanRepositoryStatus();
+    assert(receiptStatus.lastPackageDigest === mock.state.package.packageDigest, "计划仓库状态应持久化推送包摘要。");
     assert(receiptStatus.lastReceipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库状态应持久化最近回执。");
     assert(receiptStatus.lastReceipt.workspaceId === "alpha-class", "计划仓库状态应持久化回执 workspace。");
     assert(receiptStatus.lastReceipt.verificationStatus === "verified", "计划仓库状态应持久化回执校验状态。");
@@ -1655,11 +1674,13 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
 
     const checkedAfterPush = await window.MRAppState.checkRemotePlanRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.plans.length === mock.state.package.plans.length, "计划仓库 mock GET 应返回最近 PUT 保存的计划包。");
+    assert(checkedAfterPush.package.packageDigest === mock.state.package.packageDigest, "计划仓库 GET 应返回同一个包摘要。");
     assert(checkedAfterPush.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库 GET 检查应带回最近回执。");
 
     const pulledMock = await window.MRAppState.pullPlanRepositoryFromRemote({ force: true });
     assert(pulledMock.ok, "计划仓库 mock 应支持真实 GET 拉取。");
     assert(pulledMock.pulledPlanCount === mock.state.package.plans.length, "计划仓库 mock 拉取结果应保留远端计划数量。");
+    assert(pulledMock.packageDigest === mock.state.package.packageDigest, "计划仓库拉取结果应返回远端包摘要。");
     assert(pulledMock.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库拉取结果应保留远端回执。");
 
     const configuredBeta = window.MRAppState.configurePlanRepositoryRemote({
@@ -1758,7 +1779,7 @@ function createRemoteConflictPackageFromPush(sourcePackage, options = {}) {
   assert(sourcePackage?.plans?.length, "构造远端冲突包前需要已有推送包。");
   const planId = options.planId || sourcePackage.plans[0].id;
   const remoteUpdatedAt = options.updatedAt || new Date(Date.now() + 60000).toISOString();
-  return JSON.parse(JSON.stringify({
+  return refreshPackageDigestInPlace(JSON.parse(JSON.stringify({
     ...sourcePackage,
     packageId: options.packageId || `remote-conflict-${Date.now()}`,
     exportedAt: remoteUpdatedAt,
@@ -1777,7 +1798,7 @@ function createRemoteConflictPackageFromPush(sourcePackage, options = {}) {
           : item)
       };
     })
-  }));
+  })));
 }
 
 function delay(milliseconds) {

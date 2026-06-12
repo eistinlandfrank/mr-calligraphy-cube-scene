@@ -2861,11 +2861,11 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
     if (method === "PUT") {
       const acceptedAt = new Date().toISOString();
       const repositoryDigest = "d".repeat(64);
-      remotePlanPackage = cloneJson({
+      remotePlanPackage = withPackageDigest(cloneJson({
         ...body,
         packageId: "e2e-plan-package",
         acceptedAt
-      });
+      }));
       latestPlanReceipt = {
         receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
         remoteVersion: "e2e-plan-v1",
@@ -2962,11 +2962,14 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(putRequest.workspaceId).toBe("class-e2e");
   expect(putRequest.body.kind).toBe("mr-calligraphy-plan-repository-v1");
   expect(putRequest.body.workspaceId).toBe("class-e2e");
+  expect(putRequest.body.digestAlgorithm).toBe("sha256-stable-json");
+  expect(putRequest.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(putRequest.body.summary.planCount).toBe(1);
   expect(putRequest.body.plans[0].id).toBe(seedPlan.id);
 
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.planRepository.receipts).toHaveLength(1);
+  expect(learningState.planRepository.lastPackageDigest).toBe(remotePlanPackage.packageDigest);
   expect(learningState.planRepository.receipts[0].receiptDigest).toBe(latestPlanReceipt.receiptDigest);
   expect(learningState.planRepository.receipts[0].verificationStatus).toBe("verified");
   expect(learningState.planRepository.receipts[0].verificationExpectedDigest).toBe(latestPlanReceipt.receiptDigest);
@@ -2986,7 +2989,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(planReceiptHtml).toContain("重算摘要");
 
   const remoteUpdatedAt = new Date(Date.now() + 60000).toISOString();
-  remotePlanPackage = cloneJson({
+  remotePlanPackage = withPackageDigest(cloneJson({
     ...remotePlanPackage,
     packageId: "e2e-plan-package-conflict",
     exportedAt: remoteUpdatedAt,
@@ -3005,7 +3008,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
           : item)
       };
     })
-  });
+  }));
 
   await page.waitForTimeout(25);
   const localEdit = await page.evaluate(({ planId, itemId }) => {
@@ -3303,10 +3306,10 @@ test("front plan repository keeps pending queue on push failures", async ({ page
         message: `恢复计划仓库 E2E 已接收 ${body?.summary?.planCount || 0} 份计划。`,
         remoteVersion: "e2e-plan-recovery-v1",
         packageId: "e2e-plan-recovery-package",
-        package: {
+        package: withPackageDigest({
           ...body,
           packageId: "e2e-plan-recovery-package"
-        },
+        }),
         receipt
       })
     });
@@ -3339,6 +3342,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   expect(learningState.planRepository.autoSyncRetryAfter).toBeTruthy();
   expect(learningState.planRepository.autoSyncFailureHistory[0].failureKind).toBe("http");
   expect(learningState.planRepository.autoSyncFailureHistory[0].message).toContain("HTTP 422");
+  expect(learningState.planRepository.autoSyncFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.plans).toHaveLength(1);
   expect(learningState.plans[0].id).toBe(seedPlan.id);
   await expect(page.locator("#planRepositoryPushButton")).toHaveText("重试队列");
@@ -3346,6 +3350,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   const rejectedPut = requests.find((item) => item.path === rejectedPath && item.method === "PUT");
   expect(rejectedPut.authorization).toBe("Bearer plan-rejected-push-token");
   expect(rejectedPut.body.kind).toBe("mr-calligraphy-plan-repository-v1");
+  expect(rejectedPut.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(rejectedPut.body.summary.planCount).toBe(1);
   expect(rejectedPut.body.plans[0].id).toBe(seedPlan.id);
 
@@ -3360,6 +3365,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   expect(learningState.planRepository.pendingAutoSync).toBe(true);
   expect(learningState.planRepository.autoSyncFailureHistory).toHaveLength(2);
   expect(learningState.planRepository.autoSyncFailureHistory[0].failureKind).toBe("network");
+  expect(learningState.planRepository.autoSyncFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.planRepository.lastAutoSyncStatus).toContain("队列已保留");
   expect(learningState.plans).toHaveLength(1);
   expect(learningState.plans[0].id).toBe(seedPlan.id);
@@ -3378,6 +3384,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   expect(learningState.planRepository.autoSyncRetryAfter).toBeFalsy();
   expect(learningState.planRepository.autoSyncFailureHistory).toHaveLength(2);
   expect(learningState.planRepository.receipts[0].packageId).toBe("e2e-plan-recovery-package");
+  expect(learningState.planRepository.lastPackageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(requests.some((item) => item.path === recoveryPath && item.method === "PUT" && item.authorization === "Bearer plan-recovery-token")).toBe(true);
 });
 
@@ -5086,11 +5093,11 @@ async function setupPlanRepositoryConflict(page, options = {}) {
     });
 
     if (method === "PUT") {
-      remotePlanPackage = cloneJson({
+      remotePlanPackage = withPackageDigest(cloneJson({
         ...body,
         packageId: `${endpointPath.replace(/^\//, "")}-package`,
         acceptedAt: new Date().toISOString()
-      });
+      }));
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -5203,7 +5210,7 @@ async function setupPlanRepositoryConflict(page, options = {}) {
 
 function createRemotePlanConflictPackage(sourcePackage, options = {}) {
   const updatedAt = options.updatedAt || new Date(Date.now() + 60000).toISOString();
-  return cloneJson({
+  return withPackageDigest(cloneJson({
     ...sourcePackage,
     packageId: options.packageId || `e2e-plan-conflict-${Date.now()}`,
     exportedAt: updatedAt,
@@ -5222,7 +5229,7 @@ function createRemotePlanConflictPackage(sourcePackage, options = {}) {
           : item)
       };
     })
-  });
+  }));
 }
 
 function createPagedHistoryConflictPackages(basePackage, sessionId) {
