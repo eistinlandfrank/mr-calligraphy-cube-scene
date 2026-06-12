@@ -6544,3 +6544,64 @@
 提交：
 
 - 中文 commit message：`新增报告仓库回执审计`
+
+### 2026-06-12：新增学习计划日历提醒导出
+
+功能名：学习计划 `.ics` 日历提醒导出。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- 新增 `MRAppState.getPlanCalendarExport(planId)`，把当前学习计划导出为标准 `VCALENDAR`。
+- 计划项会生成 `VEVENT`，包含到期时间、任务说明、复盘动作、本机边界、计划 ID 和计划项 ID。
+- 计划项 `remindAt` 会转换为 `VALARM`，用于系统日历或手机日历提醒。
+- 新增 `MRAppState.downloadPlanCalendar(planId)`。
+- 前台学习计划工具区新增“导出日历”按钮，下载 `mr-calligraphy-plan-calendar-*.ics`。
+- 学习状态检查、smoke test 和 Playwright 已覆盖数据层导出、页面入口和浏览器下载文件。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机学习计划。
+- 写入状态：不新增本机状态，只根据已有计划生成日历文件。
+- 成功反馈：下载 `.ics` 文件，提示可导入系统日历。
+- 失败反馈：没有计划或没有到期计划项时不伪造成功。
+- 刷新后复现方式：计划保存在 `mr-calligraphy-learning-state-v1`，刷新后仍可导出。
+
+已知限制：
+
+- 这是本机标准日历文件导出，不是账号化跨设备推送、教师端通知、后台任务下发或服务端提醒调度。
+
+验收方式：
+
+- 手工验收：打开前台，生成学习计划，点击“导出日历”，应下载 `.ics` 文件；导入系统日历后应看到计划项事件。
+- 脚本验收：`node scripts/learning-state-check.js` 验证 `VCALENDAR`、`VEVENT` 和 `VALARM`。
+- 浏览器验收：`npm run test:e2e -- --grep "front practice saves real strokes"` 验证前台按钮下载 `.ics` 文件。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习计划日历提醒导出`

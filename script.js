@@ -961,6 +961,7 @@ const els = {
   planRepositoryMergeFieldsButton: document.getElementById("planRepositoryMergeFieldsButton"),
   planRepositoryImportInput: document.getElementById("planRepositoryImportInput"),
   planExportButton: document.getElementById("planExportButton"),
+  planCalendarExportButton: document.getElementById("planCalendarExportButton"),
   planNextCycleButton: document.getElementById("planNextCycleButton"),
   planDependencyGraph: document.getElementById("planDependencyGraph"),
   planItemList: document.getElementById("planItemList"),
@@ -3900,6 +3901,7 @@ function bindPlanControls() {
   els.planRepositoryMergeFieldsButton?.addEventListener("click", () => resolvePlanRepositoryConflict("merge-fields"));
   els.planRepositoryImportInput?.addEventListener("change", importPlanRepositoryFile);
   els.planExportButton?.addEventListener("click", downloadActivePlan);
+  els.planCalendarExportButton?.addEventListener("click", downloadActivePlanCalendar);
   els.planNextCycleButton?.addEventListener("click", createNextPlanCycle);
   els.planDependencyGraph?.addEventListener("click", handlePlanDependencyClick);
   els.planItemForm?.addEventListener("submit", submitPlanItemForm);
@@ -6532,6 +6534,9 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   if (els.planExportButton) {
     els.planExportButton.disabled = !plan;
   }
+  if (els.planCalendarExportButton) {
+    els.planCalendarExportButton.disabled = !plan;
+  }
   if (els.planNextCycleButton) {
     els.planNextCycleButton.disabled = !plan?.cycleStatus?.canCreateNext;
   }
@@ -7060,6 +7065,12 @@ function downloadActivePlan() {
   const planId = activePlanId || els.planHistorySelect?.value || "";
   const result = window.MRAppState?.downloadPlan?.(planId);
   showNotice(result?.message || "暂无可导出的学习计划。");
+}
+
+function downloadActivePlanCalendar() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  const result = window.MRAppState?.downloadPlanCalendar?.(planId);
+  showNotice(result?.message || "暂无可导出的学习计划提醒日历。");
 }
 
 function downloadPlanRepositoryPackage() {

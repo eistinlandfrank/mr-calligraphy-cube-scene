@@ -401,6 +401,21 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
   expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
   expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token")).toBe(true);
+
+  await page.evaluate(() => window.MRAppState.createPlan());
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#planPanel")).toBeVisible();
+  await expect(page.locator("#planCalendarExportButton")).toBeEnabled();
+  const planCalendarDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planCalendarExportButton").click();
+  const planCalendarDownload = await planCalendarDownloadPromise;
+  expect(planCalendarDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-calendar-.*\.ics$/);
+  const planCalendarPath = await planCalendarDownload.path();
+  const planCalendarText = fs.readFileSync(planCalendarPath, "utf8");
+  expect(planCalendarText).toContain("BEGIN:VCALENDAR");
+  expect(planCalendarText).toContain("BEGIN:VEVENT");
+  expect(planCalendarText).toContain("BEGIN:VALARM");
+  expect(planCalendarText).toContain("MR书法");
 });
 
 test("front report repository imports a local JSON package", async ({ page }) => {

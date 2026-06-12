@@ -74,6 +74,7 @@
     remindAt: "提醒",
     reviewAction: "复盘动作"
   };
+  const PLAN_CALENDAR_BOUNDARY = "学习计划日历导出会生成标准 .ics 文件，便于导入系统日历或手机日历；它不是云端推送提醒，导入后的提醒由用户自己的日历应用负责。";
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
@@ -4033,6 +4034,125 @@
     };
   }
 
+  function getPlanCalendarExport(planId = null) {
+    const plan = getPlan(planId);
+    if (!plan) {
+      return {
+        ok: false,
+        message: "还没有可导出的学习计划提醒日历。请先点击“制定计划”。"
+      };
+    }
+
+    const items = (plan.items || [])
+      .filter((item) => Number.isFinite(Date.parse(item.dueAt || "")));
+    if (!items.length) {
+      return {
+        ok: false,
+        plan: clone(plan),
+        message: "这份计划还没有带到期时间的任务，无法生成日历提醒。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const safePlanId = String(plan.id || "latest").replace(/[^\w-]+/g, "-");
+    return {
+      ok: true,
+      plan: clone(plan),
+      exportedAt,
+      filename: `mr-calligraphy-plan-calendar-${safePlanId}.ics`,
+      mimeType: "text/calendar;charset=utf-8",
+      eventCount: items.length,
+      calendar: createPlanCalendarIcs(plan, items, exportedAt),
+      boundary: PLAN_CALENDAR_BOUNDARY,
+      message: `已生成 ${items.length} 个计划任务的日历提醒，可导入系统日历。${PLAN_CALENDAR_BOUNDARY}`
+    };
+  }
+
+  function createPlanCalendarIcs(plan, scheduledItems, exportedAt) {
+    const lines = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "PRODID:-//MR Calligraphy//Learning Plan//CN",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      `X-WR-CALNAME:${escapeIcsText(`MR 书法：${plan.title || "学习计划"}`)}`,
+      `X-WR-CALDESC:${escapeIcsText(PLAN_CALENDAR_BOUNDARY)}`
+    ];
+    scheduledItems.forEach((item) => {
+      const due = new Date(item.dueAt);
+      const end = new Date(due.getTime() + 30 * 60 * 1000);
+      const reminder = item.reminder || getPlanItemReminder(item);
+      const remindTime = Date.parse(item.remindAt || "");
+      const dueTime = due.getTime();
+      const triggerMinutes = Number.isFinite(remindTime) && remindTime <= dueTime
+        ? Math.max(0, Math.round((dueTime - remindTime) / 60000))
+        : null;
+      const reviewMeta = PLAN_REVIEW_ACTIONS[normalizePlanReviewAction(item.reviewAction)];
+      const description = [
+        item.detail || "完成后回到前台勾选，进度会保存到本机。",
+        `计划：${plan.title || plan.id}`,
+        `复盘：${reviewMeta.label}`,
+        reminder.dueLabel || "",
+        reminder.remindLabel || "",
+        PLAN_CALENDAR_BOUNDARY
+      ].filter(Boolean).join("\\n");
+      lines.push(
+        "BEGIN:VEVENT",
+        `UID:${escapeIcsText(`${plan.id}-${item.id}@mr-calligraphy.local`)}`,
+        `DTSTAMP:${formatIcsDateTime(exportedAt)}`,
+        `DTSTART:${formatIcsDateTime(due)}`,
+        `DTEND:${formatIcsDateTime(end)}`,
+        `SUMMARY:${escapeIcsText(`MR书法：${item.title || "计划任务"}`)}`,
+        `DESCRIPTION:${escapeIcsText(description)}`,
+        `CATEGORIES:${escapeIcsText("MR书法,学习计划")}`,
+        `STATUS:${item.done ? "COMPLETED" : "CONFIRMED"}`,
+        `X-MR-PLAN-ID:${escapeIcsText(plan.id || "")}`,
+        `X-MR-PLAN-ITEM-ID:${escapeIcsText(item.id || "")}`
+      );
+      if (triggerMinutes !== null) {
+        lines.push(
+          "BEGIN:VALARM",
+          "ACTION:DISPLAY",
+          `DESCRIPTION:${escapeIcsText(`MR书法提醒：${item.title || "计划任务"}`)}`,
+          `TRIGGER:${triggerMinutes ? `-PT${triggerMinutes}M` : "PT0M"}`,
+          "END:VALARM"
+        );
+      }
+      lines.push("END:VEVENT");
+    });
+    lines.push("END:VCALENDAR");
+    return lines.map(foldIcsLine).join("\r\n") + "\r\n";
+  }
+
+  function formatIcsDateTime(value) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return formatIcsDateTime(new Date());
+    }
+    return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  }
+
+  function escapeIcsText(value) {
+    return String(value ?? "")
+      .replace(/\\/g, "\\\\")
+      .replace(/\r\n|\r|\n/g, "\\n")
+      .replace(/;/g, "\\;")
+      .replace(/,/g, "\\,");
+  }
+
+  function foldIcsLine(line) {
+    const text = String(line || "");
+    if (text.length <= 72) return text;
+    const parts = [];
+    let rest = text;
+    while (rest.length > 72) {
+      parts.push(rest.slice(0, 72));
+      rest = rest.slice(72);
+    }
+    parts.push(rest);
+    return parts.map((part, index) => index ? ` ${part}` : part).join("\r\n");
+  }
+
   function createPlanExportHtml(plan, exportedAt) {
     const progress = plan.progress || getPlanProgress(plan);
     const reminderSummary = plan.reminderSummary || getPlanReminderSummary(plan.items || []);
@@ -4245,6 +4365,18 @@
 
   function downloadHtml(html, filename) {
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  function downloadText(text, filename, mimeType = "text/plain;charset=utf-8") {
+    const blob = new Blob([text], { type: mimeType });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -7172,6 +7304,21 @@
       ok: true,
       filename: result.filename,
       message: "已下载学习计划离线 HTML，可打开后打印或保存为 PDF。"
+    };
+  }
+
+  function downloadPlanCalendar(planId = null) {
+    const result = getPlanCalendarExport(planId);
+    if (!result.ok) {
+      return { ok: false, message: result.message };
+    }
+
+    downloadText(result.calendar, result.filename, result.mimeType);
+    return {
+      ok: true,
+      filename: result.filename,
+      eventCount: result.eventCount,
+      message: `已下载学习计划提醒日历：${result.filename}。`
     };
   }
 
@@ -10176,6 +10323,7 @@
     getPlanRepositoryStatus,
     getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
+    getPlanCalendarExport,
     getHistoryRepositoryStatus,
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
@@ -10271,6 +10419,7 @@
     markArtworkShareLinkCopied,
     revokeArtworkShareLink,
     downloadPlan,
+    downloadPlanCalendar,
     downloadPlanRepository,
     downloadReport,
     downloadReportPdf,

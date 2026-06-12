@@ -222,7 +222,7 @@ node scripts/control-inventory.js
 
 | 优先级 | 功能 | 原因 | 交付物 |
 | --- | --- | --- | --- |
-| P0 | 账号化计划仓库和跨设备提醒 | 远端 API adapter、服务端 repository 合同、mock 服务、自动同步队列、冲突检测和前端冲突解决入口第一版已完成，但还没有账号登录、后台托管仓库、教师端通知或后台推送 | 账号同步状态、托管 repository、跨设备提醒策略 |
+| P0 | 账号化计划仓库和跨设备提醒 | 远端 API adapter、服务端 repository 合同、mock 服务、自动同步队列、冲突检测和前端冲突解决入口第一版已完成，学习计划也可导出标准 `.ics` 日历提醒；但还没有账号登录、后台托管仓库、教师端通知或后台推送 | 账号同步状态、托管 repository、跨设备提醒策略 |
 | P0 | 剩余 `demo-content` 动作治理 | 用户最容易觉得“按钮是假的” | 四个入口 HTML 静态控件和前台动态热点已清零；后续持续审计新增控件 |
 | P1 | 评分解释层 | 评分是核心信任点 | 第一版已完成：基础评分证据、缺数据状态、本机 `ScoreService` adapter 和模型替换接口 |
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
@@ -1821,3 +1821,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增报告仓库回执审计`
+
+### 2026-06-12：新增学习计划日历提醒导出
+
+本次把“跨设备提醒”先补成一个真实可用的本机出口：学习计划可以导出标准 `.ics` 日历文件，用户可导入系统日历或手机日历，由日历应用负责后续提醒。
+
+完成内容：
+
+- 新增 `MRAppState.getPlanCalendarExport(planId)`，从真实 `PlanItem.dueAt/remindAt` 生成 `VCALENDAR`。
+- 每个带到期时间的计划项会生成一个 `VEVENT`，包含 `DTSTART`、`DTEND`、任务说明、计划 ID、计划项 ID 和完成状态。
+- 若计划项存在不晚于到期时间的 `remindAt`，导出文件会写入 `VALARM`。
+- 新增 `downloadPlanCalendar(planId)`，前台“导出日历”按钮会下载 `mr-calligraphy-plan-calendar-*.ics`。
+- 学习状态检查、smoke test 和 Playwright 都验证 `.ics` 文件结构、提醒闹钟和真实下载。
+
+真实化说明：
+
+- 数据来源：本机学习计划里的 `dueAt`、`remindAt`、标题、说明和复盘动作。
+- 写入状态：不新增持久字段，只读取当前本机计划生成文件。
+- 成功反馈：前台下载 `.ics` 文件，并提示可导入系统日历。
+- 失败反馈：没有计划或计划项没有到期时间时，导出 API 返回明确失败。
+- 刷新后复现方式：计划保存在 `mr-calligraphy-learning-state-v1`，刷新后仍可再次导出同一计划日历。
+
+仍待补：
+
+- `.ics` 是本机文件导出，不是账号化云端推送、教师端通知或后台任务下发。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习计划日历提醒导出`
