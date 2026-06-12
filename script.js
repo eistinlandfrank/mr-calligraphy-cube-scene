@@ -10767,7 +10767,15 @@ function applyActionResult(result = {}, action = {}) {
 
   const target = typeof result.target === "number" ? result.target : action.target;
   if (typeof target === "number") {
-    window.setTimeout(() => loadScene(target), 420);
+    const feedbackMessage = result.message || (action.label ? `${action.label}已处理。` : "");
+    const detail = result.detail || null;
+    window.setTimeout(() => {
+      loadScene(target);
+      if (feedbackMessage) {
+        els.actionFeedback.textContent = feedbackMessage;
+      }
+      renderActionDetail(detail);
+    }, 420);
     return;
   }
 
@@ -11164,6 +11172,147 @@ function buildCompletionDetail() {
   };
 }
 
+function buildReportActionDetail(result = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const report = result.report || stats?.latestReport || null;
+  const evidence = report?.scoreEvidenceSummary || null;
+  const scoreBreakdown = report?.scoreBreakdown || {};
+  const filename = result.filename || (report?.id ? `mr-calligraphy-report-${report.id}.html` : "HTML 报告");
+  const evidenceItems = evidence
+    ? [
+        `评分证据：${evidence.algorithmVersion || "local-heuristic"}，路径贴合 ${evidence.pathFitPercent || 0}%，笔顺匹配 ${evidence.strokeOrderMatchPercent || 0}%。`,
+        Array.isArray(evidence.hotspots) && evidence.hotspots.length
+          ? `热力证据：${evidence.hotspots.slice(0, 4).map((item) => `${item.label || item.zone}${item.errorPercent || 0}%`).join("；")}。`
+          : "本报告没有可展示的路径热力证据。"
+      ]
+    : ["本报告未找到评分证据摘要；新书写并保存后会写入评分证据。"];
+
+  return {
+    type: "report",
+    eyebrow: "本机报告导出",
+    title: report?.title || "学习报告",
+    status: report?.id || "已生成",
+    summary: report
+      ? `报告已写入本机 reports 记录，并下载为 ${filename}。站内报告详情会读取同一份记录。`
+      : `已触发报告导出，文件名：${filename}。`,
+    metrics: [
+      { label: "练习", value: `${report?.sessionCount ?? stats?.sessionCount ?? 0}次` },
+      { label: "作品", value: `${report?.artworkCount ?? stats?.artworkCount ?? 0}幅` },
+      { label: "平均评分", value: report?.averageScore ? `${report.averageScore}分` : formatAverageScore(stats) },
+      { label: "结构", value: getMetricValue(scoreBreakdown, "structure") },
+      { label: "笔画", value: getMetricValue(scoreBreakdown, "stroke") },
+      { label: "证据", value: evidence ? "已携带" : "无摘要" }
+    ],
+    items: [
+      report?.id ? `报告 ID：${report.id}。` : "",
+      `下载文件：${filename}。`,
+      report?.id ? `站内路由：?report=${report.id}。` : "",
+      ...evidenceItems,
+      "报告数据只读取本机练习、作品、评分证据和教师批注，不返回静态高分。"
+    ].filter(Boolean)
+  };
+}
+
+function buildPlanActionDetail(result = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const plan = result.plan || stats?.latestPlan || null;
+  const progress = plan?.progress || { done: 0, total: plan?.items?.length || 0, percent: 0 };
+  const dependencyGraph = plan?.dependencyGraph || {};
+  const nextItem = Array.isArray(plan?.items)
+    ? plan.items.find((item) => !item.done)
+    : null;
+
+  return {
+    type: "plan",
+    eyebrow: "本机学习计划",
+    title: plan?.title || "下一阶段练习计划",
+    status: `${progress.done || 0}/${progress.total || 0}`,
+    summary: plan?.summary || "已按当前任务和本机评分生成可勾选学习计划。",
+    metrics: [
+      { label: "计划项", value: `${progress.total || 0}项` },
+      { label: "已完成", value: `${progress.done || 0}项` },
+      { label: "完成度", value: `${progress.percent || 0}%` },
+      { label: "当前字", value: plan?.glyph || stats?.glyph || "未选择" },
+      { label: "碑帖", value: plan?.copybook || stats?.copybook || "未选择" },
+      { label: "依赖", value: dependencyGraph.summary || "已生成" }
+    ],
+    items: [
+      plan?.id ? `计划 ID：${plan.id}。` : "",
+      nextItem ? `下一项：${nextItem.title}。${nextItem.detail || nextItem.reminder?.dueLabel || ""}` : "当前计划项已全部完成或暂无计划项。",
+      ...(Array.isArray(plan?.items) ? plan.items.slice(0, 4).map((item, index) => `${index + 1}. ${item.title} / ${item.reminder?.dueLabel || "未设置到期"}。`) : []),
+      "计划会保存到本机 plan history，可勾选、顺延、复盘、导出和同步。"
+    ].filter(Boolean)
+  };
+}
+
+function buildShareActionDetail(result = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const artwork = stats?.latestArtwork || null;
+  const scoreEvidence = artwork?.scoreEvidence || null;
+  const status = window.MRAppState?.getShareServiceStatus?.(artwork?.id) || null;
+  const filename = result.filename || (artwork?.id ? `mr-calligraphy-share-${artwork.id}.html` : "作品分享页");
+  const evidenceMetrics = getScoreEvidenceMetrics(scoreEvidence).filter((metric) => [
+    "算法版本",
+    "笔顺匹配",
+    "路径贴合",
+    "路径误差",
+    "压感采样"
+  ].includes(metric.label));
+
+  return {
+    type: "share",
+    eyebrow: "本机分享页",
+    title: artwork?.title || "作品分享页",
+    status: result.ok ? "已下载" : "未生成",
+    summary: artwork
+      ? `已从最近作品生成离线 HTML 分享页：${filename}。页面会携带作品图、评分和可用评分证据。`
+      : "当前还没有可分享作品，请先保存作品。",
+    metrics: [
+      { label: "作品", value: artwork ? "1幅" : "0幅" },
+      { label: "评分", value: artwork?.score ? `${artwork.score}分` : "未评分" },
+      { label: "分享记录", value: `${status?.total || 0}条` },
+      { label: "有效链接", value: `${status?.activeCount || 0}条` },
+      ...evidenceMetrics
+    ],
+    items: [
+      artwork?.id ? `作品 ID：${artwork.id}。` : "",
+      `下载文件：${filename}。`,
+      scoreEvidence
+        ? "分享页会嵌入真实评分证据；没有细节证据的旧作品不会补造热力图。"
+        : "当前作品没有评分证据，分享页只会展示作品和空状态说明。",
+      "分享页是本机离线 HTML，不伪装成公网作品墙或云端 CDN。"
+    ].filter(Boolean)
+  };
+}
+
+function buildNavigationActionDetail(action = {}, result = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const target = typeof result.target === "number" ? result.target : action.target;
+  const targetScene = typeof target === "number" ? getLearningSceneView(target) : null;
+  const pathStatus = getLearningPathStatus();
+
+  return {
+    type: "navigation",
+    eyebrow: "学习路径跳转",
+    title: action.label || "页面跳转",
+    status: typeof target === "number" ? `步骤 ${target + 1}` : "本页",
+    summary: targetScene
+      ? `将打开“${targetScene.title}”。跳转后仍保留这次动作反馈，避免真实处理结果被页面刷新清空。`
+      : "已完成本次学习路径动作。",
+    metrics: [
+      { label: "当前任务", value: stats?.taskTitle || "未选择" },
+      { label: "当前字", value: stats?.glyph || "未选择" },
+      { label: "路径进度", value: pathStatus ? `${pathStatus.doneCount}/${pathStatus.total}` : "未初始化" },
+      { label: "目标步骤", value: targetScene?.shortName || "当前页" }
+    ],
+    items: [
+      result.message || "学习路径动作已处理。",
+      targetScene?.focus ? `目标重点：${targetScene.focus}` : "",
+      "跳转动作只修改当前前台路径，不会伪造练习、报告或云端同步记录。"
+    ].filter(Boolean)
+  };
+}
+
 function getLearningActionHint(sceneIndex) {
   if (!window.MRAppState) {
     return "点击场景热点或下方按钮，可查看该模块的交互反馈。";
@@ -11273,8 +11422,15 @@ function runLearningAction(action) {
       return appState.filterExcellentRecords();
     case "导出学习报告":
     case "导出报告":
-      recordLivePracticeIfAvailable();
-      return { ...appState.createReport(), target: action.target };
+      {
+        recordLivePracticeIfAvailable();
+        const result = appState.createReport();
+        return {
+          ...result,
+          target: action.target,
+          detail: result.ok === false ? result.detail : buildReportActionDetail(result)
+        };
+      }
     case "查看作品":
       {
         const latestArtwork = appState.getStats().latestArtwork;
@@ -11285,9 +11441,21 @@ function runLearningAction(action) {
     case "生成视频":
       return exportPracticeReplayVideo();
     case "导出分享页":
-      return appState.downloadArtworkSharePage();
+      {
+        const result = appState.downloadArtworkSharePage();
+        return {
+          ...result,
+          detail: result?.ok ? buildShareActionDetail(result) : result?.detail
+        };
+      }
     case "制定计划":
-      return appState.createPlan();
+      {
+        const result = appState.createPlan();
+        return {
+          ...result,
+          detail: result.ok === false ? result.detail : buildPlanActionDetail(result)
+        };
+      }
     case "查看成就":
       {
         const stats = appState.getStats();
@@ -11305,7 +11473,10 @@ function runLearningAction(action) {
         };
       }
     case "返回首页":
-      return { message: "回到 MR 书法教练首页。", target: 0 };
+      {
+        const result = { message: "回到 MR 书法教练首页。", target: 0 };
+        return { ...result, detail: buildNavigationActionDetail(action, result) };
+      }
     default:
       return { ok: false, message: "此操作尚未接入真实处理，已阻止虚假成功反馈。" };
   }

@@ -9129,3 +9129,40 @@
 提交：
 
 - 中文 commit message：`新增后台快照权限审计`
+
+### 2026-06-13：新增学习动作真实详情
+
+完成内容：
+
+- `script.js` 为前台报告、计划、分享和导航动作新增真实详情卡数据。
+- “导出报告”会展示报告 ID、下载 HTML 文件、站内报告路由、练习数、作品数、平均分和评分证据摘要。
+- “制定计划”会展示计划 ID、计划项、完成度、当前字、碑帖、依赖摘要和下一项。
+- “导出分享页”会展示作品 ID、下载文件、分享服务记录和评分证据状态。
+- “返回首页”等跳转动作会展示目标步骤、路径进度和本机能力边界。
+- `applyActionResult()` 在目标步骤加载完成后恢复刚刚的 `actionFeedback` 与 `actionDetail`，修复跳转动作清空真实结果的问题。
+- 前台 E2E 真实流程增加报告详情卡、计划详情卡和复习阶段详情保留验收。
+
+真实化说明：
+
+- 数据来源：`MRAppState` 返回的报告、计划、作品、评分证据、分享服务状态和学习路径状态。
+- 写入状态：报告/计划/阶段仍写入现有 `mr-calligraphy-learning-state-v1`；详情卡只读取真实结果，不创建演示记录。
+- 成功反馈：点击动作后能看到具体记录 ID、文件、证据和目标步骤，降低“按钮像假的”的体验。
+- 失败反馈：没有作品、没有证据或动作失败时只显示真实失败信息，不生成假成功。
+- 刷新后复现方式：真实书写并保存作品后，导出报告、制定计划、导出分享页或复习巩固，刷新再点击仍能从本机记录重建详情。
+
+仍待补：
+
+- 当前是浏览器前台动作真实反馈，不是服务端账号化任务流、教师端工作台、云端消息推送或多端协同审计。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习动作真实详情`

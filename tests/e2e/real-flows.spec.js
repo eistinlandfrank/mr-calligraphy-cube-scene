@@ -892,6 +892,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportHtml).toContain("基础评分证据");
   expect(reportHtml).toContain("路径");
   await expect(page.locator("#actionFeedback")).toContainText("学习报告已生成");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("本机报告导出");
+  await expect(page.locator("#actionDetail")).toContainText("报告 ID");
+  await expect(page.locator("#actionDetail")).toContainText("评分证据");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports).toHaveLength(1);
@@ -907,6 +911,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(pathAfterReport.steps[8].done).toBe(true);
   expect(pathAfterReport.steps[8].title).toContain("学习报告");
 
+  await page.getByRole("button", { name: "制定计划" }).click();
+  await expect(page.locator("#actionFeedback")).toContainText("已生成并保存下一阶段练习计划");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("本机学习计划");
+  await expect(page.locator("#actionDetail")).toContainText("计划 ID");
+  await expect(page.locator("#actionDetail")).toContainText("下一项");
+
   for (const stepNumber of [7, 8, 9, 10]) {
     await page.getByRole("button", { name: new RegExp(`切换到步骤 ${stepNumber}`) }).click();
     await expect(page.locator("#contentBody")).toContainText("路径状态");
@@ -921,6 +932,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("路径");
   await expect(page.locator("#actionDetail")).toContainText("真实练习");
   await expect(page.locator("#actionDetail")).toContainText("最近报告");
+  await page.locator("#actionList .action-button").filter({ hasText: /^复习巩固$/ }).click();
+  await expect(page.locator("#sceneTitle")).toContainText("笔画拆解");
+  await expect(page.locator("#actionFeedback")).toContainText("复习巩固已写入本机学习阶段记录");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
+  await expect(page.locator("#actionDetail")).toContainText("复习巩固");
 
   await page.goto(`/?report=${learningState.reports[0].id}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();

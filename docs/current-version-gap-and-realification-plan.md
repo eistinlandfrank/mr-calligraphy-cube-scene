@@ -4063,3 +4063,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增后台快照权限审计`
+
+### 2026-06-13：新增学习动作真实详情
+
+完成内容：
+
+- 前台学习动作新增报告、计划、分享和导航详情构建器。
+- “导出报告”详情卡显示报告 ID、下载文件、站内路由、练习/作品数量、平均分和评分证据摘要。
+- “制定计划”详情卡显示计划 ID、计划项数量、完成度、下一项、到期信息和依赖摘要。
+- “导出分享页”详情卡显示作品 ID、下载文件、分享服务状态和可用评分证据。
+- “返回首页”等导航动作详情卡显示目标步骤、当前任务、当前字和学习路径进度。
+- 带目标步骤的动作在 `loadScene()` 后恢复反馈和详情，避免真实动作结果被跳转清空。
+- Playwright 前台真实流程补充报告详情、计划详情和“复习巩固”跳转后详情保留断言。
+
+真实化说明：
+
+- 数据来源：本机报告记录、计划记录、最近作品评分证据、分享服务状态、阶段记录和学习路径状态。
+- 写入状态：继续复用 `mr-calligraphy-learning-state-v1` 中已有报告、计划、作品和阶段记录；不新增假状态字段。
+- 成功反馈：动作点击后展示具体 ID、文件名、任务项、评分证据和目标步骤。
+- 失败反馈：无作品、无证据或动作失败时只显示真实失败结果，不补造可下载文件、热力证据或云端同步状态。
+- 刷新后复现方式：完成一次真实书写并保存作品，导出报告和制定计划后刷新，再点击对应动作可重新展示真实详情。
+
+仍待补：
+
+- 当前仍是本机前台动作详情，不是账号化工作流、教师端待办、跨设备通知或生产云端审计。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习动作真实详情`

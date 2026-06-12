@@ -3566,3 +3566,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增后台快照权限审计`
+
+## 98. 2026-06-13 新增学习动作真实详情
+
+本次把前台学习动作从“有状态写入但反馈偏简略”推进到“点击后能看到真实结果详情”。报告、计划、分享和跳转类动作会显示同一套动作详情卡，用户可以直接看到报告 ID、下载文件、计划任务、评分证据、目标步骤和本机边界；带跳转的动作不再在切换步骤后清空刚刚生成的详情。
+
+完成内容：
+
+- `script.js` 新增 `buildReportActionDetail()`，导出报告后显示报告 ID、站内路由、下载文件、评分证据、路径贴合和能力维度。
+- `script.js` 新增 `buildPlanActionDetail()`，制定计划后显示计划 ID、任务数量、完成度、下一项、到期信息和依赖摘要。
+- `script.js` 新增 `buildShareActionDetail()`，导出分享页后显示作品 ID、下载文件、有效分享数和可用评分证据。
+- `script.js` 新增 `buildNavigationActionDetail()`，跳转动作显示目标步骤、路径进度和本机边界。
+- `applyActionResult()` 调整带 `target` 动作的刷新顺序，跳转后恢复 `actionFeedback` 与 `actionDetail`，避免真实处理结果被 `loadScene()` 清空。
+- `runLearningAction()` 为“导出报告 / 制定计划 / 导出分享页 / 返回首页”挂接真实详情。
+- Playwright 前台真实流程新增断言，覆盖报告详情卡、计划详情卡和“复习巩固”跳转后的阶段详情保留。
+
+真实化说明：
+
+- 数据来源：`MRAppState.createReport()` 返回的报告记录、`MRAppState.createPlan()` 返回的计划记录、最近作品评分证据、分享服务状态和学习路径状态。
+- 写入状态：不新增存储字段；详情卡读取已经写入的 `reports[*]`、`plans[*]`、`artworks[*].scoreEvidence` 和阶段记录。
+- 成功反馈：用户点击动作后能看到具体 ID、文件名、评分证据、任务项和目标步骤，不再只是一句泛化提示。
+- 失败反馈：没有作品或证据时只显示空状态说明，不生成假报告、假分享证据或假云端结果。
+- 刷新后复现方式：完成书写、保存作品、导出报告、制定计划后刷新，再次点击对应动作会从本机状态重建同类详情。
+
+仍待补：
+
+- 当前是前台动作反馈真实化，不是服务端账号通知、云端作业流、教师端批改推送或跨设备实时协作。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习动作真实详情`
