@@ -1,10 +1,12 @@
 const { expect, test } = require("@playwright/test");
 const fs = require("fs");
+const path = require("path");
 const { validateProjectRepositoryPackage } = require("../../scripts/project-repository-mock-server.js");
 
 const LEARNING_KEY = "mr-calligraphy-learning-state-v1";
 const MAIN_LAYOUT_KEY = "mr-calligraphy-main-scene-layout-v1";
 const MAIN_HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
+const MAIN_IMPORT_AUDIT_KEY = "mr-calligraphy-main-import-audit-v1";
 const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
@@ -24,6 +26,7 @@ test.beforeEach(async ({ page }) => {
     LEARNING_KEY,
     MAIN_LAYOUT_KEY,
     MAIN_HISTORY_KEY,
+    MAIN_IMPORT_AUDIT_KEY,
     MAIN_PUBLISHED_KEY,
     REMOTE_PUBLISH_KEY,
     PROJECT_REPOSITORY_REMOTE_KEY,
@@ -1881,6 +1884,64 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
     const record = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
     return Boolean(record?.layout?.customObjects?.some((item) => item.label === updatedObjectLabel && item.type === "cylinder"));
   }).toBe(true);
+});
+
+test("main admin records imported model deletion audit", async ({ page }) => {
+  test.setTimeout(60_000);
+  const importLabel = `E2E 导入删除审计 ${Date.now()}`;
+  const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+
+  await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expect(page.locator("#mainImportAuditStatus")).toContainText("尚无导入模型删除记录");
+  await expect(page.locator("#mainImportAuditExport")).toBeDisabled();
+
+  await page.locator("#mainImportModelName").fill(importLabel);
+  await page.locator("#mainImportModel").setInputFiles(modelPath);
+  await expect(page.locator("#mainImportStatus")).toContainText(`已导入：${importLabel}`, { timeout: 30_000 });
+  await expect(page.locator("#mainObjectSelect")).toContainText(importLabel);
+
+  const importedObjectId = await page.locator("#mainObjectSelect").inputValue();
+  let layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
+  const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(importedRecord).toBeTruthy();
+  expect(importedRecord.label).toBe(importLabel);
+  expect(importedRecord.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(importedRecord.metrics.fileBytes).toBeGreaterThan(0);
+
+  await page.locator("#mainObjectDelete").click();
+  await expect(page.locator("#mainImportAuditStatus")).toContainText("已记录 1 条导入模型删除审计", { timeout: 10_000 });
+  await expect(page.locator("#mainImportAuditList")).toContainText(importLabel);
+  await expect(page.locator("#mainImportAuditList")).toContainText("历史保留");
+  await expect(page.locator("#mainImportAuditExport")).toBeEnabled();
+
+  layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
+  expect(layout.importedModels.some((item) => item.id === importedObjectId)).toBe(false);
+  const auditLog = await readJsonLocalStorage(page, MAIN_IMPORT_AUDIT_KEY);
+  expect(auditLog.records).toHaveLength(1);
+  expect(auditLog.records[0].modelId).toBe(importedObjectId);
+  expect(auditLog.records[0].label).toBe(importLabel);
+  expect(auditLog.records[0].cleanupStatus).toBe("retained-for-history");
+  expect(auditLog.records[0].referencedByHistory).toBe(true);
+  expect(auditLog.records[0].sha256).toBe(importedRecord.sha256);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#mainImportAuditList")).toContainText(importLabel);
+  const exportResult = await page.evaluate(() => window.MRMainImportAudit.getAuditExport());
+  expect(exportResult.ok).toBe(true);
+  expect(exportResult.html).toContain("MR 书法主场景导入模型删除审计");
+  expect(exportResult.html).toContain(importLabel);
+  expect(exportResult.html).toContain(importedRecord.sha256);
+
+  const auditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#mainImportAuditExport").click();
+  const auditDownload = await auditDownloadPromise;
+  expect(auditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-main-import-audit-.*\.html$/);
+  const auditPath = await auditDownload.path();
+  const auditHtml = fs.readFileSync(auditPath, "utf8");
+  expect(auditHtml).toContain("MR 书法主场景导入模型删除审计");
+  expect(auditHtml).toContain(importLabel);
+  expect(auditHtml).toContain(importedRecord.sha256);
 });
 
 test("main admin project repository keeps local data on remote failures", async ({ page }) => {

@@ -119,6 +119,14 @@
             <input id="mainImportModel" type="file" accept=".glb,.obj,model/gltf-binary,text/plain">
           </label>
           <p id="mainImportStatus" class="main-import-status">导入后会自动保存到本机，并同步到正常主场景。</p>
+          <div class="main-project-audit" aria-label="导入模型删除审计">
+            <div class="main-project-audit-head">
+              <strong>导入模型删除审计</strong>
+              <button data-feature-state="real-export" id="mainImportAuditExport" type="button">导出审计</button>
+            </div>
+            <p id="mainImportAuditStatus">尚无导入模型删除记录。</p>
+            <ul id="mainImportAuditList" class="main-project-audit-list"></ul>
+          </div>
         </section>
 
         <section class="main-light-panel" aria-label="环境灯光控制">

@@ -8,6 +8,7 @@ import {
   createArrayBufferSha256,
   createImportMetrics,
   createModelStore,
+  formatBytes,
   formatImportMetrics,
   getImportFileType,
   measureImportedModel,
@@ -53,6 +54,9 @@ const customStatus = document.getElementById("mainCustomStatus");
 const importModelNameInput = document.getElementById("mainImportModelName");
 const importModelInput = document.getElementById("mainImportModel");
 const importStatus = document.getElementById("mainImportStatus");
+const importAuditStatus = document.getElementById("mainImportAuditStatus");
+const importAuditList = document.getElementById("mainImportAuditList");
+const importAuditExportButton = document.getElementById("mainImportAuditExport");
 const ambientLightInput = document.getElementById("mainAmbientLight");
 const envLightInput = document.getElementById("mainEnvLight");
 const keyLightInput = document.getElementById("mainKeyLight");
@@ -111,9 +115,17 @@ const PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const ADMIN_RISK_ACK_KEY = "mr-calligraphy-admin-risk-ack-v1";
 const IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const IMPORT_DB_STORE = "models";
+const IMPORT_AUDIT_KEY = "mr-calligraphy-main-import-audit-v1";
 const MAX_UNDO_STEPS = 256;
 const MAX_HISTORY_SNAPSHOTS = 10;
 const MAX_PUBLISH_RELEASES = 10;
+const MAX_IMPORT_AUDIT_RECORDS = 30;
+const IMPORT_AUDIT_STATUS_LABELS = {
+  "storage-deleted": "文件已清理",
+  "retained-for-history": "历史保留",
+  "delete-failed": "清理失败",
+  "layout-only": "仅移除布局"
+};
 const DEFAULT_LIGHTING = {
   ambient: 0.55,
   environment: 0.55,
@@ -236,6 +248,11 @@ buildRoom();
 buildObjects();
 bindUi();
 animate();
+
+window.MRMainImportAudit = {
+  getAuditLog: loadImportAuditLog,
+  getAuditExport: getImportAuditExport
+};
 
 function createMaterials() {
   return {
@@ -1858,6 +1875,195 @@ async function deleteImportedModelData(record) {
   return importedModelStore.delete(record);
 }
 
+function loadImportAuditLog() {
+  try {
+    const raw = window.localStorage.getItem(IMPORT_AUDIT_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const source = Array.isArray(parsed.records) ? parsed.records : Array.isArray(parsed) ? parsed : [];
+    return {
+      version: 1,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+      records: source.map(normalizeImportAuditRecord).filter(Boolean).slice(0, MAX_IMPORT_AUDIT_RECORDS)
+    };
+  } catch (error) {
+    console.warn("Main import audit log could not be read.", error);
+    return { version: 1, updatedAt: "", records: [] };
+  }
+}
+
+function normalizeImportAuditRecord(record = {}, index = 0) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const createdAt = Number.isFinite(Date.parse(record.createdAt)) ? record.createdAt : new Date().toISOString();
+  const cleanupStatus = IMPORT_AUDIT_STATUS_LABELS[record.cleanupStatus] ? record.cleanupStatus : "layout-only";
+  return {
+    id: String(record.id || `main-import-audit-${Date.parse(createdAt) || Date.now()}-${index}`),
+    createdAt,
+    action: String(record.action || "delete").slice(0, 32),
+    modelId: String(record.modelId || record.id || ""),
+    dbKey: String(record.dbKey || ""),
+    label: String(record.label || record.fileName || "导入模型").slice(0, 80),
+    fileName: String(record.fileName || "").slice(0, 160),
+    sha256: normalizeSha256(record.sha256),
+    fileBytes: Math.max(0, Math.round(readNumber(record.fileBytes, 0))),
+    cleanupStatus,
+    referencedByHistory: record.referencedByHistory === true,
+    snapshotCount: Math.max(0, Math.round(readNumber(record.snapshotCount, 0))),
+    message: String(record.message || IMPORT_AUDIT_STATUS_LABELS[cleanupStatus]).slice(0, 240),
+    error: String(record.error || "").slice(0, 240)
+  };
+}
+
+function saveImportAuditLog(records) {
+  const normalized = records.map(normalizeImportAuditRecord).filter(Boolean).slice(0, MAX_IMPORT_AUDIT_RECORDS);
+  try {
+    window.localStorage.setItem(IMPORT_AUDIT_KEY, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      records: normalized
+    }));
+  } catch (error) {
+    console.warn("Main import audit log could not be saved.", error);
+  }
+  renderImportAuditPanel();
+  return normalized;
+}
+
+function recordImportAudit(record) {
+  const log = loadImportAuditLog();
+  const normalized = normalizeImportAuditRecord({
+    ...record,
+    id: record.id || `main-import-audit-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: record.createdAt || new Date().toISOString()
+  });
+  if (!normalized) {
+    return null;
+  }
+  saveImportAuditLog([
+    normalized,
+    ...log.records.filter((item) => item.id !== normalized.id)
+  ]);
+  return normalized;
+}
+
+function createImportDeleteAuditBase(record = {}, options = {}) {
+  const metrics = normalizeImportMetrics(record.metrics);
+  return {
+    action: options.action || "delete",
+    modelId: String(record.id || ""),
+    dbKey: String(record.dbKey || ""),
+    label: String(record.label || record.fileName || "导入模型"),
+    fileName: String(record.fileName || ""),
+    sha256: normalizeSha256(record.sha256),
+    fileBytes: metrics.fileBytes || 0,
+    referencedByHistory: options.referencedByHistory === true,
+    snapshotCount: layoutHistory.length
+  };
+}
+
+function renderImportAuditPanel() {
+  const log = loadImportAuditLog();
+  const records = log.records;
+
+  if (importAuditExportButton) {
+    importAuditExportButton.disabled = !records.length;
+  }
+  if (importAuditStatus) {
+    importAuditStatus.textContent = records.length
+      ? `已记录 ${records.length} 条导入模型删除审计。最近：${records[0].message}`
+      : "尚无导入模型删除记录。";
+  }
+  if (!importAuditList) {
+    return;
+  }
+
+  importAuditList.replaceChildren();
+  records.slice(0, 6).forEach((record) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${record.label} · ${IMPORT_AUDIT_STATUS_LABELS[record.cleanupStatus] || "已记录"}`;
+    const meta = document.createElement("span");
+    const digest = record.sha256 ? record.sha256.slice(0, 12) : "无 SHA";
+    meta.textContent = `${formatDateTime(record.createdAt)} · ${digest} · ${formatImportAuditBytes(record.fileBytes)}`;
+    const detail = document.createElement("span");
+    detail.textContent = record.message;
+    item.append(title, meta, detail);
+    importAuditList.appendChild(item);
+  });
+}
+
+function exportImportAudit() {
+  const result = getImportAuditExport();
+  if (!result.ok) {
+    showNotice(result.message);
+    renderImportAuditPanel();
+    return;
+  }
+  downloadHtmlFile(result.html, result.filename);
+  showNotice(result.message);
+}
+
+function getImportAuditExport() {
+  const records = loadImportAuditLog().records;
+  if (!records.length) {
+    return {
+      ok: false,
+      message: "暂无导入模型删除审计可导出。"
+    };
+  }
+
+  const rows = records.map((record) => {
+    const status = IMPORT_AUDIT_STATUS_LABELS[record.cleanupStatus] || record.cleanupStatus;
+    const referenced = record.referencedByHistory ? "是" : "否";
+    return `<tr><td>${escapeHtml(formatDateTime(record.createdAt))}</td><td>${escapeHtml(record.label)}</td><td>${escapeHtml(record.fileName)}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(referenced)}</td><td>${escapeHtml(record.sha256 || "无")}</td><td>${escapeHtml(record.message)}</td></tr>`;
+  }).join("");
+
+  return {
+    ok: true,
+    message: `已导出 ${records.length} 条导入模型删除审计。`,
+    filename: `mr-calligraphy-main-import-audit-${Date.now()}.html`,
+    html: `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法主场景导入模型删除审计</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 28px; color: #1e293b; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    p { color: #475569; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 13px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    td:nth-child(6) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>MR 书法主场景导入模型删除审计</h1>
+  <p>导出时间：${escapeHtml(formatDateTime(new Date().toISOString()))}。该文件来自本机浏览器 localStorage，不代表服务端不可篡改审计。</p>
+  <table>
+    <thead><tr><th>时间</th><th>模型</th><th>文件</th><th>清理结果</th><th>历史引用</th><th>SHA-256</th><th>说明</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`
+  };
+}
+
+function formatImportAuditBytes(bytes) {
+  return bytes ? formatBytes(bytes) : "大小未知";
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function isImportedModelReferencedByHistory(record) {
   if (!record?.dbKey && !record?.id) {
     return false;
@@ -2939,6 +3145,13 @@ function removeImportedEntry(entry, options = {}) {
   }
 
   const importRecord = { ...entry.object.userData.importRecord };
+  const referencedByHistory = options.deleteStorage !== false && isImportedModelReferencedByHistory(importRecord);
+  const auditBase = options.auditAction
+    ? createImportDeleteAuditBase(importRecord, {
+        action: options.auditAction,
+        referencedByHistory
+      })
+    : null;
   transformControls.detach();
   entry.object.traverse((child) => {
     if (!child.isMesh) {
@@ -2962,15 +3175,48 @@ function removeImportedEntry(entry, options = {}) {
   layout.layerOrder = normalizeLayerOrder(layout.layerOrder).filter((id) => id !== entry.id);
   delete layout.objects[entry.id];
 
-  if (options.deleteStorage !== false && isImportedModelReferencedByHistory(importRecord)) {
-    showImportStatus(`模型已从当前布局移除，文件保留用于历史回滚：${importRecord.label || importRecord.fileName}`);
+  if (options.deleteStorage !== false && referencedByHistory) {
+    const message = `模型已从当前布局移除，文件保留用于历史回滚：${importRecord.label || importRecord.fileName}`;
+    showImportStatus(message);
+    if (auditBase) {
+      recordImportAudit({
+        ...auditBase,
+        cleanupStatus: "retained-for-history",
+        message
+      });
+    }
   } else if (options.deleteStorage !== false) {
     deleteImportedModelData(importRecord)
-      .then(() => showImportStatus(`已清理模型文件：${importRecord.label || importRecord.fileName}`))
+      .then(() => {
+        const message = `已清理模型文件：${importRecord.label || importRecord.fileName}`;
+        showImportStatus(message);
+        if (auditBase) {
+          recordImportAudit({
+            ...auditBase,
+            cleanupStatus: "storage-deleted",
+            message
+          });
+        }
+      })
       .catch((error) => {
         console.warn("Imported model file could not be deleted.", error);
-        showImportStatus(`模型已从布局移除，但文件清理失败：${importRecord.label || importRecord.fileName}`);
+        const message = `模型已从布局移除，但文件清理失败：${importRecord.label || importRecord.fileName}`;
+        showImportStatus(message);
+        if (auditBase) {
+          recordImportAudit({
+            ...auditBase,
+            cleanupStatus: "delete-failed",
+            message,
+            error: error?.message || String(error || "")
+          });
+        }
       });
+  } else if (auditBase) {
+    recordImportAudit({
+      ...auditBase,
+      cleanupStatus: "layout-only",
+      message: `模型只从当前布局移除，未清理本机模型文件：${importRecord.label || importRecord.fileName}`
+    });
   }
 
   if (options.save !== false) {
@@ -3017,9 +3263,9 @@ async function deleteSelected() {
       arrayBuffer: stored?.arrayBuffer ? stored.arrayBuffer.slice(0) : null
     });
     const label = selectedEntry.label;
-    removeImportedEntry(selectedEntry);
+    removeImportedEntry(selectedEntry, { auditAction: "delete" });
     createLayoutSnapshot(`删除：${label}`, { notice: false });
-    showNotice(`Deleted model: ${label}`);
+    showNotice(`已删除模型：${label}`);
     return;
   }
 
@@ -3227,6 +3473,8 @@ function bindUi() {
   newObjectTypeSelect?.addEventListener("change", () => syncCustomSizeInputs(true));
   syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
+  importAuditExportButton?.addEventListener("click", exportImportAudit);
+  renderImportAuditPanel();
   [ambientLightInput, envLightInput, keyLightInput, rimLightInput, exposureInput].forEach((input) => {
     input.addEventListener("input", updateLightingFromInputs);
   });

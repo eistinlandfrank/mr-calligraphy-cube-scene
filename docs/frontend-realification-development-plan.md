@@ -1647,3 +1647,41 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化写实后台删除恢复`
+
+## 51. 2026-06-12 新增主后台导入删除审计
+
+本次把主后台导入模型删除从“一条临时状态提示”补成可刷新复现、可导出核对的本机删除审计。
+
+完成内容：
+
+- 主后台“导入模型”区新增“导入模型删除审计”列表和“导出审计”按钮。
+- 新增 `mr-calligraphy-main-import-audit-v1` 本机审计记录，最多保留最近 30 条。
+- 删除导入模型时记录模型 ID、dbKey、标签、文件名、SHA-256、文件大小、是否被历史快照引用、清理结果和说明。
+- 清理结果区分 `storage-deleted`、`retained-for-history`、`delete-failed` 和 `layout-only`。
+- 当导入模型仍被历史快照引用时，页面会明确记录“历史保留”，不伪装成文件已清理。
+- `window.MRMainImportAudit.getAuditLog()` 和 `getAuditExport()` 可供浏览器验收和人工排查读取。
+- Playwright 新增真实 GLB 导入、删除、刷新后审计持久化和 HTML 审计下载断言。
+
+真实化说明：
+
+- 数据来源：主后台真实导入的 GLB / OBJ 模型记录、IndexedDB 模型仓库、当前布局和本机快照历史。
+- 写入状态：`mr-calligraphy-main-import-audit-v1.records[*]`。
+- 成功反馈：删除后审计列表显示模型名称、清理结果、SHA 摘要和文件大小；导出 HTML 包含完整审计表。
+- 失败反馈：文件清理失败会记录 `delete-failed` 和错误信息；被历史快照引用时记录 `retained-for-history`。
+- 刷新后复现方式：审计记录保存在 localStorage，刷新主后台后仍显示并可导出。
+
+仍待补：
+
+- 当前是本机浏览器删除审计，不是服务端不可篡改日志、多人权限审计、远端资产签名、云端垃圾回收或资产生命周期策略。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "main admin records imported model deletion audit"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增主后台导入删除审计`
