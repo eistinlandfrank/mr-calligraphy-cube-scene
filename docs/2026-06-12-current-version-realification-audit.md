@@ -201,9 +201,9 @@ npm run test:e2e
 
 交付：
 
-- `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现；`PlanRepository` 和 `HistoryRepository` 已有 Workspace 空间隔离第一版，`ReportRepository` 与 `ProjectRepository` 远端 API adapter 第一版已完成，仍需真实账号空间、权限和服务端合并。
+- `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现；`PlanRepository`、`HistoryRepository` 和 `ReportRepository` 已有 Workspace 空间隔离第一版，`ProjectRepository` 远端 API adapter 第一版已完成，仍需真实账号空间、权限和服务端合并。
 - 登录态、用户 ID、角色、token 刷新和服务端分页。
-- 计划仓库冲突解决已从计划级扩展到前端字段级第一版，远端 receipt 也已能写入本机审计列表并导出 HTML，Workspace 空间隔离第一版已完成；后续仍需服务端合并审计、真实账号权限和更复杂的计划项增删合并。
+- 计划仓库冲突解决已从计划级扩展到前端字段级第一版，远端 receipt 也已能写入本机审计列表并导出 HTML，计划仓库/学习档案仓库/报告仓库 Workspace 空间隔离第一版已完成；后续仍需服务端合并审计、真实账号权限和更复杂的计划项增删合并。
 
 验收：
 
@@ -305,12 +305,13 @@ npm run test:e2e
 - 追加导入模型贴图替换记录：主后台和写实后台导入模型可上传 PNG/JPG/WebP 贴图，贴图二进制写入 IndexedDB，布局记录保存贴图 dbKey、文件名、SHA-256 和文件大小；发布差异显示贴图变化，前台 WebGL 会读取贴图并绘制 textured mesh，E2E 已验证真实图片上传、资产持久化、发布和演示页读取。
 - 追加计划仓库 Workspace 空间隔离记录：前台远端计划 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，同步包和回执写入 `workspaceId`，mock server 按 workspace 分桶保存 package/receipt；数据层和 E2E 已验证 header、包字段、回执持久化、alpha/beta 空间互不覆盖和切回原空间读取。
 - 追加学习档案仓库 Workspace 空间隔离记录：前台远端学习档案 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，同步包写入顶层 `workspaceId` 和 `source.workspaceId`，mock server 按 workspace 分桶保存档案 package/receipt；数据层和 E2E 已验证 header、包字段、本机状态持久化、history-alpha/history-beta 空间互不覆盖、切回原空间读取、分页追取和冲突审计继续可用。
+- 追加报告仓库 Workspace 空间隔离记录：前台远端报告 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，报告包写入顶层 `workspaceId` 和 `source.workspaceId`，签名回执和审计 HTML 写入 workspace，mock server 按 workspace 分桶保存报告 package/receipt；数据层和 E2E 已验证 header、包字段、签名回执持久化、report-alpha/report-beta 空间互不覆盖、切回原空间读取和报告冲突审计继续可用。
 
 已知限制：
 
-- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计和撤销请求、前台本机学习详情总结、核心入口移动端视口验收、主后台基础几何体更新闭环、写实后台对象删除恢复验收、主后台导入模型删除审计、写实导入模型软删除审计、写实导入模型已删除文件本机清理、主后台导入模型主色调编辑、写实后台导入模型主色调编辑、导入模型透明度编辑、导入模型文件替换、导入模型 PBR 参数编辑、导入模型发布差异明细、导入模型贴图替换、计划仓库和学习档案仓库 Workspace 空间隔离，以及远端发布开发级资产签名、CDN upload 和 CDN purge 回执；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、不可篡改日志、云端垃圾回收、完整移动设备矩阵或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
+- 当前新增的是用户自备 endpoint 的远端分享 adapter、本机回执审计和撤销请求、前台本机学习详情总结、核心入口移动端视口验收、主后台基础几何体更新闭环、写实后台对象删除恢复验收、主后台导入模型删除审计、写实导入模型软删除审计、写实导入模型已删除文件本机清理、主后台导入模型主色调编辑、写实后台导入模型主色调编辑、导入模型透明度编辑、导入模型文件替换、导入模型 PBR 参数编辑、导入模型发布差异明细、导入模型贴图替换、计划仓库、学习档案仓库和报告仓库 Workspace 空间隔离，以及远端发布开发级资产签名、CDN upload 和 CDN purge 回执；它们不是内置账号系统、微信分享、班级作品墙、生产 CDN、服务端权限审计、不可篡改日志、云端垃圾回收、完整移动设备矩阵或多人协作审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `新增学习档案仓库空间隔离`
+- `新增报告仓库空间隔离`

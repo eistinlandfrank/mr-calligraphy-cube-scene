@@ -879,6 +879,7 @@ const els = {
   reportRepositoryImportInput: document.getElementById("reportRepositoryImportInput"),
   reportRepositoryEndpointInput: document.getElementById("reportRepositoryEndpointInput"),
   reportRepositoryTokenInput: document.getElementById("reportRepositoryTokenInput"),
+  reportRepositoryWorkspaceInput: document.getElementById("reportRepositoryWorkspaceInput"),
   reportRepositorySaveRemoteButton: document.getElementById("reportRepositorySaveRemoteButton"),
   reportRepositoryRemoteButton: document.getElementById("reportRepositoryRemoteButton"),
   reportRepositoryPushButton: document.getElementById("reportRepositoryPushButton"),
@@ -6177,6 +6178,9 @@ function renderReportRepositoryStatus(detail) {
   if (els.reportRepositoryTokenInput && document.activeElement !== els.reportRepositoryTokenInput) {
     els.reportRepositoryTokenInput.value = config?.remoteToken || "";
   }
+  if (els.reportRepositoryWorkspaceInput && document.activeElement !== els.reportRepositoryWorkspaceInput) {
+    els.reportRepositoryWorkspaceInput.value = config?.workspaceId || status?.workspaceId || "local-browser";
+  }
   if (els.reportRepositoryExportButton) {
     els.reportRepositoryExportButton.disabled = !status?.reportCount;
   }
@@ -6224,7 +6228,7 @@ function renderReportRepositoryReceipts() {
     const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
     meta.textContent = `${formatReportRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 签名 ${signature} · 仓库 ${digest}`;
     const detail = document.createElement("small");
-    detail.textContent = `${receipt.signatureAlgorithm || "签名算法未知"} / ${receipt.signingKeyId || "key 未知"} / ${receipt.reportCount || 0} 份报告`;
+    detail.textContent = `${receipt.signatureAlgorithm || "签名算法未知"} / ${receipt.signingKeyId || "key 未知"} / ${receipt.workspaceId || "local-browser"} / ${receipt.reportCount || 0} 份报告`;
     item.append(title, meta, detail);
     els.reportRepositoryReceiptList.appendChild(item);
   });
@@ -6435,9 +6439,11 @@ function importReportRepositoryFile(event) {
 function saveReportRepositoryRemoteConfig() {
   const endpoint = els.reportRepositoryEndpointInput?.value || "";
   const token = els.reportRepositoryTokenInput?.value || "";
+  const workspaceId = els.reportRepositoryWorkspaceInput?.value || "";
   const result = window.MRAppState?.configureReportRepositoryRemote?.({
     remoteEndpoint: endpoint,
-    remoteToken: token
+    remoteToken: token,
+    workspaceId
   });
   if (result?.message) {
     showNotice(result.message);

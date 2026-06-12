@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-报告仓库同步包接收浏览器本机生成的 `ReportRecord` 和本机 SHA-256 验真摘要。本机 JSON 导出/导入用于同浏览器或跨设备手动备份恢复；远端报告仓库 API 用来验证“报告可被远端保存和拉取”的真实 HTTP 闭环，并保存远端返回的签名回执。当前 mock 服务的签名回执是 HMAC-SHA256 开发验收能力，不是账号化教师端、生产证书签名、不可篡改审计、服务端 PDF 渲染或云端长期报告产品本身。
+报告仓库同步包接收浏览器本机生成的 `ReportRecord` 和本机 SHA-256 验真摘要。本机 JSON 导出/导入用于同浏览器或跨设备手动备份恢复；远端报告仓库 API 用来验证“报告可被远端保存和拉取”的真实 HTTP 闭环，请求会携带 Workspace 空间 ID 做账号化前置隔离，并保存远端返回的签名回执。当前 mock 服务的签名回执是 HMAC-SHA256 开发验收能力，不是账号化教师端、生产证书签名、不可篡改审计、服务端 PDF 渲染或云端长期报告产品本身。
 
 生产服务端必须重新校验报告包结构，并在账号、教师身份、权限、服务端时间、签名证书和长期审计上做服务端隔离；前端本机校验只能作为提交前保护。
 
@@ -13,7 +13,7 @@
 
 前台站内报告面板提供“导出同步包”和“导入同步包”：
 
-- `MRAppState.downloadReportRepository()` 会下载 `mr-calligraphy-report-repository-*.json`，并把最近导出时间、报告数和 packageId 写入 `mr-calligraphy-learning-state-v1.reportRepository`。
+- `MRAppState.downloadReportRepository()` 会下载 `mr-calligraphy-report-repository-*.json`，并把最近导出时间、报告数、workspaceId 和 packageId 写入 `mr-calligraphy-learning-state-v1.reportRepository`。
 - `MRAppState.importReportRepositoryPackage()` 会读取同一格式的 JSON 包，新增本机不存在的报告；遇到同 ID 差异报告时不覆盖本机记录，而是写入冲突审计。
 - `MRAppState.getReportRepositoryReceiptAudit()` 会读取最近签名回执审计；`downloadReportRepositoryReceiptAudit()` 会导出 `mr-calligraphy-report-repository-receipts-*.html`。
 - 导入成功后刷新站内报告面板和学习状态摘要；导入错文件、空包或格式错误会返回明确失败提示。
@@ -34,6 +34,12 @@
 Authorization: Bearer <token>
 ```
 
+如配置 Workspace，请求会携带；未填写时使用 `local-browser`：
+
+```http
+X-MR-Workspace-Id: <workspaceId>
+```
+
 ## 4. 报告仓库包
 
 本机 JSON 文件和远端 `PUT` body 共用同一顶层字段：
@@ -43,16 +49,17 @@ Authorization: Bearer <token>
 | `kind` | 固定为 `mr-calligraphy-report-repository-v1` |
 | `version` | 当前为 `1` |
 | `packageId` | 本机生成的提交 ID |
+| `workspaceId` | 当前同步空间，默认 `local-browser` |
 | `exportedAt` | 本机生成时间 |
 | `storageKey` | 本机学习状态来源 key |
-| `source` | 当前同步模式和能力边界 |
+| `source` | 当前同步模式、`source.workspaceId` 和能力边界 |
 | `summary` | 报告数、带教师批注报告数、带验真摘要报告数和平均分 |
 | `reports` | 本机报告数组，可包含 `teacherReview` 本机教师批注 |
 | `verifications` | 每份报告对应的本机 SHA-256 摘要数组 |
 
 服务端应至少校验：
 
-- `kind`、`version`、`packageId`、`exportedAt` 和 `storageKey`。
+- `kind`、`version`、`packageId`、`workspaceId`、`exportedAt` 和 `storageKey`。
 - `reports` 必须是数组，报告记录必须包含 `id`、`createdAt` 和 `averageScore`。
 - `verifications` 必须是数组，摘要应为 64 位十六进制 SHA-256。
 - `summary.total` 应与报告数量一致，`summary.verifiedReportCount` 应与摘要数量一致。
@@ -66,12 +73,14 @@ Authorization: Bearer <token>
   "ok": true,
   "message": "远端报告仓库已接收 3 份报告。",
   "packageId": "remote-report-package-id",
+  "workspaceId": "class-a",
   "repositoryDigest": "64位sha256",
   "remoteVersion": "remote-v1",
   "package": {
     "kind": "mr-calligraphy-report-repository-v1",
     "version": 1,
     "packageId": "remote-report-package-id",
+    "workspaceId": "class-a",
     "summary": {
       "total": 3,
       "teacherReviewedReportCount": 1,
@@ -84,6 +93,7 @@ Authorization: Bearer <token>
     "receiptKind": "mr-calligraphy-report-repository-receipt-v1",
     "packageId": "remote-report-package-id",
     "sourcePackageId": "local-report-package-id",
+    "workspaceId": "class-a",
     "repositoryDigest": "64位sha256",
     "acceptedAt": "2026-06-12T00:00:00.000Z",
     "reportCount": 3,
@@ -97,6 +107,7 @@ Authorization: Bearer <token>
       "remoteVersion",
       "packageId",
       "sourcePackageId",
+      "workspaceId",
       "repositoryDigest",
       "acceptedAt",
       "reportCount",
@@ -109,7 +120,7 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt/latestReceipt`。如果回执包含 `receiptKind`、`repositoryDigest`、`receiptDigest`、`signatureAlgorithm`、`signingKeyId` 和 64 位 `signature`，前端会把它规范化保存到 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`，同时写入 `reportRepository.signedReceipts` 最近 12 条审计列表，并在报告仓库摘要和签名回执审计区提示最近回执。
+前端 adapter 当前会读取 `message`、`workspaceId`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt/latestReceipt`。如果回执包含 `receiptKind`、`workspaceId`、`repositoryDigest`、`receiptDigest`、`signatureAlgorithm`、`signingKeyId` 和 64 位 `signature`，前端会把它规范化保存到 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`，同时写入 `reportRepository.signedReceipts` 最近 12 条审计列表，并在报告仓库摘要和签名回执审计区提示最近回执及所属空间。
 
 ## 6. 同 ID 差异策略
 
@@ -169,8 +180,9 @@ http://127.0.0.1:8791/api/report-repository
 mock 服务会：
 
 - 校验报告包 `kind`、`version`、`summary`、`reports` 和 `verifications`。
-- 保存最近一次报告仓库包。
+- 按 `X-MR-Workspace-Id` / body `workspaceId` 分桶保存最近一次报告仓库包，默认空间为 `local-browser`。
 - 返回 `mr-calligraphy-report-repository-receipt-v1` 回执，并用 `HMAC-SHA256` 生成 `signature`。
+- 回执、签名 payload 和响应 header 都包含 `workspaceId`，不同空间不会复用同一签名审计。
 - 可通过 `REPORT_REPOSITORY_MOCK_SIGNING_SECRET` 和 `REPORT_REPOSITORY_MOCK_SIGNING_KEY_ID` 替换本机签名 secret 和 key id。
 - 校验 Bearer token。
 - 支持 `GET` 拉取最近报告包。
@@ -188,8 +200,9 @@ npm run test:e2e -- --grep "front practice saves real strokes"
 - `MRAppState.getReportRepositoryPackage()` 生成报告包和验真摘要。
 - `MRAppState.downloadReportRepository()` 会触发浏览器下载，页面显示最近导出报告数。
 - 站内报告面板“导入同步包”会通过文件选择器导入 JSON 包，并写入本机 `reports` 与 `reportRepository` 状态。
-- `configureReportRepositoryRemote()` 持久化 endpoint/token。
-- 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header。
+- `configureReportRepositoryRemote()` 持久化 endpoint/token/workspace。
+- 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header 与 `X-MR-Workspace-Id` header。
+- 推送包包含顶层 `workspaceId` 和 `source.workspaceId`；mock server 可分别保存 `report-alpha` 和 `report-beta`，切回原空间能读回原 package。
 - 推送后 mock server 返回签名回执，前端保存到 `lastSignedReceipt` 和 `signedReceipts`；再次 GET 检查或拉取时会保留最近签名回执。
-- 站内报告面板“导出回执”会下载包含签名、仓库摘要、receipt 摘要、方向、endpoint 和原始回执 JSON 的 HTML 审计页。
+- 站内报告面板“导出回执”会下载包含 workspace、签名、仓库摘要、receipt 摘要、方向、endpoint 和原始回执 JSON 的 HTML 审计页。
 - 拉取同 ID 差异报告时不静默覆盖本机报告，而是生成本机冲突审计并支持字段级合并或远端副本另存。

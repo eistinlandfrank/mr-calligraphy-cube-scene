@@ -447,11 +447,14 @@ assert(reviewedPdf.pdf.includes(`ReportDigest: ${reviewedHtml.verification.diges
 const reportRepositoryStatus = window.MRAppState.getReportRepositoryStatus();
 assert(reportRepositoryStatus.ok && reportRepositoryStatus.reportCount >= 3, "报告 repository 应统计本机报告数量。");
 assert(!reportRepositoryStatus.remoteConfigured, "未配置远端时不应伪造云端报告仓库。");
+assert(reportRepositoryStatus.workspaceId === "local-browser", "报告 repository 未配置远端时应使用默认 workspace。");
 assert(reportRepositoryStatus.boundary.includes("不包含账号化教师端"), "报告 repository 应说明远端 adapter 边界。");
 const reportRepositoryPackage = window.MRAppState.getReportRepositoryPackage();
 assert(reportRepositoryPackage.ok, "报告 repository 应能生成 JSON 同步包。");
 assert(typeof window.MRAppState.downloadReportRepository === "function", "报告 repository 应提供本机 JSON 同步包下载 API。");
 assert(reportRepositoryPackage.package.kind === "mr-calligraphy-report-repository-v1", "报告同步包应包含稳定 kind。");
+assert(reportRepositoryPackage.package.workspaceId === "local-browser", "报告同步包应包含默认 workspaceId。");
+assert(reportRepositoryPackage.package.source.workspaceId === "local-browser", "报告同步包 source 应包含默认 workspaceId。");
 assert(reportRepositoryPackage.package.reports.length >= 3, "报告同步包应包含本机报告列表。");
 assert(reportRepositoryPackage.package.verifications.length === reportRepositoryPackage.package.reports.length, "报告同步包应为每份报告生成验真摘要。");
 assert(reportRepositoryPackage.package.summary.teacherReviewedReportCount === 1, "报告同步包应统计带教师批注报告数量。");
@@ -1036,6 +1039,8 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
   const packageResult = window.MRAppState.getReportRepositoryPackage();
   assert(packageResult.ok, "报告 repository 应能生成 JSON 同步包。");
   assert(packageResult.package.kind === "mr-calligraphy-report-repository-v1", "报告同步包应包含稳定 kind。");
+  assert(packageResult.package.workspaceId === "local-browser", "报告同步包应包含默认 workspaceId。");
+  assert(packageResult.package.source.workspaceId === "local-browser", "报告同步包 source 应包含默认 workspaceId。");
   assert(packageResult.package.reports.length >= 3, "报告同步包应包含报告记录。");
   assert(packageResult.package.verifications.length === packageResult.package.reports.length, "报告同步包应包含每份报告的验真摘要。");
   const reviewedReportPackage = packageResult.package.reports.find((item) => item.id === "report-2");
@@ -1047,9 +1052,11 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
     global.fetch = fetchApi;
     const configuredMock = window.MRAppState.configureReportRepositoryRemote({
       remoteEndpoint: mock.endpoint,
-      remoteToken: "report-token"
+      remoteToken: "report-token",
+      workspaceId: "report-alpha"
     });
     assert(configuredMock.ok, "报告仓库 mock endpoint 应可保存为远端配置。");
+    assert(configuredMock.status.workspaceId === "report-alpha", "报告仓库远端配置应保存 workspace。");
 
     const checkedBeforePush = await window.MRAppState.checkRemoteReportRepository();
     assert(checkedBeforePush.ok, "报告仓库 mock GET 检查应真实可访问。");
@@ -1057,26 +1064,35 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
 
     const pushedMock = await window.MRAppState.pushReportRepositoryToRemote();
     assert(pushedMock.ok, "报告仓库 mock 应接收真实 PUT 推送。");
-    assert(pushedMock.packageId.startsWith("mock-report-repository-"), "报告仓库 mock 应返回服务端 packageId。");
+    assert(pushedMock.packageId.startsWith("mock-report-repository-report-alpha-"), "报告仓库 mock 应返回带 workspace 的服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "报告仓库 mock 应在内存中保存最近报告包。");
+    assert(mock.state.package.workspaceId === "report-alpha", "报告仓库 mock 应把最近包写入当前 workspace。");
+    assert(mock.state.workspaces["report-alpha"].package.packageId === pushedMock.packageId, "报告仓库 mock 应按 workspace 保存报告包。");
     assert(mock.state.package.summary.teacherReviewedReportCount === 1, "报告仓库 mock 应保存带教师批注报告计数。");
     assert(mock.state.package.verifications.every((item) => /^[a-f0-9]{64}$/.test(item.digest)), "报告仓库 mock 应保存 64 位报告摘要。");
     assert(mock.state.receipts[0].repositoryDigest, "报告仓库 mock 应返回 repositoryDigest 回执。");
     assert(mock.state.receipts[0].signatureAlgorithm === "HMAC-SHA256", "报告仓库 mock 应返回 HMAC-SHA256 签名算法。");
     assert(mock.state.receipts[0].signingKeyId === "report-repository-mock-hmac-v1", "报告仓库 mock 应返回签名 key id。");
+    assert(mock.state.receipts[0].workspaceId === "report-alpha", "报告仓库 mock 签名回执应包含 workspace。");
     assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].signature), "报告仓库 mock 应返回 64 位签名。");
     assert(pushedMock.signedReceipt.signature === mock.state.receipts[0].signature, "报告仓库推送结果应暴露服务端签名回执。");
+    assert(pushedMock.signedReceipt.workspaceId === "report-alpha", "报告仓库推送结果应保留签名回执 workspace。");
     const signedStatus = window.MRAppState.getReportRepositoryStatus();
     assert(signedStatus.lastSignedReceipt.signature === mock.state.receipts[0].signature, "报告仓库状态应持久化最近签名回执。");
+    assert(signedStatus.workspaceId === "report-alpha", "报告仓库状态应持久化当前 workspace。");
+    assert(signedStatus.lastSignedReceipt.workspaceId === "report-alpha", "报告仓库状态应持久化签名回执 workspace。");
     assert(signedStatus.signedReceiptCount === 1, "报告仓库状态应记录签名回执审计数量。");
     assert(signedStatus.signedReceipts[0].direction === "push", "报告仓库签名回执审计应记录推送方向。");
     assert(signedStatus.message.includes("签名回执"), "报告仓库状态摘要应提示最近签名回执。");
     const receiptAudit = window.MRAppState.getReportRepositoryReceiptAudit();
     assert(receiptAudit.ok && receiptAudit.total === 1, "报告仓库签名回执审计 API 应返回最近回执。");
+    assert(receiptAudit.workspaceId === "report-alpha", "报告仓库签名回执审计应返回当前 workspace。");
     assert(receiptAudit.receipts[0].signature === mock.state.receipts[0].signature, "报告仓库回执审计应保留签名。");
+    assert(receiptAudit.receipts[0].workspaceId === "report-alpha", "报告仓库回执审计应保留 workspace。");
     const receiptExport = window.MRAppState.getReportRepositoryReceiptAuditExport();
     assert(receiptExport.ok && receiptExport.html.includes("MR 书法报告仓库签名回执审计"), "报告仓库回执审计应可导出 HTML。");
     assert(receiptExport.html.includes(mock.state.receipts[0].signature), "报告仓库回执审计 HTML 应包含签名。");
+    assert(receiptExport.html.includes("report-alpha"), "报告仓库回执审计 HTML 应包含 workspace。");
 
     const checkedAfterPush = await window.MRAppState.checkRemoteReportRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.reports.length === mock.state.package.reports.length, "报告仓库 mock GET 应返回最近 PUT 保存的报告包。");
@@ -1086,10 +1102,38 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
     assert(pulledMock.ok, "报告仓库 mock 应支持真实 GET 拉取。");
     assert(pulledMock.pulledReportCount === mock.state.package.reports.length, "报告仓库 mock 拉取结果应保留远端报告数量。");
     assert(pulledMock.signedReceipt.signature === mock.state.receipts[0].signature, "报告仓库拉取结果应保留远端签名回执。");
+    assert(pulledMock.signedReceipt.workspaceId === "report-alpha", "报告仓库拉取结果应保留远端签名回执 workspace。");
     assert(pulledMock.skippedConflictCount === 0, "相同报告包拉取不应伪造冲突。");
 
-    mock.state.package.reports[0] = {
-      ...mock.state.package.reports[0],
+    const alphaPackageId = pushedMock.packageId;
+    const configuredBeta = window.MRAppState.configureReportRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "report-token",
+      workspaceId: "report-beta"
+    });
+    assert(configuredBeta.ok && configuredBeta.status.workspaceId === "report-beta", "报告仓库应能切换到第二个 workspace。");
+    assert(configuredBeta.status.signedReceiptCount === 0, "报告仓库切换 workspace 后不应复用其它空间回执。");
+    assert(configuredBeta.status.lastConflictReports.length === 0, "报告仓库切换 workspace 后不应复用其它空间冲突审计。");
+
+    const checkedBetaBeforePush = await window.MRAppState.checkRemoteReportRepository();
+    assert(checkedBetaBeforePush.ok && checkedBetaBeforePush.package === null, "报告仓库 mock 新 workspace 初始应为空。");
+    const pushedBeta = await window.MRAppState.pushReportRepositoryToRemote();
+    assert(pushedBeta.ok && pushedBeta.packageId.startsWith("mock-report-repository-report-beta-"), "报告仓库 mock 应保存 beta workspace 包。");
+    assert(mock.state.workspaces["report-beta"].package.packageId === pushedBeta.packageId, "报告仓库 mock beta workspace 应有独立包。");
+    assert(mock.state.workspaces["report-alpha"].package.packageId === alphaPackageId, "报告仓库 mock alpha workspace 不应被 beta 覆盖。");
+
+    const configuredAlphaAgain = window.MRAppState.configureReportRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "report-token",
+      workspaceId: "report-alpha"
+    });
+    assert(configuredAlphaAgain.ok && configuredAlphaAgain.status.workspaceId === "report-alpha", "报告仓库应能切回 alpha workspace。");
+    const checkedAlphaAgain = await window.MRAppState.checkRemoteReportRepository();
+    assert(checkedAlphaAgain.ok && checkedAlphaAgain.package.packageId === alphaPackageId, "报告仓库切回 alpha 应读取 alpha 最近包。");
+    const alphaWorkspace = mock.state.workspaces["report-alpha"];
+
+    alphaWorkspace.package.reports[0] = {
+      ...alphaWorkspace.package.reports[0],
       summary: "远端报告修改不应覆盖本机同 ID 报告。"
     };
     const conflictPull = await window.MRAppState.pullReportRepositoryFromRemote();
@@ -1110,8 +1154,8 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
     assert(mergedReport.summary.includes("远端报告修改"), "报告字段级合并应只把选择的远端字段写回本机报告。");
     assert(window.MRAppState.getReportRepositoryStatus().lastConflictReports.length === 0, "字段级合并后应清理对应报告冲突审计。");
 
-    mock.state.package.reports[2] = {
-      ...mock.state.package.reports[2],
+    alphaWorkspace.package.reports[2] = {
+      ...alphaWorkspace.package.reports[2],
       title: "远端冲突报告副本"
     };
     const copyConflictPull = await window.MRAppState.pullReportRepositoryFromRemote();
@@ -1128,7 +1172,8 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
 
     const badTokenConfig = window.MRAppState.configureReportRepositoryRemote({
       remoteEndpoint: mock.endpoint,
-      remoteToken: "bad-token"
+      remoteToken: "bad-token",
+      workspaceId: "report-alpha"
     });
     assert(badTokenConfig.ok, "报告仓库 mock 错误 token 配置应仍可保存以便检查失败态。");
     const rejected = await window.MRAppState.checkRemoteReportRepository();

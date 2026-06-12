@@ -57,7 +57,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放，并生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码、页面关闭后的后台队列和分享链路 | UI 写明 WebM；后续加格式转换、压缩和 Service Worker/服务端异步导出队列 |
-| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前签名回执审计是本机列表和 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
+| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 Workspace 空间隔离、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前 Workspace 是账号化前置隔离，签名回执审计是本机列表和 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数、撤销记录和远端分享 API adapter；可配置 endpoint/token，真实 GET 检查、PUT 发布分享包，保存 publicUrl 和回执；已有 API 合同与本机 mock 服务 | 远端 adapter 仍需用户自备服务端；没有内置账号、微信、社群、课堂作品墙、CDN 托管或生产权限控制 | 离线导出按钮保持 `real-export`，本机分享服务和远端 adapter 标记 `real-local`；后续加账号化公开链接服务、权限、撤销审计和课堂作品墙 |
 
@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
-| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、生产证书签名验真、不可篡改审计和生产长期报告仓库 | 账号化 ReportRepository、教师端身份与服务端审计 |
+| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 Workspace 空间隔离、报告仓库签名回执审计导出、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、生产证书签名验真、不可篡改审计和生产长期报告仓库 | 账号化 ReportRepository、教师端身份与服务端审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、模型/贴图资产清单哈希、HMAC 开发资产签名回执、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、生产证书资产签名和不可篡改审计 | 服务端审批合同强化、生产证书资产签名、账号权限和审计签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
@@ -2987,3 +2987,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习档案仓库空间隔离`
+
+### 2026-06-12：新增报告仓库空间隔离
+
+完成内容：
+
+- 前台“远端报告 API”新增 `Workspace` 输入，保存 endpoint/token 时一并保存空间 ID。
+- 报告仓库同步包新增顶层 `workspaceId` 和 `source.workspaceId`，远端请求统一携带 `X-MR-Workspace-Id`。
+- 报告仓库状态、远端检查、推送、拉取、签名回执列表和回执审计 HTML 都会显示当前 workspace。
+- `scripts/report-repository-mock-server.js` 改为按 workspace 分桶保存报告包和签名回执，`report-alpha` 与 `report-beta` 不再互相覆盖。
+- 数据层、mock server 和 E2E 验收补充 Workspace header、包字段、签名回执 workspace、本机状态持久化、空间切换回读和冲突审计继续可用。
+- `docs/report-repository-api-contract.md` 同步 Workspace header、包字段、签名字段、mock 隔离和生产边界。
+
+真实化说明：
+
+- 数据来源：用户配置的远端报告 endpoint/token/workspace、本机报告同步包、本机验真摘要和远端签名回执。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.reportRepository.workspaceId`、远端包 `workspaceId`、最近签名回执、回执列表和 mock server workspace 分桶。
+- 成功反馈：报告同步状态会显示空间，回执列表显示 workspace，mock 服务能分别读取不同空间最近包。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON 或推送失败仍会写入本机错误，不清空本机报告。
+- 刷新后复现方式：Workspace 保存在本机学习状态，刷新后仍会继续用同一空间推送和拉取。
+
+仍待补：
+
+- 当前是账号化前的空间隔离 adapter，不是完整登录、角色权限、生产证书签名、教师端批注审计、长期归档或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库空间隔离`

@@ -10,11 +10,13 @@ const RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
 const SIGNATURE_ALGORITHM = "HMAC-SHA256";
 const DEFAULT_SIGNING_KEY_ID = "report-repository-mock-hmac-v1";
 const DEFAULT_SIGNING_SECRET = "mr-calligraphy-report-repository-mock-signing-secret";
+const DEFAULT_WORKSPACE_ID = "local-browser";
 const RECEIPT_SIGNED_FIELDS = [
   "receiptKind",
   "remoteVersion",
   "packageId",
   "sourcePackageId",
+  "workspaceId",
   "repositoryDigest",
   "acceptedAt",
   "reportCount",
@@ -29,6 +31,8 @@ function createReportRepositoryMockServer(options = {}) {
   const signingKeyId = String(options.signingKeyId || process.env.REPORT_REPOSITORY_MOCK_SIGNING_KEY_ID || DEFAULT_SIGNING_KEY_ID).trim() || DEFAULT_SIGNING_KEY_ID;
   const state = {
     startedAt: new Date().toISOString(),
+    latestWorkspaceId: DEFAULT_WORKSPACE_ID,
+    workspaces: {},
     package: null,
     receipts: []
   };
@@ -55,49 +59,60 @@ function createReportRepositoryMockServer(options = {}) {
       }
 
       if (request.method === "GET") {
-        const reportCount = getReportCount(state.package);
+        const workspaceId = getRequestWorkspaceId(request);
+        const workspace = getWorkspaceState(state, workspaceId);
+        const reportCount = getReportCount(workspace.package);
         return sendJson(response, 200, {
           ok: true,
-          message: state.package
-            ? `远端报告仓库 mock 可读，当前包含 ${reportCount} 份报告。`
-            : "远端报告仓库 mock 服务可访问，当前尚未接收报告包。",
+          message: workspace.package
+            ? `远端报告仓库 mock 可读，空间 ${workspaceId} 当前包含 ${reportCount} 份报告。`
+            : `远端报告仓库 mock 服务可访问，空间 ${workspaceId} 当前尚未接收报告包。`,
           remoteVersion: REMOTE_VERSION,
+          workspaceId,
           contract: createContract(),
-          package: state.package,
-          receiptCount: state.receipts.length,
-          latestReceipt: state.receipts[0] || null
+          package: workspace.package,
+          receiptCount: workspace.receipts.length,
+          latestReceipt: workspace.receipts[0] || null
         });
       }
 
       if (request.method === "PUT") {
         const payload = await readJsonBody(request);
-        const validation = validateReportRepositoryPackage(payload);
+        const workspaceId = getRequestWorkspaceId(request, payload.workspaceId);
+        const validation = validateReportRepositoryPackage(payload, { workspaceId });
         if (!validation.ok) {
           return sendJson(response, 422, {
             ok: false,
             message: validation.message,
             errors: validation.errors,
             warnings: validation.warnings,
+            workspaceId,
             remoteVersion: REMOTE_VERSION
           });
         }
 
-        const receipt = createReceipt(payload, validation, { signingSecret, signingKeyId });
-        state.package = {
+        const receipt = createReceipt(payload, validation, { signingSecret, signingKeyId, workspaceId });
+        const workspace = getWorkspaceState(state, workspaceId);
+        workspace.package = {
           ...clone(payload),
+          workspaceId,
           packageId: receipt.packageId,
           acceptedAt: receipt.acceptedAt,
           repositoryDigest: receipt.repositoryDigest
         };
-        state.receipts.unshift(receipt);
+        workspace.receipts.unshift(receipt);
+        state.latestWorkspaceId = workspaceId;
+        state.package = workspace.package;
+        state.receipts = workspace.receipts;
 
         return sendJson(response, 201, {
           ok: true,
-          message: `远端报告仓库 mock 已接收 ${receipt.reportCount} 份报告。`,
+          message: `远端报告仓库 mock 已接收空间 ${workspaceId} 的 ${receipt.reportCount} 份报告。`,
           remoteVersion: receipt.remoteVersion,
+          workspaceId,
           packageId: receipt.packageId,
           repositoryDigest: receipt.repositoryDigest,
-          package: state.package,
+          package: workspace.package,
           receipt,
           warnings: validation.warnings
         });
@@ -183,6 +198,38 @@ function validateAuth(request, requiredToken) {
   return { ok: false, message: "报告仓库 mock 拒绝请求：Authorization token 不匹配。" };
 }
 
+function getRequestWorkspaceId(request, fallback = "") {
+  let queryWorkspace = "";
+  try {
+    const parsed = new URL(request.url || "/", "http://localhost");
+    queryWorkspace = parsed.searchParams.get("workspaceId") || "";
+  } catch (error) {
+    queryWorkspace = "";
+  }
+  return normalizeWorkspaceId(request.headers["x-mr-workspace-id"] || queryWorkspace || fallback);
+}
+
+function getWorkspaceState(state, workspaceId) {
+  const normalizedId = normalizeWorkspaceId(workspaceId);
+  if (!state.workspaces[normalizedId]) {
+    state.workspaces[normalizedId] = {
+      workspaceId: normalizedId,
+      package: null,
+      receipts: []
+    };
+  }
+  return state.workspaces[normalizedId];
+}
+
+function normalizeWorkspaceId(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "")
+    .slice(0, 64);
+  return normalized || DEFAULT_WORKSPACE_ID;
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -206,8 +253,12 @@ function sendEmpty(response, statusCode) {
 
 function sendJson(response, statusCode, payload) {
   const body = JSON.stringify(payload, null, 2);
+  const workspaceHeader = payload?.workspaceId
+    ? { "X-MR-Workspace-Id": normalizeWorkspaceId(payload.workspaceId) }
+    : {};
   response.writeHead(statusCode, createResponseHeaders({
-    "Content-Type": "application/json; charset=utf-8"
+    "Content-Type": "application/json; charset=utf-8",
+    ...workspaceHeader
   }));
   response.end(body);
 }
@@ -216,7 +267,8 @@ function createResponseHeaders(extra = {}) {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, PUT, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-MR-Workspace-Id",
+    "Access-Control-Expose-Headers": "X-MR-Workspace-Id",
     "Access-Control-Max-Age": "600",
     "Cache-Control": "no-store",
     ...extra
@@ -231,15 +283,18 @@ function createContract() {
       push: "PUT /api/report-repository",
       pull: "GET /api/report-repository",
       authorization: "optional Bearer token",
+      workspaceHeader: "X-MR-Workspace-Id",
       cors: "GET, PUT, OPTIONS"
     },
     packageKind: PACKAGE_KIND,
-    requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "storageKey", "summary", "reports", "verifications"],
+    defaultWorkspaceId: DEFAULT_WORKSPACE_ID,
+    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "reports", "verifications"],
     requiredReportFields: ["id", "createdAt", "averageScore"],
     receiptFields: [
       "ok",
       "message",
       "packageId",
+      "workspaceId",
       "repositoryDigest",
       "remoteVersion",
       "receipt",
@@ -251,9 +306,10 @@ function createContract() {
   };
 }
 
-function validateReportRepositoryPackage(payload) {
+function validateReportRepositoryPackage(payload, options = {}) {
   const errors = [];
   const warnings = [];
+  const workspaceId = normalizeWorkspaceId(options.workspaceId);
   if (!payload || typeof payload !== "object") {
     return {
       ok: false,
@@ -266,6 +322,11 @@ function validateReportRepositoryPackage(payload) {
   if (payload.kind !== PACKAGE_KIND) errors.push("报告仓库包 kind 不匹配");
   if (Number(payload.version) !== VERSION) errors.push("报告仓库包版本不匹配");
   if (!payload.packageId) errors.push("缺少 packageId");
+  if (!payload.workspaceId) {
+    warnings.push(`缺少 workspaceId，mock 将按请求空间 ${workspaceId} 保存。`);
+  } else if (normalizeWorkspaceId(payload.workspaceId) !== workspaceId) {
+    warnings.push(`包 workspaceId 为 ${payload.workspaceId}，请求空间为 ${workspaceId}，mock 将按请求空间保存。`);
+  }
   if (!payload.exportedAt) errors.push("缺少 exportedAt");
   if (!payload.storageKey) errors.push("缺少 storageKey");
   if (!payload.summary || typeof payload.summary !== "object") errors.push("缺少 summary");
@@ -331,9 +392,11 @@ function validateVerificationList(value, reports, errors, warnings) {
 }
 
 function createReceipt(payload, validation, signatureOptions = {}) {
+  const workspaceId = normalizeWorkspaceId(signatureOptions.workspaceId || payload.workspaceId);
   const repositoryDigest = sha256StableJson({
     kind: payload.kind,
     version: payload.version,
+    workspaceId,
     storageKey: payload.storageKey,
     summary: payload.summary,
     reports: payload.reports,
@@ -344,8 +407,9 @@ function createReceipt(payload, validation, signatureOptions = {}) {
   const receipt = {
     receiptKind: RECEIPT_KIND,
     remoteVersion: REMOTE_VERSION,
-    packageId: `mock-report-repository-${repositoryDigest.slice(0, 12)}`,
+    packageId: `mock-report-repository-${workspaceId}-${repositoryDigest.slice(0, 12)}`,
     sourcePackageId: String(payload.packageId || ""),
+    workspaceId,
     repositoryDigest,
     acceptedAt,
     reportCount,
@@ -353,6 +417,7 @@ function createReceipt(payload, validation, signatureOptions = {}) {
     warnings: validation.warnings,
     receiptDigest: sha256StableJson({
       sourcePackageId: payload.packageId,
+      workspaceId,
       repositoryDigest,
       acceptedAt
     })

@@ -142,11 +142,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     reportRequests.push({
       method,
       authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
       body
     });
     if (method === "PUT") {
       remoteReportPackage = {
         ...body,
+        workspaceId: body.workspaceId,
         packageId: "e2e-report-package",
         acceptedAt: new Date().toISOString()
       };
@@ -155,6 +157,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         remoteVersion: "e2e-report-v1",
         packageId: remoteReportPackage.packageId,
         sourcePackageId: body.packageId,
+        workspaceId: body.workspaceId,
         repositoryDigest: "a".repeat(64),
         acceptedAt: remoteReportPackage.acceptedAt,
         reportCount: body.summary.total,
@@ -163,7 +166,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         receiptDigest: "b".repeat(64),
         signatureAlgorithm: "HMAC-SHA256",
         signingKeyId: "e2e-report-signing-key-v1",
-        signedFields: ["receiptKind", "packageId", "sourcePackageId", "repositoryDigest", "acceptedAt", "reportCount", "receiptDigest"],
+        signedFields: ["receiptKind", "packageId", "sourcePackageId", "workspaceId", "repositoryDigest", "acceptedAt", "reportCount", "receiptDigest"],
         signature: "c".repeat(64)
       };
       await route.fulfill({
@@ -626,8 +629,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.locator(".report-repository-remote summary").click();
   await page.locator("#reportRepositoryEndpointInput").fill(reportEndpoint);
   await page.locator("#reportRepositoryTokenInput").fill("report-token");
+  await page.locator("#reportRepositoryWorkspaceInput").fill("report-e2e");
   await page.locator("#reportRepositorySaveRemoteButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已配置");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("report-e2e");
 
   await page.locator("#reportRepositoryRemoteButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("E2E 可访问");
@@ -640,7 +645,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   const reportPutRequest = reportRequests.find((item) => item.method === "PUT");
   expect(reportPutRequest.authorization).toBe("Bearer report-token");
+  expect(reportPutRequest.workspaceId).toBe("report-e2e");
   expect(reportPutRequest.body.kind).toBe("mr-calligraphy-report-repository-v1");
+  expect(reportPutRequest.body.workspaceId).toBe("report-e2e");
+  expect(reportPutRequest.body.source.workspaceId).toBe("report-e2e");
   expect(reportPutRequest.body.summary.total).toBe(1);
   expect(reportPutRequest.body.reports[0].teacherReview.note).toContain("竖钩");
   expect(reportPutRequest.body.verifications).toHaveLength(1);
@@ -649,11 +657,14 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastRemoteDirection).toBe("push");
   expect(learningState.reportRepository.lastPackageId).toBe("e2e-report-package");
+  expect(learningState.reportRepository.workspaceId).toBe("report-e2e");
   expect(learningState.reportRepository.lastSignedReceipt.signatureAlgorithm).toBe("HMAC-SHA256");
   expect(learningState.reportRepository.lastSignedReceipt.signingKeyId).toBe("e2e-report-signing-key-v1");
+  expect(learningState.reportRepository.lastSignedReceipt.workspaceId).toBe("report-e2e");
   expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
   expect(learningState.reportRepository.signedReceipts).toHaveLength(1);
   expect(learningState.reportRepository.signedReceipts[0].direction).toBe("push");
+  expect(learningState.reportRepository.signedReceipts[0].workspaceId).toBe("report-e2e");
 
   const receiptAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportRepositoryReceiptExportButton").click();
@@ -662,11 +673,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const receiptAuditPath = await receiptAuditDownload.path();
   const receiptAuditHtml = fs.readFileSync(receiptAuditPath, "utf8");
   expect(receiptAuditHtml).toContain("MR 书法报告仓库签名回执审计");
+  expect(receiptAuditHtml).toContain("report-e2e");
   expect(receiptAuditHtml).toContain("c".repeat(64));
 
   await page.locator("#reportRepositoryPullButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已从远端 API 拉取 1 份报告");
-  expect(reportRequests.some((item) => item.method === "GET" && item.authorization === "Bearer report-token")).toBe(true);
+  expect(reportRequests.some((item) => item.method === "GET" && item.authorization === "Bearer report-token" && item.workspaceId === "report-e2e")).toBe(true);
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
 

@@ -2407,3 +2407,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案仓库空间隔离`
+
+## 70. 2026-06-12 报告仓库 Workspace 空间隔离
+
+本次把报告仓库从“同一个 endpoint 只有一个最近报告包”推进到“同一个 endpoint 下可按 Workspace 隔离”。这不是完整账号系统，但已经能让班级、账号或项目空间在报告同步、验真摘要和签名回执上形成第一层远端边界。
+
+完成内容：
+
+- 前台远端报告 API 配置新增 `Workspace` 输入，刷新后会从 `reportRepository.workspaceId` 恢复。
+- `MRAppState.configureReportRepositoryRemote()` 支持 `workspaceId` / `remoteWorkspaceId` / `accountId`，切换 endpoint 或 workspace 时清空当前回执和冲突审计视图，避免跨空间误读。
+- `getReportRepositoryPackage()` 输出顶层 `workspaceId` 和 `source.workspaceId`。
+- 远端 GET / PUT 请求统一携带 `X-MR-Workspace-Id` header，状态文案、签名回执列表和回执审计 HTML 显示当前 workspace。
+- `scripts/report-repository-mock-server.js` 支持按 workspace 分桶保存 package 和 receipts，回执签名 payload 也包含 workspace。
+- 数据层和 E2E 补充 Workspace header、包字段、签名回执 workspace、本机状态持久化、mock server 空间隔离和切回原空间读取。
+- `docs/report-repository-api-contract.md` 补充 Workspace header、包字段、回执字段、mock 隔离和生产边界。
+
+真实化说明：
+
+- 数据来源：前台用户配置的 endpoint/token/workspace、本机报告同步包、本机验真摘要和远端签名回执。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportRepository.workspaceId`、报告仓库包 `workspaceId`、最近签名回执 `workspaceId` 和 mock server `state.workspaces`。
+- 成功反馈：远端状态显示空间，回执列表显示 workspace，mock 服务能分别保存 `report-alpha` 和 `report-beta`，切回原空间能读取原 package。
+- 失败反馈：远端未配置、token 错误、HTTP 错误、非 JSON、PUT 422 或网络中断仍走现有错误状态，不伪造同步成功。
+- 刷新后复现方式：刷新前台后 Workspace 输入会恢复，后续检查/推送/拉取继续使用同一空间。
+
+仍待补：
+
+- 当前只是账号化 repository 前的空间隔离 adapter；真正登录态、角色权限、token 刷新、生产证书签名、服务端教师批注审计、长期归档和不可篡改审计仍未完成。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/report-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库空间隔离`

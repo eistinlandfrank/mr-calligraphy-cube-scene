@@ -31,7 +31,8 @@
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
-  const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
+  const REPORT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
+  const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，携带 Workspace 空间 ID 做服务端隔离第一版，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
   const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
   const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
@@ -1226,6 +1227,7 @@
     const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
       ? source.lastRemoteDirection
       : "";
+    const workspaceId = normalizeReportRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
     const lastConflictReports = Array.isArray(source.lastConflictReports)
       ? source.lastConflictReports.map(normalizeReportRepositoryConflict).filter(Boolean).slice(0, REPORT_REPOSITORY_MAX_CONFLICTS)
       : [];
@@ -1237,6 +1239,7 @@
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
       remoteToken: typeof source.remoteToken === "string" ? source.remoteToken.trim() : "",
+      workspaceId,
       lastExportedAt: normalizePlanDate(source.lastExportedAt),
       lastImportedAt: normalizePlanDate(source.lastImportedAt),
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
@@ -1253,6 +1256,15 @@
       signedReceipts: appendReportRepositorySignedReceipt({ signedReceipts }, lastSignedReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
+  }
+
+  function normalizeReportRepositoryWorkspaceId(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_.:-]/g, "")
+      .slice(0, 64);
+    return normalized || REPORT_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
   function normalizeReportRepositorySignedReceipts(source = {}) {
@@ -1295,6 +1307,7 @@
       remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
       packageId: String(record.packageId || "").trim().slice(0, 120),
       sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      workspaceId: normalizeReportRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId),
       direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
       endpoint: String(record.endpoint || "").trim().slice(0, 240),
       receivedAt: normalizePlanDate(record.receivedAt),
@@ -1319,6 +1332,7 @@
       ...receipt,
       direction: context.direction || receipt?.direction,
       endpoint: context.endpoint || receipt?.endpoint,
+      workspaceId: context.workspaceId || receipt?.workspaceId,
       receivedAt: context.receivedAt || receipt?.receivedAt,
       message: context.message || receipt?.message
     });
@@ -5306,7 +5320,7 @@
     const remoteConfigured = Boolean(repository.remoteEndpoint);
     let tone = "idle";
     let message = remoteConfigured
-      ? `远端报告 API 已配置：${repository.remoteEndpoint}。`
+      ? `远端报告 API 已配置：${repository.remoteEndpoint}，空间 ${repository.workspaceId}。`
       : reportCount
         ? `本机报告仓库有 ${reportCount} 份报告，可推送到远端 API adapter。`
         : "还没有可同步的学习报告。";
@@ -5349,6 +5363,7 @@
       ok: true,
       kind: REPORT_REPOSITORY_KIND,
       mode: repository.mode,
+      workspaceId: repository.workspaceId,
       remoteConfigured,
       remoteEndpoint: remoteConfigured ? repository.remoteEndpoint : "",
       hasRemoteToken: Boolean(repository.remoteToken),
@@ -5385,7 +5400,7 @@
     const signatureShort = normalized.signature.slice(0, 12);
     const digestShort = normalized.repositoryDigest.slice(0, 12);
     const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
-    return `已收到远端签名回执：${normalized.signatureAlgorithm} / ${normalized.signingKeyId}，签名 ${signatureShort}，仓库摘要 ${digestShort}${acceptedAt}。`;
+    return `已收到远端签名回执：${normalized.signatureAlgorithm} / ${normalized.signingKeyId}，空间 ${normalized.workspaceId}，签名 ${signatureShort}，仓库摘要 ${digestShort}${acceptedAt}。`;
   }
 
   function getReportRepositoryReceiptAudit() {
@@ -5395,11 +5410,12 @@
       ok: true,
       kind: "mr-calligraphy-report-repository-receipt-audit-v1",
       total: receipts.length,
+      workspaceId: repository.workspaceId,
       latestReceipt: receipts[0] || null,
       receipts: clone(receipts),
       boundary: REPORT_REPOSITORY_BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条报告仓库签名回执，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        ? `已保存 ${receipts.length} 条报告仓库签名回执，当前空间 ${repository.workspaceId}，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
         : "暂无报告仓库签名回执。"
     };
   }
@@ -5445,6 +5461,7 @@
           <dl>
             <dt>方向</dt><dd>${escapeHtml(formatReportRepositoryReceiptDirection(receipt.direction))}</dd>
             <dt>报告数量</dt><dd>${escapeHtml(receipt.reportCount || 0)}</dd>
+            <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || REPORT_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
             <dt>签名算法</dt><dd>${escapeHtml(receipt.signatureAlgorithm || "未知")}</dd>
             <dt>签名 Key</dt><dd>${escapeHtml(receipt.signingKeyId || "未知")}</dd>
             <dt>Signature</dt><dd>${escapeHtml(receipt.signature || "未知")}</dd>
@@ -5481,7 +5498,7 @@
 <body>
   <main>
     <h1>MR 书法报告仓库签名回执审计</h1>
-    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total} · 当前空间：${escapeHtml(audit.workspaceId || REPORT_REPOSITORY_DEFAULT_WORKSPACE)}<br>${escapeHtml(audit.boundary)}</p>
     ${rows}
   </main>
 </body>
@@ -5501,6 +5518,7 @@
     return {
       ok: true,
       mode: repository.mode,
+      workspaceId: repository.workspaceId,
       remoteEndpoint: repository.remoteEndpoint,
       remoteToken: repository.remoteToken,
       hasRemoteToken: Boolean(repository.remoteToken),
@@ -5509,6 +5527,8 @@
   }
 
   function getReportRepositoryPackage(options = {}) {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const workspaceId = repository.workspaceId;
     const selectedIds = Array.isArray(options.ids)
       ? new Set(options.ids.map(String).filter(Boolean))
       : null;
@@ -5535,10 +5555,12 @@
         kind: REPORT_REPOSITORY_KIND,
         version: VERSION,
         packageId,
+        workspaceId,
         exportedAt,
         storageKey: STORAGE_KEY,
         source: {
-          mode: getReportRepositoryStatus().mode,
+          mode: repository.mode,
+          workspaceId,
           boundary: REPORT_REPOSITORY_BOUNDARY
         },
         summary: getReportRepositorySummary(reports, verifications),
@@ -5749,10 +5771,12 @@
     const repository = normalizeReportRepository(state.reportRepository);
     const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
     const tokenInput = config.remoteToken ?? config.token;
+    const workspaceInput = config.workspaceId ?? config.remoteWorkspaceId ?? config.accountId ?? repository.workspaceId;
     const remoteEndpoint = String(endpointInput || "").trim();
     const remoteToken = tokenInput === undefined
       ? repository.remoteToken
       : String(tokenInput || "").trim();
+    const workspaceId = normalizeReportRepositoryWorkspaceId(workspaceInput);
 
     if (!remoteEndpoint) {
       state.reportRepository = normalizeReportRepository({
@@ -5760,18 +5784,21 @@
         mode: "local-json",
         remoteEndpoint: "",
         remoteToken: "",
+        workspaceId,
         lastCheckedAt: new Date().toISOString(),
         lastSignedReceipt: null,
         signedReceipts: [],
+        lastSkippedConflictCount: 0,
+        lastConflictReports: [],
         lastRemoteStatus: "",
         lastError: ""
       });
-      addEvent("report-repository-remote", "清除远端报告 API 配置");
+      addEvent("report-repository-remote", `清除远端报告 API 配置，保留空间 ${workspaceId}`);
       saveState();
       return {
         ok: true,
         status: getReportRepositoryStatus(),
-        message: "已清除远端报告 API 配置，当前回到本机报告仓库。"
+        message: `已清除远端报告 API 配置，当前回到本机报告仓库，空间 ${workspaceId}。`
       };
     }
 
@@ -5782,28 +5809,44 @@
       return { ok: false, status: getReportRepositoryStatus(), message };
     }
 
+    const sameRemoteSpace = validation.endpoint === repository.remoteEndpoint && workspaceId === repository.workspaceId;
     state.reportRepository = normalizeReportRepository({
       ...repository,
       mode: "remote-api",
       remoteEndpoint: validation.endpoint,
       remoteToken,
-      lastSignedReceipt: validation.endpoint === repository.remoteEndpoint ? repository.lastSignedReceipt : null,
-      signedReceipts: validation.endpoint === repository.remoteEndpoint ? repository.signedReceipts : [],
+      workspaceId,
+      lastSignedReceipt: sameRemoteSpace ? repository.lastSignedReceipt : null,
+      signedReceipts: sameRemoteSpace ? repository.signedReceipts : [],
+      lastSkippedConflictCount: sameRemoteSpace ? repository.lastSkippedConflictCount : 0,
+      lastConflictReports: sameRemoteSpace ? repository.lastConflictReports : [],
       lastCheckedAt: new Date().toISOString(),
-      lastRemoteStatus: "远端报告 API 已配置，尚未检查服务可用性。",
+      lastRemoteStatus: `远端报告 API 已配置，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
-    addEvent("report-repository-remote", `配置远端报告 API：${validation.endpoint}`);
+    addEvent("report-repository-remote", `配置远端报告 API：${validation.endpoint} / ${workspaceId}`);
     saveState();
     return {
       ok: true,
       status: getReportRepositoryStatus(),
-      message: "已保存远端报告 API 配置。请点击“检查远端”确认服务可用。"
+      message: `已保存远端报告 API 配置，空间 ${workspaceId}。请点击“检查远端”确认服务可用。`
     };
   }
 
   function buildReportRepositoryRequest(repository, options = {}) {
-    return buildPlanRepositoryRequest(repository, options);
+    const headers = {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {})
+    };
+    if (repository.remoteToken) {
+      headers.Authorization = `Bearer ${repository.remoteToken}`;
+    }
+    headers["X-MR-Workspace-Id"] = normalizeReportRepositoryWorkspaceId(repository.workspaceId);
+    return {
+      method: options.method || "GET",
+      headers,
+      ...(options.body ? { body: JSON.stringify(options.body) } : {})
+    };
   }
 
   async function parseRemoteReportRepositoryResponse(response) {
@@ -5903,6 +5946,7 @@
         ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
           direction: "check",
           endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -5911,6 +5955,7 @@
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
+        workspaceId: repository.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
         lastRemoteDirection: "check",
@@ -5918,17 +5963,17 @@
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
         lastSignedReceipt: signedReceipt,
         signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
-        lastRemoteStatus: parsed.message,
+        lastRemoteStatus: `${parsed.message} 空间：${repository.workspaceId}。`,
         lastError: ""
       });
-      addEvent("report-repository-remote-check", `检查远端报告 API：${reportCount} 份报告`);
+      addEvent("report-repository-remote-check", `检查远端报告 API：${repository.workspaceId} / ${reportCount} 份报告`);
       saveState();
       return {
         ok: true,
         status: getReportRepositoryStatus(),
         package: parsed.package || null,
         signedReceipt: signedReceipt ? clone(signedReceipt) : null,
-        message: `${parsed.message} ${REPORT_REPOSITORY_BOUNDARY}`
+        message: `${parsed.message} 空间 ${repository.workspaceId}。${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("检查", error);
@@ -5982,16 +6027,18 @@
         ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
           direction: "push",
           endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
         : null;
       const remoteStatus = signedReceipt
-        ? `已推送 ${reportCount} 份报告到远端 API，并收到签名回执 ${signedReceipt.signature.slice(0, 12)}。`
-        : `已推送 ${reportCount} 份报告到远端 API，远端未返回签名回执。`;
+        ? `已推送 ${reportCount} 份报告到远端 API，空间 ${repository.workspaceId}，并收到签名回执 ${signedReceipt.signature.slice(0, 12)}。`
+        : `已推送 ${reportCount} 份报告到远端 API，空间 ${repository.workspaceId}，远端未返回签名回执。`;
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
+        workspaceId: repository.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
         lastRemoteDirection: "push",
@@ -6006,7 +6053,7 @@
         lastRemoteStatus: remoteStatus,
         lastError: ""
       });
-      addEvent("report-repository-remote-push", `推送报告到远端 API：${reportCount} 份报告`);
+      addEvent("report-repository-remote-push", `推送报告到远端 API：${repository.workspaceId} / ${reportCount} 份报告`);
       saveState();
       return {
         ok: true,
@@ -6057,6 +6104,7 @@
         ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
           direction: "pull",
           endpoint: repository.remoteEndpoint,
+          workspaceId: repository.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -6067,6 +6115,7 @@
         mode: "remote-api",
         remoteEndpoint: repository.remoteEndpoint,
         remoteToken: repository.remoteToken,
+        workspaceId: repository.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
         lastRemoteDirection: "pull",
@@ -6077,12 +6126,12 @@
         lastSignedReceipt: signedReceipt,
         signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastSkippedConflictCount: imported.skippedConflictCount || 0,
-        lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
+        lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，空间 ${repository.workspaceId}，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
         lastError: imported.skippedConflictCount
           ? `有 ${imported.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
           : ""
       });
-      addEvent("report-repository-remote-pull", `从远端 API 拉取报告：${parsed.package.reports.length} 份报告`);
+      addEvent("report-repository-remote-pull", `从远端 API 拉取报告：${repository.workspaceId} / ${parsed.package.reports.length} 份报告`);
       saveState();
       return {
         ok: true,
@@ -6092,8 +6141,8 @@
         pulledReportCount: parsed.package.reports.length,
         signedReceipt: signedReceipt ? clone(signedReceipt) : null,
         message: imported.skippedConflictCount
-          ? `已从远端 API 拉取报告：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
-          : `已从远端 API 拉取报告：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
+          ? `已从远端 API 拉取报告，空间 ${repository.workspaceId}：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
+          : `已从远端 API 拉取报告，空间 ${repository.workspaceId}：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("拉取", error);
