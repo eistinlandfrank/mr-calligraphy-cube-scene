@@ -383,7 +383,7 @@ node scripts/control-inventory.js
 
 已知限制：
 
-- 差异报告是导入前审阅产物；恢复动作完成后的本机审计历史由后续“项目档案恢复审计”功能记录，多人协作审计仍待补充。
+- 差异报告是导入前审阅产物；恢复动作完成后会写入本机“项目档案恢复审计”，多人协作审计仍待补充。
 - 当前报告复用本机预览结果，不会连接远端项目仓库或资产服务。
 
 提交：
@@ -1992,3 +1992,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增报告教师批注审计`
+
+### 2026-06-12：新增项目档案恢复审计摘要
+
+完成内容：
+
+- 项目档案恢复审计新增 `sha256-stable-json` 摘要算法标记。
+- 每条恢复审计记录新增 `archiveDigest`、`selectionDigest` 和 `recordDigest`。
+- `archiveDigest` 对本次选中的档案内容生成摘要，`selectionDigest` 对恢复范围生成摘要，`recordDigest` 对整条审计记录生成摘要。
+- 主后台“恢复审计”列表会显示审计摘要短码。
+- `mr-calligraphy-archive-audit-*.html` 导出新增三类摘要和原始审计 JSON。
+- Node 验收环境新增 SHA-256 后备实现，保证本机脚本也能验证同一套摘要逻辑。
+- Playwright 在远端项目仓库拉取预览后真实点击“恢复所选”，刷新后检查恢复审计列表并下载 HTML 审计报告。
+
+真实化说明：
+
+- 数据来源：当前浏览器中真实恢复成功的项目档案、用户选择的恢复范围和恢复后的本机审计记录。
+- 写入状态：`mr-calligraphy-project-archive-audit-v1.records[*].archiveDigest / selectionDigest / recordDigest`。
+- 成功反馈：后台恢复审计列表显示摘要短码，导出 HTML 包含完整摘要。
+- 失败反馈：恢复失败或模型哈希校验失败时不会写入成功审计。
+- 刷新后复现方式：审计记录保存在本机 localStorage，刷新主后台后仍可查看和导出。
+
+仍待补：
+
+- 当前仍是本机浏览器审计，不是多人协作级服务端审计、账号权限审计或不可篡改日志。
+
+验收：
+
+- `node --check project-archive.js && node --check scripts/archive-migration-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/archive-migration-check.js`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目档案恢复审计摘要`

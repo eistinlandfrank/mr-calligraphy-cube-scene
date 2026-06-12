@@ -309,15 +309,32 @@ async function main() {
       auditLog.records[0].storageFieldCount === 1,
     "项目档案恢复审计应记录恢复的 storage key 和字段级选择数量。"
   );
+  assert(
+    auditLog.records[0].digestAlgorithm === "sha256-stable-json",
+    "项目档案恢复审计应记录摘要算法。"
+  );
+  assert(
+    /^[a-f0-9]{64}$/.test(auditLog.records[0].archiveDigest),
+    "项目档案恢复审计应记录所选档案内容摘要。"
+  );
+  assert(
+    /^[a-f0-9]{64}$/.test(auditLog.records[0].selectionDigest),
+    "项目档案恢复审计应记录恢复选择摘要。"
+  );
+  assert(
+    /^[a-f0-9]{64}$/.test(auditLog.records[0].recordDigest),
+    "项目档案恢复审计应记录审计记录摘要。"
+  );
   const auditExport = window.MRProjectArchive.getRestoreAuditExport({
     exportedAt: "2026-06-11T11:00:00.000Z"
   });
   assert(auditExport.ok, "项目档案恢复审计应能导出 HTML。");
   assert(
-    auditExport.html.includes("项目档案恢复审计") &&
+      auditExport.html.includes("项目档案恢复审计") &&
       auditExport.html.includes("mr-calligraphy-project-archive-audit-v1") &&
-      auditExport.html.includes("mr-calligraphy-learning-state-v1"),
-    "项目档案恢复审计导出应包含标题、本机审计 key 和恢复范围。"
+      auditExport.html.includes("mr-calligraphy-learning-state-v1") &&
+      auditExport.html.includes(auditLog.records[0].recordDigest),
+    "项目档案恢复审计导出应包含标题、本机审计 key、恢复范围和审计摘要。"
   );
   writtenStorageKeys.length = 0;
 

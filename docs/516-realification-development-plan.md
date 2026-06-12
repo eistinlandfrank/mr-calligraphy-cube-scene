@@ -5077,7 +5077,7 @@
 
 已知限制：
 
-- 该报告是导入前影响审阅；恢复后的本机审计历史由后续“项目档案恢复审计”功能记录，多人协作级审计仍待补充。
+- 该报告是导入前影响审阅；恢复后的本机审计历史已由“项目档案恢复审计”记录，多人协作级审计仍待补充。
 - 差异报告不连接远端项目仓库，也不拉取远端资产签名。
 
 提交：
@@ -6832,3 +6832,55 @@
 提交：
 
 - 中文 commit message：`新增报告教师批注审计`
+
+### 2026-06-12：新增项目档案恢复审计摘要
+
+功能名：主后台项目档案恢复审计可校验摘要。
+
+涉及文件：
+
+- `project-archive.js`
+- `scripts/archive-migration-check.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- 恢复审计记录新增 `digestAlgorithm: sha256-stable-json`。
+- 每条恢复记录新增所选档案内容摘要 `archiveDigest`。
+- 每条恢复记录新增恢复范围摘要 `selectionDigest`。
+- 每条恢复记录新增整条审计记录摘要 `recordDigest`。
+- 后台“恢复审计”列表显示审计摘要短码。
+- 恢复审计 HTML 导出显示三类摘要和原始审计 JSON。
+- Playwright 会真实从远端项目仓库拉取旧版本、点击“恢复所选”、刷新后检查审计摘要并下载审计 HTML。
+
+真实化说明：
+
+- 数据来源：真实项目档案恢复动作、恢复选项和恢复成功后的本机审计记录。
+- 写入状态：`mr-calligraphy-project-archive-audit-v1.records[*]`。
+- 成功反馈：恢复后后台审计列表出现摘要短码，导出文件包含完整摘要。
+- 失败反馈：恢复失败、档案校验失败或模型哈希失败不会写成功审计。
+- 刷新后复现方式：审计记录保存在本机 localStorage。
+
+已知限制：
+
+- 当前是本机审计摘要，不是服务端不可篡改审计、账号权限审计或多人协作审计链。
+
+验收方式：
+
+- 脚本验收：`node scripts/archive-migration-check.js`。
+- 浏览器验收：`npm run test:e2e -- --grep "main admin publishes"`。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check scripts/archive-migration-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+
+提交：
+
+- 中文 commit message：`新增项目档案恢复审计摘要`

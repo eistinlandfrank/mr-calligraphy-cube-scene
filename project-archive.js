@@ -2,6 +2,7 @@
   const ARCHIVE_KIND = "mr-calligraphy-project-archive";
   const ARCHIVE_VERSION = 1;
   const RESTORE_AUDIT_KEY = "mr-calligraphy-project-archive-audit-v1";
+  const RESTORE_AUDIT_DIGEST_ALGORITHM = "sha256-stable-json";
   const MAX_RESTORE_AUDIT_RECORDS = 50;
   const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
@@ -893,7 +894,7 @@
       }
     }
 
-    const auditRecord = appendRestoreAuditRecord(migratedArchive, restoreOptions, hashValidation);
+    const auditRecord = await appendRestoreAuditRecord(migratedArchive, restoreOptions, hashValidation);
     if (auditRecord) {
       migratedArchive.restoreAuditRecord = auditRecord;
     }
@@ -2246,11 +2247,27 @@
 
     const cryptoApi = window.crypto || globalThis.crypto;
     if (!cryptoApi?.subtle?.digest) {
+      const nodeDigest = createNodeSha256(arrayBuffer);
+      if (nodeDigest) {
+        return nodeDigest;
+      }
       throw new Error("当前浏览器不支持 SHA-256 哈希校验，无法安全处理项目档案模型文件。");
     }
 
     const digest = await cryptoApi.subtle.digest("SHA-256", arrayBuffer);
     return arrayBufferToHex(digest);
+  }
+
+  function createNodeSha256(arrayBuffer) {
+    try {
+      if (typeof require !== "function" || typeof Buffer === "undefined") {
+        return "";
+      }
+      const nodeCrypto = require("node:crypto");
+      return nodeCrypto.createHash("sha256").update(Buffer.from(arrayBuffer)).digest("hex");
+    } catch (error) {
+      return "";
+    }
   }
 
   function normalizeArrayBuffer(value) {
@@ -2522,10 +2539,10 @@
     };
   }
 
-  function appendRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
+  async function appendRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
     try {
       const audit = readRestoreAuditState();
-      const record = createRestoreAuditRecord(archive, restoreOptions, hashValidation);
+      const record = await createRestoreAuditRecord(archive, restoreOptions, hashValidation);
       audit.records = [record, ...audit.records]
         .slice(0, MAX_RESTORE_AUDIT_RECORDS);
       window.localStorage.setItem(RESTORE_AUDIT_KEY, JSON.stringify({
@@ -2539,7 +2556,7 @@
     }
   }
 
-  function createRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
+  async function createRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
     const createdAt = new Date().toISOString();
     const normalizedOptions = normalizeRestoreOptions(restoreOptions, archive);
     const storageFieldCount = Object.values(normalizedOptions.storageFields)
@@ -2547,7 +2564,7 @@
     const dbModelCount = Object.values(normalizedOptions.dbRecords)
       .reduce((sum, models) => sum + models.length, 0);
     const summary = summarizeArchive(archive, "项目档案恢复审计", normalizedOptions);
-    return {
+    const record = {
       id: `archive-restore-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`,
       type: "project-archive-restore",
       createdAt,
@@ -2564,7 +2581,66 @@
       migrationCount: Array.isArray(archive.migrations) ? archive.migrations.length : 0,
       storageFieldCount,
       dbModelCount,
+      digestAlgorithm: RESTORE_AUDIT_DIGEST_ALGORITHM,
+      archiveDigest: await createStableJsonSha256(createRestoreAuditArchiveDigestPayload(archive, normalizedOptions)),
+      selectionDigest: await createStableJsonSha256({
+        storageKeys: normalizedOptions.storageKeys,
+        dbIds: normalizedOptions.dbIds,
+        storageFields: normalizedOptions.storageFields,
+        dbRecords: normalizedOptions.dbRecords
+      }),
       message: summary.message
+    };
+    record.recordDigest = await createStableJsonSha256(record);
+    record.id = `archive-restore-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}-${record.recordDigest.slice(0, 8)}`;
+    return record;
+  }
+
+  function createRestoreAuditArchiveDigestPayload(archive, normalizedOptions) {
+    const selectedStorage = normalizedOptions.storageKeys.map((key) => {
+      const item = archive.storage?.[key] || {};
+      return {
+        key,
+        label: item.label || "",
+        value: item.value ?? null,
+        bytes: Number(item.bytes || 0),
+        migratedMissing: item.migratedMissing === true,
+        selectedFields: normalizedOptions.storageFields[key] || []
+      };
+    });
+    const selectedDb = DB_ITEMS
+      .filter((item) => normalizedOptions.dbIds.includes(item.id))
+      .map((item) => {
+        const records = Array.isArray(archive.indexedDb?.[item.id]?.records)
+          ? filterArchiveDbRecordsBySelection(item, archive.indexedDb[item.id].records, normalizedOptions.dbRecords[item.id])
+          : [];
+        return {
+          id: item.id,
+          label: item.label,
+          records: records.map((record, index) => summarizeRestoreAuditDbRecord(item, record, index))
+        };
+      });
+    return {
+      kind: archive.kind || "",
+      version: Number(archive.version || 0),
+      exportedAt: archive.exportedAt || "",
+      source: archive.source || "",
+      storage: selectedStorage,
+      indexedDb: selectedDb,
+      migrations: normalizeMigrationRecords(archive.migrations || [])
+    };
+  }
+
+  function summarizeRestoreAuditDbRecord(item, record, index) {
+    const model = normalizeDbModelRecord(item, record, index, true);
+    return {
+      key: model.key,
+      label: model.label,
+      fileName: model.fileName,
+      type: model.type,
+      bytes: model.bytes,
+      sha256: model.sha256,
+      metrics: model.metrics
     };
   }
 
@@ -2620,6 +2696,10 @@
       migrationCount: Number(record.migrationCount || 0),
       storageFieldCount: Number(record.storageFieldCount || 0),
       dbModelCount: Number(record.dbModelCount || 0),
+      digestAlgorithm: String(record.digestAlgorithm || "").slice(0, 40),
+      archiveDigest: normalizeSha256(record.archiveDigest),
+      selectionDigest: normalizeSha256(record.selectionDigest),
+      recordDigest: normalizeSha256(record.recordDigest),
       message: String(record.message || "")
     };
   }
@@ -2666,7 +2746,12 @@
           <li>恢复模型库：${escapeHtml(record.dbIds.join("、") || "无")}</li>
           <li>字段级选择：${escapeHtml(record.storageFieldCount)}；模型级选择：${escapeHtml(record.dbModelCount)}</li>
           <li>模型哈希：${escapeHtml(record.modelHashCount)}；缺哈希：${escapeHtml(record.missingHashCount)}；迁移记录：${escapeHtml(record.migrationCount)}</li>
+          <li>摘要算法：${escapeHtml(record.digestAlgorithm || "旧记录未生成")}</li>
+          <li>档案摘要：${escapeHtml(record.archiveDigest || "旧记录未生成")}</li>
+          <li>选择摘要：${escapeHtml(record.selectionDigest || "旧记录未生成")}</li>
+          <li>审计摘要：${escapeHtml(record.recordDigest || "旧记录未生成")}</li>
         </ul>
+        <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
       </article>`).join("")
       : `<article class="card"><p class="muted">暂无项目档案恢复审计记录。</p></article>`;
 
@@ -2691,6 +2776,7 @@
     .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
     .item-head span { color: var(--jade); font-weight: 800; }
     ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted); }
+    pre { margin: 4px 0 0; padding: 10px; overflow: auto; border-radius: 6px; background: #17221f; color: #f7fbf8; font-size: 11px; line-height: 1.45; }
     footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card { break-inside: avoid; } }
   </style>
@@ -3270,7 +3356,8 @@
         const detail = document.createElement("span");
         detail.textContent = `${record.storageCount} 组配置 / ${record.modelCount} 个模型 / ${record.modelHashCount} 个哈希`;
         const source = document.createElement("span");
-        source.textContent = record.archiveSource || "本机项目档案";
+        const digestText = record.recordDigest ? ` / 审计 ${record.recordDigest.slice(0, 12)}` : " / 旧记录未生成摘要";
+        source.textContent = `${record.archiveSource || "本机项目档案"}${digestText}`;
         item.append(title, detail, source);
         auditList.appendChild(item);
       });

@@ -1538,6 +1538,24 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(pulledProjectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
   expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.packageId === firstRemoteProjectVersion.packageId)).toBe(true);
 
+  const restoredNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
+  await page.locator("#projectImportConfirm").click();
+  await restoredNavigation;
+  await expect(page.locator("#projectAuditStatus")).toContainText("恢复记录");
+  await expect(page.locator("#projectAuditList")).toContainText("审计");
+  const restoreAuditLog = await page.evaluate(() => window.MRProjectArchive.getRestoreAuditLog());
+  expect(restoreAuditLog.records[0].recordDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(restoreAuditLog.records[0].archiveDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(restoreAuditLog.records[0].selectionDigest).toMatch(/^[a-f0-9]{64}$/);
+  const restoreAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectAuditExport").click();
+  const restoreAuditDownload = await restoreAuditDownloadPromise;
+  expect(restoreAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-archive-audit-.*\.html$/);
+  const restoreAuditPath = await restoreAuditDownload.path();
+  const restoreAuditHtml = fs.readFileSync(restoreAuditPath, "utf8");
+  expect(restoreAuditHtml).toContain("MR 书法项目档案恢复审计");
+  expect(restoreAuditHtml).toContain(restoreAuditLog.records[0].recordDigest);
+
   await page.locator(".main-publish-panel .remote-publish-panel summary").click();
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();
   await page.locator("#mainRemotePublishEndpoint").fill(remoteEndpoint);

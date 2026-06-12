@@ -281,12 +281,13 @@ npm run test:e2e
 - 追加项目仓库回执审计记录：远端项目仓库 API 返回的 `receipt/latestReceipt` 会写入 `mr-calligraphy-project-repository-remote-v1.receipts`，主后台远端项目仓库面板可查看回执摘要并导出 HTML 审计页；E2E 已验证 packageId、sourcePackageId、receiptDigest、方向和下载文件内容。
 - 追加项目仓库远端失败反馈记录：主后台项目仓库远端 adapter 会拒绝非 JSON 响应，HTTP 错误、无项目包和网络中断会写入 `lastError`；E2E 已验证 401、非 JSON、无项目包、PUT 422、网络中断和失败后本机布局保留。
 - 追加报告教师批注审计记录：保存和清除教师批注会写入 `mr-calligraphy-learning-state-v1.reportTeacherReviewAudits`，前台报告详情可查看最近审计并导出 HTML；数据层和 E2E 已验证 `save/clear`、SHA-256 摘要、预览、下载文件和刷新持久化。
+- 追加项目档案恢复审计摘要记录：恢复成功后会写入 `archiveDigest`、`selectionDigest` 和 `recordDigest`，主后台恢复审计列表显示摘要短码，HTML 导出包含完整摘要和原始 JSON；数据层和 E2E 已验证真实恢复、刷新持久化和下载文件。
 
 已知限制：
 
-- 当前新增的是本机教师批注审计链，不是账号化教师端、电子签章、服务端不可篡改日志或跨设备班级批改后台。
+- 当前新增的是本机项目档案恢复审计摘要，不是服务端不可篡改日志、账号权限审计或多人协作审计链。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `新增报告教师批注审计`
+- `新增项目档案恢复审计摘要`

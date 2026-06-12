@@ -1359,3 +1359,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告教师批注审计`
+
+## 43. 2026-06-12 新增项目档案恢复审计摘要
+
+本次把主后台项目档案恢复审计从“有恢复记录”推进为“有可校验摘要的恢复记录”。
+
+完成内容：
+
+- `MRProjectArchive.restoreProjectArchive()` 恢复成功后写入带摘要的审计记录。
+- `archiveDigest` 记录本次选中的档案内容摘要。
+- `selectionDigest` 记录用户恢复范围摘要。
+- `recordDigest` 记录整条审计记录摘要。
+- 主后台恢复审计列表显示 `recordDigest` 短码。
+- 恢复审计 HTML 导出包含摘要、原始审计 JSON 和本机审计 key。
+- E2E 会真实点击项目恢复，并验证刷新后的审计列表和下载文件。
+
+真实化说明：
+
+- 数据来源：本机项目档案、恢复范围和恢复成功后的审计记录。
+- 写入状态：`mr-calligraphy-project-archive-audit-v1`。
+- 成功反馈：后台审计列表与 HTML 导出都能看到摘要。
+- 失败反馈：恢复失败不会生成成功审计记录。
+- 刷新后复现方式：审计记录保存在本机 localStorage。
+
+仍待补：
+
+- 当前不是服务端不可篡改审计、账号权限审计或多人协作审计链。
+
+验收：
+
+- `node scripts/archive-migration-check.js`
+- `npm run test:e2e -- --grep "main admin publishes"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目档案恢复审计摘要`
