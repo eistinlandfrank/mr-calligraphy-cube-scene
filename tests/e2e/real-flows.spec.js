@@ -1911,6 +1911,9 @@ test("main admin updates imported model material and publishes it", async ({ pag
   await page.locator("#mainImportModelMaterialUpdate").click();
   await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已更新：${importLabel}`);
   await expect(page.locator("#mainPublishDiffList")).toContainText(importLabel);
+  await expect(page.locator("#mainPublishDiffList")).toContainText("透明度 0.55");
+  await expect(page.locator("#mainPublishDiffList")).toContainText("粗糙度 0.35");
+  await expect(page.locator("#mainPublishDiffList")).toContainText("金属度 0.70");
 
   const layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
   const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
@@ -1931,6 +1934,10 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(publishedImportedRecord.roughness).toBeCloseTo(0.35, 2);
   expect(publishedImportedRecord.metalness).toBeCloseTo(0.7, 2);
   expect(published.stats.importedCount).toBeGreaterThan(0);
+
+  await setRangeValue(page, "#mainImportModelRoughness", "0.82");
+  await page.locator("#mainImportModelMaterialUpdate").click();
+  await expect(page.locator("#mainPublishDiffList")).toContainText("粗糙度 0.35 → 0.82");
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
@@ -2279,6 +2286,9 @@ test("realistic admin updates imported model material and publishes it", async (
   await page.locator("#realisticImportModelMaterialUpdate").click();
   await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已更新：books");
   await expect(page.locator("#realisticPublishDiffList")).toContainText("books");
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("透明度 0.60");
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("粗糙度 0.40");
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("金属度 0.65");
 
   let layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
   const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
@@ -2299,6 +2309,10 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(publishedImportedRecord.roughness).toBeCloseTo(0.4, 2);
   expect(publishedImportedRecord.metalness).toBeCloseTo(0.65, 2);
   expect(published.stats.importedCount).toBeGreaterThan(0);
+
+  await setRangeValue(page, "#realisticImportModelMetalness", "0.25");
+  await page.locator("#realisticImportModelMaterialUpdate").click();
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("金属度 0.65 → 0.25");
 
   await page.goto("/realistic-demo.html", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.MR_REALISTIC_SCENE_SOURCE === "published");

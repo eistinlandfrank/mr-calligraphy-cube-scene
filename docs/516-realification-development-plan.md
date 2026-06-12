@@ -7487,3 +7487,40 @@
 提交：
 
 - 中文 commit message：`真实化导入模型PBR参数编辑`
+
+### 2026-06-12：真实化导入模型发布差异明细
+
+功能名：导入模型发布差异明细。
+
+完成内容：
+
+- `main-admin-scene.js` 的发布差异结构保留 diff value，支持生成导入模型字段级摘要。
+- 主后台新增导入模型时，发布差异列表显示文件、SHA、颜色、透明度、粗糙度、金属度和位置/缩放。
+- 主后台修改导入模型时，发布差异列表显示旧值到新值。
+- 写实后台发布差异同步支持导入模型字段级摘要。
+- 删除导入模型时，发布差异会标注“将从发布版本移除”。
+- E2E 覆盖新增导入模型材质差异和发布后草稿再次修改差异。
+
+真实化说明：
+
+- 数据来源：本机草稿 layout、已发布 layout 和归一化导入模型记录。
+- 写入状态：不新增字段，差异明细实时计算。
+- 成功反馈：发布差异列表可读出具体字段变化。
+- 失败反馈：无差异时仍显示一致状态。
+- 刷新后复现方式：刷新后台后仍由本机草稿和发布快照重新计算。
+
+仍待补：
+
+- 当前完成导入模型发布差异明细；贴图替换、服务端资产签名、账号权限审计和多人协作三方合并还未完成。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型发布差异明细`

@@ -1637,7 +1637,7 @@ function createMainPublishDiff(draftLayout, publishedLayout) {
       return;
     }
     if (draftItem.signature !== publishedItem.signature) {
-      changed.push(draftItem);
+      changed.push(createDiffChangeItem(draftItem, publishedItem));
     }
   });
 
@@ -1696,12 +1696,150 @@ function createDiffItem(kind, id, label, value) {
     kind,
     id,
     label,
+    value,
     signature: stableStringify(value)
   };
 }
 
+function createDiffChangeItem(draftItem, publishedItem) {
+  return {
+    ...draftItem,
+    previousValue: publishedItem.value,
+    detail: describeDiffChange(draftItem, publishedItem)
+  };
+}
+
 function formatDiffItems(action, items) {
-  return items.map((item) => `${action}：${item.kind} · ${item.label}`);
+  return items.map((item) => {
+    const detail = item.detail || describeDiffSnapshot(action, item);
+    return detail
+      ? `${action}：${item.kind} · ${item.label}（${detail}）`
+      : `${action}：${item.kind} · ${item.label}`;
+  });
+}
+
+function describeDiffChange(draftItem, publishedItem) {
+  if (draftItem.kind === "导入模型") {
+    return describeImportedModelChange(publishedItem.value, draftItem.value);
+  }
+  return "";
+}
+
+function describeDiffSnapshot(action, item) {
+  if (item.kind !== "导入模型") {
+    return "";
+  }
+  return describeImportedModelSnapshot(item.value, action === "删除");
+}
+
+function describeImportedModelSnapshot(value, isRemoved = false) {
+  const record = value?.item || {};
+  const state = value?.state || {};
+  const parts = [
+    record.fileName ? `文件 ${record.fileName}` : "",
+    record.sha256 ? `SHA ${shortDiffHash(record.sha256)}` : "",
+    record.color ? `颜色 ${record.color}` : "",
+    `透明度 ${formatDiffNumber(normalizeImportOpacity(record.opacity), 2)}`,
+    `粗糙度 ${formatDiffNumber(normalizeImportRoughness(record.roughness), 2)}`,
+    `金属度 ${formatDiffNumber(normalizeImportMetalness(record.metalness), 2)}`,
+    formatImportedStateSnapshot(state)
+  ].filter(Boolean);
+
+  if (isRemoved) {
+    parts.unshift("将从发布版本移除");
+  }
+  return parts.slice(0, 7).join("；");
+}
+
+function describeImportedModelChange(previousValue, nextValue) {
+  const previous = previousValue?.item || {};
+  const next = nextValue?.item || {};
+  const previousState = previousValue?.state || {};
+  const nextState = nextValue?.state || {};
+  const changes = [];
+
+  appendTextDiff(changes, "名称", previous.label, next.label);
+  appendTextDiff(changes, "文件", previous.fileName, next.fileName);
+  if (normalizeSha256(previous.sha256) !== normalizeSha256(next.sha256)) {
+    changes.push(`SHA ${shortDiffHash(previous.sha256)} → ${shortDiffHash(next.sha256)}`);
+  }
+  appendTextDiff(changes, "颜色", previous.color, next.color);
+  appendNumberDiff(changes, "透明度", normalizeImportOpacity(previous.opacity), normalizeImportOpacity(next.opacity), 2);
+  appendNumberDiff(changes, "粗糙度", normalizeImportRoughness(previous.roughness), normalizeImportRoughness(next.roughness), 2);
+  appendNumberDiff(changes, "金属度", normalizeImportMetalness(previous.metalness), normalizeImportMetalness(next.metalness), 2);
+  appendStateDiffs(changes, previousState, nextState);
+
+  return changes.slice(0, 7).join("；");
+}
+
+function appendTextDiff(changes, label, previous, next) {
+  const before = String(previous || "");
+  const after = String(next || "");
+  if (before !== after) {
+    changes.push(`${label} ${before || "空"} → ${after || "空"}`);
+  }
+}
+
+function appendNumberDiff(changes, label, previous, next, digits = 2) {
+  const before = Number(previous);
+  const after = Number(next);
+  if (!Number.isFinite(before) || !Number.isFinite(after) || Math.abs(before - after) < 10 ** -digits) {
+    return;
+  }
+  changes.push(`${label} ${formatDiffNumber(before, digits)} → ${formatDiffNumber(after, digits)}`);
+}
+
+function appendStateDiffs(changes, previousState, nextState) {
+  [
+    ["X", "x", 2],
+    ["Y", "y", 2],
+    ["Z", "z", 2],
+    ["旋转X", "rx", 1],
+    ["旋转Y", "ry", 1],
+    ["旋转Z", "rz", 1],
+    ["缩放", "scale", 2]
+  ].forEach(([label, key, digits]) => {
+    if (previousState[key] === undefined && nextState[key] === undefined) {
+      return;
+    }
+    appendNumberDiff(changes, label, readNumber(previousState[key], 0), readNumber(nextState[key], 0), digits);
+  });
+  [
+    ["隐藏", "hidden"],
+    ["锁定", "locked"],
+    ["删除", "deleted"]
+  ].forEach(([label, key]) => appendBooleanDiff(changes, label, previousState[key], nextState[key]));
+}
+
+function appendBooleanDiff(changes, label, previous, next) {
+  const before = previous === true;
+  const after = next === true;
+  if (before !== after) {
+    changes.push(`${label} ${before ? "是" : "否"} → ${after ? "是" : "否"}`);
+  }
+}
+
+function formatImportedStateSnapshot(state = {}) {
+  const hasPosition = state.x !== undefined || state.y !== undefined || state.z !== undefined;
+  const hasScale = state.scale !== undefined;
+  const parts = [];
+
+  if (hasPosition) {
+    parts.push(`位置 ${formatDiffNumber(readNumber(state.x, 0), 2)},${formatDiffNumber(readNumber(state.y, 0), 2)},${formatDiffNumber(readNumber(state.z, 0), 2)}`);
+  }
+  if (hasScale) {
+    parts.push(`缩放 ${formatDiffNumber(readNumber(state.scale, 1), 2)}`);
+  }
+  return parts.join("；");
+}
+
+function formatDiffNumber(value, digits = 2) {
+  return Number(value || 0).toFixed(digits);
+}
+
+function shortDiffHash(value) {
+  const hash = normalizeSha256(value);
+  return hash ? hash.slice(0, 12) : "无";
 }
 
 function stableStringify(value) {
