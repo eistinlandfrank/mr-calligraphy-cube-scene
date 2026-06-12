@@ -3917,3 +3917,38 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告评分证据摘要`
+
+### 2026-06-12：新增复盘路径热力可视化
+
+完成内容：
+
+- 作品复盘面板新增 `reviewEvidenceMap` 路径误差热力区。
+- `script.js` 从最近作品或练习的 `scoreEvidence.evidence.pathErrorHotspots` 渲染 4×4 热力格。
+- 热力格显示每个高误差区域的误差百分比、区域标签、采样点和最高误差摘要。
+- 复盘区同时显示路径贴合率、路径误差率和热力采样数，和评分服务摘要使用同一份证据。
+- 没有真实路径热力时显示空状态，不绘制假热力图。
+- Playwright 前台真实流程新增断言，确认保存作品后复盘区出现“路径误差热力”“路径贴合”和“最高误差”。
+
+真实化说明：
+
+- 数据来源：真实书写保存时产生的 `pathErrorHotspots` 和 `strokePathErrors`。
+- 写入状态：不新增存储字段，直接消费 `mr-calligraphy-learning-state-v1.sessions[*].scoreEvidence.evidence`。
+- 成功反馈：保存作品后，复盘面板出现 4×4 路径热力格，可看到误差集中区域。
+- 失败反馈：没有路径热力证据时只显示空状态，不显示静态假图。
+- 刷新后复现方式：保存作品后刷新，复盘面板继续读取持久化评分证据并重建热力格。
+
+仍待补：
+
+- 当前热力图是 4×4 区域摘要，不是逐像素笔锋压力热图、范字轮廓叠加或专业模型诊断。
+
+验收：
+
+- `node --input-type=module --check < script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘路径热力可视化`

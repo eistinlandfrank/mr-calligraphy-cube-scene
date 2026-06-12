@@ -829,6 +829,7 @@ const els = {
   reviewScore: document.getElementById("reviewScore"),
   reviewStrokeCount: document.getElementById("reviewStrokeCount"),
   reviewPointCount: document.getElementById("reviewPointCount"),
+  reviewEvidenceMap: document.getElementById("reviewEvidenceMap"),
   reviewFeedback: document.getElementById("reviewFeedback"),
   reviewReplay: document.getElementById("reviewReplay"),
   reviewDownloadVideo: document.getElementById("reviewDownloadVideo"),
@@ -4867,6 +4868,7 @@ function renderReviewPanel(sceneIndex = currentIndex) {
       ? "该作品没有截图，可回放已保存的笔迹。"
       : "保存作品后会在这里显示截图、评分和笔迹反馈。";
   }
+  renderReviewEvidenceMap(scoreEvidence);
 
   els.reviewFeedback.innerHTML = "";
   const reviewItems = feedback.length ? [...feedback] : ["完成一次书写并保存作品后，会显示针对笔迹的复盘建议。"];
@@ -4890,6 +4892,74 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   if (els.reviewDownloadShare) els.reviewDownloadShare.disabled = !artwork;
   renderVideoExportPanel(artwork, session);
   renderShareServicePanel(artwork);
+}
+
+function renderReviewEvidenceMap(scoreEvidence) {
+  if (!els.reviewEvidenceMap) return;
+  els.reviewEvidenceMap.innerHTML = "";
+  const evidence = scoreEvidence?.evidence || {};
+  const hotspots = Array.isArray(evidence.pathErrorHotspots) ? evidence.pathErrorHotspots : [];
+  const strokeErrors = Array.isArray(evidence.strokePathErrors) ? evidence.strokePathErrors : [];
+
+  const heading = document.createElement("div");
+  heading.className = "review-evidence-head";
+  const title = document.createElement("strong");
+  title.textContent = "路径误差热力";
+  const summary = document.createElement("span");
+  summary.textContent = hotspots.length
+    ? `路径贴合 ${evidence.pathFitPercent || 0}% / 误差 ${evidence.pathErrorPercent || 0}% / ${evidence.pathErrorSampleCount || 0} 个热力采样`
+    : "暂无路径热力。完成真实书写并保存作品后，会按 4×4 区域显示误差。";
+  heading.append(title, summary);
+  els.reviewEvidenceMap.appendChild(heading);
+
+  if (!hotspots.length) {
+    const empty = document.createElement("p");
+    empty.className = "review-evidence-empty";
+    empty.textContent = "没有可视化热力点时不显示假图。";
+    els.reviewEvidenceMap.appendChild(empty);
+    return;
+  }
+
+  const byZone = new Map(hotspots.map((item) => [String(item.zone || ""), item]));
+  const grid = document.createElement("div");
+  grid.className = "review-evidence-grid";
+  grid.setAttribute("role", "img");
+  grid.setAttribute("aria-label", "4乘4路径误差热力格");
+  for (let y = 1; y <= 4; y += 1) {
+    for (let x = 1; x <= 4; x += 1) {
+      const zone = `${x}-${y}`;
+      const item = byZone.get(zone);
+      const cell = document.createElement("span");
+      cell.className = "review-evidence-cell";
+      cell.dataset.zone = zone;
+      const error = clamp(Number(item?.errorPercent) || 0, 0, 100);
+      cell.style.setProperty("--heat-alpha", String(Number((0.1 + error / 120).toFixed(2))));
+      cell.style.setProperty("--heat-scale", String(Number((0.35 + error / 100).toFixed(2))));
+      if (item) {
+        cell.dataset.active = "true";
+        cell.title = `${item.label || zone}，误差 ${error}%，${item.sampleCount || 0} 个采样点`;
+        cell.setAttribute("aria-label", cell.title);
+        const value = document.createElement("em");
+        value.textContent = `${error}%`;
+        const label = document.createElement("small");
+        label.textContent = item.label || zone;
+        cell.append(value, label);
+      } else {
+        cell.setAttribute("aria-label", `${zone} 暂无集中误差`);
+      }
+      grid.appendChild(cell);
+    }
+  }
+  els.reviewEvidenceMap.appendChild(grid);
+
+  const detail = document.createElement("p");
+  detail.className = "review-evidence-detail";
+  const strongest = hotspots[0];
+  const strokeText = strokeErrors.length
+    ? `；逐笔贴合：${strokeErrors.slice(0, 3).map((item) => `第${item.index}笔${item.fitPercent || 0}%`).join(" / ")}`
+    : "";
+  detail.textContent = `最高误差：${strongest.label || strongest.zone} ${strongest.errorPercent || 0}%（${strongest.sampleCount || 0}点）${strokeText}`;
+  els.reviewEvidenceMap.appendChild(detail);
 }
 
 function renderVideoExportPanel(artwork, session) {
