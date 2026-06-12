@@ -1386,6 +1386,96 @@ test("front report repository imports a local JSON package", async ({ page }) =>
   expect(learningState.reportRepository.lastPackageId).toBe("e2e-local-report-package");
 });
 
+test("front artwork repository exports and imports local artwork package", async ({ page }) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const seed = await page.evaluate(() => {
+    const first = window.MRAppState.saveArtwork({
+      strokes: [
+        [
+          { x: 0.24, y: 0.28, t: 0, p: 0.45 },
+          { x: 0.36, y: 0.42, t: 18, p: 0.58 },
+          { x: 0.52, y: 0.55, t: 36, p: 0.62 },
+          { x: 0.68, y: 0.66, t: 54, p: 0.52 }
+        ]
+      ],
+      bounds: { minX: 0.24, minY: 0.28, maxX: 0.68, maxY: 0.66 },
+      metrics: { structure: 87, stroke: 85, technique: 86, fluency: 88, force: 84 },
+      score: 86,
+      feedback: ["E2E 作品仓库第一幅作品"],
+      imageData: "data:image/png;base64,iVBORw0KGgo="
+    });
+    window.MRAppState.setArtworkStyle("行书");
+    const second = window.MRAppState.saveArtwork({
+      strokes: [
+        [
+          { x: 0.28, y: 0.3, t: 0, p: 0.5 },
+          { x: 0.44, y: 0.43, t: 20, p: 0.6 },
+          { x: 0.62, y: 0.54, t: 40, p: 0.64 },
+          { x: 0.76, y: 0.62, t: 60, p: 0.55 }
+        ]
+      ],
+      bounds: { minX: 0.28, minY: 0.3, maxX: 0.76, maxY: 0.62 },
+      metrics: { structure: 90, stroke: 88, technique: 89, fluency: 91, force: 87 },
+      score: 89,
+      feedback: ["E2E 作品仓库第二幅作品"],
+      imageData: "data:image/png;base64,iVBORw0KGgo="
+    });
+    return {
+      ok: first.ok && second.ok,
+      artworkIds: [first.artwork.id, second.artwork.id],
+      sessionIds: [first.artwork.sessionId, second.artwork.sessionId],
+      status: window.MRAppState.getArtworkRepositoryStatus()
+    };
+  });
+  expect(seed.ok).toBe(true);
+  expect(seed.status.artworkCount).toBe(2);
+  expect(seed.status.linkedSessionCount).toBe(2);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#historyPanel")).toBeVisible();
+  await expect(page.locator("#artworkRepositoryExportButton")).toBeEnabled();
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator("#artworkRepositoryExportButton").click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^mr-calligraphy-artwork-repository-.*\.json$/);
+  const downloadPath = await download.path();
+  const repositoryPackage = JSON.parse(fs.readFileSync(downloadPath, "utf8"));
+  expect(repositoryPackage.kind).toBe("mr-calligraphy-artwork-repository-v1");
+  expect(repositoryPackage.artworks).toHaveLength(2);
+  expect(repositoryPackage.linkedSessions).toHaveLength(2);
+  expect(repositoryPackage.summary.total).toBe(2);
+  expect(repositoryPackage.summary.linkedSessionCount).toBe(2);
+  expect(repositoryPackage.source.boundary).toContain("不是账号化公开作品集");
+  expect(repositoryPackage.artworks.map((item) => item.id)).toEqual(expect.arrayContaining(seed.artworkIds));
+
+  await page.evaluate((key) => {
+    window.localStorage.removeItem(key);
+  }, LEARNING_KEY);
+  await page.goto("/?step=7", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#historyPanel")).toBeVisible();
+  await expect(page.locator("#artworkGalleryStatus")).toContainText("暂无作品");
+
+  const fileChooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#artworkRepositoryImportButton").click();
+  const fileChooser = await fileChooserPromise;
+  await fileChooser.setFiles({
+    name: "artwork-repository-import.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(repositoryPackage))
+  });
+
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("最近导入 2 幅作品");
+  await expect(page.locator("#artworkGalleryStatus")).toContainText("2/2 幅作品");
+  await expect(page.locator("#artworkGalleryGrid")).toContainText("永字行书练习");
+  const importedState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(importedState.artworks).toHaveLength(2);
+  expect(importedState.artworks.flatMap((artwork) => artwork.feedback)).toEqual(expect.arrayContaining(["E2E 作品仓库第二幅作品"]));
+  expect(importedState.sessions.filter((session) => seed.sessionIds.includes(session.id))).toHaveLength(2);
+  expect(importedState.artworkRepository.lastImportedArtworkCount).toBe(2);
+  expect(importedState.artworkRepository.lastImportedSessionCount).toBe(2);
+  expect(importedState.artworkRepository.lastPackageId).toBe(repositoryPackage.packageId);
+});
+
 test("front share repository shows retryable remote failure recovery", async ({ page }) => {
   const requests = [];
   const networkPushPath = "/e2e-share-repository-network-push";

@@ -4471,3 +4471,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增作品分享重试恢复`
+
+## 109. 2026-06-13 新增作品仓库导入导出
+
+本次把前台作品集从“只能在当前浏览器查看和分享单幅作品”推进到“可以导出/导入一份本机作品仓库包”。作品仓库包会带上作品记录、关联练习、评分证据、截图、标签和摘要，适合备份、换浏览器迁移或课堂线下收集后手动导入。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-artwork-repository-v1` 包格式、状态归一化和边界说明。
+- 新增 `getArtworkRepositoryStatus()`、`getArtworkRepositoryPackage()`、`downloadArtworkRepository()` 和 `importArtworkRepositoryPackage()`。
+- 导出包包含 `artworks`、`linkedSessions`、`records`、`summary`、`workspaceId`、`storageKey` 和本机边界说明。
+- 导入时按 ID 合并作品与关联练习；同 ID 内容一致会跳过，同 ID 内容不同会写入 `lastConflictRecords` 并拒绝覆盖本机记录。
+- 作品集 UI 新增“作品仓库”状态、“导出仓库”和“导入仓库”按钮。
+- E2E 新增 `front artwork repository exports and imports local artwork package`，验证从 UI 下载 JSON，清空本机状态后再通过文件选择器导入恢复作品与练习。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.artworks` 和关联 `sessions`。
+- 写入状态：导出/导入结果写入 `mr-calligraphy-learning-state-v1.artworkRepository`。
+- 成功反馈：页面显示最近导入/导出的作品数和关联练习数，作品集卡片立即刷新。
+- 失败反馈：非法 JSON、非作品仓库包、空作品包或同 ID 差异不会伪造成功，会写入最近错误或冲突状态。
+- 刷新后复现方式：仓库状态、导入作品、关联练习和冲突审计都保存在 localStorage。
+
+仍待补：
+
+- 当前是本机 JSON 仓库包，不是账号化公开作品集、课堂作品墙、跨设备实时同步、社交平台分享、云端存储或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库导入导出`

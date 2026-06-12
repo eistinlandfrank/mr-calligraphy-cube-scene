@@ -9598,3 +9598,45 @@
 提交：
 
 - 中文 commit message：`新增作品分享重试恢复`
+
+### 2026-06-13：新增作品仓库导入导出
+
+功能名：前台作品集本机作品仓库包。
+
+开发原因：
+
+- 作品集已经能保存作品、搜索、打标签、生成直达链接和分享页，但作品主要停留在当前浏览器。
+- 用户需要一个真实可用的迁移和备份闭环：把当前浏览器里的作品和关联练习导出为 JSON 包，再从文件导入恢复到本机作品集。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-artwork-repository-v1` 作品仓库包格式。
+- `MRAppState.getArtworkRepositoryStatus()` 返回作品数、关联练习数、最近导出/导入时间、冲突数量和边界说明。
+- `MRAppState.getArtworkRepositoryPackage()` 与 `downloadArtworkRepository()` 可导出作品、关联练习、评分证据、截图、标签和仓库摘要。
+- `MRAppState.importArtworkRepositoryPackage()` 可从 JSON 包导入作品和关联练习；同 ID 内容一致会跳过，同 ID 内容不同会记录冲突并拒绝覆盖本机作品。
+- 前台作品集新增“导出仓库 / 导入仓库”真实按钮、隐藏文件选择器和 `artworkRepositoryStatus` 状态提示。
+- Playwright 新增作品仓库导出导入用例，覆盖真实下载 JSON、清空本机学习状态后通过 UI 导入恢复作品和关联练习。
+
+验收方式：
+
+- 保存至少一幅作品后进入学习档案作品集，应看到“作品仓库”状态和可点击的“导出仓库”按钮。
+- 点击“导出仓库”应下载 `mr-calligraphy-artwork-repository-*.json`，包内包含 `artworks`、`linkedSessions`、`summary` 和边界说明。
+- 清空或换一个浏览器本机状态后点击“导入仓库”，选择该 JSON 包，应恢复作品卡片、作品标签、评分、反馈和关联练习。
+- 若导入包里存在同 ID 但内容不同的作品或练习，应显示跳过冲突，不覆盖本机已有记录。
+
+真实边界：
+
+- 数据来源：当前浏览器本机 `ArtworkRecord`、关联 `PracticeSession`、评分证据、截图和标签。
+- 这是真实本机 JSON 仓库包，不是账号化公开作品集、课堂作品墙、跨设备同步、社交平台分享或云端存储。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库导入导出`

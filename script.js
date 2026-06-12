@@ -940,6 +940,10 @@ const els = {
   historyArtworkGallery: document.getElementById("historyArtworkGallery"),
   artworkGalleryStatus: document.getElementById("artworkGalleryStatus"),
   artworkSearch: document.getElementById("artworkSearch"),
+  artworkRepositoryStatus: document.getElementById("artworkRepositoryStatus"),
+  artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
+  artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
+  artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
   artworkTagList: document.getElementById("artworkTagList"),
   artworkGalleryGrid: document.getElementById("artworkGalleryGrid"),
   historyList: document.getElementById("historyList"),
@@ -4182,6 +4186,9 @@ function bindHistoryControls() {
     activeArtworkSearch = els.artworkSearch.value;
     renderHistoryArtworkGallery();
   });
+  els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
+  els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
+  els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
   els.artworkTagList?.addEventListener("click", handleArtworkTagClick);
   els.artworkGalleryGrid?.addEventListener("click", handleArtworkGalleryAction);
   els.historyLoadMore?.addEventListener("click", () => {
@@ -8800,8 +8807,19 @@ function renderHistoryArtworkGallery() {
       ? `${gallery.filteredTotal}/${gallery.total} 幅作品${activeArtworkTag ? ` · ${activeArtworkTag}` : ""}`
       : "暂无作品";
   }
+  renderArtworkRepositoryStatus();
   renderArtworkTagList(gallery.tags || []);
   renderArtworkGalleryGrid(gallery);
+}
+
+function renderArtworkRepositoryStatus() {
+  if (!els.artworkRepositoryStatus || !window.MRAppState?.getArtworkRepositoryStatus) return;
+  const status = window.MRAppState.getArtworkRepositoryStatus();
+  els.artworkRepositoryStatus.textContent = status.message || "作品仓库等待操作。";
+  els.artworkRepositoryStatus.dataset.tone = status.tone || "idle";
+  if (els.artworkRepositoryExportButton) {
+    els.artworkRepositoryExportButton.disabled = !status.artworkCount;
+  }
 }
 
 function renderArtworkTagList(tags = []) {
@@ -9805,6 +9823,42 @@ function handleArtworkGalleryAction(event) {
     copyArtworkLink(artworkId);
   } else if (action === "tags") {
     editArtworkTags(artworkId);
+  }
+}
+
+function exportArtworkRepository() {
+  const result = window.MRAppState?.downloadArtworkRepository?.();
+  renderHistoryArtworkGallery();
+  showNotice(result?.message || "当前没有可导出的作品仓库包。");
+}
+
+function openArtworkRepositoryImport() {
+  if (!els.artworkRepositoryImportInput) {
+    showNotice("当前浏览器不支持作品仓库文件选择。");
+    return;
+  }
+  els.artworkRepositoryImportInput.value = "";
+  els.artworkRepositoryImportInput.click();
+}
+
+async function importArtworkRepository(event) {
+  const input = event.currentTarget;
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const result = window.MRAppState?.importArtworkRepositoryPackage?.(text);
+    activeArtworkSearch = "";
+    activeArtworkTag = "";
+    renderHistoryPanel(currentIndex);
+    showNotice(result?.message || "作品仓库导入已处理。");
+  } catch (error) {
+    const result = window.MRAppState?.importArtworkRepositoryPackage?.("");
+    renderArtworkRepositoryStatus();
+    showNotice(result?.message || "作品仓库导入失败，请检查 JSON 文件。");
+  } finally {
+    input.value = "";
   }
 }
 

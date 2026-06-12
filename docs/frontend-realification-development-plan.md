@@ -4002,3 +4002,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品分享重试恢复`
+
+## 109. 2026-06-13 新增作品仓库导入导出
+
+本次把作品集面板补成可迁移的真实本机仓库入口：用户不需要打开开发者工具，就能在前台直接下载作品仓库 JSON，也能通过文件选择器导入恢复作品。
+
+完成内容：
+
+- 作品集 `historyArtworkGallery` 新增 `artworkRepositoryStatus` 状态栏。
+- 新增 `artworkRepositoryExportButton`，点击后调用 `MRAppState.downloadArtworkRepository()` 并触发浏览器下载。
+- 新增 `artworkRepositoryImportButton` 和 `artworkRepositoryImportInput`，通过真实 file chooser 读取 JSON 并调用 `MRAppState.importArtworkRepositoryPackage()`。
+- 导入或导出后会刷新学习档案、作品集卡片、标签云和仓库状态，不需要用户手动刷新页面。
+- 空作品状态下导出按钮会禁用，避免用户点击一个伪下载入口。
+- 移动端样式新增单列仓库工具栏，按钮保持固定高度和可读文字，不挤压搜索框。
+
+真实化说明：
+
+- 数据来源：前台 `MRAppState` 中的 `ArtworkRecord` 和关联 `PracticeSession`。
+- 写入状态：导出/导入状态写入 `mr-calligraphy-learning-state-v1.artworkRepository`。
+- 成功反馈：状态栏显示“最近导入/导出 N 幅作品、M 条关联练习”，作品卡片立即出现。
+- 失败反馈：JSON 解析失败、包类型错误或空作品包会显示真实错误；同 ID 冲突会提示跳过，不覆盖用户本机作品。
+- 刷新后复现方式：导入后的作品、关联练习和仓库状态从 localStorage 恢复。
+
+仍待补：
+
+- 当前前端只提供本机 JSON 仓库包，不包含公网作品墙、账号登录、跨设备云同步、社交分享 SDK 或生产云端存储。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库导入导出`

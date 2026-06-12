@@ -5,6 +5,7 @@
   const MAX_HISTORY_TRASH = 12;
   const MAX_HISTORY_BATCH_RECEIPTS = 20;
   const MAX_ARTWORK_TAGS = 8;
+  const MAX_ARTWORK_REPOSITORY_CONFLICTS = 12;
   const MAX_SHARE_RECORDS = 24;
   const MAX_VIDEO_EXPORT_RECORDS = 18;
   const MAX_VIDEO_EXPORT_JOBS = 24;
@@ -24,6 +25,9 @@
   const SHARE_REPOSITORY_MAX_FAILURES = 12;
   const SHARE_REPOSITORY_REQUEST_TIMEOUT_MS = 8000;
   const SHARE_REPOSITORY_RETRY_BASE_MS = 15000;
+  const ARTWORK_REPOSITORY_KIND = "mr-calligraphy-artwork-repository-v1";
+  const ARTWORK_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
+  const ARTWORK_REPOSITORY_BOUNDARY = "作品仓库导出当前浏览器中的 ArtworkRecord、关联练习摘要和评分证据，便于本机备份、迁移或课堂收集后手动导入；它不是账号化公开作品集、课堂作品墙或云端存储。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -411,6 +415,7 @@
       videoExportService: normalizeVideoExportService(source?.videoExportService),
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
+      artworkRepository: normalizeArtworkRepository(source?.artworkRepository),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
       planRepository: normalizePlanRepository(source?.planRepository),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
@@ -2011,6 +2016,54 @@
         ? source.remoteFailureHistory.map(normalizeReportRepositoryFailure).filter(Boolean).slice(0, REPORT_REPOSITORY_MAX_FAILURES)
         : [],
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
+    };
+  }
+
+  function normalizeArtworkRepository(record = {}) {
+    const source = record && typeof record === "object" ? record : {};
+    const lastConflictRecords = Array.isArray(source.lastConflictRecords)
+      ? source.lastConflictRecords.map(normalizeArtworkRepositoryConflict).filter(Boolean).slice(0, MAX_ARTWORK_REPOSITORY_CONFLICTS)
+      : [];
+    return {
+      mode: "local-json",
+      workspaceId: normalizeArtworkRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId),
+      lastExportedAt: normalizePlanDate(source.lastExportedAt),
+      lastImportedAt: normalizePlanDate(source.lastImportedAt),
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      lastExportedArtworkCount: normalizeInteger(source.lastExportedArtworkCount, 0, 0, 99999),
+      lastExportedSessionCount: normalizeInteger(source.lastExportedSessionCount, 0, 0, 99999),
+      lastImportedArtworkCount: normalizeInteger(source.lastImportedArtworkCount, 0, 0, 99999),
+      lastImportedSessionCount: normalizeInteger(source.lastImportedSessionCount, 0, 0, 99999),
+      lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
+      lastConflictRecords,
+      lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : null,
+      lastError: source.lastError ? String(source.lastError).slice(0, 220) : ""
+    };
+  }
+
+  function normalizeArtworkRepositoryWorkspaceId(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_.:-]/g, "")
+      .slice(0, 64);
+    return normalized || ARTWORK_REPOSITORY_DEFAULT_WORKSPACE;
+  }
+
+  function normalizeArtworkRepositoryConflict(record) {
+    if (!record || typeof record !== "object") return null;
+    const id = String(record.id || "").trim();
+    if (!id) return null;
+    const type = ["artwork", "session"].includes(record.type) ? record.type : "artwork";
+    return {
+      id,
+      type,
+      title: String(record.title || record.localTitle || record.remoteTitle || id).slice(0, 140),
+      localTitle: String(record.localTitle || record.title || id).slice(0, 140),
+      incomingTitle: String(record.incomingTitle || record.remoteTitle || record.title || id).slice(0, 140),
+      localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
+      incomingUpdatedAt: normalizePlanDate(record.incomingUpdatedAt || record.remoteUpdatedAt),
+      detectedAt: normalizePlanDate(record.detectedAt) || new Date().toISOString()
     };
   }
 
@@ -12567,6 +12620,328 @@
     };
   }
 
+  function getArtworkRepositoryStatus() {
+    const repository = normalizeArtworkRepository(state.artworkRepository);
+    const artworkCount = state.artworks.length;
+    const linkedSessionCount = getArtworkRepositoryLinkedSessions(state.artworks).length;
+    let tone = "idle";
+    let message = artworkCount
+      ? `本机作品仓库有 ${artworkCount} 幅作品，关联 ${linkedSessionCount} 条练习，可导出 JSON 仓库包。`
+      : "还没有可导出的作品；保存作品后可生成本机作品仓库包。";
+
+    if (repository.lastImportedAt) {
+      tone = "ready";
+      message = `最近导入 ${repository.lastImportedArtworkCount} 幅作品、${repository.lastImportedSessionCount} 条关联练习：${formatPlanDate(repository.lastImportedAt)}。`;
+    } else if (repository.lastExportedAt) {
+      tone = "ready";
+      message = `最近导出 ${repository.lastExportedArtworkCount} 幅作品、${repository.lastExportedSessionCount} 条关联练习：${formatPlanDate(repository.lastExportedAt)}。`;
+    }
+    if (repository.lastSkippedConflictCount > 0) {
+      tone = "warning";
+      message = `作品仓库导入时有 ${repository.lastSkippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机作品。`;
+    }
+    if (repository.lastError) {
+      tone = "warning";
+      message = repository.lastError;
+    }
+
+    return {
+      ok: true,
+      kind: ARTWORK_REPOSITORY_KIND,
+      mode: repository.mode,
+      workspaceId: repository.workspaceId,
+      artworkCount,
+      linkedSessionCount,
+      tone,
+      message,
+      boundary: ARTWORK_REPOSITORY_BOUNDARY,
+      lastExportedAt: repository.lastExportedAt,
+      lastImportedAt: repository.lastImportedAt,
+      lastCheckedAt: repository.lastCheckedAt,
+      lastExportedArtworkCount: repository.lastExportedArtworkCount,
+      lastExportedSessionCount: repository.lastExportedSessionCount,
+      lastImportedArtworkCount: repository.lastImportedArtworkCount,
+      lastImportedSessionCount: repository.lastImportedSessionCount,
+      lastSkippedConflictCount: repository.lastSkippedConflictCount,
+      lastConflictRecords: clone(repository.lastConflictRecords),
+      lastPackageId: repository.lastPackageId,
+      lastError: repository.lastError
+    };
+  }
+
+  function getArtworkRepositoryLinkedSessions(artworks = state.artworks) {
+    const sessionIds = new Set(
+      (Array.isArray(artworks) ? artworks : [])
+        .map((artwork) => artwork?.sessionId)
+        .filter(Boolean)
+        .map(String)
+    );
+    return state.sessions
+      .filter((session) => sessionIds.has(session.id))
+      .map(normalizeSession)
+      .filter(Boolean);
+  }
+
+  function getArtworkRepositoryPackage(options = {}) {
+    const repository = normalizeArtworkRepository(state.artworkRepository);
+    const selectedIds = Array.isArray(options.ids)
+      ? new Set(options.ids.map(String).filter(Boolean))
+      : null;
+    const artworks = state.artworks
+      .filter((artwork) => !selectedIds || selectedIds.has(artwork.id))
+      .map(normalizeArtwork)
+      .filter(Boolean);
+    if (!artworks.length) {
+      return {
+        ok: false,
+        message: "还没有可导出的作品仓库包。"
+      };
+    }
+
+    const linkedSessions = getArtworkRepositoryLinkedSessions(artworks);
+    const exportedAt = new Date().toISOString();
+    const packageId = `artwork-repository-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+    const packageRecord = {
+      kind: ARTWORK_REPOSITORY_KIND,
+      version: VERSION,
+      packageId,
+      workspaceId: repository.workspaceId,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      source: {
+        mode: "local-json",
+        workspaceId: repository.workspaceId,
+        boundary: ARTWORK_REPOSITORY_BOUNDARY
+      },
+      summary: getArtworkRepositorySummary(artworks, linkedSessions),
+      artworks: clone(artworks),
+      linkedSessions: clone(linkedSessions),
+      records: {
+        artworks: clone(artworks),
+        sessions: clone(linkedSessions)
+      }
+    };
+    return {
+      ok: true,
+      filename: `mr-calligraphy-artwork-repository-${Date.now()}.json`,
+      package: packageRecord,
+      message: `已生成 ${artworks.length} 幅作品的本机作品仓库包。${ARTWORK_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function downloadArtworkRepository(options = {}) {
+    const result = getArtworkRepositoryPackage(options);
+    if (!result.ok) {
+      recordArtworkRepositoryError(result.message);
+      return result;
+    }
+
+    downloadJson(result.package, result.filename);
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastExportedAt: now,
+      lastCheckedAt: now,
+      lastExportedArtworkCount: result.package.artworks.length,
+      lastExportedSessionCount: result.package.linkedSessions.length,
+      lastSkippedConflictCount: 0,
+      lastConflictRecords: [],
+      lastPackageId: result.package.packageId,
+      lastError: ""
+    });
+    addEvent("artwork-repository-export", `导出作品仓库包：${result.package.artworks.length} 幅作品`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      exportedArtworkCount: result.package.artworks.length,
+      exportedSessionCount: result.package.linkedSessions.length,
+      status: getArtworkRepositoryStatus(),
+      message: `已下载作品仓库 JSON 包：${result.filename}。${ARTWORK_REPOSITORY_BOUNDARY}`
+    };
+  }
+
+  function getArtworkRepositorySummary(artworks = [], linkedSessions = []) {
+    const artworkCount = artworks.length;
+    const averageScore = artworkCount
+      ? Math.round(artworks.reduce((sum, artwork) => sum + normalizeScore(artwork.score, 0), 0) / artworkCount)
+      : 0;
+    const latestArtwork = artworks
+      .slice()
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))[0] || null;
+    const glyphs = [...new Set(artworks.map((artwork) => String(artwork.glyph || "").trim()).filter(Boolean))];
+    return {
+      total: artworkCount,
+      linkedSessionCount: linkedSessions.length,
+      glyphs: glyphs.slice(0, 24),
+      styleCount: new Set(artworks.map((artwork) => String(artwork.style || "").trim()).filter(Boolean)).size,
+      imageCount: artworks.filter((artwork) => Boolean(artwork.imageData)).length,
+      scoreEvidenceCount: artworks.filter((artwork) => Boolean(artwork.scoreEvidence?.overall)).length,
+      totalStrokeCount: artworks.reduce((sum, artwork) => sum + normalizeInteger(artwork.strokeCount, 0, 0, 9999), 0),
+      totalPointCount: artworks.reduce((sum, artwork) => sum + normalizeInteger(artwork.pointCount, 0, 0, 999999), 0),
+      averageScore,
+      latestArtworkId: latestArtwork?.id || null,
+      latestArtworkAt: latestArtwork?.createdAt || null
+    };
+  }
+
+  function parseArtworkRepositoryPackage(input) {
+    let source = input;
+    if (typeof input === "string") {
+      try {
+        source = JSON.parse(input);
+      } catch (error) {
+        return { ok: false, message: "作品仓库包 JSON 解析失败。" };
+      }
+    }
+    if (!source || typeof source !== "object") {
+      return { ok: false, message: "作品仓库包格式无效。" };
+    }
+    if (source.kind !== ARTWORK_REPOSITORY_KIND) {
+      return { ok: false, message: "这不是 MR 书法作品仓库包。" };
+    }
+    const artworks = Array.isArray(source.artworks)
+      ? source.artworks
+      : Array.isArray(source.records?.artworks)
+        ? source.records.artworks
+        : null;
+    const linkedSessions = Array.isArray(source.linkedSessions)
+      ? source.linkedSessions
+      : Array.isArray(source.sessions)
+        ? source.sessions
+        : Array.isArray(source.records?.sessions)
+          ? source.records.sessions
+          : [];
+    if (!Array.isArray(artworks)) {
+      return { ok: false, message: "作品仓库包缺少 artworks 数组。" };
+    }
+    return {
+      ok: true,
+      package: {
+        ...source,
+        artworks,
+        linkedSessions
+      }
+    };
+  }
+
+  function recordArtworkRepositoryError(message) {
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastCheckedAt: now,
+      lastError: String(message || "作品仓库操作失败。").trim().slice(0, 220)
+    });
+    saveState();
+  }
+
+  function createArtworkRepositoryConflict(type, localRecord, incomingRecord) {
+    const local = type === "session" ? normalizeSession(localRecord) : normalizeArtwork(localRecord);
+    const incoming = type === "session" ? normalizeSession(incomingRecord) : normalizeArtwork(incomingRecord);
+    if (!local || !incoming) return null;
+    return normalizeArtworkRepositoryConflict({
+      id: incoming.id,
+      type,
+      title: incoming.title || local.title || incoming.glyph || incoming.id,
+      localTitle: local.title || local.glyph || local.id,
+      incomingTitle: incoming.title || incoming.glyph || incoming.id,
+      localUpdatedAt: type === "session"
+        ? local.endedAt || local.snapshotAt || local.startedAt
+        : local.createdAt,
+      incomingUpdatedAt: type === "session"
+        ? incoming.endedAt || incoming.snapshotAt || incoming.startedAt
+        : incoming.createdAt,
+      detectedAt: new Date().toISOString()
+    });
+  }
+
+  function mergeArtworkRepositoryRecords(collection, incomingRecords, normalizeRecord, type) {
+    const existingIndex = new Map(collection.map((record, index) => [record.id, index]));
+    let importedCount = 0;
+    let skippedConflictCount = 0;
+    const conflicts = [];
+
+    incomingRecords
+      .map(normalizeRecord)
+      .filter(Boolean)
+      .forEach((record) => {
+        if (!existingIndex.has(record.id)) {
+          collection.push(record);
+          existingIndex.set(record.id, collection.length - 1);
+          importedCount += 1;
+          return;
+        }
+        const existing = normalizeRecord(collection[existingIndex.get(record.id)]);
+        if (stablePlanStringify(existing) === stablePlanStringify(record)) {
+          return;
+        }
+        skippedConflictCount += 1;
+        const conflict = createArtworkRepositoryConflict(type, existing, record);
+        if (conflict) {
+          conflicts.push(conflict);
+        }
+      });
+
+    return {
+      importedCount,
+      skippedConflictCount,
+      conflicts
+    };
+  }
+
+  function importArtworkRepositoryPackage(input) {
+    const parsed = parseArtworkRepositoryPackage(input);
+    if (!parsed.ok) {
+      recordArtworkRepositoryError(parsed.message);
+      return parsed;
+    }
+
+    const incomingArtworks = parsed.package.artworks.map(normalizeArtwork).filter(Boolean);
+    const incomingSessions = parsed.package.linkedSessions.map(normalizeSession).filter(Boolean);
+    if (!incomingArtworks.length) {
+      const message = "作品仓库包里没有可导入的作品。";
+      recordArtworkRepositoryError(message);
+      return { ok: false, message };
+    }
+
+    const sessionMerge = mergeArtworkRepositoryRecords(state.sessions, incomingSessions, normalizeSession, "session");
+    const artworkMerge = mergeArtworkRepositoryRecords(state.artworks, incomingArtworks, normalizeArtwork, "artwork");
+    const skippedConflictCount = sessionMerge.skippedConflictCount + artworkMerge.skippedConflictCount;
+    const conflictRecords = [
+      ...sessionMerge.conflicts,
+      ...artworkMerge.conflicts
+    ].slice(0, MAX_ARTWORK_REPOSITORY_CONFLICTS);
+    const now = new Date().toISOString();
+
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastImportedAt: now,
+      lastCheckedAt: now,
+      lastImportedArtworkCount: artworkMerge.importedCount,
+      lastImportedSessionCount: sessionMerge.importedCount,
+      lastSkippedConflictCount: skippedConflictCount,
+      lastConflictRecords: conflictRecords,
+      lastPackageId: parsed.package.packageId || null,
+      lastError: skippedConflictCount
+        ? `有 ${skippedConflictCount} 条同 ID 差异记录已跳过，未覆盖本机作品。`
+        : ""
+    });
+    addEvent("artwork-repository-import", `导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品，新增 ${sessionMerge.importedCount} 条练习，跳过冲突 ${skippedConflictCount}`);
+    saveState();
+    return {
+      ok: true,
+      importedArtworkCount: artworkMerge.importedCount,
+      importedSessionCount: sessionMerge.importedCount,
+      skippedConflictCount,
+      conflicts: clone(conflictRecords),
+      totalArtworkCount: state.artworks.length,
+      status: getArtworkRepositoryStatus(),
+      message: skippedConflictCount
+        ? `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习，跳过 ${skippedConflictCount} 条同 ID 差异记录。${ARTWORK_REPOSITORY_BOUNDARY}`
+        : `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习。${ARTWORK_REPOSITORY_BOUNDARY}`
+    };
+  }
+
   function getArtworkGallery(options = {}) {
     const query = String(options.query || "").trim().toLowerCase();
     const tag = String(options.tag || "").trim();
@@ -15091,6 +15466,8 @@
     getPracticeVideoExportAudit,
     getPracticeVideoExportAuditExport,
     getPracticeVideoRetrySource,
+    getArtworkRepositoryStatus,
+    getArtworkRepositoryPackage,
     getLatestReview,
     getReviewEvidenceExport,
     getHistory,
@@ -15113,6 +15490,7 @@
     downloadReportRepositoryReceiptAudit,
     downloadReportTeacherReviewAudit,
     downloadPracticeVideoExportAudit,
+    downloadArtworkRepository,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,
@@ -15121,6 +15499,7 @@
     importPlanRepositoryPackage,
     importHistoryRepositoryPackage,
     importReportRepositoryPackage,
+    importArtworkRepositoryPackage,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
     checkRemoteReportRepository,
