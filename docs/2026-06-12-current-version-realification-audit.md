@@ -50,9 +50,9 @@
 
 ### 2.5 报告和教师批注已有远端 adapter，但生产报告仓库还没完成
 
-HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执和报告冲突审计已经可用，刷新后也能复现。`MRAppState.getReportVerification()` 会用稳定 JSON 为报告核心字段、教师批注、关联练习和最近作品截图摘要计算 SHA-256，并写入 HTML/PDF 导出；`MRAppState.getReportRepositoryPackage()` 会把报告和摘要打包成 `mr-calligraphy-report-repository-v1`，前台可下载同步包或导入同格式 JSON 包，也可配置 endpoint/token 后真实 GET 检查、PUT 推送和 GET 拉取；远端返回完整 `receipt/latestReceipt` 时会保存到 `reportRepository.lastSignedReceipt`；同 ID 差异报告会写入 `reportRepository.lastConflictReports`，前台可字段级合并、另存远端副本或忽略审计。
+HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出和报告冲突审计已经可用，刷新后也能复现。`MRAppState.getReportVerification()` 会用稳定 JSON 为报告核心字段、教师批注、关联练习和最近作品截图摘要计算 SHA-256，并写入 HTML/PDF 导出；`MRAppState.getReportRepositoryPackage()` 会把报告和摘要打包成 `mr-calligraphy-report-repository-v1`，前台可下载同步包或导入同格式 JSON 包，也可配置 endpoint/token 后真实 GET 检查、PUT 推送和 GET 拉取；远端返回完整 `receipt/latestReceipt` 时会保存到 `reportRepository.lastSignedReceipt` 和 `reportRepository.signedReceipts`，前台可查看最近回执并导出包含签名、仓库摘要、回执摘要、方向、endpoint 和原始 JSON 的 HTML 审计页；同 ID 差异报告会写入 `reportRepository.lastConflictReports`，前台可字段级合并、另存远端副本或忽略审计。
 
-但它仍不是生产报告产品。教师批注默认仍来自当前浏览器里的报告字段，本机验真摘要不是账号化教师签名、服务端证书或不可篡改审计；当前签名回执是 mock/HMAC 级开发验收，不是生产证书链或教师身份签章；报告仓库远端 API 也只是可替换后端的第一版 adapter，不是账号空间、教师权限、长期归档或服务端 PDF 渲染。
+但它仍不是生产报告产品。教师批注默认仍来自当前浏览器里的报告字段，本机验真摘要不是账号化教师签名、服务端证书或不可篡改审计；当前签名回执审计是 mock/HMAC 级开发验收和前端证据留存，不是生产证书链、教师身份签章或服务端不可篡改日志；报告仓库远端 API 也只是可替换后端的第一版 adapter，不是账号空间、教师权限、长期归档或服务端 PDF 渲染。
 
 真实化方向：
 
@@ -274,6 +274,7 @@ npm run test:e2e
 - 追加报告本机验真摘要记录：前台报告详情、HTML 导出和原生 PDF 都会展示同一份 SHA-256 摘要，`learning-state-check.js` 已验证摘要可复算且会随教师批注变化。
 - 追加报告仓库远端同步记录：站内报告面板已支持远端报告 API endpoint/token、检查、推送、拉取；数据层、mock server 和 E2E 已验证报告包、教师批注、本机验真摘要、Bearer token、远端回执和同 ID 差异跳过。
 - 追加报告仓库冲突审计记录：同 ID 差异报告会写入 `reportRepository.lastConflictReports`，前台可审阅字段差异，按字段采用远端值，也可另存远端报告副本；数据层和 E2E 已验证真实写回。
+- 追加报告仓库签名回执审计记录：远端 `receipt/latestReceipt` 会写入 `lastSignedReceipt` 和最近 12 条 `signedReceipts`，站内报告可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证签名、摘要、方向和导出文件内容。
 
 已知限制：
 

@@ -22,6 +22,7 @@
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
   const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
   const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
+  const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
@@ -768,6 +769,10 @@
     const lastConflictReports = Array.isArray(source.lastConflictReports)
       ? source.lastConflictReports.map(normalizeReportRepositoryConflict).filter(Boolean).slice(0, REPORT_REPOSITORY_MAX_CONFLICTS)
       : [];
+    const signedReceipts = normalizeReportRepositorySignedReceipts(source);
+    const lastSignedReceipt = normalizeReportRepositorySignedReceipt(source.lastSignedReceipt || source.signedReceipt || source.receipt || null)
+      || signedReceipts[0]
+      || null;
     return {
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
@@ -784,9 +789,30 @@
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictReports,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
-      lastSignedReceipt: normalizeReportRepositorySignedReceipt(source.lastSignedReceipt || source.signedReceipt || source.receipt || null),
+      lastSignedReceipt,
+      signedReceipts: appendReportRepositorySignedReceipt({ signedReceipts }, lastSignedReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
+  }
+
+  function normalizeReportRepositorySignedReceipts(source = {}) {
+    const candidates = Array.isArray(source.signedReceipts)
+      ? source.signedReceipts
+      : Array.isArray(source.receipts)
+        ? source.receipts
+        : [];
+    const seen = new Set();
+    const receipts = [];
+    candidates
+      .map(normalizeReportRepositorySignedReceipt)
+      .filter(Boolean)
+      .forEach((receipt) => {
+        const key = receipt.signature || receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        receipts.push(receipt);
+      });
+    return receipts.slice(0, REPORT_REPOSITORY_MAX_RECEIPTS);
   }
 
   function normalizeReportRepositorySignedReceipt(record) {
@@ -805,9 +831,13 @@
       : [];
     return {
       receiptKind,
+      id: String(record.id || `report-receipt-${signature.slice(0, 16)}`).slice(0, 120),
       remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
       packageId: String(record.packageId || "").trim().slice(0, 120),
       sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
+      endpoint: String(record.endpoint || "").trim().slice(0, 240),
+      receivedAt: normalizePlanDate(record.receivedAt),
       repositoryDigest,
       acceptedAt: normalizePlanDate(record.acceptedAt),
       reportCount: normalizeInteger(record.reportCount, 0, 0, 99999),
@@ -819,8 +849,43 @@
       signatureAlgorithm,
       signingKeyId,
       signedFields,
+      message: String(record.message || "").slice(0, 180),
       signature
     };
+  }
+
+  function decorateReportRepositorySignedReceipt(receipt, context = {}) {
+    const normalized = normalizeReportRepositorySignedReceipt({
+      ...receipt,
+      direction: context.direction || receipt?.direction,
+      endpoint: context.endpoint || receipt?.endpoint,
+      receivedAt: context.receivedAt || receipt?.receivedAt,
+      message: context.message || receipt?.message
+    });
+    return normalized;
+  }
+
+  function appendReportRepositorySignedReceipt(repository, receipt) {
+    const normalized = normalizeReportRepositorySignedReceipt(receipt);
+    const existing = Array.isArray(repository?.signedReceipts) ? repository.signedReceipts : [];
+    if (!normalized) {
+      return existing
+        .map(normalizeReportRepositorySignedReceipt)
+        .filter(Boolean)
+        .slice(0, REPORT_REPOSITORY_MAX_RECEIPTS);
+    }
+    const seen = new Set([normalized.signature]);
+    const next = [normalized];
+    existing
+      .map(normalizeReportRepositorySignedReceipt)
+      .filter(Boolean)
+      .forEach((item) => {
+        const key = item.signature || item.receiptDigest || item.id;
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        next.push(item);
+      });
+    return next.slice(0, REPORT_REPOSITORY_MAX_RECEIPTS);
   }
 
   function normalizeReportRepositoryHex(value) {
@@ -4476,6 +4541,8 @@
       lastConflictReports: clone(repository.lastConflictReports),
       lastPackageId: repository.lastPackageId,
       lastSignedReceipt: repository.lastSignedReceipt ? clone(repository.lastSignedReceipt) : null,
+      signedReceiptCount: repository.signedReceipts.length,
+      signedReceipts: clone(repository.signedReceipts),
       signedReceiptStatus: signedReceiptSummary,
       lastError: repository.lastError
     };
@@ -4488,6 +4555,114 @@
     const digestShort = normalized.repositoryDigest.slice(0, 12);
     const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
     return `已收到远端签名回执：${normalized.signatureAlgorithm} / ${normalized.signingKeyId}，签名 ${signatureShort}，仓库摘要 ${digestShort}${acceptedAt}。`;
+  }
+
+  function getReportRepositoryReceiptAudit() {
+    const repository = normalizeReportRepository(state.reportRepository);
+    const receipts = repository.signedReceipts;
+    return {
+      ok: true,
+      kind: "mr-calligraphy-report-repository-receipt-audit-v1",
+      total: receipts.length,
+      latestReceipt: receipts[0] || null,
+      receipts: clone(receipts),
+      boundary: REPORT_REPOSITORY_BOUNDARY,
+      message: receipts.length
+        ? `已保存 ${receipts.length} 条报告仓库签名回执，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        : "暂无报告仓库签名回执。"
+    };
+  }
+
+  function getReportRepositoryReceiptAuditExport() {
+    const audit = getReportRepositoryReceiptAudit();
+    if (!audit.total) {
+      return {
+        ok: false,
+        message: "暂无可导出的报告仓库签名回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-report-repository-receipts-${exportedAt.slice(0, 10)}.html`,
+      html: renderReportRepositoryReceiptAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.total} 条报告仓库签名回执审计导出。`
+    };
+  }
+
+  function downloadReportRepositoryReceiptAudit() {
+    const result = getReportRepositoryReceiptAuditExport();
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      receiptCount: result.audit.total,
+      message: result.message
+    };
+  }
+
+  function renderReportRepositoryReceiptAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const warnings = Array.isArray(receipt.warnings) && receipt.warnings.length ? receipt.warnings.join("；") : "无";
+      return `
+        <section class="receipt">
+          <h2>${escapeHtml(receipt.packageId || "packageId 未知")}</h2>
+          <dl>
+            <dt>方向</dt><dd>${escapeHtml(formatReportRepositoryReceiptDirection(receipt.direction))}</dd>
+            <dt>报告数量</dt><dd>${escapeHtml(receipt.reportCount || 0)}</dd>
+            <dt>签名算法</dt><dd>${escapeHtml(receipt.signatureAlgorithm || "未知")}</dd>
+            <dt>签名 Key</dt><dd>${escapeHtml(receipt.signingKeyId || "未知")}</dd>
+            <dt>Signature</dt><dd>${escapeHtml(receipt.signature || "未知")}</dd>
+            <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
+            <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
+            <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
+            <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
+            <dt>Received At</dt><dd>${escapeHtml(receipt.receivedAt || "未知")}</dd>
+            <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
+            <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
+          </dl>
+          <pre>${escapeHtml(JSON.stringify(receipt, null, 2))}</pre>
+        </section>`;
+    }).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法报告仓库签名回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 12px; font-size: 17px; overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 6px; background: #1f2937; color: #f8fafc; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法报告仓库签名回执审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatReportRepositoryReceiptDirection(direction) {
+    return {
+      check: "检查",
+      push: "推送",
+      pull: "拉取"
+    }[direction] || "远端回执";
   }
 
   function getReportRepositoryRemoteConfig() {
@@ -4558,6 +4733,7 @@
       lastExportedReportCount: result.package.reports.length,
       lastPackageId: result.package.packageId,
       lastSignedReceipt: null,
+      signedReceipts: [],
       lastRemoteStatus: "",
       lastError: ""
     });
@@ -4717,6 +4893,7 @@
       lastConflictReports: merged.conflicts,
       lastPackageId: parsed.package.packageId || null,
       lastSignedReceipt: null,
+      signedReceipts: [],
       lastRemoteStatus: "",
       lastError: merged.skippedConflictCount
         ? `有 ${merged.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
@@ -4754,6 +4931,7 @@
         remoteToken: "",
         lastCheckedAt: new Date().toISOString(),
         lastSignedReceipt: null,
+        signedReceipts: [],
         lastRemoteStatus: "",
         lastError: ""
       });
@@ -4779,6 +4957,7 @@
       remoteEndpoint: validation.endpoint,
       remoteToken,
       lastSignedReceipt: validation.endpoint === repository.remoteEndpoint ? repository.lastSignedReceipt : null,
+      signedReceipts: validation.endpoint === repository.remoteEndpoint ? repository.signedReceipts : [],
       lastCheckedAt: new Date().toISOString(),
       lastRemoteStatus: "远端报告 API 已配置，尚未检查服务可用性。",
       lastError: ""
@@ -4889,7 +5068,15 @@
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
       const reportCount = parsed.package?.reports?.length || 0;
-      const signedReceipt = parsed.signedReceipt || repository.lastSignedReceipt || null;
+      const parsedReceipt = parsed.signedReceipt
+        ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
+          direction: "check",
+          endpoint: repository.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const signedReceipt = parsedReceipt || repository.lastSignedReceipt || null;
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
@@ -4899,6 +5086,7 @@
         lastRemoteReportCount: reportCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
         lastSignedReceipt: signedReceipt,
+        signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastRemoteStatus: parsed.message,
         lastError: ""
       });
@@ -4959,7 +5147,14 @@
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
 
-      const signedReceipt = parsed.signedReceipt || null;
+      const signedReceipt = parsed.signedReceipt
+        ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
+          direction: "push",
+          endpoint: repository.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
       const remoteStatus = signedReceipt
         ? `已推送 ${reportCount} 份报告到远端 API，并收到签名回执 ${signedReceipt.signature.slice(0, 12)}。`
         : `已推送 ${reportCount} 份报告到远端 API，远端未返回签名回执。`;
@@ -4974,6 +5169,7 @@
         lastExportedReportCount: reportCount,
         lastPackageId: acceptedPackageId,
         lastSignedReceipt: signedReceipt,
+        signedReceipts: appendReportRepositorySignedReceipt(repository, signedReceipt),
         lastSkippedConflictCount: 0,
         lastConflictReports: [],
         lastRemoteStatus: remoteStatus,
@@ -5026,7 +5222,15 @@
 
       const imported = importReportRepositoryPackage(parsed.package);
       const now = new Date().toISOString();
-      const signedReceipt = parsed.signedReceipt || repository.lastSignedReceipt || null;
+      const parsedReceipt = parsed.signedReceipt
+        ? decorateReportRepositorySignedReceipt(parsed.signedReceipt, {
+          direction: "pull",
+          endpoint: repository.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const signedReceipt = parsedReceipt || repository.lastSignedReceipt || null;
       state.reportRepository = normalizeReportRepository({
         ...state.reportRepository,
         mode: "remote-api",
@@ -5040,6 +5244,7 @@
         lastImportedReportCount: imported.importedCount || 0,
         lastPackageId: parsed.package.packageId || repository.lastPackageId || null,
         lastSignedReceipt: signedReceipt,
+        signedReceipts: appendReportRepositorySignedReceipt(repository, parsedReceipt),
         lastSkippedConflictCount: imported.skippedConflictCount || 0,
         lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
         lastError: imported.skippedConflictCount
@@ -9979,6 +10184,8 @@
     getReportRepositoryRemoteConfig,
     getReportRepositoryConflicts,
     getReportRepositoryPackage,
+    getReportRepositoryReceiptAudit,
+    getReportRepositoryReceiptAuditExport,
     getPlanExport,
     getReportPreview,
     getReportDetail,
@@ -10006,6 +10213,7 @@
     downloadHistoryRecords,
     downloadHistoryRepository,
     downloadReportRepository,
+    downloadReportRepositoryReceiptAudit,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

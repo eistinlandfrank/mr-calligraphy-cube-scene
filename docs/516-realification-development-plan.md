@@ -47,7 +47,7 @@
 | 操作按钮 | “播放讲解、保存作品、导出报告、生成视频、制定计划”等已开始写入本机状态或导出真实文件；关键按钮已细分本机真实、文件导出、本机发布和演示内容 | 仍有部分导航能力较薄，需要继续补真实内容与进度 |
 | 综合评分和指标 | 已能从书写画布的笔迹采样计算基础分 | 仍是启发式评分，不是专业书法识别模型 |
 | 历史记录 | 已有本机学习档案面板，支持筛选、最近分数趋势、按日期聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、记录重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出和远端 `nextPageUrl` 分页追取 | 还没有账号化托管仓库、生产级分页查询和跨设备归档 |
-| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、生产证书签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
+| 学习报告 | 已可导出可直接打开的 HTML 报告，并可在前台下载最近报告；报告内含能力雷达图、签名水印、打印/PDF 样式、站内详情路由、字段级交互图表、相邻报告对比、报告对比离线 HTML、多报告趋势图、字段多选、自定义悬浮提示、提示固定/复制、多报告趋势缩放、逐点展开明细、字段分组模板、原生 PDF 导出、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 还没有账号化教师端、生产证书签名验真、不可篡改审计、服务端 PDF 渲染和生产长期报告仓库 |
 | 作品集/分享 | “保存作品”已创建本机作品记录，并在前台预览截图和反馈；学习档案已补作品集搜索、标签筛选、标签编辑和 `?artwork=作品ID` 直达；作品复盘已可导出本机 HTML 分享页；“生成视频”已可导出真实笔迹 WebM 回放 | 还没有社交平台分享、MP4/GIF、公开作品集和跨设备作品集 |
 | AI 讲解 | 已有本机五段讲解内容、播放中/完成状态、自动推进进度、浏览器本机语音合成朗读和刷新后可读取的当前段落 | 还没有云端 AI 音频、视频流或按笔迹实时生成内容 |
 
@@ -6483,3 +6483,64 @@
 提交：
 
 - 中文 commit message：`新增报告仓库签名回执`
+
+### 2026-06-12：新增报告仓库回执审计
+
+功能名：报告仓库签名回执审计与导出。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/report-repository-api-contract.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `reportRepository.signedReceipts` 保存最近 12 条报告仓库签名回执。
+- 回执审计记录包含同步方向、endpoint、本机收到时间、服务端接收时间、签名、仓库摘要和 receipt 摘要。
+- `getReportRepositoryReceiptAudit()` 可读取审计列表。
+- `getReportRepositoryReceiptAuditExport()` 和 `downloadReportRepositoryReceiptAudit()` 可导出离线 HTML 审计页。
+- 站内报告面板新增“签名回执审计”区域和“导出回执”按钮。
+
+真实化说明：
+
+- 数据来源：远端报告仓库 API 返回的 signed receipt。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportRepository.signedReceipts`。
+- 成功反馈：面板显示回执数量和最近回执摘要，导出按钮下载 HTML。
+- 失败反馈：暂无回执时按钮禁用，直接调用导出 API 返回明确失败。
+- 刷新后复现方式：回执审计写入本机学习状态，刷新后仍可查看和导出。
+
+已知限制：
+
+- 当前是本机浏览器审计列表，不是生产服务端不可篡改日志、证书链验签或账号化教师身份审计。
+
+验收方式：
+
+- 手工验收：配置报告仓库 mock endpoint 后推送报告，站内报告面板应出现签名回执审计；点击“导出回执”下载 HTML。
+- 脚本验收：`node scripts/learning-state-check.js` 验证审计 API 和导出 HTML。
+- 浏览器验收：`npm run test:e2e -- --grep "front practice saves real strokes"` 验证回执审计区和下载文件。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库回执审计`

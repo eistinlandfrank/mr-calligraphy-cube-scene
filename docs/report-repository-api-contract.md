@@ -15,6 +15,7 @@
 
 - `MRAppState.downloadReportRepository()` 会下载 `mr-calligraphy-report-repository-*.json`，并把最近导出时间、报告数和 packageId 写入 `mr-calligraphy-learning-state-v1.reportRepository`。
 - `MRAppState.importReportRepositoryPackage()` 会读取同一格式的 JSON 包，新增本机不存在的报告；遇到同 ID 差异报告时不覆盖本机记录，而是写入冲突审计。
+- `MRAppState.getReportRepositoryReceiptAudit()` 会读取最近签名回执审计；`downloadReportRepositoryReceiptAudit()` 会导出 `mr-calligraphy-report-repository-receipts-*.html`。
 - 导入成功后刷新站内报告面板和学习状态摘要；导入错文件、空包或格式错误会返回明确失败提示。
 
 ## 3. Endpoint
@@ -108,7 +109,7 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt/latestReceipt`。如果回执包含 `receiptKind`、`repositoryDigest`、`receiptDigest`、`signatureAlgorithm`、`signingKeyId` 和 64 位 `signature`，前端会把它规范化保存到 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`，并在报告仓库摘要里提示最近签名回执。
+前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt/latestReceipt`。如果回执包含 `receiptKind`、`repositoryDigest`、`receiptDigest`、`signatureAlgorithm`、`signingKeyId` 和 64 位 `signature`，前端会把它规范化保存到 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`，同时写入 `reportRepository.signedReceipts` 最近 12 条审计列表，并在报告仓库摘要和签名回执审计区提示最近回执。
 
 ## 6. 同 ID 差异策略
 
@@ -189,5 +190,6 @@ npm run test:e2e -- --grep "front practice saves real strokes"
 - 站内报告面板“导入同步包”会通过文件选择器导入 JSON 包，并写入本机 `reports` 与 `reportRepository` 状态。
 - `configureReportRepositoryRemote()` 持久化 endpoint/token。
 - 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header。
-- 推送后 mock server 返回签名回执，前端保存到 `lastSignedReceipt`；再次 GET 检查或拉取时会保留最近签名回执。
+- 推送后 mock server 返回签名回执，前端保存到 `lastSignedReceipt` 和 `signedReceipts`；再次 GET 检查或拉取时会保留最近签名回执。
+- 站内报告面板“导出回执”会下载包含签名、仓库摘要、receipt 摘要、方向、endpoint 和原始回执 JSON 的 HTML 审计页。
 - 拉取同 ID 差异报告时不静默覆盖本机报告，而是生成本机冲突审计并支持字段级合并或远端副本另存。

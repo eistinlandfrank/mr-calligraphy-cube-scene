@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，签名回执还是 mock/HMAC 开发验收，还没有账号教师端、生产证书签名、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、生产证书验真和服务端 PDF 渲染验收 |
+| 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，签名回执审计还是本机列表和 mock/HMAC 开发验收，还没有账号教师端、生产证书签名、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、生产证书验真和服务端 PDF 渲染验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -1145,3 +1145,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告仓库签名回执`
+
+## 37. 2026-06-12 新增报告仓库回执审计导出
+
+本次把报告仓库签名回执从“最近一条状态”推进为“可查看、可导出的本机审计列表”。
+
+完成内容：
+
+- `reportRepository.signedReceipts` 保存最近 12 条签名回执。
+- 回执记录包含同步方向、endpoint、本机收到时间、签名算法、key id、signature、repositoryDigest 和 receiptDigest。
+- 站内报告面板新增“签名回执审计”区域，展示最近回执和签名短码。
+- “导出回执”会下载 `mr-calligraphy-report-repository-receipts-*.html`。
+- 数据层、smoke test 和 Playwright 都覆盖审计列表和 HTML 导出。
+
+真实化说明：
+
+- 数据来源：远端报告仓库 API 返回的 `receipt/latestReceipt`。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportRepository.signedReceipts`。
+- 成功反馈：报告面板展示已保存回执数量，导出按钮生成 HTML。
+- 失败反馈：暂无回执时按钮禁用，API 返回明确失败。
+- 刷新后复现方式：审计列表随本机学习状态持久化。
+
+仍待补：
+
+- 当前是本机审计导出，不是服务端不可篡改审计、生产证书链或账号化教师身份签章。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库回执审计`

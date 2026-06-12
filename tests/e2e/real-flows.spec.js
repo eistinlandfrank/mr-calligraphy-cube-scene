@@ -303,6 +303,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.locator("#reportRepositoryPushButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已推送 1 份报告");
   await expect(page.locator("#reportRepositorySummary")).toContainText("签名回执");
+  await expect(page.locator("#reportRepositoryReceiptStatus")).toContainText("已保存 1 条报告仓库签名回执");
+  await expect(page.locator("#reportRepositoryReceiptList")).toContainText("HMAC-SHA256");
 
   const reportPutRequest = reportRequests.find((item) => item.method === "PUT");
   expect(reportPutRequest.authorization).toBe("Bearer report-token");
@@ -318,6 +320,17 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reportRepository.lastSignedReceipt.signatureAlgorithm).toBe("HMAC-SHA256");
   expect(learningState.reportRepository.lastSignedReceipt.signingKeyId).toBe("e2e-report-signing-key-v1");
   expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
+  expect(learningState.reportRepository.signedReceipts).toHaveLength(1);
+  expect(learningState.reportRepository.signedReceipts[0].direction).toBe("push");
+
+  const receiptAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportRepositoryReceiptExportButton").click();
+  const receiptAuditDownload = await receiptAuditDownloadPromise;
+  expect(receiptAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-repository-receipts-.*\.html$/);
+  const receiptAuditPath = await receiptAuditDownload.path();
+  const receiptAuditHtml = fs.readFileSync(receiptAuditPath, "utf8");
+  expect(receiptAuditHtml).toContain("MR 书法报告仓库签名回执审计");
+  expect(receiptAuditHtml).toContain("c".repeat(64));
 
   await page.locator("#reportRepositoryPullButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已从远端 API 拉取 1 份报告");

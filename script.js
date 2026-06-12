@@ -864,6 +864,10 @@ const els = {
   reportRepositoryRemoteButton: document.getElementById("reportRepositoryRemoteButton"),
   reportRepositoryPushButton: document.getElementById("reportRepositoryPushButton"),
   reportRepositoryPullButton: document.getElementById("reportRepositoryPullButton"),
+  reportRepositoryReceiptAudit: document.getElementById("reportRepositoryReceiptAudit"),
+  reportRepositoryReceiptStatus: document.getElementById("reportRepositoryReceiptStatus"),
+  reportRepositoryReceiptList: document.getElementById("reportRepositoryReceiptList"),
+  reportRepositoryReceiptExportButton: document.getElementById("reportRepositoryReceiptExportButton"),
   reportRepositoryConflictPanel: document.getElementById("reportRepositoryConflictPanel"),
   reportRepositoryConflictStatus: document.getElementById("reportRepositoryConflictStatus"),
   reportRepositoryConflictList: document.getElementById("reportRepositoryConflictList"),
@@ -3678,6 +3682,7 @@ function bindReportControls() {
   els.reportRepositoryRemoteButton?.addEventListener("click", checkReportRepositoryRemote);
   els.reportRepositoryPushButton?.addEventListener("click", pushReportRepositoryRemote);
   els.reportRepositoryPullButton?.addEventListener("click", pullReportRepositoryRemote);
+  els.reportRepositoryReceiptExportButton?.addEventListener("click", exportReportRepositoryReceipts);
   els.reportRepositoryConflictList?.addEventListener("click", handleReportRepositoryConflictAction);
   els.reportMetrics?.addEventListener("click", (event) => {
     const button = event.target.closest("[data-report-metric]");
@@ -5547,7 +5552,43 @@ function renderReportRepositoryStatus(detail) {
   if (!detail && els.reportRepositoryPushButton) {
     els.reportRepositoryPushButton.disabled = true;
   }
+  renderReportRepositoryReceipts();
   renderReportRepositoryConflictPanel(status);
+}
+
+function renderReportRepositoryReceipts() {
+  const audit = window.MRAppState?.getReportRepositoryReceiptAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.reportRepositoryReceiptStatus) {
+    els.reportRepositoryReceiptStatus.textContent = audit?.message || "暂无报告仓库签名回执。";
+    els.reportRepositoryReceiptStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.reportRepositoryReceiptExportButton) {
+    els.reportRepositoryReceiptExportButton.disabled = !receipts.length;
+  }
+  if (!els.reportRepositoryReceiptList) return;
+  els.reportRepositoryReceiptList.replaceChildren();
+  receipts.slice(0, 5).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.packageId || receipt.sourcePackageId || "报告仓库回执";
+    const meta = document.createElement("span");
+    const signature = receipt.signature ? receipt.signature.slice(0, 12) : "签名未知";
+    const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
+    meta.textContent = `${formatReportRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 签名 ${signature} · 仓库 ${digest}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${receipt.signatureAlgorithm || "签名算法未知"} / ${receipt.signingKeyId || "key 未知"} / ${receipt.reportCount || 0} 份报告`;
+    item.append(title, meta, detail);
+    els.reportRepositoryReceiptList.appendChild(item);
+  });
+}
+
+function formatReportRepositoryReceiptDirection(direction) {
+  return {
+    check: "检查",
+    push: "推送",
+    pull: "拉取"
+  }[direction] || "回执";
 }
 
 function renderReportRepositoryConflictPanel(status) {
@@ -5693,6 +5734,16 @@ function downloadReportRepositoryPackage() {
   renderReportPanel(currentIndex);
 }
 
+function exportReportRepositoryReceipts() {
+  const result = window.MRAppState?.downloadReportRepositoryReceiptAudit?.();
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的报告仓库签名回执。");
+  }
+  renderReportPanel(currentIndex);
+}
+
 function chooseReportRepositoryImport() {
   if (!els.reportRepositoryImportInput) {
     showNotice("当前浏览器不支持选择报告仓库同步包文件。");
@@ -5809,7 +5860,8 @@ function setReportRepositoryRemoteBusy(isBusy) {
     els.reportRepositorySaveRemoteButton,
     els.reportRepositoryRemoteButton,
     els.reportRepositoryPushButton,
-    els.reportRepositoryPullButton
+    els.reportRepositoryPullButton,
+    els.reportRepositoryReceiptExportButton
   ].forEach((button) => {
     if (button) {
       button.disabled = Boolean(isBusy);

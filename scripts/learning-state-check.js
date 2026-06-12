@@ -851,7 +851,15 @@ async function runReportRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.signedReceipt.signature === mock.state.receipts[0].signature, "报告仓库推送结果应暴露服务端签名回执。");
     const signedStatus = window.MRAppState.getReportRepositoryStatus();
     assert(signedStatus.lastSignedReceipt.signature === mock.state.receipts[0].signature, "报告仓库状态应持久化最近签名回执。");
+    assert(signedStatus.signedReceiptCount === 1, "报告仓库状态应记录签名回执审计数量。");
+    assert(signedStatus.signedReceipts[0].direction === "push", "报告仓库签名回执审计应记录推送方向。");
     assert(signedStatus.message.includes("签名回执"), "报告仓库状态摘要应提示最近签名回执。");
+    const receiptAudit = window.MRAppState.getReportRepositoryReceiptAudit();
+    assert(receiptAudit.ok && receiptAudit.total === 1, "报告仓库签名回执审计 API 应返回最近回执。");
+    assert(receiptAudit.receipts[0].signature === mock.state.receipts[0].signature, "报告仓库回执审计应保留签名。");
+    const receiptExport = window.MRAppState.getReportRepositoryReceiptAuditExport();
+    assert(receiptExport.ok && receiptExport.html.includes("MR 书法报告仓库签名回执审计"), "报告仓库回执审计应可导出 HTML。");
+    assert(receiptExport.html.includes(mock.state.receipts[0].signature), "报告仓库回执审计 HTML 应包含签名。");
 
     const checkedAfterPush = await window.MRAppState.checkRemoteReportRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.reports.length === mock.state.package.reports.length, "报告仓库 mock GET 应返回最近 PUT 保存的报告包。");
