@@ -177,10 +177,42 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
   await expect(page.locator("#mainRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "blocked");
   await expect(page.locator("#mainRemotePublishRejectReview")).toHaveAttribute("data-admin-permission-state", "blocked");
   await expect(page.locator("#mainRemotePublishUnlock")).toHaveAttribute("data-admin-permission-state", "blocked");
+  await page.locator("#mainSnapshotCreate").click();
+  await expect(page.locator("#mainHistoryStatus")).toContainText("已保存快照");
+  const mainSnapshotRestore = page.locator("#mainSnapshotList [data-snapshot-action='restore']").first();
+  const mainSnapshotDelete = page.locator("#mainSnapshotList [data-snapshot-action='delete']").first();
+  await expect(mainSnapshotRestore).toHaveAttribute("data-admin-permission", "edit");
+  await expect(mainSnapshotRestore).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(mainSnapshotRestore).toBeEnabled();
+  await expect(mainSnapshotDelete).toHaveAttribute("data-admin-permission", "delete");
+  await expect(mainSnapshotDelete).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(mainSnapshotDelete).toBeEnabled();
+
+  await page.locator("#mainAdminOperatorRole").selectOption("reviewer");
+  await page.locator("#mainAdminOperatorSave").click();
+  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("复核角色为只读");
+  await expect(mainSnapshotRestore).toHaveAttribute("data-admin-permission-state", "blocked");
+  await expect(mainSnapshotRestore).toBeDisabled();
+  await expect(mainSnapshotDelete).toHaveAttribute("data-admin-permission-state", "blocked");
+  await expect(mainSnapshotDelete).toBeDisabled();
+  await page.evaluate(() => {
+    const restore = document.querySelector("#mainSnapshotList [data-snapshot-action='restore']");
+    if (restore) {
+      restore.disabled = false;
+      restore.click();
+    }
+  });
+  await expect(page.locator("#noticeState")).toContainText("复核无权执行恢复快照");
+  const blockedAudit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
+  expect(blockedAudit.scopes.mainScene.records.some((record) => record.action === "permission-blocked" && record.target === "恢复快照")).toBe(true);
 
   await page.locator("#mainAdminOperatorRole").selectOption("owner");
   await page.locator("#mainAdminOperatorSave").click();
   await expect(page.locator("#mainAdminPermissionStatus")).toContainText("远端审核审批");
+  await expect(mainSnapshotRestore).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(mainSnapshotDelete).toHaveAttribute("data-admin-permission-state", "allowed");
+  await mainSnapshotDelete.click();
+  await expect(page.locator("#mainHistoryStatus")).toContainText("已删除快照");
   await expect(page.locator("#mainRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "allowed");
   await expect(page.locator("#mainRemotePublishRejectReview")).toHaveAttribute("data-admin-permission-state", "allowed");
   await expect(page.locator("#mainRemotePublishUnlock")).toHaveAttribute("data-admin-permission-state", "allowed");
@@ -213,10 +245,42 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
   await expect(page.locator("#realisticRemotePublishRequestReview")).toHaveAttribute("data-admin-permission-state", "allowed");
   await expect(page.locator("#realisticRemotePublishApproveReview")).toHaveAttribute("data-admin-permission", "approve");
   await expect(page.locator("#realisticRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "blocked");
+  await page.locator("#realisticSnapshotCreate").click();
+  await expect(page.locator("#realisticHistoryStatus")).toContainText("已保存快照");
+  const realisticSnapshotRestore = page.locator("#realisticSnapshotList [data-snapshot-action='restore']").first();
+  const realisticSnapshotDelete = page.locator("#realisticSnapshotList [data-snapshot-action='delete']").first();
+  await expect(realisticSnapshotRestore).toHaveAttribute("data-admin-permission", "edit");
+  await expect(realisticSnapshotRestore).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(realisticSnapshotRestore).toBeEnabled();
+  await expect(realisticSnapshotDelete).toHaveAttribute("data-admin-permission", "delete");
+  await expect(realisticSnapshotDelete).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(realisticSnapshotDelete).toBeEnabled();
+
+  await page.locator("#realisticAdminOperatorRole").selectOption("reviewer");
+  await page.locator("#realisticAdminOperatorSave").click();
+  await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("复核角色为只读");
+  await expect(realisticSnapshotRestore).toHaveAttribute("data-admin-permission-state", "blocked");
+  await expect(realisticSnapshotRestore).toBeDisabled();
+  await expect(realisticSnapshotDelete).toHaveAttribute("data-admin-permission-state", "blocked");
+  await expect(realisticSnapshotDelete).toBeDisabled();
+  await page.evaluate(() => {
+    const restore = document.querySelector("#realisticSnapshotList [data-snapshot-action='restore']");
+    if (restore) {
+      restore.disabled = false;
+      restore.click();
+    }
+  });
+  await expect(page.locator("#importStatus")).toContainText("复核无权执行恢复快照");
+  const realisticBlockedAudit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
+  expect(realisticBlockedAudit.scopes.realisticScene.records.some((record) => record.action === "permission-blocked" && record.target === "恢复快照")).toBe(true);
 
   await page.locator("#realisticAdminOperatorRole").selectOption("owner");
   await page.locator("#realisticAdminOperatorSave").click();
   await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("远端审核审批");
+  await expect(realisticSnapshotRestore).toHaveAttribute("data-admin-permission-state", "allowed");
+  await expect(realisticSnapshotDelete).toHaveAttribute("data-admin-permission-state", "allowed");
+  await realisticSnapshotDelete.click();
+  await expect(page.locator("#realisticHistoryStatus")).toContainText("已删除快照");
   await expect(page.locator("#realisticRemotePublishApproveReview")).toHaveAttribute("data-admin-permission-state", "allowed");
   await expect(page.locator("#realisticRemotePublishRejectReview")).toHaveAttribute("data-admin-permission-state", "allowed");
   await expect(page.locator("#realisticRemotePublishUnlock")).toHaveAttribute("data-admin-permission-state", "allowed");
@@ -225,7 +289,9 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
   expect(audit.scopes.mainScene.operator.role).toBe("owner");
   expect(audit.scopes.realisticScene.operator.role).toBe("owner");
   expect(audit.scopes.mainScene.records.some((record) => record.action === "operator-save")).toBe(true);
+  expect(audit.scopes.mainScene.records.some((record) => record.action === "snapshot-delete")).toBe(true);
   expect(audit.scopes.realisticScene.records.some((record) => record.action === "operator-save")).toBe(true);
+  expect(audit.scopes.realisticScene.records.some((record) => record.action === "snapshot-delete")).toBe(true);
 });
 
 test("front practice saves real strokes and exports a report", async ({ page }) => {

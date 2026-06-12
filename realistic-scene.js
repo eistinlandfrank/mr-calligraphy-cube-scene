@@ -137,6 +137,8 @@ const ADMIN_AUDIT_ACTION_LABELS = {
   "access-unlock": "解锁后台",
   "access-lock": "锁定后台",
   "operator-save": "保存操作者",
+  "snapshot-restore": "恢复快照",
+  "snapshot-delete": "删除快照",
   "permission-blocked": "权限拦截"
 };
 const importedModelStore = createModelStore({
@@ -1461,6 +1463,7 @@ function createSnapshotRow(snapshot) {
   restoreButton.dataset.snapshotAction = "restore";
   restoreButton.dataset.snapshotId = snapshot.id;
   restoreButton.textContent = "恢复";
+  setAdminPermissionState(restoreButton, "edit");
 
   const deleteButton = document.createElement("button");
   deleteButton.type = "button";
@@ -1468,6 +1471,7 @@ function createSnapshotRow(snapshot) {
   deleteButton.dataset.snapshotAction = "delete";
   deleteButton.dataset.snapshotId = snapshot.id;
   deleteButton.textContent = "删除";
+  setAdminPermissionState(deleteButton, "delete");
 
   actions.append(restoreButton, deleteButton);
   row.append(detail, actions);
@@ -1488,28 +1492,45 @@ function handleSnapshotListClick(event) {
   }
 
   if (button.dataset.snapshotAction === "restore") {
+    if (!ensureAdminPermission("edit", "恢复快照")) {
+      return;
+    }
     restoreLayoutSnapshot(snapshot);
     return;
   }
 
   if (button.dataset.snapshotAction === "delete") {
+    if (!ensureAdminPermission("delete", "删除快照")) {
+      return;
+    }
     deleteLayoutSnapshot(snapshot.id);
   }
 }
 
 function restoreLayoutSnapshot(snapshot) {
-  createLayoutSnapshot("恢复前自动快照", { status: false });
+  const autoSnapshot = createLayoutSnapshot("恢复前自动快照", { status: false });
   try {
     window.localStorage.setItem(SCENE_LAYOUT_STORAGE_KEY, JSON.stringify(normalizeSceneLayout(snapshot.layout)));
+    recordAdminOperation("snapshot-restore", snapshot.label, `恢复写实场景快照：${snapshot.label}`, "ok", {
+      snapshotId: snapshot.id,
+      autoSnapshotId: autoSnapshot?.id || "",
+      stats: snapshot.stats
+    });
     setHistoryStatus(`已恢复快照：${snapshot.label}，页面即将刷新。`, "success");
     window.setTimeout(() => window.location.reload(), 800);
   } catch (error) {
     console.warn("Scene snapshot could not be restored.", error);
+    recordAdminOperation("snapshot-restore", snapshot.label, "恢复写实场景快照失败，可能是浏览器本机存储空间不足。", "failed", {
+      snapshotId: snapshot.id,
+      autoSnapshotId: autoSnapshot?.id || "",
+      error: String(error?.message || error || "")
+    });
     setHistoryStatus("恢复快照失败，可能是浏览器本机存储空间不足。", "error");
   }
 }
 
 function deleteLayoutSnapshot(id) {
+  const snapshot = layoutHistory.find((item) => item.id === id);
   const before = layoutHistory.length;
   layoutHistory = layoutHistory.filter((snapshot) => snapshot.id !== id);
   const saved = saveLayoutHistory();
@@ -1521,7 +1542,14 @@ function deleteLayoutSnapshot(id) {
   }
 
   renderHistoryPanel();
-  setHistoryStatus(before === layoutHistory.length ? "未找到要删除的快照。" : "已删除快照。", "success");
+  const deleted = before !== layoutHistory.length;
+  if (deleted && snapshot) {
+    recordAdminOperation("snapshot-delete", snapshot.label, `删除写实场景快照：${snapshot.label}`, "ok", {
+      snapshotId: snapshot.id,
+      stats: snapshot.stats
+    });
+  }
+  setHistoryStatus(deleted ? `已删除快照：${snapshot?.label || id}` : "未找到要删除的快照。", deleted ? "success" : "error");
 }
 
 function publishLayoutToDemo() {
@@ -1859,6 +1887,42 @@ function adminCanPerform(permission) {
   return window.MRAdminAudit?.canPerform?.(ADMIN_AUDIT_SCOPE, permission) !== false;
 }
 
+function setAdminPermissionState(element, permission, audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE)) {
+  if (!element) {
+    return;
+  }
+
+  const allowed = adminCanPerform(permission);
+  element.dataset.adminPermission = permission;
+  element.dataset.adminPermissionState = allowed ? "allowed" : "blocked";
+  if (!allowed) {
+    if (element.dataset.adminRoleBlocked !== "true") {
+      element.dataset.adminRolePreviousDisabled = element.disabled ? "1" : "0";
+      element.dataset.adminRolePreviousTitle = element.title || "";
+    }
+    element.dataset.adminRoleBlocked = "true";
+    element.disabled = true;
+    element.title = `${audit?.operator?.roleLabel || "当前角色"}无权执行${audit?.permissionLabels?.[permission] || permission}。`;
+    return;
+  }
+  if (element.dataset.adminRoleBlocked === "true") {
+    element.disabled = element.dataset.adminRolePreviousDisabled === "1";
+    element.title = element.dataset.adminRolePreviousTitle || "";
+    delete element.dataset.adminRoleBlocked;
+    delete element.dataset.adminRolePreviousDisabled;
+    delete element.dataset.adminRolePreviousTitle;
+  }
+}
+
+function applySnapshotPermissionState(audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE)) {
+  snapshotList?.querySelectorAll("[data-snapshot-action='restore']").forEach((button) => {
+    setAdminPermissionState(button, "edit", audit);
+  });
+  snapshotList?.querySelectorAll("[data-snapshot-action='delete']").forEach((button) => {
+    setAdminPermissionState(button, "delete", audit);
+  });
+}
+
 function applyAdminPermissionState(audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE)) {
   if (adminPermissionStatus && audit) {
     adminPermissionStatus.textContent = audit.permissionSummary || "已读取本机角色权限。";
@@ -1869,27 +1933,9 @@ function applyAdminPermissionState(audit = window.MRAdminAudit?.getStatus?.(ADMI
     if (!element) {
       return;
     }
-    const allowed = adminCanPerform(permission);
-    element.dataset.adminPermission = permission;
-    element.dataset.adminPermissionState = allowed ? "allowed" : "blocked";
-    if (!allowed) {
-      if (element.dataset.adminRoleBlocked !== "true") {
-        element.dataset.adminRolePreviousDisabled = element.disabled ? "1" : "0";
-        element.dataset.adminRolePreviousTitle = element.title || "";
-      }
-      element.dataset.adminRoleBlocked = "true";
-      element.disabled = true;
-      element.title = `${audit?.operator?.roleLabel || "当前角色"}无权执行${audit?.permissionLabels?.[permission] || permission}。`;
-      return;
-    }
-    if (element.dataset.adminRoleBlocked === "true") {
-      element.disabled = element.dataset.adminRolePreviousDisabled === "1";
-      element.title = element.dataset.adminRolePreviousTitle || "";
-      delete element.dataset.adminRoleBlocked;
-      delete element.dataset.adminRolePreviousDisabled;
-      delete element.dataset.adminRolePreviousTitle;
-    }
+    setAdminPermissionState(element, permission, audit);
   });
+  applySnapshotPermissionState(audit);
   renderAdminAccessPanel();
   renderImportAuditPanel();
 }

@@ -3527,3 +3527,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增分享页评分证据`
+
+## 97. 2026-06-13 新增后台快照权限审计
+
+本次补齐后台动态快照按钮的真实权限链路。之前主后台和写实后台的静态按钮已经会随角色禁用，但快照列表里的“恢复/删除”是运行时生成按钮，缺少同等权限状态和点击路径拦截。现在它们会跟随本机门禁和角色权限，并把恢复/删除写入后台审计。
+
+完成内容：
+
+- `main-admin-scene.js` 和 `realistic-scene.js` 新增通用 `setAdminPermissionState()`，静态控件和动态快照按钮共用同一套角色禁用逻辑。
+- 快照列表渲染时为“恢复/回滚”按钮标记编辑权限，为“删除”按钮标记删除权限。
+- 角色切换、门禁锁定、快照列表刷新后都会重新计算动态按钮的 `data-admin-permission-state`。
+- 动态按钮点击入口增加 `ensureAdminPermission()`，避免手动篡改 disabled 后绕过权限。
+- 快照恢复写入 `snapshot-restore` 审计，快照删除写入 `snapshot-delete` 审计。
+- E2E 覆盖主后台和写实后台的动态快照按钮：编辑可操作、复核禁用、强制点击被拦截、负责人删除后产生审计。
+
+真实化说明：
+
+- 数据来源：本机快照历史、本机访问门禁、操作者角色和后台审计状态。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1.scopes.mainScene/realisticScene.records`。
+- 成功反馈：动态快照按钮不再像“假按钮”，能正确随角色变化，并在审计导出中留下恢复/删除证据。
+- 失败反馈：无权限时按钮禁用；绕过 disabled 强行触发仍会显示无权提示并写入权限拦截审计。
+- 刷新后复现方式：刷新后台后，快照按钮权限由本机角色和门禁重新计算。
+
+仍待补：
+
+- 目前仍是本机静态后台权限，不是服务端账号、组织角色、多人审批或不可篡改审计链。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `node scripts/control-inventory.js --check`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增后台快照权限审计`

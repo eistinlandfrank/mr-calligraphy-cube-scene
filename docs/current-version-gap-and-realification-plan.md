@@ -4026,3 +4026,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增分享页评分证据`
+
+### 2026-06-13：新增后台快照权限审计
+
+完成内容：
+
+- 主后台和写实后台的快照列表动态按钮接入 `data-admin-permission` 和 `data-admin-permission-state`，不再只覆盖静态按钮。
+- “恢复快照”使用编辑权限，“删除快照”使用删除权限；后台锁定或复核角色下按钮会自动禁用。
+- 点击动态快照按钮时再次调用 `ensureAdminPermission()`，即使绕过 disabled 也会被拦截并写入 `permission-blocked` 审计。
+- 成功恢复快照会写入 `snapshot-restore` 审计，包含目标快照 ID、恢复前自动快照 ID 和统计信息。
+- 成功删除快照会写入 `snapshot-delete` 审计，包含被删除快照 ID 和对象统计。
+- Playwright 覆盖主后台和写实后台：编辑角色可创建快照并操作动态按钮，复核角色被禁用和拦截，负责人角色可删除快照并留下审计。
+
+真实化说明：
+
+- 数据来源：主后台 `mr-calligraphy-main-scene-history-v1`、写实后台 `mr-calligraphy-realistic-history-v1` 和统一后台审计 `mr-calligraphy-admin-operator-audit-v1`。
+- 写入状态：恢复/删除成功后写入对应场景的后台审计记录；权限拦截写入 `permission-blocked`。
+- 成功反馈：快照列表动态按钮的权限状态会随角色切换即时刷新，审计导出能看到快照恢复/删除动作。
+- 失败反馈：复核角色或锁定会话不能通过动态按钮修改本机布局历史，即便前端按钮状态被手动篡改也会被点击路径拦截。
+- 刷新后复现方式：创建快照、切换角色、刷新后台，按钮状态仍由持久化操作者角色和本机会话门禁重新计算。
+
+仍待补：
+
+- 当前是本机后台权限和审计，不是服务端账号登录、多人审批、不可篡改审计或云端快照版本库。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `node scripts/control-inventory.js --check`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增后台快照权限审计`

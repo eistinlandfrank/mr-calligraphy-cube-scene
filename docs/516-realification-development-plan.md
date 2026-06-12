@@ -9090,3 +9090,42 @@
 提交：
 
 - 中文 commit message：`新增分享页评分证据`
+
+### 2026-06-13：新增后台快照权限审计
+
+功能名：主后台和写实后台动态快照按钮权限与审计。
+
+完成内容：
+
+- 主后台和写实后台快照列表里的运行时按钮新增真实角色权限状态。
+- “恢复/回滚”快照需要编辑权限，“删除”快照需要删除权限。
+- 复核角色和锁定会话下，动态按钮会显示 blocked 状态并禁用。
+- 点击入口再次校验权限，防止通过 DOM 篡改绕过 disabled。
+- 恢复快照写入 `snapshot-restore` 本机审计，删除快照写入 `snapshot-delete` 本机审计。
+- Playwright 覆盖两套后台的编辑、复核和负责人角色下动态快照按钮行为。
+
+真实化说明：
+
+- 数据来源：后台本机快照历史、后台操作者角色、访问门禁和统一审计模块。
+- 写入状态：`mr-calligraphy-admin-operator-audit-v1`。
+- 成功反馈：快照恢复/删除不再只是本机状态变化，而是能在后台审计中追踪到操作者、目标快照和统计信息。
+- 失败反馈：无权限时禁用按钮；强行触发点击也会记录权限拦截。
+- 刷新后复现方式：刷新后台，动态快照按钮会按当前角色和门禁重新标记权限状态。
+
+仍待补：
+
+- 当前完成的是本机权限链路；服务端账号登录、多人审批、云端快照版本库和不可篡改审计仍未接入。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `node scripts/control-inventory.js --check`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增后台快照权限审计`
