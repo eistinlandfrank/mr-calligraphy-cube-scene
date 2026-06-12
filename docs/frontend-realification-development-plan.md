@@ -19,7 +19,7 @@
 
 ## 2. 我对当前版本的判断
 
-这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
+这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、作品分享本机链接、作品分享远端 API adapter、报告、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
 
 但它还不是一个真实可交付产品。最大问题不是“按钮没有绑定”，而是“按钮看起来像生产功能，实际只是本机原型能力”。用户看到 AI、评分、分享、同步、发布、后台这些词时，会自然期待账号、后端、权限、云端数据和端到端稳定性；当前很多地方还只做到本机状态或文件导出。
 
@@ -64,7 +64,7 @@ node scripts/control-inventory.js --check
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放，生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码和页面关闭后的后台队列 | 增加转码 adapter、压缩、Service Worker/服务端导出队列 |
 | 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，签名回执审计还是本机列表和 mock/HMAC 开发验收，还没有账号教师端、生产证书签名、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、生产证书验真和服务端 PDF 渲染验收 |
-| 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
+| 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接；远端分享 API adapter 已支持 endpoint/token、GET 检查、PUT 发布分享包、保存 publicUrl 和回执，本机 mock 服务可验收 | 远端 adapter 仍需用户自备服务端；没有内置公网托管、社群分享、课堂作品墙、账号权限或生产 CDN | 离线导出保持 `real-export`，本机分享服务和远端 adapter 标记 `real-local`；后续增加生产公开分享服务、权限控制和撤销审计 |
 
 ### 4.3 主后台和写实后台
 
@@ -1468,3 +1468,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增书写视频导出队列重试`
+
+## 46. 2026-06-12 新增作品分享远端 API adapter
+
+本次把“分享成果”从本机链接继续推进到可对接用户自备远端服务的真实 adapter。
+
+完成内容：
+
+- `shareService` 新增远端模式、endpoint/token、最近状态、最近 publicUrl、packageId、回执和错误状态。
+- `MRAppState.getArtworkShareRemotePackage()` 生成 `mr-calligraphy-share-repository-v1` 分享包，包含分享记录、作品分享数据、HTML、文件名和摘要。
+- `configureShareServiceRemote()`、`checkRemoteShareService()`、`pushArtworkShareToRemote()` 负责保存远端配置、GET 检查和 PUT 发布。
+- 前台复盘区新增“远端分享 API”面板，可保存远端、检查远端、发布分享和复制远端链接。
+- 新增 `scripts/share-repository-mock-server.js` 和 `docs/share-repository-api-contract.md`，支持 CORS、Bearer token、publicUrl 和 `mr-calligraphy-share-repository-receipt-v1`。
+- `learning-state-check.js` 和 Playwright 主流程覆盖分享包、mock 服务、前台按钮、publicUrl 和回执持久化。
+
+真实化说明：
+
+- 数据来源：真实作品、本机分享记录、分享 HTML、用户配置 endpoint 和真实 fetch 响应。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService` 和对应 `ShareRecord.remotePublicUrl`。
+- 成功反馈：复盘区显示远端 publicUrl 和回执摘要，可复制远端链接。
+- 失败反馈：非法 endpoint、HTTP 错误、非 JSON、token 错误和包结构错误都会写入本机错误状态。
+- 刷新后复现方式：远端配置、publicUrl 和回执在 localStorage 中持久化。
+
+仍待补：
+
+- 当前不是内置账号、微信接口、班级作品墙、生产 CDN、访问权限或服务端撤销审计。
+
+验收：
+
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享远端发布`

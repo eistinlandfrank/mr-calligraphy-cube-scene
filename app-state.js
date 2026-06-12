@@ -14,6 +14,10 @@
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
+  const SHARE_REPOSITORY_KIND = "mr-calligraphy-share-repository-v1";
+  const SHARE_REPOSITORY_BOUNDARY = "作品分享远端 API adapter 会把当前分享包真实发送到用户配置的 endpoint，并保存 publicUrl 与回执；它仍不是内置账号系统、微信发布、班级作品墙或生产 CDN。";
+  const SHARE_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
+  const SHARE_REPOSITORY_MAX_RECEIPTS = 12;
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
@@ -687,14 +691,32 @@
 
   function normalizeShareService(record = {}) {
     const source = record && typeof record === "object" ? record : {};
+    const mode = source.mode === "remote-api" ? "remote-api" : "local-link";
+    const receipts = normalizeShareRepositoryReceipts(source);
+    const lastReceipt = normalizeShareRepositoryReceipt(source.lastReceipt || source.latestReceipt || source.receipt || null)
+      || receipts[0]
+      || null;
     return {
+      mode,
       records: Array.isArray(source.records)
         ? source.records.map(normalizeShareRecord).filter(Boolean).slice(0, MAX_SHARE_RECORDS)
         : [],
       lastCreatedAt: normalizePlanDate(source.lastCreatedAt),
       lastCopiedAt: normalizePlanDate(source.lastCopiedAt),
       lastOpenedAt: normalizePlanDate(source.lastOpenedAt),
-      lastRevokedAt: normalizePlanDate(source.lastRevokedAt)
+      lastRevokedAt: normalizePlanDate(source.lastRevokedAt),
+      remoteEndpoint: source.remoteEndpoint ? String(source.remoteEndpoint).trim().slice(0, 420) : "",
+      remoteToken: source.remoteToken ? String(source.remoteToken).trim().slice(0, 240) : "",
+      lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
+      lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
+      lastRemoteDirection: ["check", "push"].includes(source.lastRemoteDirection) ? source.lastRemoteDirection : "",
+      lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).trim().slice(0, 260) : "",
+      lastError: source.lastError ? String(source.lastError).trim().slice(0, 220) : "",
+      lastPackageId: source.lastPackageId ? String(source.lastPackageId).trim().slice(0, 160) : "",
+      lastRemoteShareId: source.lastRemoteShareId ? String(source.lastRemoteShareId).trim().slice(0, 120) : "",
+      lastRemotePublicUrl: normalizeSharePublicUrl(source.lastRemotePublicUrl),
+      lastReceipt,
+      receipts: appendShareRepositoryReceipt({ receipts }, lastReceipt)
     };
   }
 
@@ -715,9 +737,108 @@
       revokedAt: normalizePlanDate(record.revokedAt),
       copiedAt: normalizePlanDate(record.copiedAt),
       lastViewedAt: normalizePlanDate(record.lastViewedAt),
+      remotePublishedAt: normalizePlanDate(record.remotePublishedAt),
+      remotePublicUrl: normalizeSharePublicUrl(record.remotePublicUrl),
+      remotePackageId: record.remotePackageId ? String(record.remotePackageId).trim().slice(0, 160) : "",
+      remoteReceiptDigest: normalizeShareRepositoryHex(record.remoteReceiptDigest),
       viewCount: normalizeInteger(record.viewCount, 0, 0, 999999),
       copyCount: normalizeInteger(record.copyCount, 0, 0, 999999)
     };
+  }
+
+  function normalizeSharePublicUrl(value) {
+    const text = String(value || "").trim();
+    if (!text) return "";
+    try {
+      const base = typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
+      const url = new URL(text, base);
+      return ["http:", "https:"].includes(url.protocol) ? url.href.slice(0, 420) : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function normalizeShareRepositoryReceipts(source = {}) {
+    const candidates = Array.isArray(source.receipts)
+      ? source.receipts
+      : Array.isArray(source.remoteReceipts)
+        ? source.remoteReceipts
+        : [];
+    const receipts = [];
+    candidates
+      .map(normalizeShareRepositoryReceipt)
+      .filter(Boolean)
+      .forEach((receipt) => {
+        const key = getShareRepositoryReceiptKey(receipt);
+        if (key && !receipts.some((item) => getShareRepositoryReceiptKey(item) === key)) {
+          receipts.push(receipt);
+        }
+      });
+    return receipts.slice(0, SHARE_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function normalizeShareRepositoryReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const receiptKind = String(record.receiptKind || "").trim();
+    const repositoryDigest = normalizeShareRepositoryHex(record.repositoryDigest);
+    const receiptDigest = normalizeShareRepositoryHex(record.receiptDigest);
+    if (receiptKind !== SHARE_REPOSITORY_RECEIPT_KIND || !repositoryDigest || !receiptDigest) {
+      return null;
+    }
+    return {
+      receiptKind,
+      id: String(record.id || `share-receipt-${receiptDigest.slice(0, 16)}`).slice(0, 120),
+      remoteVersion: String(record.remoteVersion || "").slice(0, 120),
+      packageId: String(record.packageId || "").slice(0, 160),
+      sourcePackageId: String(record.sourcePackageId || "").slice(0, 160),
+      shareId: String(record.shareId || "").slice(0, 120),
+      artworkId: String(record.artworkId || "").slice(0, 120),
+      repositoryDigest,
+      receiptDigest,
+      publicUrl: normalizeSharePublicUrl(record.publicUrl),
+      acceptedAt: normalizePlanDate(record.acceptedAt),
+      shareCount: normalizeInteger(record.shareCount, 0, 0, 9999),
+      htmlBytes: normalizeInteger(record.htmlBytes, 0, 0, 999999999),
+      warningCount: normalizeInteger(record.warningCount, 0, 0, 9999),
+      warnings: normalizeStringList(record.warnings).slice(0, 12),
+      direction: ["check", "push"].includes(record.direction) ? record.direction : "",
+      endpoint: record.endpoint ? String(record.endpoint).slice(0, 420) : "",
+      receivedAt: normalizePlanDate(record.receivedAt),
+      message: record.message ? String(record.message).slice(0, 260) : ""
+    };
+  }
+
+  function decorateShareRepositoryReceipt(receipt, context = {}) {
+    const normalized = normalizeShareRepositoryReceipt(receipt);
+    if (!normalized) return null;
+    return {
+      ...normalized,
+      direction: context.direction || normalized.direction,
+      endpoint: context.endpoint || normalized.endpoint,
+      receivedAt: context.receivedAt || normalized.receivedAt,
+      message: context.message || normalized.message
+    };
+  }
+
+  function appendShareRepositoryReceipt(repository, receipt) {
+    const normalized = normalizeShareRepositoryReceipt(receipt);
+    const existing = Array.isArray(repository?.receipts) ? repository.receipts : [];
+    if (!normalized) return existing.slice(0, SHARE_REPOSITORY_MAX_RECEIPTS);
+    const key = getShareRepositoryReceiptKey(normalized);
+    return [
+      normalized,
+      ...existing.filter((item) => getShareRepositoryReceiptKey(item) !== key)
+    ].slice(0, SHARE_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function getShareRepositoryReceiptKey(receipt) {
+    if (!receipt) return "";
+    return receipt.receiptDigest || `${receipt.repositoryDigest}:${receipt.packageId}:${receipt.sourcePackageId}:${receipt.acceptedAt}` || receipt.id || "";
+  }
+
+  function normalizeShareRepositoryHex(value) {
+    const hex = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
   }
 
   function normalizeIsoDate(value) {
@@ -7004,6 +7125,75 @@
     return state.artworks[state.artworks.length - 1] || null;
   }
 
+  function getArtworkShareRemotePackage(shareId = null) {
+    const record = getShareRecordForRemote(shareId);
+    if (!record) {
+      return {
+        ok: false,
+        boundary: SHARE_REPOSITORY_BOUNDARY,
+        message: "没有可发布到远端的有效分享链接。请先生成本机分享链接。"
+      };
+    }
+    const decorated = decorateShareRecord(record);
+    if (!decorated.isActive) {
+      return {
+        ok: false,
+        record: decorated,
+        boundary: SHARE_REPOSITORY_BOUNDARY,
+        message: "这条分享链接已失效，不能发布到远端。"
+      };
+    }
+    const packageResult = getArtworkSharePackage(record.artworkId);
+    if (!packageResult.ok) {
+      return {
+        ok: false,
+        record: decorated,
+        boundary: SHARE_REPOSITORY_BOUNDARY,
+        message: packageResult.message || "分享链接对应的作品已不存在，无法发布到远端。"
+      };
+    }
+
+    const exportedAt = new Date().toISOString();
+    const payloadCore = {
+      shareRecord: decorated,
+      share: packageResult.share,
+      html: packageResult.html
+    };
+    const packageDigest = sha256StableJson(payloadCore);
+    const repositoryPackage = {
+      kind: SHARE_REPOSITORY_KIND,
+      version: VERSION,
+      storageKey: STORAGE_KEY,
+      packageId: `share-package-${record.id}-${packageDigest.slice(0, 12)}`,
+      exportedAt,
+      summary: {
+        shareCount: 1,
+        shareId: record.id,
+        artworkId: record.artworkId,
+        title: decorated.title,
+        glyph: decorated.glyph,
+        htmlBytes: packageResult.html.length,
+        imageEmbedded: Boolean(packageResult.share?.artwork?.imageData)
+      },
+      records: [clone(record)],
+      shares: [{
+        shareId: record.id,
+        artworkId: record.artworkId,
+        share: packageResult.share,
+        html: packageResult.html,
+        filename: packageResult.filename,
+        digest: packageDigest
+      }]
+    };
+    return {
+      ok: true,
+      package: repositoryPackage,
+      record: decorated,
+      boundary: SHARE_REPOSITORY_BOUNDARY,
+      message: `已生成“${decorated.artworkTitle || decorated.title}”的远端分享包。`
+    };
+  }
+
   function findArtworkSession(artwork) {
     if (!artwork?.sessionId) return null;
     return state.sessions.find((item) => item.id === artwork.sessionId) || null;
@@ -7031,10 +7221,409 @@
       latestRecord: records[0] || null,
       currentRecord,
       records,
+      mode: state.shareService.mode,
+      remoteConfigured: Boolean(state.shareService.remoteEndpoint),
+      remoteEndpoint: state.shareService.remoteEndpoint,
+      lastRemoteStatus: state.shareService.lastRemoteStatus,
+      lastRemoteSyncAt: state.shareService.lastRemoteSyncAt,
+      lastRemoteDirection: state.shareService.lastRemoteDirection,
+      lastRemoteShareId: state.shareService.lastRemoteShareId,
+      lastRemotePublicUrl: state.shareService.lastRemotePublicUrl,
+      lastPackageId: state.shareService.lastPackageId,
+      lastError: state.shareService.lastError,
+      lastReceipt: state.shareService.lastReceipt ? clone(state.shareService.lastReceipt) : null,
+      receiptCount: state.shareService.receipts.length,
+      receipts: clone(state.shareService.receipts),
       message: records.length
         ? `本机分享服务有 ${activeRecords.length} 条有效链接、${revokedRecords.length} 条已撤销、${expiredRecords.length} 条已过期。`
         : "本机分享服务尚未生成链接。保存作品后可生成当前浏览器内可访问的分享链接。"
     };
+  }
+
+  function getShareServiceRemoteConfig() {
+    const service = normalizeShareService(state.shareService);
+    return {
+      ok: true,
+      mode: service.mode,
+      remoteEndpoint: service.remoteEndpoint,
+      remoteToken: service.remoteToken,
+      hasRemoteToken: Boolean(service.remoteToken),
+      boundary: SHARE_REPOSITORY_BOUNDARY
+    };
+  }
+
+  function configureShareServiceRemote(config = {}) {
+    const service = normalizeShareService(state.shareService);
+    const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
+    const tokenInput = config.remoteToken ?? config.token;
+    const remoteEndpoint = String(endpointInput || "").trim();
+    const remoteToken = tokenInput === undefined
+      ? service.remoteToken
+      : String(tokenInput || "").trim();
+
+    if (!remoteEndpoint) {
+      state.shareService = normalizeShareService({
+        ...service,
+        mode: "local-link",
+        remoteEndpoint: "",
+        remoteToken: "",
+        lastCheckedAt: new Date().toISOString(),
+        lastRemoteSyncAt: null,
+        lastRemoteDirection: "",
+        lastRemoteStatus: "",
+        lastError: "",
+        lastPackageId: "",
+        lastRemoteShareId: "",
+        lastRemotePublicUrl: "",
+        lastReceipt: null,
+        receipts: []
+      });
+      addEvent("share-remote", "清除远端分享 API 配置");
+      saveState();
+      return {
+        ok: true,
+        status: getShareServiceStatus(),
+        message: "已清除远端分享 API 配置，当前仅保留本机分享链接。"
+      };
+    }
+
+    const validation = validateShareRepositoryEndpoint(remoteEndpoint);
+    if (!validation.ok) {
+      recordShareRepositoryError(validation.message);
+      return {
+        ok: false,
+        status: getShareServiceStatus(),
+        message: validation.message
+      };
+    }
+
+    state.shareService = normalizeShareService({
+      ...service,
+      mode: "remote-api",
+      remoteEndpoint: validation.endpoint,
+      remoteToken,
+      lastCheckedAt: new Date().toISOString(),
+      lastRemoteStatus: "远端分享 API 配置已保存，尚未检查服务可用性。",
+      lastError: ""
+    });
+    addEvent("share-remote", `配置远端分享 API：${validation.endpoint}`);
+    saveState();
+    return {
+      ok: true,
+      status: getShareServiceStatus(),
+      message: "已保存远端分享 API 配置。请点击“检查远端”确认服务可用。"
+    };
+  }
+
+  function validateShareRepositoryEndpoint(endpoint) {
+    try {
+      const base = typeof location !== "undefined" && location.href ? location.href : "http://localhost/";
+      const url = new URL(endpoint, base);
+      if (!["http:", "https:"].includes(url.protocol)) {
+        return { ok: false, message: "远端分享 API 只支持 http 或 https 地址。" };
+      }
+      return { ok: true, endpoint: url.href };
+    } catch (error) {
+      return { ok: false, message: "远端分享 API 地址无效。" };
+    }
+  }
+
+  function getShareRepositoryFetch() {
+    return typeof fetch === "function" ? fetch.bind(typeof globalThis !== "undefined" ? globalThis : null) : null;
+  }
+
+  function buildShareRepositoryRequest(service, options = {}) {
+    const headers = {
+      Accept: "application/json",
+      ...(options.body ? { "Content-Type": "application/json" } : {})
+    };
+    if (service.remoteToken) {
+      headers.Authorization = `Bearer ${service.remoteToken}`;
+    }
+    return {
+      method: options.method || "GET",
+      headers,
+      ...(options.body ? { body: JSON.stringify(options.body) } : {})
+    };
+  }
+
+  async function parseRemoteShareRepositoryResponse(response) {
+    if (!response || response.ok === false) {
+      const status = response?.status ? `HTTP ${response.status}` : "无响应";
+      return { ok: false, message: `远端分享 API 请求失败：${status}。` };
+    }
+
+    let payload = {};
+    try {
+      const text = typeof response.text === "function"
+        ? await response.text()
+        : JSON.stringify(typeof response.json === "function" ? await response.json() : {});
+      payload = text ? JSON.parse(text) : {};
+    } catch (error) {
+      return { ok: false, message: "远端分享 API 返回的不是可解析 JSON。" };
+    }
+
+    const candidate = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : payload.repository && typeof payload.repository === "object"
+        ? payload.repository
+        : payload;
+    const parsed = parseShareRepositoryPackage(candidate);
+    const receipt = normalizeShareRepositoryReceipt(payload.receipt || payload.latestReceipt || null);
+    const publicUrl = normalizeSharePublicUrl(payload.publicUrl || payload.shareUrl || payload.url || receipt?.publicUrl);
+    if (parsed.ok) {
+      return {
+        ok: true,
+        package: parsed.package,
+        receipt,
+        publicUrl,
+        message: payload.message || `远端分享仓库包含 ${parsed.package.records.length} 条分享记录。`
+      };
+    }
+    if (payload.ok === true) {
+      return {
+        ok: true,
+        package: null,
+        receipt,
+        publicUrl,
+        message: payload.message || "远端分享 API 检查通过，但没有返回分享包。"
+      };
+    }
+    return {
+      ok: false,
+      message: payload.message || parsed.message || "远端分享 API 返回格式无效。"
+    };
+  }
+
+  function parseShareRepositoryPackage(payload) {
+    if (!payload || typeof payload !== "object") {
+      return { ok: false, message: "分享仓库包为空。" };
+    }
+    if (payload.kind !== SHARE_REPOSITORY_KIND) {
+      return { ok: false, message: "分享仓库包 kind 不匹配。" };
+    }
+    const records = Array.isArray(payload.records)
+      ? payload.records.map(normalizeShareRecord).filter(Boolean).slice(0, MAX_SHARE_RECORDS)
+      : [];
+    const shares = Array.isArray(payload.shares) ? payload.shares.filter((item) => item && typeof item === "object") : [];
+    if (!records.length || !shares.length) {
+      return { ok: false, message: "分享仓库包缺少 records 或 shares。" };
+    }
+    return {
+      ok: true,
+      package: {
+        kind: SHARE_REPOSITORY_KIND,
+        version: normalizeInteger(payload.version, VERSION, 1, 999),
+        storageKey: String(payload.storageKey || STORAGE_KEY).slice(0, 120),
+        packageId: String(payload.packageId || "").slice(0, 160),
+        exportedAt: normalizePlanDate(payload.exportedAt) || new Date().toISOString(),
+        acceptedAt: normalizePlanDate(payload.acceptedAt),
+        repositoryDigest: normalizeShareRepositoryHex(payload.repositoryDigest),
+        summary: payload.summary && typeof payload.summary === "object" ? clone(payload.summary) : {},
+        records,
+        shares: shares.slice(0, MAX_SHARE_RECORDS)
+      }
+    };
+  }
+
+  function formatShareRepositoryNetworkError(action, error) {
+    const detail = String(error?.message || "").trim();
+    return detail
+      ? `远端分享 API ${action}失败：网络请求异常（${detail}）。`
+      : `远端分享 API ${action}失败：网络请求异常。`;
+  }
+
+  function recordShareRepositoryError(message) {
+    state.shareService = normalizeShareService({
+      ...state.shareService,
+      mode: state.shareService.remoteEndpoint ? "remote-api" : "local-link",
+      lastCheckedAt: new Date().toISOString(),
+      lastError: message
+    });
+    saveState();
+  }
+
+  function checkRemoteShareService() {
+    const service = normalizeShareService(state.shareService);
+    const now = new Date().toISOString();
+    const remoteConfigured = Boolean(service.remoteEndpoint);
+    const fetchApi = getShareRepositoryFetch();
+    state.shareService = normalizeShareService({
+      ...service,
+      mode: remoteConfigured ? "remote-api" : "local-link",
+      lastCheckedAt: now,
+      lastError: remoteConfigured ? "" : "尚未配置远端分享 API；当前只能使用本机分享链接。"
+    });
+    if (!remoteConfigured || !fetchApi) {
+      if (remoteConfigured && !fetchApi) {
+        state.shareService = normalizeShareService({
+          ...state.shareService,
+          lastError: "当前运行环境不支持 fetch，无法检查远端分享 API。"
+        });
+      }
+      saveState();
+      const status = getShareServiceStatus();
+      return {
+        ok: false,
+        status,
+        message: `${status.lastError || status.message} ${SHARE_REPOSITORY_BOUNDARY}`
+      };
+    }
+    return checkRemoteShareServiceAsync(service, fetchApi);
+  }
+
+  async function checkRemoteShareServiceAsync(service, fetchApi) {
+    try {
+      const response = await fetchApi(service.remoteEndpoint, buildShareRepositoryRequest(service));
+      const parsed = await parseRemoteShareRepositoryResponse(response);
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.shareService = normalizeShareService({
+          ...service,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getShareServiceStatus(), message: parsed.message };
+      }
+
+      const receipt = parsed.receipt
+        ? decorateShareRepositoryReceipt(parsed.receipt, {
+          direction: "check",
+          endpoint: service.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      state.shareService = normalizeShareService({
+        ...service,
+        mode: "remote-api",
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "check",
+        lastPackageId: parsed.package?.packageId || service.lastPackageId,
+        lastReceipt: receipt || service.lastReceipt,
+        receipts: appendShareRepositoryReceipt(service, receipt),
+        lastRemoteStatus: parsed.message,
+        lastError: ""
+      });
+      addEvent("share-remote-check", "检查远端分享 API");
+      saveState();
+      return {
+        ok: true,
+        status: getShareServiceStatus(),
+        package: parsed.package || null,
+        receipt: receipt ? clone(receipt) : null,
+        publicUrl: parsed.publicUrl,
+        message: `${parsed.message} ${SHARE_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = formatShareRepositoryNetworkError("检查", error);
+      recordShareRepositoryError(message);
+      return { ok: false, status: getShareServiceStatus(), message };
+    }
+  }
+
+  function pushArtworkShareToRemote(shareId = null) {
+    const service = normalizeShareService(state.shareService);
+    const fetchApi = getShareRepositoryFetch();
+    if (!service.remoteEndpoint) {
+      return checkRemoteShareService();
+    }
+    if (!fetchApi) {
+      const message = "当前运行环境不支持 fetch，无法发布作品分享到远端 API。";
+      recordShareRepositoryError(message);
+      return { ok: false, status: getShareServiceStatus(), message };
+    }
+    const packageResult = getArtworkShareRemotePackage(shareId);
+    if (!packageResult.ok) {
+      return packageResult;
+    }
+    return pushArtworkShareToRemoteAsync(service, fetchApi, packageResult.package, packageResult.record);
+  }
+
+  async function pushArtworkShareToRemoteAsync(service, fetchApi, repositoryPackage, shareRecord) {
+    try {
+      const response = await fetchApi(
+        service.remoteEndpoint,
+        buildShareRepositoryRequest(service, {
+          method: "PUT",
+          body: repositoryPackage
+        })
+      );
+      const parsed = await parseRemoteShareRepositoryResponse(response);
+      const now = new Date().toISOString();
+      if (!parsed.ok) {
+        state.shareService = normalizeShareService({
+          ...service,
+          mode: "remote-api",
+          lastCheckedAt: now,
+          lastError: parsed.message
+        });
+        saveState();
+        return { ok: false, status: getShareServiceStatus(), message: parsed.message };
+      }
+
+      const receipt = parsed.receipt
+        ? decorateShareRepositoryReceipt(parsed.receipt, {
+          direction: "push",
+          endpoint: service.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const acceptedPackageId = parsed.package?.packageId || receipt?.packageId || repositoryPackage.packageId;
+      const publicUrl = parsed.publicUrl || receipt?.publicUrl || "";
+      const record = findShareRecord(shareRecord.id);
+      if (record) {
+        record.remotePublishedAt = now;
+        record.remotePublicUrl = publicUrl;
+        record.remotePackageId = acceptedPackageId;
+        record.remoteReceiptDigest = receipt?.receiptDigest || "";
+      }
+      const remoteStatus = publicUrl
+        ? `已发布作品分享到远端 API：${publicUrl}`
+        : "已发布作品分享到远端 API，远端未返回 publicUrl。";
+      state.shareService = normalizeShareService({
+        ...state.shareService,
+        mode: "remote-api",
+        remoteEndpoint: service.remoteEndpoint,
+        remoteToken: service.remoteToken,
+        lastCheckedAt: now,
+        lastRemoteSyncAt: now,
+        lastRemoteDirection: "push",
+        lastPackageId: acceptedPackageId,
+        lastRemoteShareId: shareRecord.id,
+        lastRemotePublicUrl: publicUrl,
+        lastReceipt: receipt || service.lastReceipt,
+        receipts: appendShareRepositoryReceipt(service, receipt),
+        lastRemoteStatus: remoteStatus,
+        lastError: ""
+      });
+      addEvent("share-remote-push", `发布远端分享：${shareRecord.title || shareRecord.id}`);
+      saveState();
+      return {
+        ok: true,
+        status: getShareServiceStatus(shareRecord.artworkId),
+        packageId: acceptedPackageId,
+        publicUrl,
+        receipt: receipt ? clone(receipt) : null,
+        message: `${remoteStatus} ${SHARE_REPOSITORY_BOUNDARY}`
+      };
+    } catch (error) {
+      const message = formatShareRepositoryNetworkError("发布", error);
+      recordShareRepositoryError(message);
+      return { ok: false, status: getShareServiceStatus(), message };
+    }
+  }
+
+  function getShareRecordForRemote(shareId = null) {
+    const id = String(shareId || "").trim();
+    if (id) return findShareRecord(id);
+    return getDecoratedShareRecords()
+      .map((record) => findShareRecord(record.id))
+      .find((record) => record && getShareRecordStatus(record) === "active") || null;
   }
 
   function createArtworkShareLink(artworkId = null, options = {}) {
@@ -11296,7 +11885,9 @@
     getReportComparisonExport,
     getReportSeries,
     getArtworkSharePackage,
+    getArtworkShareRemotePackage,
     getShareServiceStatus,
+    getShareServiceRemoteConfig,
     getPracticeVideoExportStatus,
     getPracticeVideoRetrySource,
     getLatestReview,
@@ -11374,6 +11965,9 @@
     openArtworkShareLink,
     markArtworkShareLinkCopied,
     revokeArtworkShareLink,
+    configureShareServiceRemote,
+    checkRemoteShareService,
+    pushArtworkShareToRemote,
     queuePracticeVideoExportJob,
     startPracticeVideoExportJob,
     retryPracticeVideoExportJob,

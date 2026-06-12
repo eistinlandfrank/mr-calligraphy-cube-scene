@@ -4578,7 +4578,8 @@ body.is-model-view .notice-panel {
   margin-top: 6px;
 }
 
-.share-service-actions button {
+.share-service-actions button,
+.share-remote-actions button {
   min-height: 32px;
   border: 1px solid rgba(116, 255, 219, 0.28);
   border-radius: 7px;
@@ -4590,17 +4591,99 @@ body.is-model-view .notice-panel {
 }
 
 .share-service-actions button:hover,
-.share-service-actions button:focus-visible {
+.share-service-actions button:focus-visible,
+.share-remote-actions button:hover,
+.share-remote-actions button:focus-visible {
   border-color: rgba(116, 255, 219, 0.56);
   outline: none;
   background: rgba(47, 111, 104, 0.54);
 }
 
-.share-service-actions button:disabled {
+.share-service-actions button:disabled,
+.share-remote-actions button:disabled {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.38);
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
+}
+
+.share-remote-panel {
+  margin: 8px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.share-remote-panel summary {
+  min-height: 34px;
+  padding: 8px 10px;
+  cursor: pointer;
+  color: rgba(255, 250, 241, 0.86);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.share-remote-status {
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(160, 197, 255, 0.2);
+  border-radius: 7px;
+  color: rgba(255, 250, 241, 0.72);
+  background: rgba(49, 74, 122, 0.16);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.share-remote-status[data-share-remote-tone="ready"] {
+  border-color: rgba(116, 255, 219, 0.32);
+  color: #e8fff9;
+  background: rgba(47, 111, 104, 0.22);
+}
+
+.share-remote-status[data-share-remote-tone="pending"] {
+  border-color: rgba(160, 197, 255, 0.34);
+  color: #edf4ff;
+  background: rgba(49, 74, 122, 0.22);
+}
+
+.share-remote-status[data-share-remote-tone="warning"] {
+  border-color: rgba(247, 215, 139, 0.42);
+  color: #fff0bd;
+  background: rgba(122, 91, 35, 0.22);
+}
+
+.share-remote-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(120px, 0.75fr);
+  gap: 8px;
+  padding: 0 10px 8px;
+}
+
+.share-remote-fields label {
+  display: grid;
+  gap: 5px;
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.share-remote-fields input {
+  width: 100%;
+  min-height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  padding: 0 9px;
+  color: rgba(255, 250, 241, 0.88);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.share-remote-actions {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 10px 10px;
 }
 
 .video-export-records,

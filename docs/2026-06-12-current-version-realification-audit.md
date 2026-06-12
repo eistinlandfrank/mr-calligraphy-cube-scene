@@ -64,13 +64,14 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.6 分享能力只是导出文件
 
-当前作品分享页和报告分享已包含离线 HTML / PDF / WebM 文件导出，并新增本机分享链接服务：作品复盘区可以生成 `?share=...` 本机链接、复制链接、记录访问/复制次数、撤销链接，并在同一浏览器内通过分享路由打开作品详情。这些都属于真实本机能力，但仍不是公网托管、课堂发布、社群分享或微信分享。
+当前作品分享页和报告分享已包含离线 HTML / PDF / WebM 文件导出，并新增本机分享链接服务：作品复盘区可以生成 `?share=...` 本机链接、复制链接、记录访问/复制次数、撤销链接，并在同一浏览器内通过分享路由打开作品详情。本轮又新增远端分享 API adapter：用户可配置 endpoint/token，前台真实 GET 检查服务、PUT 发布 `mr-calligraphy-share-repository-v1` 分享包，保存远端 `publicUrl` 和回执。这些都属于真实本机/adapter 能力，但仍不是内置公网托管、课堂发布、社群分享、微信分享或生产权限服务。
 
 真实化方向：
 
 - 保持离线分享页按钮为 `real-export`。
 - 已新增本机 `ShareService`，支持生成本机链接、撤回链接、过期时间、复制/访问计数和 `ShareRecord` 留痕。
-- 后续若接入生产后端，再把 `ShareService` 扩展为公开链接、访问权限、班级作品墙和跨设备发布。
+- 已新增远端分享 API adapter，支持用户自备 endpoint、Bearer token、publicUrl 和回执留痕。
+- 后续若接入生产后端，再把 `ShareService` 扩展为内置公开链接、访问权限、班级作品墙和跨设备发布。
 
 ### 2.7 后台还不是可协作的项目后台
 
@@ -284,12 +285,13 @@ npm run test:e2e
 - 追加项目档案恢复审计摘要记录：恢复成功后会写入 `archiveDigest`、`selectionDigest` 和 `recordDigest`，主后台恢复审计列表显示摘要短码，HTML 导出包含完整摘要和原始 JSON；数据层和 E2E 已验证真实恢复、刷新持久化和下载文件。
 - 追加书写视频封面和导出记录：前台复盘页导出 WebM 后会生成 PNG 封面，写入 `mr-calligraphy-learning-state-v1.videoExportService.records`，复盘面板显示导出摘要并可下载封面；数据层和 E2E 已验证 WebM 下载、封面记录、PNG 下载和刷新后持久化。
 - 追加书写视频导出队列和失败重试：每次导出会写入 `videoExportService.jobs`，状态覆盖排队、生成中、已完成和失败；失败任务在复盘页显示错误和重试按钮，E2E 已验证禁用 `MediaRecorder` 后失败、恢复录制能力后重试下载 WebM。
+- 追加作品分享远端 API adapter：复盘区可配置远端分享 endpoint/token，真实 GET 检查、PUT 发布分享包，并保存 publicUrl、packageId 和回执；新增分享 API 合同、本机 mock server、数据层断言和 E2E 前台按钮验收。
 
 已知限制：
 
-- 当前新增的是页面打开期间的本机视频队列和失败重试，不是 MP4/GIF 转码、服务端压缩、Service Worker 后台队列或公网分享链路。
+- 当前新增的是用户自备 endpoint 的远端分享 adapter，不是内置账号系统、微信分享、班级作品墙、生产 CDN 或服务端权限审计；视频队列仍是页面打开期间的本机队列，不是 MP4/GIF 转码、服务端压缩或 Service Worker 后台队列。
 - 当前服务器已经能访问 `http://localhost:41496/main-admin.html`；文档内验收命令基于该本机服务。
 
 建议提交信息：
 
-- `新增书写视频导出队列重试`
+- `新增作品分享远端发布`

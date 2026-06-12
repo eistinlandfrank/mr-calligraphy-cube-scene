@@ -80,6 +80,7 @@ const nativeFetch = typeof global.fetch === "function" ? global.fetch.bind(globa
 const { startPlanRepositoryMockServer } = require("./plan-repository-mock-server.js");
 const { startHistoryRepositoryMockServer } = require("./history-repository-mock-server.js");
 const { startReportRepositoryMockServer } = require("./report-repository-mock-server.js");
+const { startShareRepositoryMockServer } = require("./share-repository-mock-server.js");
 
 require("../app-state.js");
 
@@ -303,6 +304,24 @@ assert(shareLink.ok, "作品应能生成本机分享链接记录。");
 assert(shareLink.record.artworkId === "artwork-2", "分享记录应关联作品 ID。");
 assert(shareLink.record.isActive, "新分享记录应处于有效状态。");
 assert(shareLink.record.expiresAt, "分享记录应包含过期时间。");
+
+const shareRemotePackage = window.MRAppState.getArtworkShareRemotePackage(shareLink.record.id);
+assert(shareRemotePackage.ok, "有效分享链接应能生成远端分享包。");
+assert(shareRemotePackage.package.kind === "mr-calligraphy-share-repository-v1", "远端分享包应包含稳定 kind。");
+assert(shareRemotePackage.package.records[0].id === shareLink.record.id, "远端分享包应包含分享记录。");
+assert(shareRemotePackage.package.shares[0].html.includes("MR 书法作品分享"), "远端分享包应包含可发布 HTML。");
+const invalidShareRemote = window.MRAppState.configureShareServiceRemote({
+  remoteEndpoint: "ftp://example.test/share-repository"
+});
+assert(!invalidShareRemote.ok, "远端分享 API 不应接受非 HTTP 地址。");
+const configuredShareRemote = window.MRAppState.configureShareServiceRemote({
+  remoteEndpoint: "https://example.test/share-repository",
+  remoteToken: "share-token"
+});
+assert(configuredShareRemote.ok, "远端分享 API 配置应可保存 endpoint/token。");
+const shareRemoteConfig = window.MRAppState.getShareServiceRemoteConfig();
+assert(shareRemoteConfig.remoteEndpoint === "https://example.test/share-repository", "远端分享 API endpoint 应规范化并持久化。");
+assert(shareRemoteConfig.remoteToken === "share-token", "远端分享 API token 应持久化。");
 
 const reusedShareLink = window.MRAppState.createArtworkShareLink("artwork-2");
 assert(reusedShareLink.reused, "同一作品已有有效链接时应复用记录。");
@@ -920,8 +939,63 @@ async function runRemoteRepositoryChecks() {
   await runReportRepositoryMockServerChecks(nativeFetch);
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
+  await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+}
+
+async function runShareRepositoryMockServerChecks(fetchApi) {
+  assert(fetchApi, "当前 Node 环境需要支持 fetch 以验证作品分享 mock 服务。");
+  const previousFetch = global.fetch;
+  const mock = await startShareRepositoryMockServer({
+    token: "share-token",
+    publicBaseUrl: "https://share.example.test"
+  });
+  try {
+    global.fetch = fetchApi;
+    const shareLinkForRemote = window.MRAppState.createArtworkShareLink("artwork-3", { expiresInDays: 5 });
+    assert(shareLinkForRemote.ok && shareLinkForRemote.record.isActive, "分享 mock 验收前应能生成新的有效分享链接。");
+    const configuredMock = window.MRAppState.configureShareServiceRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "share-token"
+    });
+    assert(configuredMock.ok, "作品分享 mock endpoint 应可保存为远端配置。");
+
+    const checkedBeforePush = await window.MRAppState.checkRemoteShareService();
+    assert(checkedBeforePush.ok, "作品分享 mock GET 检查应真实可访问。");
+    assert(checkedBeforePush.package === null, "作品分享 mock 初始未接收包时不应伪造远端分享。");
+
+    const pushedMock = await window.MRAppState.pushArtworkShareToRemote(shareLinkForRemote.record.id);
+    assert(pushedMock.ok, "作品分享 mock 应接收真实 PUT 发布。");
+    assert(pushedMock.publicUrl.includes(shareLinkForRemote.record.id), "作品分享 mock 应返回可访问 publicUrl。");
+    assert(pushedMock.packageId.startsWith("mock-share-repository-"), "作品分享 mock 应返回服务端 packageId。");
+    assert(mock.state.package.records[0].id === shareLinkForRemote.record.id, "作品分享 mock 应在内存中保存最近分享包。");
+    assert(mock.state.package.shares[0].html.includes("MR 书法作品分享"), "作品分享 mock 应保存真实 HTML 分享页。");
+    assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].receiptDigest), "作品分享 mock 应返回 64 位 receiptDigest。");
+
+    const shareStatus = window.MRAppState.getShareServiceStatus("artwork-3");
+    assert(shareStatus.lastRemotePublicUrl === pushedMock.publicUrl, "分享服务状态应保存最近远端 publicUrl。");
+    assert(shareStatus.receiptCount === 1, "分享服务状态应统计远端回执数量。");
+    assert(shareStatus.lastReceipt.receiptDigest === mock.state.receipts[0].receiptDigest, "分享服务状态应持久化最近回执。");
+    const remoteShareRecord = shareStatus.records.find((record) => record.id === shareLinkForRemote.record.id);
+    assert(remoteShareRecord.remotePublicUrl === pushedMock.publicUrl, "分享记录应保存自己的远端 publicUrl。");
+    assert(remoteShareRecord.remoteReceiptDigest === mock.state.receipts[0].receiptDigest, "分享记录应保存远端回执摘要。");
+
+    const checkedAfterPush = await window.MRAppState.checkRemoteShareService();
+    assert(checkedAfterPush.ok && checkedAfterPush.package.records.length === 1, "作品分享 mock GET 应返回最近 PUT 保存的分享包。");
+    assert(checkedAfterPush.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "作品分享 GET 检查应带回最近回执。");
+
+    const badTokenConfig = window.MRAppState.configureShareServiceRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "bad-token"
+    });
+    assert(badTokenConfig.ok, "作品分享 mock 错误 token 配置应仍可保存以便检查失败态。");
+    const rejected = await window.MRAppState.checkRemoteShareService();
+    assert(!rejected.ok && rejected.message.includes("HTTP 401"), "作品分享 mock 应拒绝错误 Bearer token。");
+  } finally {
+    global.fetch = previousFetch;
+    await mock.close();
+  }
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {

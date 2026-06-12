@@ -36,11 +36,15 @@ test.beforeEach(async ({ page }) => {
 test("front practice saves real strokes and exports a report", async ({ page }) => {
   const historyEndpointPath = "/e2e-history-repository";
   const reportEndpointPath = "/e2e-report-repository";
+  const shareEndpointPath = "/e2e-share-repository";
   const historyRequests = [];
   const reportRequests = [];
+  const shareRequests = [];
   let remoteHistoryPackage = null;
   let remoteReportPackage = null;
+  let remoteSharePackage = null;
   let latestReportReceipt = null;
+  let latestShareReceipt = null;
 
   await page.route(`**${historyEndpointPath}`, async (route) => {
     const request = route.request();
@@ -140,6 +144,71 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         remoteVersion: "e2e-report-v1",
         package: remoteReportPackage,
         latestReceipt: latestReportReceipt
+      })
+    });
+  });
+
+  await page.route(`**${shareEndpointPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    shareRequests.push({
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+    if (method === "PUT") {
+      const shareId = body.records[0].id;
+      const publicUrl = `https://share.example.test/${shareId}.html`;
+      remoteSharePackage = {
+        ...body,
+        packageId: "e2e-share-package",
+        acceptedAt: new Date().toISOString(),
+        publicUrl
+      };
+      latestShareReceipt = {
+        receiptKind: "mr-calligraphy-share-repository-receipt-v1",
+        remoteVersion: "e2e-share-v1",
+        packageId: remoteSharePackage.packageId,
+        sourcePackageId: body.packageId,
+        shareId,
+        artworkId: body.records[0].artworkId,
+        repositoryDigest: "d".repeat(64),
+        acceptedAt: remoteSharePackage.acceptedAt,
+        publicUrl,
+        shareCount: body.records.length,
+        htmlBytes: body.shares[0].html.length,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: "e".repeat(64)
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `远端分享 E2E 已接收 ${body.records.length} 条分享记录。`,
+          remoteVersion: "e2e-share-v1",
+          packageId: remoteSharePackage.packageId,
+          publicUrl,
+          package: remoteSharePackage,
+          receipt: latestShareReceipt
+        })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: remoteSharePackage
+          ? `远端分享 E2E 可读，当前包含 ${remoteSharePackage.records.length} 条记录。`
+          : "远端分享 E2E 可访问，当前尚未接收分享包。",
+        remoteVersion: "e2e-share-v1",
+        package: remoteSharePackage,
+        latestReceipt: latestShareReceipt,
+        publicUrl: latestShareReceipt?.publicUrl || ""
       })
     });
   });
@@ -312,11 +381,27 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.shareService.records).toHaveLength(1);
   expect(learningState.shareService.records[0].artworkId).toBe(learningState.artworks[0].id);
+  const shareRecordId = learningState.shareService.records[0].id;
+
+  await page.locator(".share-remote-panel summary").click();
+  await configureShareRemoteInUi(page, await getSameOriginEndpoint(page, shareEndpointPath), "share-token");
+  await page.locator("#shareRemoteCheckButton").click();
+  await expect(page.locator("#shareRemoteStatus")).toContainText("远端分享 E2E 可访问");
+  await page.locator("#shareRemotePushButton").click();
+  await expect(page.locator("#shareRemoteStatus")).toContainText("https://share.example.test/");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(shareRequests.some((request) => request.method === "GET" && request.authorization === "Bearer share-token")).toBe(true);
+  const sharePut = shareRequests.find((request) => request.method === "PUT");
+  expect(sharePut.authorization).toBe("Bearer share-token");
+  expect(sharePut.body.records[0].id).toBe(shareRecordId);
+  expect(sharePut.body.shares[0].html).toContain("MR 书法作品分享");
+  expect(learningState.shareService.lastRemotePublicUrl).toContain(shareRecordId);
+  expect(learningState.shareService.lastReceipt.receiptDigest).toBe("e".repeat(64));
+  expect(learningState.shareService.records[0].remotePublicUrl).toContain(shareRecordId);
 
   await page.locator("#reviewCopyShareLink").click();
   await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
-  const shareRecordId = learningState.shareService.records[0].id;
   expect(learningState.shareService.records[0].copyCount).toBe(1);
 
   await page.goto(`/?share=${shareRecordId}`, { waitUntil: "domcontentloaded" });
@@ -1928,6 +2013,13 @@ async function configureHistoryRepositoryRemoteInUi(page, endpoint, token = "") 
   await page.locator("#historyRepositoryTokenInput").fill(token);
   await page.locator("#historyRepositorySaveRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("已保存远端学习档案 API 配置");
+}
+
+async function configureShareRemoteInUi(page, endpoint, token = "") {
+  await page.locator("#shareRemoteEndpointInput").fill(endpoint);
+  await page.locator("#shareRemoteTokenInput").fill(token);
+  await page.locator("#shareRemoteSaveButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已保存远端分享 API 配置");
 }
 
 async function setupPlanRepositoryConflict(page, options = {}) {

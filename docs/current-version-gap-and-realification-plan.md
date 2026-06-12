@@ -59,7 +59,7 @@ node scripts/control-inventory.js
 | 生成视频 | 能用真实笔迹导出 WebM 回放，并生成 PNG 封面、本机导出记录、本机队列和失败重试入口 | 不是 MP4/GIF，没有压缩、云端转码、页面关闭后的后台队列和分享链路 | UI 写明 WebM；后续加格式转换、压缩和 Service Worker/服务端异步导出队列 |
 | 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执审计导出、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前签名回执审计是本机列表和 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
-| 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
+| 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数、撤销记录和远端分享 API adapter；可配置 endpoint/token，真实 GET 检查、PUT 发布分享包，保存 publicUrl 和回执；已有 API 合同与本机 mock 服务 | 远端 adapter 仍需用户自备服务端；没有内置账号、微信、社群、课堂作品墙、CDN 托管或生产权限控制 | 离线导出按钮保持 `real-export`，本机分享服务和远端 adapter 标记 `real-local`；后续加账号化公开链接服务、权限、撤销审计和课堂作品墙 |
 
 ### 3.3 主后台和写实后台
 
@@ -2099,3 +2099,38 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增书写视频导出队列重试`
+
+### 2026-06-12：新增作品分享远端 API adapter
+
+完成内容：
+
+- `shareService` 新增远端配置、最近远端状态、最近 publicUrl、最近 packageId、最近回执和回执列表。
+- 新增 `MRAppState.getArtworkShareRemotePackage()`，把有效本机分享链接、作品分享数据和 HTML 组装为 `mr-calligraphy-share-repository-v1` 分享包。
+- 新增 `configureShareServiceRemote()`、`checkRemoteShareService()` 和 `pushArtworkShareToRemote()`，支持 endpoint/token 保存、真实 GET 检查和 PUT 发布。
+- 前台复盘区新增“远端分享 API”面板，可保存远端、检查远端、发布当前分享和复制远端链接。
+- 新增 `scripts/share-repository-mock-server.js` 和 `docs/share-repository-api-contract.md`，本机 mock 支持 GET、PUT、OPTIONS、Bearer token、publicUrl 和回执。
+- 数据层和 Playwright 覆盖分享包生成、mock server、Bearer token、publicUrl、回执持久化和前台按钮流程。
+
+真实化说明：
+
+- 数据来源：真实作品记录、本机分享链接、作品分享 HTML、用户配置的远端 endpoint 和真实 fetch 响应。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService.remoteEndpoint`、`lastRemotePublicUrl`、`lastReceipt`、`receipts[*]` 和对应 `ShareRecord.remotePublicUrl`。
+- 成功反馈：复盘区显示远端状态、publicUrl 和回执摘要，可复制远端链接。
+- 失败反馈：非法协议、未配置 endpoint、fetch 不可用、HTTP 错误、非 JSON 和包结构错误都会写入分享服务错误状态。
+- 刷新后复现方式：远端配置、publicUrl 和回执保存在 localStorage，刷新后仍能显示。
+
+仍待补：
+
+- 当前是用户自备 endpoint 的远端 adapter，不是内置账号系统、微信分享接口、班级作品墙、生产 CDN、访问权限服务或服务端撤销审计。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/share-repository-mock-server.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享远端发布`

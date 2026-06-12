@@ -839,6 +839,13 @@ const els = {
   reviewCreateShareLink: document.getElementById("reviewCreateShareLink"),
   reviewCopyShareLink: document.getElementById("reviewCopyShareLink"),
   reviewRevokeShareLink: document.getElementById("reviewRevokeShareLink"),
+  shareRemoteStatus: document.getElementById("shareRemoteStatus"),
+  shareRemoteEndpointInput: document.getElementById("shareRemoteEndpointInput"),
+  shareRemoteTokenInput: document.getElementById("shareRemoteTokenInput"),
+  shareRemoteSaveButton: document.getElementById("shareRemoteSaveButton"),
+  shareRemoteCheckButton: document.getElementById("shareRemoteCheckButton"),
+  shareRemotePushButton: document.getElementById("shareRemotePushButton"),
+  shareRemoteCopyButton: document.getElementById("shareRemoteCopyButton"),
   shareServiceRecords: document.getElementById("shareServiceRecords"),
   reportPanel: document.getElementById("reportPanel"),
   reportTitle: document.getElementById("reportTitle"),
@@ -3679,6 +3686,10 @@ function bindReviewControls() {
   els.reviewCreateShareLink?.addEventListener("click", createLatestArtworkShareLink);
   els.reviewCopyShareLink?.addEventListener("click", () => copyActiveArtworkShareLink());
   els.reviewRevokeShareLink?.addEventListener("click", () => revokeActiveArtworkShareLink());
+  els.shareRemoteSaveButton?.addEventListener("click", saveShareRemoteConfig);
+  els.shareRemoteCheckButton?.addEventListener("click", checkShareRemote);
+  els.shareRemotePushButton?.addEventListener("click", pushActiveShareRemote);
+  els.shareRemoteCopyButton?.addEventListener("click", copyRemoteShareUrl);
   els.shareServiceRecords?.addEventListener("click", handleShareRecordAction);
 }
 
@@ -4572,6 +4583,7 @@ function downloadLatestArtworkSharePage() {
 
 function renderShareServicePanel(artwork) {
   const status = window.MRAppState?.getShareServiceStatus?.(artwork?.id) || null;
+  const config = window.MRAppState?.getShareServiceRemoteConfig?.() || null;
   const currentRecord = status?.currentRecord || null;
   if (currentRecord) {
     activeArtworkShareId = currentRecord.id;
@@ -4600,6 +4612,45 @@ function renderShareServicePanel(artwork) {
   if (els.reviewRevokeShareLink) {
     els.reviewRevokeShareLink.disabled = !activeRecord?.isActive;
   }
+  if (els.shareRemoteEndpointInput && document.activeElement !== els.shareRemoteEndpointInput) {
+    els.shareRemoteEndpointInput.value = config?.remoteEndpoint || "";
+  }
+  if (els.shareRemoteTokenInput && document.activeElement !== els.shareRemoteTokenInput) {
+    els.shareRemoteTokenInput.value = config?.remoteToken || "";
+  }
+  if (els.shareRemoteStatus) {
+    const receiptText = status?.lastReceipt?.receiptDigest
+      ? ` 回执 ${status.lastReceipt.receiptDigest.slice(0, 12)}。`
+      : "";
+    const publicText = status?.lastRemotePublicUrl
+      ? ` 远端链接：${status.lastRemotePublicUrl}`
+      : "";
+    els.shareRemoteStatus.textContent = status?.remoteConfigured
+      ? `${status.lastError || status.lastRemoteStatus || "远端分享 API 已配置，尚未检查。"}${receiptText}${publicText} ${config?.boundary || ""}`
+      : `尚未配置远端分享 API。${config?.boundary || ""}`;
+    els.shareRemoteStatus.dataset.shareRemoteTone = status?.lastError
+      ? "warning"
+      : status?.lastRemotePublicUrl
+        ? "ready"
+        : status?.remoteConfigured
+          ? "pending"
+          : "idle";
+  }
+  [
+    els.shareRemoteSaveButton,
+    els.shareRemoteCheckButton
+  ].forEach((button) => {
+    if (button) button.disabled = false;
+  });
+  if (els.shareRemoteCheckButton) {
+    els.shareRemoteCheckButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
+  }
+  if (els.shareRemotePushButton) {
+    els.shareRemotePushButton.disabled = !status?.remoteConfigured || !activeRecord?.isActive;
+  }
+  if (els.shareRemoteCopyButton) {
+    els.shareRemoteCopyButton.disabled = !status?.lastRemotePublicUrl;
+  }
 
   if (!els.shareServiceRecords) return;
   els.shareServiceRecords.innerHTML = "";
@@ -4620,7 +4671,8 @@ function renderShareServicePanel(artwork) {
     const title = document.createElement("strong");
     title.textContent = record.artworkTitle || record.title;
     const meta = document.createElement("span");
-    meta.textContent = `${record.statusLabel} / ${record.permissionLabel} / 浏览 ${record.viewCount || 0} / 复制 ${record.copyCount || 0}`;
+    const remoteText = record.remotePublicUrl ? " / 已发布远端" : "";
+    meta.textContent = `${record.statusLabel} / ${record.permissionLabel} / 浏览 ${record.viewCount || 0} / 复制 ${record.copyCount || 0}${remoteText}`;
     body.append(title, meta);
 
     const actions = document.createElement("div");
@@ -4691,6 +4743,78 @@ function revokeActiveArtworkShareLink(shareId = activeArtworkShareId) {
   }
   showNotice(result?.message || "本机分享链接撤销失败。");
   renderLearningState();
+}
+
+function saveShareRemoteConfig() {
+  const endpoint = els.shareRemoteEndpointInput?.value || "";
+  const token = els.shareRemoteTokenInput?.value || "";
+  const result = window.MRAppState?.configureShareServiceRemote?.({
+    remoteEndpoint: endpoint,
+    remoteToken: token
+  });
+  showNotice(result?.message || "远端分享 API 配置保存失败。");
+  renderLearningState();
+}
+
+async function checkShareRemote() {
+  setShareRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.checkRemoteShareService?.());
+    showNotice(result?.message || "远端分享 API 检查失败。");
+  } catch (error) {
+    showNotice(`远端分享 API 检查失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setShareRemoteBusy(false);
+    renderLearningState();
+  }
+}
+
+async function pushActiveShareRemote() {
+  const record = getShareRecordForAction();
+  if (!record?.isActive) {
+    showNotice("请先生成有效的本机分享链接，再发布到远端 API。");
+    return;
+  }
+  setShareRemoteBusy(true);
+  try {
+    const result = await Promise.resolve(window.MRAppState?.pushArtworkShareToRemote?.(record.id));
+    if (result?.publicUrl) {
+      activeArtworkShareId = record.id;
+    }
+    showNotice(result?.message || "远端分享 API 发布失败。");
+  } catch (error) {
+    showNotice(`远端分享 API 发布失败：${error?.message || "网络请求异常"}。`);
+  } finally {
+    setShareRemoteBusy(false);
+    renderLearningState();
+  }
+}
+
+function copyRemoteShareUrl() {
+  const status = window.MRAppState?.getShareServiceStatus?.();
+  const publicUrl = status?.lastRemotePublicUrl || "";
+  if (!publicUrl) {
+    showNotice("还没有可复制的远端分享链接。");
+    return;
+  }
+  copyText(publicUrl).then((ok) => {
+    showNotice(ok
+      ? "已复制远端分享链接。"
+      : `远端分享链接：${publicUrl}`);
+  });
+}
+
+function setShareRemoteBusy(isBusy) {
+  [
+    els.shareRemoteSaveButton,
+    els.shareRemoteCheckButton,
+    els.shareRemotePushButton,
+    els.shareRemoteCopyButton
+  ].forEach((button) => {
+    if (button) {
+      button.disabled = Boolean(isBusy);
+    }
+  });
 }
 
 function handleShareRecordAction(event) {

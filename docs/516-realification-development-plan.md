@@ -6997,3 +6997,66 @@
 提交：
 
 - 中文 commit message：`新增书写视频导出队列重试`
+
+### 2026-06-12：新增作品分享远端 API adapter
+
+功能名：作品复盘远端分享发布 adapter。
+
+涉及文件：
+
+- `app-state.js`
+- `index.html`
+- `script.js`
+- `style.css`
+- `scripts/share-repository-mock-server.js`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/share-repository-api-contract.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- `shareService` 新增远端 endpoint/token、最近远端状态、最近 publicUrl、packageId、最近回执和回执列表。
+- `ShareRecord` 新增远端发布状态字段：`remotePublishedAt`、`remotePublicUrl`、`remotePackageId` 和 `remoteReceiptDigest`。
+- 新增 `MRAppState.getArtworkShareRemotePackage()`，把有效分享链接和作品分享 HTML 打包为 `mr-calligraphy-share-repository-v1`。
+- 新增 `configureShareServiceRemote()`、`checkRemoteShareService()` 和 `pushArtworkShareToRemote()`，支持真实 GET 检查和 PUT 发布。
+- 复盘区新增“远端分享 API”面板，支持保存远端、检查远端、发布分享和复制远端链接。
+- 新增 `scripts/share-repository-mock-server.js`，支持 GET、PUT、OPTIONS、Bearer token、publicUrl 和回执。
+- 新增 `docs/share-repository-api-contract.md`，记录请求结构、成功响应、失败响应、mock 服务和验收方式。
+- 数据层和 E2E 覆盖分享包、mock 服务、token、publicUrl、回执持久化和前台按钮流程。
+
+真实化说明：
+
+- 数据来源：真实作品记录、本机分享链接、作品分享 HTML、用户配置 endpoint 和真实 fetch 响应。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService`。
+- 成功反馈：复盘区显示远端 publicUrl 和回执摘要，可复制远端链接。
+- 失败反馈：非法 endpoint、未配置远端、fetch 不支持、HTTP 错误、非 JSON 和包结构错误都会明确失败。
+- 刷新后复现方式：远端配置、publicUrl 和回执保存在本机学习状态，刷新后仍可显示。
+
+已知限制：
+
+- 当前是用户自备 endpoint 的前端 adapter，不是内置账号系统、微信分享、课堂作品墙、生产 CDN、访问权限服务或服务端撤销审计。
+
+验收方式：
+
+- 脚本验收：`node scripts/learning-state-check.js`。
+- 浏览器验收：`npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`。
+- Smoke 验收：`node scripts/smoke-test.js --base-url=http://localhost:41496/`。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/share-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+
+提交：
+
+- 中文 commit message：`新增作品分享远端发布`
