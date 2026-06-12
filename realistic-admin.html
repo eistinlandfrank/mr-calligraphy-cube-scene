@@ -21,11 +21,26 @@
     <section id="realisticAdminRiskBanner" class="admin-risk-banner" aria-label="后台权限风险提示">
       <div>
         <span>本机静态后台</span>
-        <strong>当前无登录、角色权限和操作审计</strong>
-        <p>这个页面会真实改写本机浏览器里的写实场景草稿、发布版本、保存快照和导入模型；同一浏览器中任何能打开此页的人都可以编辑。</p>
+        <strong>已接入本机访问门禁、角色权限和操作审计</strong>
+        <p>这个页面会真实改写本机浏览器里的写实场景草稿、发布版本、保存快照和导入模型；门禁只保存在当前浏览器会话中，不等于生产账号登录。</p>
       </div>
       <button data-feature-state="real-local" id="realisticAdminRiskAcknowledge" type="button">已了解</button>
       <small id="realisticAdminRiskStatus">尚未确认本机权限边界。</small>
+      <section id="realisticAdminAccessPanel" class="admin-access-panel" aria-label="写实后台本机访问门禁">
+        <div class="admin-access-head">
+          <span>访问门禁</span>
+          <strong id="realisticAdminAccessStatus">后台会话正在读取。</strong>
+        </div>
+        <div class="admin-access-fields">
+          <label>
+            <span>访问码</span>
+            <input id="realisticAdminAccessCode" type="password" autocomplete="off" placeholder="默认 local-admin">
+          </label>
+          <button data-feature-state="real-local" id="realisticAdminAccessUnlock" type="button">解锁后台</button>
+          <button data-feature-state="real-local" id="realisticAdminAccessLock" type="button">锁定</button>
+        </div>
+        <small>本机门禁用于防止误操作，不替代服务端登录、组织权限或不可篡改审计。</small>
+      </section>
       <section id="realisticAdminBoundaryPanel" class="admin-boundary-panel" aria-label="写实后台服务边界状态">
         <div class="admin-boundary-head">
           <span>服务边界</span>

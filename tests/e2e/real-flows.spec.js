@@ -10,6 +10,7 @@ const MAIN_HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const MAIN_IMPORT_AUDIT_KEY = "mr-calligraphy-main-import-audit-v1";
 const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
+const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
@@ -32,28 +33,56 @@ function sha256StableJson(value) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript((keys) => {
+  await page.addInitScript(({ keys, accessSessionKey }) => {
     const markerKey = "__mr_calligraphy_e2e_storage_cleared__";
     if (window.sessionStorage.getItem(markerKey) === "1") {
       return;
     }
     keys.forEach((key) => window.localStorage.removeItem(key));
+    window.sessionStorage.removeItem(accessSessionKey);
     window.sessionStorage.setItem(markerKey, "1");
-  }, [
-    LEARNING_KEY,
-    MAIN_LAYOUT_KEY,
-    MAIN_HISTORY_KEY,
-    MAIN_IMPORT_AUDIT_KEY,
-    MAIN_PUBLISHED_KEY,
-    ADMIN_AUDIT_KEY,
-    REMOTE_PUBLISH_KEY,
-    PROJECT_REPOSITORY_REMOTE_KEY,
-    REALISTIC_LAYOUT_KEY,
-    REALISTIC_HISTORY_KEY,
-    REALISTIC_IMPORT_AUDIT_KEY,
-    REALISTIC_PUBLISHED_KEY
-  ]);
+  }, {
+    accessSessionKey: ADMIN_ACCESS_SESSION_KEY,
+    keys: [
+      LEARNING_KEY,
+      MAIN_LAYOUT_KEY,
+      MAIN_HISTORY_KEY,
+      MAIN_IMPORT_AUDIT_KEY,
+      MAIN_PUBLISHED_KEY,
+      ADMIN_AUDIT_KEY,
+      REMOTE_PUBLISH_KEY,
+      PROJECT_REPOSITORY_REMOTE_KEY,
+      REALISTIC_LAYOUT_KEY,
+      REALISTIC_HISTORY_KEY,
+      REALISTIC_IMPORT_AUDIT_KEY,
+      REALISTIC_PUBLISHED_KEY
+    ]
+  });
 });
+
+async function unlockMainAdmin(page) {
+  const accessStatus = page.locator("#mainAdminAccessStatus");
+  await expect(accessStatus).toBeVisible();
+  if ((await accessStatus.textContent())?.includes("已解锁")) {
+    return;
+  }
+  await expect(accessStatus).toContainText("已锁定");
+  await page.locator("#mainAdminAccessCode").fill("local-admin");
+  await page.locator("#mainAdminAccessUnlock").click();
+  await expect(accessStatus).toContainText("已解锁");
+}
+
+async function unlockRealisticAdmin(page) {
+  const accessStatus = page.locator("#realisticAdminAccessStatus");
+  await expect(accessStatus).toBeVisible();
+  if ((await accessStatus.textContent())?.includes("已解锁")) {
+    return;
+  }
+  await expect(accessStatus).toContainText("已锁定");
+  await page.locator("#realisticAdminAccessCode").fill("local-admin");
+  await page.locator("#realisticAdminAccessUnlock").click();
+  await expect(accessStatus).toContainText("已解锁");
+}
 
 test("mobile viewports keep core panels usable without overlap", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -115,9 +144,14 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
 });
 
 test("admin reviewer role blocks local write controls", async ({ page }) => {
+  test.setTimeout(90_000);
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
+  await expect(page.locator("#mainAdminAccessStatus")).toContainText("已锁定");
+  await expect(page.locator("#mainObjectX")).toBeDisabled();
+  await unlockMainAdmin(page);
+  await expect(page.locator("#mainObjectX")).toBeEnabled();
 
   await page.locator("#mainAdminOperatorName").fill("E2E 主后台复核");
   await page.locator("#mainAdminOperatorRole").selectOption("reviewer");
@@ -154,6 +188,10 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
+  await expect(page.locator("#realisticAdminAccessStatus")).toContainText("已锁定");
+  await expect(page.locator("#designX")).toBeDisabled();
+  await unlockRealisticAdmin(page);
+  await expect(page.locator("#designX")).toBeEnabled();
 
   await page.locator("#realisticAdminOperatorName").fill("E2E 写实复核");
   await page.locator("#realisticAdminOperatorRole").selectOption("reviewer");
@@ -2152,6 +2190,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
 
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await unlockMainAdmin(page);
   await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
   const remoteEndpoint = await getSameOriginEndpoint(page, remoteEndpointPath);
   const projectRepositoryEndpoint = await getSameOriginEndpoint(page, projectRepositoryEndpointPath);
@@ -2491,6 +2530,7 @@ test("main admin updates imported model material and publishes it", async ({ pag
   await expect(page.locator("#mainImportModelMaterialUpdate")).toBeDisabled();
   await expect(page.locator("#mainImportModelTexture")).toBeDisabled();
   await expect(page.locator("#mainImportModelTextureClear")).toBeDisabled();
+  await unlockMainAdmin(page);
 
   await page.locator("#mainImportModelName").fill(importLabel);
   await page.locator("#mainImportModel").setInputFiles(modelPath);
@@ -2595,6 +2635,7 @@ test("main admin replaces imported model file and publishes it", async ({ page }
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expect(page.locator("#mainImportModelReplace")).toBeDisabled();
+  await unlockMainAdmin(page);
 
   await page.locator("#mainImportModelName").fill(importLabel);
   await page.locator("#mainImportModel").setInputFiles(initialModelPath);
@@ -2648,6 +2689,7 @@ test("main admin records imported model deletion audit", async ({ page }) => {
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expect(page.locator("#mainImportAuditStatus")).toContainText("尚无导入模型删除记录");
   await expect(page.locator("#mainImportAuditExport")).toBeDisabled();
+  await unlockMainAdmin(page);
 
   await page.locator("#mainImportModelName").fill(importLabel);
   await page.locator("#mainImportModel").setInputFiles(modelPath);
@@ -2787,6 +2829,7 @@ test("main admin project repository keeps local data on remote failures", async 
 
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await unlockMainAdmin(page);
   await page.locator("#mainNewObjectName").fill(objectLabel);
   await page.locator("#mainNewObjectType").selectOption("box");
   await page.locator("#mainNewObjectAdd").click();
@@ -2837,12 +2880,14 @@ test("main admin project repository keeps local data on remote failures", async 
 });
 
 test("realistic admin keeps local publish releases and rollback history", async ({ page }) => {
+  test.setTimeout(90_000);
   const firstNote = `E2E 写实初版 ${Date.now()}`;
   const secondNote = `E2E 写实二版 ${Date.now()}`;
 
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticPublishNote")).toBeVisible();
+  await unlockRealisticAdmin(page);
   await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
   await page.locator("#realisticAdminOperatorName").fill("E2E 写实后台");
   await page.locator("#realisticAdminOperatorRole").selectOption("editor");
@@ -2920,6 +2965,7 @@ test("realistic admin updates imported model material and publishes it", async (
   await expect(page.locator("#realisticImportModelMaterialUpdate")).toBeDisabled();
   await expect(page.locator("#realisticImportModelTexture")).toBeDisabled();
   await expect(page.locator("#realisticImportModelTextureClear")).toBeDisabled();
+  await unlockRealisticAdmin(page);
 
   await page.locator("#importModelInput").setInputFiles(modelPath);
   await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
@@ -3018,6 +3064,7 @@ test("realistic admin replaces imported model file and publishes it", async ({ p
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticImportModelReplace")).toBeDisabled();
+  await unlockRealisticAdmin(page);
 
   await page.locator("#importModelInput").setInputFiles(initialModelPath);
   await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
@@ -3070,6 +3117,7 @@ test("realistic admin records imported model deletion audit", async ({ page }) =
   await expect(page.locator("#realisticImportAuditStatus")).toContainText("尚无写实导入模型删除记录");
   await expect(page.locator("#realisticImportAuditCleanup")).toBeDisabled();
   await expect(page.locator("#realisticImportAuditExport")).toBeDisabled();
+  await unlockRealisticAdmin(page);
 
   await page.locator("#importModelInput").setInputFiles(modelPath);
   await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });

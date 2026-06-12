@@ -3169,3 +3169,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增远端发布操作审计`
+
+## 88. 2026-06-12 新增本机后台访问门禁
+
+本次把主后台和写实后台从“打开页面即可编辑”推进到本机会话门禁。两个后台默认进入锁定状态，只有输入本机访问码 `local-admin` 后，当前浏览器会话才允许编辑、导入、删除、发布、远端推送和审核审批；刷新后同一 sessionStorage 会话继续有效，锁定或新会话会重新禁用危险动作。
+
+完成内容：
+
+- `admin-audit.js` 新增 `MRAdminAudit.getAccessStatus()`、`unlockAccess()`、`lockAccess()`，会话写入 `mr-calligraphy-admin-access-session-v1`。
+- 主后台风险提示区新增“访问门禁”面板，可输入访问码、解锁后台和主动锁定。
+- 写实后台风险提示区同步新增访问门禁面板。
+- `MRAdminAudit.canPerform()` 在角色权限之外叠加本机门禁：锁定时只允许查看、切换操作者和导出审计。
+- 主后台和写实后台服务边界面板新增“本机门禁”行，显示锁定、解锁和 480 分钟过期状态。
+- 解锁和锁定会写入本机后台操作者审计，动作分别为 `access-unlock` 和 `access-lock`。
+- smoke test 新增两个后台访问门禁 DOM 标记检查。
+- Playwright 权限、发布、导入、替换、删除审计和项目仓库失败用例都改为先验证锁定禁用，再通过真实访问码解锁后继续操作。
+- 修复写实后台“清理已删除文件”按钮在解锁后覆盖业务禁用的问题：现在必须同时满足有已删除导入模型和有删除权限才可点击。
+
+真实化说明：
+
+- 数据来源：当前浏览器 sessionStorage 中的 `mr-calligraphy-admin-access-session-v1`。
+- 写入状态：按 `mainScene` 和 `realisticScene` 分 scope 保存 `unlockedAt`、`expiresAt` 或 `lockedAt`。
+- 成功反馈：门禁面板显示“已解锁”和过期时间；后台写入按钮恢复可用。
+- 失败反馈：访问码错误会提示“本机访问码不正确”，锁定状态下危险控件保持禁用，事件入口也会返回无权提示。
+- 刷新后复现方式：同一浏览器会话刷新后继续读取 sessionStorage；点击“锁定”或开启新会话后重新进入锁定。
+
+仍待补：
+
+- 当前是本机浏览器会话门禁，只能降低误操作风险，不是生产账号登录、服务端鉴权、组织角色、双人审批、不可篡改审计或跨设备安全策略。默认访问码 `local-admin` 仅用于开发阶段。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls|main admin publishes a local draft that the front page reads"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "realistic admin keeps local publish releases|realistic admin records imported model deletion audit"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台访问门禁`

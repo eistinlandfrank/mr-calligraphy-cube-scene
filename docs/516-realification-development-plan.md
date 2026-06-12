@@ -8728,3 +8728,47 @@
 提交：
 
 - 中文 commit message：`新增远端发布操作审计`
+
+### 2026-06-12：新增本机后台访问门禁
+
+功能名：主后台和写实后台本机会话访问门禁。
+
+完成内容：
+
+- `admin-audit.js` 新增访问会话状态，存储键为 `mr-calligraphy-admin-access-session-v1`。
+- 主后台和写实后台新增访问门禁面板，支持输入访问码、解锁后台和主动锁定。
+- 默认开发访问码为 `local-admin`，解锁会话有效期为 480 分钟。
+- 锁定时危险权限会被 `MRAdminAudit.canPerform()` 拦截：编辑、导入、删除、本机发布、远端发布和审核审批不可用。
+- 查看后台、切换本机操作者和导出审计在锁定状态下仍可用，便于确认当前状态和审计。
+- 解锁/锁定动作写入本机后台操作者审计，动作值为 `access-unlock` / `access-lock`。
+- 主后台和写实后台服务边界面板显示本机门禁状态。
+- `scripts/smoke-test.js` 和 `tests/e2e/real-flows.spec.js` 同步新增门禁标记和真实解锁流程验收。
+- 写实后台导入模型清理按钮修正为业务状态和权限状态共同控制，避免解锁后出现无对象也能清理的假操作。
+
+真实化说明：
+
+- 数据来源：浏览器 sessionStorage。
+- 写入状态：`mr-calligraphy-admin-access-session-v1[scope]`。
+- 成功反馈：门禁面板显示已解锁和过期时间，写入类控件恢复。
+- 失败反馈：访问码错误和锁定状态会给出明确提示，并保持危险操作禁用。
+- 刷新后复现方式：同一会话刷新保留解锁；锁定或新开会话后恢复锁定。
+
+仍待补：
+
+- 该能力不是生产登录或服务端鉴权；默认访问码只适合开发阶段，后续仍需要账号系统、服务端权限、多人审批和不可篡改审计。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls|main admin publishes a local draft that the front page reads"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "realistic admin keeps local publish releases|realistic admin records imported model deletion audit"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台访问门禁`

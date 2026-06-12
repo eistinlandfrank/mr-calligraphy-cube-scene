@@ -289,6 +289,66 @@ body.model-error #brushModel::part(default-progress-bar) {
   background: rgba(122, 91, 35, 0.2);
 }
 
+.admin-access-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 9px;
+  border: 1px solid rgba(217, 184, 132, 0.28);
+  border-radius: 8px;
+  background: rgba(42, 28, 14, 0.28);
+}
+
+.admin-access-head {
+  display: grid;
+  grid-template-columns: minmax(76px, 0.34fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.admin-access-head span,
+.admin-access-fields span {
+  color: rgba(255, 249, 237, 0.58);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.admin-access-head strong {
+  min-width: 0;
+  color: #fff9ed;
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-access-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.admin-access-fields label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-access-fields input {
+  width: 100%;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 249, 237, 0.22);
+  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-access-panel small {
+  grid-column: 1 / -1;
+}
+
 .admin-operator-panel {
   grid-column: 1 / -1;
   display: grid;
@@ -1037,6 +1097,10 @@ body.admin-page .design-panel {
   }
 
   .admin-operator-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-access-fields {
     grid-template-columns: 1fr;
   }
 }

@@ -1,6 +1,10 @@
 (function initMRAdminAudit(global) {
   const STORAGE_KEY = "mr-calligraphy-admin-operator-audit-v1";
+  const ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
+  const DEFAULT_ACCESS_CODE = "local-admin";
+  const ACCESS_SESSION_DURATION_MS = 8 * 60 * 60 * 1000;
   const MAX_RECORDS_PER_SCOPE = 120;
+  const LOCKED_ALLOWED_PERMISSIONS = new Set(["view", "operator", "export"]);
   const DEFAULT_OPERATOR = {
     name: "本机操作者",
     role: "local-admin"
@@ -144,6 +148,26 @@
     }
   }
 
+  function readAccessSessions() {
+    try {
+      const raw = global.sessionStorage?.getItem(ACCESS_SESSION_KEY);
+      return raw ? JSON.parse(raw) : {};
+    } catch (error) {
+      console.warn("Admin access session could not be read.", error);
+      return {};
+    }
+  }
+
+  function writeAccessSessions(value) {
+    try {
+      global.sessionStorage?.setItem(ACCESS_SESSION_KEY, JSON.stringify(value || {}));
+      return true;
+    } catch (error) {
+      console.warn("Admin access session could not be saved.", error);
+      return false;
+    }
+  }
+
   function writeState(state) {
     const nextState = normalizeState({
       ...state,
@@ -193,6 +217,7 @@
     const scopeState = getScopeState(state, scope);
     const operator = normalizeOperator(scopeState.bucket.operator);
     const records = scopeState.bucket.records.slice(0, MAX_RECORDS_PER_SCOPE);
+    const access = getAccessStatus(scopeState.scope);
     return {
       ok: true,
       storageKey: STORAGE_KEY,
@@ -202,6 +227,7 @@
       permissions: getRolePermissions(operator.role),
       permissionLabels: { ...PERMISSION_LABELS },
       permissionSummary: createPermissionSummary(operator),
+      access,
       records,
       count: records.length,
       latest: records[0] || null,
@@ -212,7 +238,75 @@
   function canPerform(scope, permission) {
     const status = getStatus(scope);
     const normalizedPermission = String(permission || "").trim();
+    if (!status.access.unlocked && !LOCKED_ALLOWED_PERMISSIONS.has(normalizedPermission)) {
+      return false;
+    }
     return status.permissions.includes(normalizedPermission);
+  }
+
+  function getAccessStatus(scope) {
+    const scopeState = getScopeState(readState(), scope);
+    const sessions = readAccessSessions();
+    const session = sessions[scopeState.scope] && typeof sessions[scopeState.scope] === "object"
+      ? sessions[scopeState.scope]
+      : {};
+    const now = Date.now();
+    const expiresAtMs = Date.parse(session.expiresAt || "");
+    const unlocked = Number.isFinite(expiresAtMs) && expiresAtMs > now;
+    return {
+      ok: true,
+      scope: scopeState.scope,
+      scopeLabel: scopeState.scopeLabel,
+      unlocked,
+      unlockedAt: unlocked ? String(session.unlockedAt || "") : "",
+      expiresAt: unlocked ? String(session.expiresAt || "") : "",
+      lockedAt: unlocked ? "" : String(session.lockedAt || ""),
+      storage: "sessionStorage",
+      durationMinutes: Math.round(ACCESS_SESSION_DURATION_MS / 60000),
+      defaultCodeLabel: DEFAULT_ACCESS_CODE,
+      message: unlocked
+        ? `本机后台会话已解锁，有效至 ${String(session.expiresAt || "").replace("T", " ").slice(0, 16)}。`
+        : "本机后台会话已锁定。输入本机访问码后才能编辑、导入、发布或推送远端。"
+    };
+  }
+
+  function unlockAccess(scope, code) {
+    const scopeState = getScopeState(readState(), scope);
+    const normalizedCode = String(code || "").trim();
+    if (normalizedCode !== DEFAULT_ACCESS_CODE) {
+      return {
+        ...getAccessStatus(scopeState.scope),
+        ok: false,
+        message: "本机访问码不正确。"
+      };
+    }
+    const now = new Date();
+    const expires = new Date(now.getTime() + ACCESS_SESSION_DURATION_MS);
+    const sessions = readAccessSessions();
+    sessions[scopeState.scope] = {
+      unlockedAt: now.toISOString(),
+      expiresAt: expires.toISOString()
+    };
+    const saved = writeAccessSessions(sessions);
+    return {
+      ...getAccessStatus(scopeState.scope),
+      ok: saved,
+      message: saved ? "本机后台会话已解锁。" : "本机后台会话保存失败。"
+    };
+  }
+
+  function lockAccess(scope) {
+    const scopeState = getScopeState(readState(), scope);
+    const sessions = readAccessSessions();
+    sessions[scopeState.scope] = {
+      lockedAt: nowIso()
+    };
+    const saved = writeAccessSessions(sessions);
+    return {
+      ...getAccessStatus(scopeState.scope),
+      ok: saved,
+      message: saved ? "本机后台会话已锁定。" : "本机后台会话锁定失败。"
+    };
   }
 
   function record(scope, recordInput = {}) {
@@ -309,8 +403,11 @@
   global.MRAdminAudit = {
     canPerform,
     configureOperator,
+    getAccessStatus,
     getStatus,
+    lockAccess,
     record,
+    unlockAccess,
     getExport
   };
 })(window);
