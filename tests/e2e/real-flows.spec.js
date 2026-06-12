@@ -2035,12 +2035,28 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.locator("#projectRepositoryPullRemote").click();
   await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库远端 E2E 可拉取空间 project-e2e 的版本 e2e-project-repository-1");
   await expect(page.locator("#projectImportPreview")).toBeVisible();
+  await expect(page.locator("#projectImportPreviewTitle")).toContainText("远端项目仓库版本预览");
+  await expect(page.locator("#projectImportPreviewSource")).toContainText("e2e-project-repository-1");
+  await expect(page.locator("#projectImportPreviewSource")).toContainText("Workspace project-e2e");
+  await expect(page.locator("#projectImportPreviewSource")).toContainText(firstProjectRepositoryPut.body.packageDigest.slice(0, 12));
+  await expect(page.locator("#projectImportPreviewSource")).toContainText("拉取只生成恢复预览");
   await expect(page.locator("#projectImportPreviewList")).toContainText("主场景布局");
   const pulledProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(pulledProjectRepositoryState.lastPackageId).toBe(firstRemoteProjectVersion.packageId);
   expect(pulledProjectRepositoryState.workspaceId).toBe("project-e2e");
   expect(pulledProjectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
   expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.packageId === firstRemoteProjectVersion.packageId && item.workspaceId === "project-e2e")).toBe(true);
+
+  const remoteImpactDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectImportExportImpact").click();
+  const remoteImpactDownload = await remoteImpactDownloadPromise;
+  expect(remoteImpactDownload.suggestedFilename()).toMatch(/^mr-calligraphy-archive-impact-.*\.html$/);
+  const remoteImpactPath = await remoteImpactDownload.path();
+  const remoteImpactHtml = fs.readFileSync(remoteImpactPath, "utf8");
+  expect(remoteImpactHtml).toContain("远端项目仓库版本");
+  expect(remoteImpactHtml).toContain("e2e-project-repository-1");
+  expect(remoteImpactHtml).toContain("Workspace project-e2e");
+  expect(remoteImpactHtml).toContain(firstProjectRepositoryPut.body.packageDigest);
 
   const restoredNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
   await page.locator("#projectImportConfirm").click();

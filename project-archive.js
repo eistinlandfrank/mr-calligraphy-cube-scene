@@ -774,6 +774,15 @@
       const message = String(payload.message || `远端项目仓库包已拉取：${repositoryPackage.packageId || "未命名包"}。`).slice(0, 220);
       const pulledVersion = createProjectRepositoryVersionFromPackage(repositoryPackage, payload);
       const remoteVersions = mergeProjectRepositoryVersions(getProjectRepositoryVersionsFromPayload(payload, pulledVersion, { workspaceId: state.workspaceId }), state.versions);
+      preview.remoteRepository = createProjectRepositoryPreviewSource({
+        state,
+        payload,
+        repositoryPackage,
+        pulledVersion,
+        remoteVersions,
+        requestedPackageId,
+        preview
+      });
       const receipt = getProjectRepositoryReceiptFromPayload(payload, {
         direction: "pull",
         endpoint: state.endpoint,
@@ -998,7 +1007,7 @@
 
     const projectSchema = getArchiveProjectSchema(migratedArchive);
 
-    return {
+    const preview = {
       exportedAt: migratedArchive.exportedAt || "",
       source: migratedArchive.source || "",
       migrations: migratedArchive.migrations || [],
@@ -1007,6 +1016,45 @@
       storage,
       indexedDb,
       summary: summarizeImportPreview(storage, indexedDb)
+    };
+    preview.riskSummary = createArchivePreviewRiskSummary(preview);
+    return preview;
+  }
+
+  function createProjectRepositoryPreviewSource(context = {}) {
+    const state = context.state || {};
+    const payload = context.payload || {};
+    const repositoryPackage = context.repositoryPackage || {};
+    const pulledVersion = context.pulledVersion || {};
+    const preview = context.preview || {};
+    const summary = repositoryPackage.summary || preview.summary || {};
+    const schemaSummary = preview.schemaSummary || {};
+    const packageDigest = normalizeSha256(repositoryPackage.packageDigest || payload.packageDigest || pulledVersion.packageDigest);
+    const repositoryDigest = normalizeSha256(payload.repositoryDigest || pulledVersion.repositoryDigest || repositoryPackage.repositoryDigest);
+    const riskSummary = preview.riskSummary || createArchivePreviewRiskSummary(preview);
+    return {
+      kind: "mr-calligraphy-project-repository-preview-source-v1",
+      sourceType: "remote-project-repository",
+      endpoint: String(state.endpoint || "").slice(0, 420),
+      workspaceId: normalizeProjectRepositoryWorkspaceId(state.workspaceId || repositoryPackage.workspaceId || payload.workspaceId),
+      packageId: String(payload.packageId || pulledVersion.packageId || repositoryPackage.packageId || "").slice(0, 160),
+      sourcePackageId: String(pulledVersion.sourcePackageId || repositoryPackage.packageId || "").slice(0, 160),
+      requestedPackageId: String(context.requestedPackageId || "").slice(0, 160),
+      remoteVersion: String(payload.remoteVersion || pulledVersion.remoteVersion || repositoryPackage.remoteVersion || "").slice(0, 120),
+      packageDigest,
+      repositoryDigest,
+      exportedAt: repositoryPackage.exportedAt || preview.exportedAt || "",
+      acceptedAt: payload.acceptedAt || pulledVersion.acceptedAt || repositoryPackage.acceptedAt || "",
+      versionCount: Array.isArray(context.remoteVersions) ? context.remoteVersions.length : 0,
+      sceneCount: Number(summary.sceneCount || schemaSummary.repositoryReadyScenes || 0),
+      publishedSceneCount: Number(summary.publishedSceneCount || schemaSummary.mainReleases || schemaSummary.realisticReleases || 0),
+      importedModels: Number(summary.importedModels || schemaSummary.importedModels || 0),
+      textureAssets: Number(summary.textureAssets || schemaSummary.textureAssets || 0),
+      riskLevel: riskSummary.level,
+      riskLabel: riskSummary.label,
+      riskText: riskSummary.text,
+      riskReasons: riskSummary.reasons,
+      boundary: PROJECT_REPOSITORY_REMOTE_BOUNDARY
     };
   }
 
@@ -1759,6 +1807,60 @@
       incomingModelCount,
       assetHashCount,
       missingAssetHashCount
+    };
+  }
+
+  function createArchivePreviewRiskSummary(preview = {}) {
+    const summary = preview.summary || {};
+    const schema = preview.schemaSummary || {};
+    const reasons = [];
+    let score = 0;
+
+    if (summary.storageRemoved) {
+      score += 3;
+      reasons.push(`将清空 ${summary.storageRemoved} 组本机配置`);
+    }
+    if (summary.storageUpdated) {
+      score += 2;
+      reasons.push(`将覆盖 ${summary.storageUpdated} 组本机配置`);
+    }
+    if (summary.storageAdded) {
+      score += 1;
+      reasons.push(`将新增 ${summary.storageAdded} 组本机配置`);
+    }
+    if (summary.dbReplaceCount) {
+      score += 2;
+      reasons.push(`将替换 ${summary.dbReplaceCount} 个 IndexedDB 模型库`);
+    }
+    if (summary.missingAssetHashCount) {
+      score += 3;
+      reasons.push(`${summary.missingAssetHashCount} 个导入资产缺少 SHA-256`);
+    }
+    if (schema.missingModelBinaries || schema.missingTextureBinaries || schema.unknownModelBinaries) {
+      score += 3;
+      const missing = Number(schema.missingModelBinaries || 0) + Number(schema.missingTextureBinaries || 0);
+      const unknown = Number(schema.unknownModelBinaries || 0);
+      reasons.push(`资产完整性风险：缺文件 ${missing} 个，待校验 ${unknown} 个`);
+    }
+    if (schema.repositoryStatus && schema.repositoryStatus !== "ready") {
+      score += 2;
+      reasons.push(`远端档案仓库状态为 ${schema.repositoryStatus}`);
+    }
+
+    const level = score >= 6 ? "high" : score >= 3 ? "medium" : "low";
+    const labels = {
+      high: "高风险",
+      medium: "中风险",
+      low: "低风险"
+    };
+    return {
+      level,
+      label: labels[level],
+      score,
+      reasons,
+      text: reasons.length
+        ? reasons.join("；")
+        : "未发现覆盖、清空或资产完整性风险。"
     };
   }
 
@@ -3021,8 +3123,18 @@
     const restorePlan = createImpactRestorePlan(preview, options.restoreOptions);
     const storageRows = (preview.storage || []).map((item) => createImpactStorageSection(item, restorePlan)).join("");
     const dbRows = (preview.indexedDb || []).map((item) => createImpactDbSection(item, restorePlan)).join("");
+    const remote = preview.remoteRepository || null;
     const migrationRows = (preview.migrations || []).length
       ? `<section><h2>迁移记录</h2><ul class="list">${preview.migrations.map((migration) => `<li><strong>${escapeHtml(migration.target || migration.type || "迁移")}</strong><span>${escapeHtml(migration.message || "")}</span></li>`).join("")}</ul></section>`
+      : "";
+    const remoteRows = remote
+      ? `<section class="card plan">
+          <h2>远端项目仓库版本</h2>
+          <p>${escapeHtml(remote.packageId || remote.sourcePackageId || "未命名包")} · Workspace ${escapeHtml(remote.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE)} · ${escapeHtml(remote.remoteVersion || "远端版本未知")}</p>
+          <p class="muted">包摘要：${escapeHtml(remote.packageDigest || "未知")}；仓库摘要：${escapeHtml(remote.repositoryDigest || "未知")}；历史版本：${escapeHtml(remote.versionCount || 0)}；模型：${escapeHtml(remote.importedModels || 0)}；贴图：${escapeHtml(remote.textureAssets || 0)}。</p>
+          <p class="conflict">${escapeHtml(remote.riskLabel || "风险未知")}：${escapeHtml(remote.riskText || "暂无风险说明。")}</p>
+          <p class="muted">${escapeHtml(remote.boundary || PROJECT_REPOSITORY_REMOTE_BOUNDARY)}</p>
+        </section>`
       : "";
     const selectedText = restorePlan.selectedCount
       ? `${restorePlan.selectedStorageCount} 组本机配置 / ${restorePlan.selectedDbCount} 个模型库 / ${restorePlan.selectedFieldCount} 个字段 / ${restorePlan.selectedModelCount} 个模型`
@@ -3086,6 +3198,8 @@
       <div class="stat"><span>清空配置</span><strong>${escapeHtml(summary.storageRemoved || 0)}</strong></div>
       <div class="stat"><span>档案资产</span><strong>${escapeHtml(summary.incomingModelCount || 0)}</strong></div>
     </div>
+
+    ${remoteRows}
 
     <section class="card plan">
       <h2>恢复选择</h2>
@@ -3297,6 +3411,7 @@
     const previewBox = document.getElementById("projectImportPreview");
     const previewTitle = document.getElementById("projectImportPreviewTitle");
     const previewMeta = document.getElementById("projectImportPreviewMeta");
+    const previewSource = document.getElementById("projectImportPreviewSource");
     const previewList = document.getElementById("projectImportPreviewList");
     const selectAllInput = document.getElementById("projectImportSelectAll");
     const selectionStatus = document.getElementById("projectImportSelectionStatus");
@@ -3692,6 +3807,11 @@
       pendingArchive = null;
       pendingPreview = null;
       if (previewBox) previewBox.hidden = true;
+      if (previewSource) {
+        previewSource.hidden = true;
+        previewSource.innerHTML = "";
+        delete previewSource.dataset.riskLevel;
+      }
       if (previewList) previewList.innerHTML = "";
       if (previewTitle) previewTitle.textContent = "待导入档案";
       if (previewMeta) previewMeta.textContent = "尚未选择文件";
@@ -3921,11 +4041,54 @@
       fragment.appendChild(item);
     };
 
+    const renderImportPreviewSource = (preview) => {
+      if (!previewSource) return;
+      previewSource.innerHTML = "";
+      const remote = preview?.remoteRepository || null;
+      const risk = remote || preview?.riskSummary
+        ? {
+          level: remote?.riskLevel || preview?.riskSummary?.level || "low",
+          label: remote?.riskLabel || preview?.riskSummary?.label || "低风险",
+          text: remote?.riskText || preview?.riskSummary?.text || "未发现覆盖、清空或资产完整性风险。"
+        }
+        : null;
+
+      if (!remote && !risk) {
+        previewSource.hidden = true;
+        delete previewSource.dataset.riskLevel;
+        return;
+      }
+
+      previewSource.hidden = false;
+      previewSource.dataset.riskLevel = risk?.level || "low";
+      const title = document.createElement("strong");
+      title.textContent = remote
+        ? `远端项目仓库版本：${remote.packageId || remote.sourcePackageId || "未命名包"}`
+        : "项目档案恢复风险";
+      const detail = document.createElement("span");
+      if (remote) {
+        const digestText = remote.packageDigest ? ` · 包摘要 ${remote.packageDigest.slice(0, 12)}` : "";
+        const repositoryText = remote.repositoryDigest ? ` · 仓库摘要 ${remote.repositoryDigest.slice(0, 12)}` : "";
+        detail.textContent = `Workspace ${remote.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE} · ${remote.remoteVersion || "远端版本未知"} · 历史版本 ${remote.versionCount || 0}${digestText}${repositoryText}`;
+      } else {
+        detail.textContent = "本机项目档案导入前风险摘要。";
+      }
+      const riskText = document.createElement("span");
+      riskText.className = "main-project-preview-risk";
+      riskText.textContent = `${risk.label}：${risk.text}`;
+      const boundary = document.createElement("span");
+      boundary.className = "main-project-preview-boundary";
+      boundary.textContent = remote
+        ? "拉取只生成恢复预览，不会自动覆盖本机数据；恢复仍需手动勾选并确认。"
+        : "恢复前请确认勾选范围，未勾选内容会保持当前本机状态。";
+      previewSource.append(title, detail, riskText, boundary);
+    };
+
     const renderImportPreview = (preview) => {
       if (!previewBox || !previewList) return;
 
       previewBox.hidden = false;
-      if (previewTitle) previewTitle.textContent = "待导入项目档案";
+      if (previewTitle) previewTitle.textContent = preview.remoteRepository ? "远端项目仓库版本预览" : "待导入项目档案";
       if (previewMeta) {
         const summary = preview.summary;
         const schema = preview.schemaSummary;
@@ -3934,8 +4097,10 @@
           ? ` / ${summary.assetHashCount} 哈希${summary.missingAssetHashCount ? ` / ${summary.missingAssetHashCount} 缺哈希` : ""}`
           : "";
         const textureText = schema.textureAssets ? ` / ${schema.textureAssets} 贴图` : "";
-        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型${textureText}${hashText}`;
+        const riskText = preview.riskSummary?.label ? ` · ${preview.riskSummary.label}` : "";
+        previewMeta.textContent = `${formatArchiveDate(preview.exportedAt)} · schema v${schema.version || "-"}${migrationText} · ${summary.storageAdded} 新增 / ${summary.storageUpdated} 覆盖 / ${summary.storageRemoved} 清空 / ${schema.importedModels} 模型${textureText}${hashText}${riskText}`;
       }
+      renderImportPreviewSource(preview);
 
       const fragment = document.createDocumentFragment();
       preview.migrations?.forEach((migration) => appendMigrationLine(fragment, migration));

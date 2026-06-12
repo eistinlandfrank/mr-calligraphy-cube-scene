@@ -1279,6 +1279,50 @@ button {
   line-height: 1.45;
 }
 
+.main-project-preview-source {
+  display: grid;
+  gap: 4px;
+  padding: 8px 9px;
+  border: 1px solid rgba(116, 255, 219, 0.18);
+  border-left: 3px solid rgba(116, 255, 219, 0.68);
+  border-radius: 6px;
+  background: rgba(116, 255, 219, 0.07);
+}
+
+.main-project-preview-source[hidden] {
+  display: none;
+}
+
+.main-project-preview-source[data-risk-level="medium"] {
+  border-left-color: rgba(255, 201, 107, 0.82);
+  background: rgba(136, 95, 30, 0.13);
+}
+
+.main-project-preview-source[data-risk-level="high"] {
+  border-left-color: rgba(255, 120, 94, 0.86);
+  background: rgba(157, 48, 39, 0.14);
+}
+
+.main-project-preview-source strong {
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+}
+
+.main-project-preview-source span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.main-project-preview-source .main-project-preview-risk {
+  color: rgba(255, 228, 170, 0.9);
+  font-weight: 800;
+}
+
+.main-project-preview-source .main-project-preview-boundary {
+  color: rgba(255, 255, 255, 0.52);
+}
+
 .main-project-select-all {
   display: inline-flex;
   align-items: center;

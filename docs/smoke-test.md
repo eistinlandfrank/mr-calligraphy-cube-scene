@@ -116,7 +116,7 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 前台生成学习计划后点击“导出日历”，确认下载 `.ics` 文件，并读取内容确认包含 `VCALENDAR`、`VEVENT`、`VALARM` 和计划任务标题。
 - 前台计划仓库配置远端 endpoint/token/Workspace 后，用浏览器路由模拟计划仓库 API，覆盖推送带 `workspaceId` 的计划包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId、回执持久化、回执审计 HTML 导出和冲突拉取不覆盖本机计划。
 - 主后台新增基础物体后检查发布差异，点击“发布到前台”，确认草稿、发布快照、差异归零和前台读取来源都是真实本机状态。
-- 主后台项目仓库配置远端 endpoint/token 后，用浏览器路由模拟项目仓库 API，覆盖检查远端、推送项目仓库包、拉取远端包进入导入预览、Bearer token、`archive` / `projectSchema` / `repository` / `packageDigest`、回执持久化和回执审计 HTML 下载。
+- 主后台项目仓库配置远端 endpoint/token/Workspace 后，用浏览器路由模拟项目仓库 API，覆盖检查远端、推送项目仓库包、拉取远端包进入导入预览、远端版本来源摘要、恢复风险说明、差异报告 HTML 中的 workspace 与 packageDigest、Bearer token、`archive` / `projectSchema` / `repository` / `packageDigest`、回执持久化和回执审计 HTML 下载。
 - 主后台项目仓库失败反馈用例覆盖 401、非 JSON、无项目包、PUT 422 和网络中断，确认错误写入 `lastError`，并确认本机项目布局不会被失败远端清空。
 - 主后台导入真实 `.glb` 模型后更新主色调、透明度、粗糙度、金属度和 PNG 贴图，确认 `mr-calligraphy-main-scene-layout-v1.importedModels[*].color/opacity/roughness/metalness/texture` 写入草稿，贴图二进制写入 IndexedDB，发布差异显示具体材质与贴图字段，发布后进入 `mr-calligraphy-main-scene-published-v1`，普通前台发布布局读取该外观并通过 WebGL textured mesh 加载。
 - 主后台导入真实 `.glb` 模型后替换为另一个 `.glb`，确认原对象 ID 保持不变，`fileName/sha256/metrics` 更新，发布后进入 `mr-calligraphy-main-scene-published-v1`，普通前台发布布局也读取替换后的资产摘要。
@@ -146,5 +146,5 @@ Smoke test 通过：24 个脚本，4 个页面。
 ## 当前边界
 
 - 轻量 smoke test 不会打开真实浏览器；WebGL 非空渲染由 Playwright 像素采样覆盖。
-- Playwright 已覆盖首批真实交互闭环、前台学习详情总结、核心入口移动端视口验收、远端分享 API adapter、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注持久化、学习档案远端同步、主后台远端发布回执、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、主后台导入模型删除审计、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收和完整移动设备矩阵。
+- Playwright 已覆盖首批真实交互闭环、前台学习详情总结、核心入口移动端视口验收、远端分享 API adapter、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注持久化、学习档案远端同步、主后台项目仓库远端版本恢复风险预览、主后台远端发布回执、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、主后台导入模型删除审计、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收和完整移动设备矩阵。
 - 当前本机已经可以运行定向 Playwright 用例；若换到缺少 npm 依赖的新环境，需要先在具备代理认证的环境执行 `npm install`。

@@ -3152,3 +3152,39 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增作品分享远端空间隔离`
+
+### 2026-06-12：新增项目仓库远端恢复风险预览
+
+完成内容：
+
+- 主后台项目档案恢复预览新增 `projectImportPreviewSource`，用于显示远端项目仓库版本来源。
+- 远端项目仓库拉取成功后，恢复预览会显示 packageId、Workspace、remoteVersion、packageDigest、repositoryDigest、历史版本数量和恢复风险。
+- 项目档案预览统一新增 `riskSummary`，按本机配置覆盖/清空、模型库替换、缺哈希、缺文件和仓库状态生成低/中/高风险说明。
+- 导出的项目档案差异 HTML 报告会保留远端版本来源、workspace、摘要和风险说明。
+- Playwright 主后台项目仓库用例覆盖页面摘要和差异报告下载内容；smoke test 新增页面标记。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 GET 响应、通过摘要校验的项目仓库包、当前本机项目差异和资产哈希状态。
+- 写入状态：拉取只生成恢复预览，不自动覆盖本机数据；恢复仍需手动勾选并确认。
+- 成功反馈：预览和 HTML 差异报告都能看到远端来源证据。
+- 失败反馈：远端包无效或摘要不一致时不生成伪造预览。
+- 刷新后复现方式：重新拉取同一个远端版本可再次生成同样的恢复来源摘要。
+
+仍待补：
+
+- 多人三方合并、账号化恢复权限审批、服务端不可篡改恢复日志仍未完成。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库远端恢复风险预览`

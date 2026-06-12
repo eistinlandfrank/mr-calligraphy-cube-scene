@@ -75,7 +75,7 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.7 后台还不是可协作的项目后台
 
-主后台和写实后台都能编辑本机场景，也能导出项目档案、做本机发布、回滚、远端发布包预检、服务端锁预检和回执审计。本轮新增本机 `ProjectRepository` 状态视图：`projectSchema.repository` 会把主场景和写实样张归一为 `project-scene-repository-v1`，统一统计草稿对象、快照、发布版本、导入资产、缺文件/缺哈希风险和下一步动作；主后台项目档案区会直接显示这份仓库状态。随后又补了远端项目仓库 API adapter，主后台可配置 endpoint/token/workspace，用真实 GET 检查服务、PUT 当前项目仓库包、读取当前 workspace 的远端版本历史，并用 `GET ?packageId=` 拉取指定历史包进入恢复预览，同时保存服务端回执。
+主后台和写实后台都能编辑本机场景，也能导出项目档案、做本机发布、回滚、远端发布包预检、服务端锁预检和回执审计。本轮新增本机 `ProjectRepository` 状态视图：`projectSchema.repository` 会把主场景和写实样张归一为 `project-scene-repository-v1`，统一统计草稿对象、快照、发布版本、导入资产、缺文件/缺哈希风险和下一步动作；主后台项目档案区会直接显示这份仓库状态。随后又补了远端项目仓库 API adapter，主后台可配置 endpoint/token/workspace，用真实 GET 检查服务、PUT 当前项目仓库包、读取当前 workspace 的远端版本历史，并用 `GET ?packageId=` 拉取指定历史包进入恢复预览，同时保存服务端回执；远端版本恢复预览现在会显示 packageId、Workspace、远端版本、包摘要、仓库摘要和恢复风险，导出的差异 HTML 也会保留这些证据。
 
 它们仍不是账号后台，任何能打开页面的人都能改当前浏览器里的数据，`ProjectRepository` 远端 adapter 只是可替换服务端接口的第一版，不是多人协作 CMS。
 

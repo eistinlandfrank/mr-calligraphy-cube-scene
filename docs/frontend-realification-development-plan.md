@@ -2581,3 +2581,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品分享远端空间隔离`
+
+## 74. 2026-06-12 项目仓库远端版本恢复风险预览
+
+本次把主后台远端项目仓库的“拉取预览”从通用导入预览推进为带远端来源证据的恢复预览。用户拉取远端版本后，可以先看到 packageId、Workspace、远端版本、包摘要、仓库摘要、历史版本数量和恢复风险，再决定是否勾选恢复范围。
+
+完成内容：
+
+- `projectImportPreview` 新增 `projectImportPreviewSource` 来源摘要区。
+- `MRProjectArchive.pullProjectRepositoryFromRemote()` 在远端包通过 `packageDigest` 校验后，为恢复预览附加 `remoteRepository` 元数据。
+- 恢复预览新增 `riskSummary`，按配置覆盖/清空、模型库替换、缺哈希、缺文件和仓库状态计算低/中/高风险。
+- 主后台远端项目仓库拉取后，预览标题改为“远端项目仓库版本预览”，摘要区显示 Workspace、packageId、摘要和风险说明。
+- 导出的项目档案差异 HTML 报告新增“远端项目仓库版本”段落，保留 workspace、包摘要、仓库摘要和风险说明。
+- smoke test 新增 `projectImportPreviewSource` 页面标记。
+- Playwright 主后台项目仓库用例验证远端版本摘要区、包摘要、Workspace 和导出差异报告内容。
+
+真实化说明：
+
+- 数据来源：远端项目仓库 GET 响应、通过摘要校验的 `mr-calligraphy-project-repository-package-v1`、当前本机项目档案差异和恢复预览。
+- 写入状态：本轮不自动写入业务数据；只有用户继续点击“恢复所选”才会进入既有恢复流程和恢复审计。
+- 成功反馈：页面显示远端版本来源摘要，差异报告 HTML 可离线审阅同一份远端来源证据。
+- 失败反馈：远端包缺失、kind/version 不匹配、摘要不一致或网络错误仍走既有错误状态，不生成伪造预览。
+- 刷新后复现方式：远端回执和版本历史仍保存在本机远端项目仓库状态；重新拉取同一版本会重新生成来源摘要和风险预览。
+
+仍待补：
+
+- 当前完成的是恢复前审阅证据，不是多人三方合并、服务端权限审批或不可篡改恢复审计。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库远端恢复风险预览`
