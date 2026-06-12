@@ -4593,7 +4593,7 @@
 
 已完成：
 
-- `MRAppState` 新增 `historyRepository` 状态，记录同步模式、远端 endpoint/token、最近导入/导出、远端同步方向、远端记录数、最近 packageId、跳过冲突数量和错误。
+- `MRAppState` 新增 `historyRepository` 状态，记录同步模式、远端 endpoint/token/workspace、最近导入/导出、远端同步方向、远端记录数、最近 packageId、跳过冲突数量和错误。
 - 新增 `getHistoryRepositoryPackage()`、`downloadHistoryRepository()` 和 `importHistoryRepositoryPackage()`，可导出/导入 `mr-calligraphy-history-repository-v1` 学习档案同步包。
 - 新增 `configureHistoryRepositoryRemote()`、`checkRemoteHistoryRepository()`、`pushHistoryRepositoryToRemote()` 和 `pullHistoryRepositoryFromRemote()`，支持 HTTP/HTTPS 远端档案仓库 GET/PUT。
 - 拉取远端档案时，同 ID 且内容不同的练习、作品或报告会跳过并记录冲突数量，不静默覆盖本机档案。
@@ -7931,3 +7931,50 @@
 提交：
 
 - 中文 commit message：`新增计划仓库空间隔离`
+
+### 2026-06-12：新增学习档案仓库空间隔离
+
+功能名：学习档案仓库 Workspace 空间隔离第一版。
+
+完成内容：
+
+- 前台“远端学习档案 API”配置区新增 `Workspace` 输入，和 endpoint/token 一起保存到 `historyRepository`。
+- 学习档案仓库状态会显示当前空间。
+- `MRAppState.getHistoryRepositoryPackage()` 输出顶层 `workspaceId` 与 `source.workspaceId`。
+- 学习档案仓库远端 GET / PUT 请求统一携带 `X-MR-Workspace-Id` header。
+- 切换 endpoint 或 workspace 时会清空当前本机冲突审计视图，避免把其他空间冲突当作当前空间证据。
+- `scripts/history-repository-mock-server.js` 新增 `workspaces` 状态，以 workspace 维度保存最近 package 和 receipts。
+- 数据层验证 `history-alpha` 和 `history-beta` 两个空间互不覆盖，并能切回原空间读取原 package。
+- 浏览器级学习档案仓库用例验证 Workspace 输入、请求头、推送包字段和本机状态持久化。
+- `docs/history-repository-api-contract.md` 和 `docs/smoke-test.md` 同步 Workspace header、包字段、mock 隔离和验收范围。
+
+真实化说明：
+
+- 数据来源：前台远端学习档案配置、本机练习/作品/报告记录、远端 API 返回 package。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.historyRepository.workspaceId`、远端同步包和 mock server workspace 分桶。
+- 成功反馈：远端配置状态显示 workspace，mock server GET 当前空间返回对应 package。
+- 失败反馈：错误 token、HTTP 错误、非法响应和推送失败不会清空本机档案，也不会伪造其他空间数据。
+- 刷新后复现方式：刷新前台后 Workspace 输入恢复，检查/推送/拉取继续携带相同 header。
+
+仍待补：
+
+- 当前完成的是账号化前置空间隔离；真正账号登录、班级权限、教师端批注审计、长期归档、服务端合并审计和不可篡改回执仍待补齐。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/history-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `npm run test:e2e -- --grep "front history repository handles network, paged pull, and id conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案仓库空间隔离`

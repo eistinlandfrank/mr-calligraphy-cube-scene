@@ -98,11 +98,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
     historyRequests.push({
       method,
       authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
       body
     });
     if (method === "PUT") {
       remoteHistoryPackage = {
         ...body,
+        workspaceId: body.workspaceId,
         packageId: "e2e-history-package",
         acceptedAt: new Date().toISOString()
       };
@@ -711,8 +713,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.locator(".history-repository-remote summary").click();
   await page.locator("#historyRepositoryEndpointInput").fill(historyEndpoint);
   await page.locator("#historyRepositoryTokenInput").fill("history-token");
+  await page.locator("#historyRepositoryWorkspaceInput").fill("history-e2e");
   await page.locator("#historyRepositorySaveRemoteButton").click();
   await expect(page.locator("#historyRepositorySummary")).toContainText("已配置");
+  await expect(page.locator("#historyRepositorySummary")).toContainText("history-e2e");
 
   await page.locator("#historyRepositoryRemoteButton").click();
   await expect(page.locator("#historyRepositorySummary")).toContainText("E2E 可访问");
@@ -722,13 +726,17 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   const putRequest = historyRequests.find((item) => item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer history-token");
+  expect(putRequest.workspaceId).toBe("history-e2e");
   expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
+  expect(putRequest.body.workspaceId).toBe("history-e2e");
+  expect(putRequest.body.source.workspaceId).toBe("history-e2e");
   expect(putRequest.body.summary.total).toBe(3);
   expect(putRequest.body.records.reports).toHaveLength(1);
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("push");
   expect(learningState.historyRepository.lastPackageId).toBe("e2e-history-package");
+  expect(learningState.historyRepository.workspaceId).toBe("history-e2e");
 
   await page.locator("#historyRepositoryPullButton").click();
   await expect(page.locator("#historyRepositorySummary")).toContainText("已从远端 API 拉取 3 条学习档案");
@@ -736,7 +744,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastRemoteDirection).toBe("pull");
   expect(learningState.historyRepository.lastRemoteRecordCount).toBe(3);
-  expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token")).toBe(true);
+  expect(historyRequests.some((item) => item.method === "GET" && item.authorization === "Bearer history-token" && item.workspaceId === "history-e2e")).toBe(true);
 
   await page.evaluate(() => window.MRAppState.createPlan());
   await page.reload({ waitUntil: "domcontentloaded" });
@@ -891,6 +899,7 @@ test("front history repository shows real remote failure feedback", async ({ pag
         path: routeConfig.path,
         method: request.method(),
         authorization: request.headers().authorization || "",
+        workspaceId: request.headers()["x-mr-workspace-id"] || "",
         body: request.method() === "PUT" ? request.postDataJSON() : null
       });
       await route.fulfill({
@@ -938,6 +947,7 @@ test("front history repository shows real remote failure feedback", async ({ pag
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastError).toContain("HTTP 401");
   expect(requests.some((item) => item.path === "/e2e-history-repository-expired-token" && item.authorization === "Bearer history-expired-token")).toBe(true);
+  expect(requests.some((item) => item.path === "/e2e-history-repository-expired-token" && item.workspaceId === "local-browser")).toBe(true);
 
   const serverErrorEndpoint = await getSameOriginEndpoint(page, "/e2e-history-repository-server-error");
   await configureHistoryRepositoryRemoteInUi(page, serverErrorEndpoint, "history-server-error-token");
@@ -980,7 +990,9 @@ test("front history repository shows real remote failure feedback", async ({ pag
 
   const putRequest = requests.find((item) => item.path === "/e2e-history-repository-rejected-push" && item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer history-rejected-push-token");
+  expect(putRequest.workspaceId).toBe("local-browser");
   expect(putRequest.body.kind).toBe("mr-calligraphy-history-repository-v1");
+  expect(putRequest.body.workspaceId).toBe("local-browser");
   expect(putRequest.body.summary.total).toBe(2);
 });
 
@@ -995,7 +1007,8 @@ test("front history repository handles network, paged pull, and id conflicts", a
     requests.push({
       path: networkPath,
       method: request.method(),
-      authorization: request.headers().authorization || ""
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || ""
     });
     await route.abort("failed");
   });
@@ -1008,7 +1021,8 @@ test("front history repository handles network, paged pull, and id conflicts", a
       path: pagedPath,
       page: pageNumber,
       method: request.method(),
-      authorization: request.headers().authorization || ""
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || ""
     });
     const isSecondPage = pageNumber === "2";
     await route.fulfill({
@@ -1077,7 +1091,7 @@ test("front history repository handles network, paged pull, and id conflicts", a
   await expect(page.locator("#historyRepositorySummary")).toContainText("网络请求异常");
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastError).toContain("网络请求异常");
-  expect(requests.some((item) => item.path === networkPath && item.authorization === "Bearer history-network-token")).toBe(true);
+  expect(requests.some((item) => item.path === networkPath && item.authorization === "Bearer history-network-token" && item.workspaceId === "local-browser")).toBe(true);
 
   const pagedEndpoint = await getSameOriginEndpoint(page, pagedPath);
   await configureHistoryRepositoryRemoteInUi(page, pagedEndpoint, "history-paged-token");
@@ -1109,8 +1123,8 @@ test("front history repository handles network, paged pull, and id conflicts", a
   const originalSession = learningState.sessions.find((session) => session.id === seed.sessionId);
   expect(originalSession.feedback).toContain("E2E 学习档案分页冲突本机记录");
   expect(originalSession.feedback).not.toContain("远端同 ID 差异记录不应覆盖本机");
-  expect(requests.some((item) => item.path === pagedPath && item.method === "GET" && item.authorization === "Bearer history-paged-token")).toBe(true);
-  expect(requests.some((item) => item.path === pagedPath && item.page === "2" && item.authorization === "Bearer history-paged-token")).toBe(true);
+  expect(requests.some((item) => item.path === pagedPath && item.method === "GET" && item.authorization === "Bearer history-paged-token" && item.workspaceId === "local-browser")).toBe(true);
+  expect(requests.some((item) => item.path === pagedPath && item.page === "2" && item.authorization === "Bearer history-paged-token" && item.workspaceId === "local-browser")).toBe(true);
 
   const conflictPanel = page.locator("#historyRepositoryConflictPanel");
   await conflictPanel.locator('input[data-history-merge-field="feedback"][value="remote"]').check();
@@ -2796,9 +2810,10 @@ async function configurePlanRepositoryRemoteInUi(page, endpoint, token = "", wor
   await expect(page.locator("#noticeState")).toContainText("已保存远端计划 API 配置");
 }
 
-async function configureHistoryRepositoryRemoteInUi(page, endpoint, token = "") {
+async function configureHistoryRepositoryRemoteInUi(page, endpoint, token = "", workspaceId = "local-browser") {
   await page.locator("#historyRepositoryEndpointInput").fill(endpoint);
   await page.locator("#historyRepositoryTokenInput").fill(token);
+  await page.locator("#historyRepositoryWorkspaceInput").fill(workspaceId);
   await page.locator("#historyRepositorySaveRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("已保存远端学习档案 API 配置");
 }

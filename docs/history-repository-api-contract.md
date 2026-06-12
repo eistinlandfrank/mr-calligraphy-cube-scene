@@ -5,9 +5,9 @@
 
 ## 1. 边界
 
-远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端拉取时会按响应里的 `nextPageUrl` 追取分页，但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
+远端学习档案仓库 API 接收浏览器本机的练习、作品和报告记录，用来验证学习档案跨设备同步的真实 HTTP 闭环。前端会携带 Workspace 空间 ID 做同 endpoint 下的第一层隔离，拉取时也会按响应里的 `nextPageUrl` 追取分页；但它不是账号系统、公开作品墙、教师批注、生产级分页查询或长期归档服务本身。
 
-生产服务端必须重新校验档案包结构，并在账号、空间、权限、数据版本和分页查询上做服务端隔离；前端本机校验只能作为提交前保护。
+生产服务端必须重新校验档案包结构，并在账号、空间、权限、数据版本和分页查询上做服务端隔离；前端 Workspace 只能作为 adapter 合同和本地开发保护，不能替代登录态和服务端授权。
 
 ## 2. Endpoint
 
@@ -25,6 +25,14 @@
 Authorization: Bearer <token>
 ```
 
+前端还会在 `GET` / `PUT` 中携带 Workspace header：
+
+```http
+X-MR-Workspace-Id: <workspaceId>
+```
+
+Workspace 由前台“远端学习档案 API”面板配置，默认 `local-browser`。同一个 endpoint 下，服务端应按 workspace 保存和返回对应空间的最近档案包。
+
 ## 3. 学习档案包
 
 `PUT` body 顶层字段：
@@ -34,9 +42,10 @@ Authorization: Bearer <token>
 | `kind` | 固定为 `mr-calligraphy-history-repository-v1` |
 | `version` | 当前为 `1` |
 | `packageId` | 本机生成的提交 ID |
+| `workspaceId` | 前端配置的学习档案仓库空间 ID，默认 `local-browser` |
 | `exportedAt` | 本机生成时间 |
 | `storageKey` | 本机学习状态来源 key |
-| `source` | 当前同步模式和边界说明 |
+| `source` | 当前同步模式、`workspaceId` 和边界说明 |
 | `summary` | 记录数量、练习数、作品数、报告数、带教师批注报告数和平均分 |
 | `records.sessions` | 练习记录数组 |
 | `records.artworks` | 作品记录数组 |
@@ -45,7 +54,7 @@ Authorization: Bearer <token>
 
 服务端应至少校验：
 
-- `kind`、`version`、`packageId`、`exportedAt` 和 `storageKey`。
+- `kind`、`version`、`packageId`、`workspaceId`、`exportedAt` 和 `storageKey`。
 - `records.sessions`、`records.artworks` 和 `records.reports` 必须是数组。
 - 练习记录必须包含 `id`、`glyph` 和 `startedAt`。
 - 作品记录必须包含 `id`、`title` 和 `createdAt`。
@@ -59,12 +68,14 @@ Authorization: Bearer <token>
 {
   "ok": true,
   "message": "远端学习档案仓库已接收 9 条记录。",
+  "workspaceId": "class-a",
   "packageId": "remote-history-package-id",
   "repositoryDigest": "64位sha256",
   "remoteVersion": "remote-v1",
   "package": {
     "kind": "mr-calligraphy-history-repository-v1",
     "version": 1,
+    "workspaceId": "class-a",
     "packageId": "remote-history-package-id",
     "summary": {
       "total": 9,
@@ -81,6 +92,7 @@ Authorization: Bearer <token>
   },
   "receipt": {
     "receiptKind": "mr-calligraphy-history-repository-receipt-v1",
+    "workspaceId": "class-a",
     "packageId": "remote-history-package-id",
     "sourcePackageId": "local-history-package-id",
     "repositoryDigest": "64位sha256",
@@ -91,7 +103,7 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.records` 和可选 `pagination`，并把远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
+前端 adapter 当前会读取 `message`、`workspaceId`、`package.packageId`、`package.summary`、`package.records` 和可选 `pagination`，并把当前 workspace、远端记录数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.historyRepository`。报告里的 `teacherReview` 会随 `records.reports` 同步；`summary.teacherReviewedReportCount` 用于快速确认远端包里有多少份报告带本机教师批注。
 
 ## 4.1 分页响应
 
@@ -178,11 +190,11 @@ http://127.0.0.1:8789/api/history-repository
 
 mock 服务会：
 
-- `GET` 返回合同、远端版本和最近一次保存的学习档案包。
-- `PUT` 校验 `mr-calligraphy-history-repository-v1` 结构并保存到内存。
+- `GET` 读取 `X-MR-Workspace-Id`，返回该 workspace 的合同、远端版本和最近一次保存的学习档案包。
+- `PUT` 校验 `mr-calligraphy-history-repository-v1` 结构，并按 `X-MR-Workspace-Id` 保存到内存分桶。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
-- 返回 `mr-calligraphy-history-repository-receipt-v1` 回执和 `repositoryDigest`。
+- 返回带 `workspaceId` 的 `mr-calligraphy-history-repository-receipt-v1` 回执和 `repositoryDigest`。
 
 ## 8. 验收
 
@@ -193,4 +205,4 @@ node scripts/learning-state-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过、冲突审计、字段级合并、远端冲突另存副本和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl`、合并后续页，并在同 ID 差异后展示冲突审计入口和字段级合并表单。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、Workspace header、学习档案包 `workspaceId`、mock server 按空间隔离、学习档案仓库回执、拉取最近档案包、同 ID 差异跳过、冲突审计、字段级合并、远端冲突另存副本和错误 token 拒绝。浏览器级 E2E 会额外模拟分页响应，验证前端拉取会继续请求 `nextPageUrl`、合并后续页，并在同 ID 差异后展示冲突审计入口和字段级合并表单。

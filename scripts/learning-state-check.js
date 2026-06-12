@@ -1144,6 +1144,8 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
   const packageResult = window.MRAppState.getHistoryRepositoryPackage();
   assert(packageResult.ok, "学习档案 repository 应能生成 JSON 同步包。");
   assert(packageResult.package.kind === "mr-calligraphy-history-repository-v1", "学习档案同步包应包含稳定 kind。");
+  assert(packageResult.package.workspaceId === "local-browser", "学习档案同步包应包含默认 workspaceId。");
+  assert(packageResult.package.source.workspaceId === "local-browser", "学习档案同步包 source 应记录 workspaceId。");
   assert(packageResult.package.records.sessions.length >= 3, "学习档案同步包应包含练习记录。");
   assert(packageResult.package.records.artworks.length >= 3, "学习档案同步包应包含作品记录。");
   assert(packageResult.package.records.reports.length >= 3, "学习档案同步包应包含报告记录。");
@@ -1159,9 +1161,11 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     global.fetch = fetchApi;
     const configuredMock = window.MRAppState.configureHistoryRepositoryRemote({
       remoteEndpoint: mock.endpoint,
-      remoteToken: "history-token"
+      remoteToken: "history-token",
+      workspaceId: "history-alpha"
     });
     assert(configuredMock.ok, "学习档案仓库 mock endpoint 应可保存为远端配置。");
+    assert(configuredMock.status.workspaceId === "history-alpha", "学习档案仓库 mock 配置应保存 workspace。");
 
     const checkedBeforePush = await window.MRAppState.checkRemoteHistoryRepository();
     assert(checkedBeforePush.ok, "学习档案仓库 mock GET 检查应真实可访问。");
@@ -1169,11 +1173,14 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
 
     const pushedMock = await window.MRAppState.pushHistoryRepositoryToRemote();
     assert(pushedMock.ok, "学习档案仓库 mock 应接收真实 PUT 推送。");
-    assert(pushedMock.packageId.startsWith("mock-history-repository-"), "学习档案仓库 mock 应返回服务端 packageId。");
+    assert(pushedMock.packageId.startsWith("mock-history-repository-history-alpha-"), "学习档案仓库 mock 应返回包含 workspace 的服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "学习档案仓库 mock 应在内存中保存最近档案包。");
+    assert(mock.state.package.workspaceId === "history-alpha", "学习档案仓库 mock 应把档案包保存到 alpha workspace。");
+    assert(mock.state.workspaces["history-alpha"].package.packageId === pushedMock.packageId, "学习档案仓库 mock 应按 workspace 隔离保存 alpha 包。");
     assert(mock.state.package.summary.teacherReviewedReportCount === 1, "学习档案仓库 mock 应保存带教师批注报告计数。");
     assert(mock.state.package.records.reports.find((item) => item.id === "report-2").teacherReview.note.includes("竖钩"), "学习档案仓库 mock 应保存教师批注内容。");
     assert(mock.state.receipts[0].repositoryDigest, "学习档案仓库 mock 应返回 repositoryDigest 回执。");
+    assert(mock.state.receipts[0].workspaceId === "history-alpha", "学习档案仓库 mock 回执应包含 workspace。");
 
     const checkedAfterPush = await window.MRAppState.checkRemoteHistoryRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.summary.total === mock.state.package.summary.total, "学习档案仓库 mock GET 应返回最近 PUT 保存的档案包。");
@@ -1184,9 +1191,31 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(pulledMock.pulledRecordCount === mock.state.package.summary.total, "学习档案仓库 mock 拉取结果应保留远端记录数量。");
     assert(window.MRAppState.getReportDetail("report-2").teacherReview.note.includes("竖钩"), "学习档案仓库拉取后本机报告教师批注不应丢失。");
 
+    const configuredBeta = window.MRAppState.configureHistoryRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "history-token",
+      workspaceId: "history-beta"
+    });
+    assert(configuredBeta.ok && configuredBeta.status.lastConflictRecords.length === 0, "切换学习档案仓库 workspace 应清空本机冲突审计视图。");
+    const betaBeforePush = await window.MRAppState.checkRemoteHistoryRepository();
+    assert(betaBeforePush.ok && betaBeforePush.package === null, "学习档案仓库 mock 新 workspace 初始不应读取 alpha 包。");
+    const betaPush = await window.MRAppState.pushHistoryRepositoryToRemote();
+    assert(betaPush.ok && betaPush.packageId.startsWith("mock-history-repository-history-beta-"), "学习档案仓库 mock beta workspace 应可单独推送。");
+    assert(mock.state.workspaces["history-beta"].package.packageId === betaPush.packageId, "学习档案仓库 mock 应按 workspace 隔离保存 beta 包。");
+    assert(mock.state.workspaces["history-alpha"].package.packageId === pushedMock.packageId, "学习档案仓库 mock beta 推送不应覆盖 alpha 包。");
+    const configuredAlphaAgain = window.MRAppState.configureHistoryRepositoryRemote({
+      remoteEndpoint: mock.endpoint,
+      remoteToken: "history-token",
+      workspaceId: "history-alpha"
+    });
+    assert(configuredAlphaAgain.ok, "学习档案仓库 mock 应可切回 alpha workspace。");
+    const alphaAgain = await window.MRAppState.checkRemoteHistoryRepository();
+    assert(alphaAgain.ok && alphaAgain.package.packageId === pushedMock.packageId, "切回 alpha workspace 应读取 alpha 包。");
+
+    const alphaWorkspace = mock.state.workspaces["history-alpha"];
     const localTitle = window.MRAppState.getState().sessions[0].title;
-    mock.state.package.records.sessions[0] = {
-      ...mock.state.package.records.sessions[0],
+    alphaWorkspace.package.records.sessions[0] = {
+      ...alphaWorkspace.package.records.sessions[0],
       title: "远端改名但不覆盖本机"
     };
     const conflictPull = await window.MRAppState.pullHistoryRepositoryFromRemote();
@@ -1203,8 +1232,8 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
     assert(window.MRAppState.getState().sessions[0].title === "远端改名但不覆盖本机", "字段级合并应只把选中的远端字段写入本机练习。");
     assert(window.MRAppState.getHistoryRepositoryConflicts().count === Math.max(0, conflicts.count - 1), "字段级合并后的学习档案冲突审计应减少。");
 
-    mock.state.package.records.sessions[0] = {
-      ...mock.state.package.records.sessions[0],
+    alphaWorkspace.package.records.sessions[0] = {
+      ...alphaWorkspace.package.records.sessions[0],
       feedback: ["远端副本冲突反馈"]
     };
     const copyConflictPull = await window.MRAppState.pullHistoryRepositoryFromRemote();
@@ -1221,7 +1250,8 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
 
     const badTokenConfig = window.MRAppState.configureHistoryRepositoryRemote({
       remoteEndpoint: mock.endpoint,
-      remoteToken: "bad-token"
+      remoteToken: "bad-token",
+      workspaceId: "history-alpha"
     });
     assert(badTokenConfig.ok, "学习档案仓库 mock 错误 token 配置应仍可保存以便检查失败态。");
     const rejected = await window.MRAppState.checkRemoteHistoryRepository();

@@ -903,6 +903,7 @@ const els = {
   historyRepositoryImportButton: document.getElementById("historyRepositoryImportButton"),
   historyRepositoryEndpointInput: document.getElementById("historyRepositoryEndpointInput"),
   historyRepositoryTokenInput: document.getElementById("historyRepositoryTokenInput"),
+  historyRepositoryWorkspaceInput: document.getElementById("historyRepositoryWorkspaceInput"),
   historyRepositorySaveRemoteButton: document.getElementById("historyRepositorySaveRemoteButton"),
   historyRepositoryRemoteButton: document.getElementById("historyRepositoryRemoteButton"),
   historyRepositoryPushButton: document.getElementById("historyRepositoryPushButton"),
@@ -7006,6 +7007,9 @@ function renderHistoryRepositoryStatus(history) {
   if (els.historyRepositoryTokenInput && document.activeElement !== els.historyRepositoryTokenInput) {
     els.historyRepositoryTokenInput.value = config?.remoteToken || "";
   }
+  if (els.historyRepositoryWorkspaceInput && document.activeElement !== els.historyRepositoryWorkspaceInput) {
+    els.historyRepositoryWorkspaceInput.value = config?.workspaceId || "local-browser";
+  }
   if (els.historyRepositoryRemoteButton) {
     els.historyRepositoryRemoteButton.disabled = false;
     els.historyRepositoryRemoteButton.textContent = status?.remoteConfigured ? "检查远端" : "远端未配置";
@@ -7195,9 +7199,11 @@ function importHistoryRepositoryFile(event) {
 function saveHistoryRepositoryRemoteConfig() {
   const endpoint = els.historyRepositoryEndpointInput?.value || "";
   const token = els.historyRepositoryTokenInput?.value || "";
+  const workspaceId = els.historyRepositoryWorkspaceInput?.value || "";
   const result = window.MRAppState?.configureHistoryRepositoryRemote?.({
     remoteEndpoint: endpoint,
-    remoteToken: token
+    remoteToken: token,
+    workspaceId
   });
   if (result?.message) {
     showNotice(result.message);

@@ -2945,3 +2945,45 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划仓库空间隔离`
+
+### 2026-06-12：新增学习档案仓库空间隔离
+
+完成内容：
+
+- 前台“远端学习档案 API”新增 `Workspace` 输入，保存 endpoint/token 时一并保存空间 ID。
+- 学习档案仓库同步包新增顶层 `workspaceId` 和 `source.workspaceId`，远端请求统一携带 `X-MR-Workspace-Id`。
+- 学习档案仓库状态、远端检查、推送和拉取都会显示当前 workspace。
+- `scripts/history-repository-mock-server.js` 改为按 workspace 分桶保存学习档案包和回执，`history-alpha` 与 `history-beta` 不再互相覆盖。
+- 数据层、mock server 和 E2E 验收补充 Workspace header、包字段、本机状态持久化、空间切换回读、分页追取和冲突审计。
+- `docs/history-repository-api-contract.md` 同步 Workspace header、包字段、mock 隔离和生产边界。
+
+真实化说明：
+
+- 数据来源：用户配置的远端学习档案 endpoint/token/workspace、本机练习/作品/报告同步包和远端返回。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.historyRepository.workspaceId`、远端包 `workspaceId` 和 mock server workspace 分桶。
+- 成功反馈：学习档案同步状态会显示空间，mock 服务能分别读取不同空间最近包。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON 或推送失败仍会写入本机错误，不清空本机学习档案。
+- 刷新后复现方式：Workspace 保存在本机学习状态，刷新后仍会继续用同一空间推送和拉取。
+
+仍待补：
+
+- 当前是账号化前的空间隔离 adapter，不是完整登录、角色权限、教师端批注审计、长期归档或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/history-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `npm run test:e2e -- --grep "front history repository handles network, paged pull, and id conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案仓库空间隔离`
