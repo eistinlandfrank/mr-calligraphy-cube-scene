@@ -22,6 +22,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/share-repository-mock-server.js", parser: "script" },
   { file: "scripts/project-repository-mock-server.js", parser: "script" },
   { file: "scripts/learning-state-check.js", parser: "script" },
+  { file: "scripts/learning-action-coverage-check.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
@@ -61,6 +62,10 @@ const COMMAND_CHECKS = [
   {
     label: "学习状态检查",
     command: [process.execPath, "scripts/learning-state-check.js"]
+  },
+  {
+    label: "学习路径动作覆盖检查",
+    command: [process.execPath, "scripts/learning-action-coverage-check.js"]
   }
 ];
 

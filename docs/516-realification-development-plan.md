@@ -10053,3 +10053,43 @@
 提交：
 
 - 中文 commit message：`新增课堂评阅包摘要验真`
+
+### 2026-06-13：新增学习路径动作覆盖验收
+
+功能名：前台学习路径动作真实处理覆盖检查。
+
+开发原因：
+
+- 前台学习路径动作由 `script.js` 动态生成，HTML 控件清单只能证明静态按钮有状态标记，不能证明每个场景动作都有真实处理函数。
+- 用户此前反馈界面里很多按钮像假的；为了长期开发时不再回退，需要在 smoke test 中增加专门检查，保证新增动作必须同时补状态标记和处理分支。
+
+完成内容：
+
+- 新增 `scripts/learning-action-coverage-check.js`。
+- 脚本解析 `SCENES` 的全部 `actions`，统计当前 10 个场景 30 个学习路径动作。
+- 校验每个动作都存在 `LEARNING_ACTION_FEATURES` 状态标记。
+- 校验状态必须是 `real`、`real-local`、`real-export` 或 `real-published-local`，不能是 `disabled`、`demo` 或 `demo-content`。
+- 校验每个动作都存在 `runLearningAction` 分支，避免按钮可见但没有执行路径。
+- 反向校验处理分支是否都有状态标记，避免 UI 标记和业务处理漂移。
+- `scripts/smoke-test.js` 已加入该脚本的语法检查和命令检查。
+
+验收方式：
+
+- 运行 `node scripts/learning-action-coverage-check.js`，应输出 10 个场景、30 个动作、30 个状态标记、30 个处理分支全部覆盖。
+- 删除任意动作的状态标记或处理分支，脚本应失败并指出动作名称。
+
+真实边界：
+
+- 这是静态覆盖门禁，不是完整浏览器交互测试；点击后真实写入、下载和失败反馈仍要依靠 Playwright 和状态层脚本继续覆盖。
+
+验收命令：
+
+- `node --check scripts/learning-action-coverage-check.js`
+- `node scripts/learning-action-coverage-check.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习路径动作覆盖验收`
