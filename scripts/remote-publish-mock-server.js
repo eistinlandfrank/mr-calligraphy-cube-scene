@@ -244,7 +244,7 @@ function createContract() {
     manifestKind: MANIFEST_KIND,
     revokeKind: "mr-calligraphy-remote-publish-revoke-v1",
     requiredTopLevelFields: ["kind", "version", "packageId", "sceneId", "release", "record", "releaseLayout", "assetManifest", "manifest"],
-    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt", "receipt.assetSignatures", "receipt.cdnPurgeSummary"],
+    receiptFields: ["ok", "message", "packageId", "releaseId", "packageDigest", "remoteVersion", "receipt", "receipt.assetSignatures", "receipt.cdnUploadSummary", "receipt.cdnPurgeSummary"],
     lockFields: ["publishLock.locked", "publishLock.sceneId", "publishLock.releaseId", "publishLock.packageDigest", "latestReceipt"]
   };
 }
@@ -457,6 +457,7 @@ function createReceipt(payload, validation, signingSecret) {
   const acceptedAt = new Date().toISOString();
   const assetSignatures = createAssetSignatures(payload, acceptedAt, signingSecret);
   const assetSignatureSummary = createAssetSignatureSummary(payload, assetSignatures, acceptedAt);
+  const cdnUploadSummary = createCdnUploadSummary(payload, assetSignatures, acceptedAt);
   return {
     receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
     direction: "publish",
@@ -470,6 +471,7 @@ function createReceipt(payload, validation, signingSecret) {
     acceptedAt,
     warningCount: validation.warnings.length,
     warnings: validation.warnings,
+    cdnUploadSummary,
     assetSignatureSummary,
     assetSignatures,
     receiptDigest: sha256StableJson({
@@ -477,8 +479,35 @@ function createReceipt(payload, validation, signingSecret) {
       releaseId: payload.release?.id || "",
       packageDigest,
       acceptedAt,
-      assetSignatureSummary
+      assetSignatureSummary,
+      cdnUploadSummary
     })
+  };
+}
+
+function createCdnUploadSummary(payload, assetSignatures, acceptedAt) {
+  const packageDigest = payload.manifest?.packageDigest || "";
+  const baseUrl = `https://mock-cdn.invalid/mr-calligraphy/${payload.sceneId}/${packageDigest.slice(0, 12)}/`;
+  const assetUrls = assetSignatures.map((asset, index) => ({
+    assetId: asset.assetId,
+    dbKey: asset.dbKey,
+    modelId: asset.modelId,
+    assetKind: asset.assetKind,
+    sha256: asset.sha256,
+    url: `${baseUrl}${index + 1}-${encodeURIComponent(asset.fileName || asset.assetId)}`
+  }));
+  return {
+    kind: "mr-calligraphy-remote-publish-cdn-upload-summary-v1",
+    status: "uploaded",
+    cdnProvider: "mock-cdn",
+    uploadRequestId: `upload-${packageDigest.slice(0, 12)}`,
+    uploadedAssetCount: assetUrls.length,
+    uploadedUrlCount: assetUrls.length,
+    baseUrl,
+    assetDigest: payload.manifest?.assetDigest || "",
+    uploadedAt: acceptedAt,
+    completedAt: acceptedAt,
+    assetUrls
   };
 }
 

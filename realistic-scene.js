@@ -1614,9 +1614,11 @@ function renderRemotePublishReceipts(audit) {
     const digest = receipt.receiptDigest || receipt.packageDigest || "";
     const signatureCount = Number(receipt.assetSignatureSummary?.signedAssetCount || 0);
     const signatureMeta = signatureCount ? ` · 资产签名 ${signatureCount}` : "";
+    const uploadCount = Number(receipt.cdnUploadSummary?.uploadedUrlCount || 0);
+    const uploadMeta = uploadCount ? ` · CDN ${uploadCount}` : "";
     const purgeCount = Number(receipt.cdnPurgeSummary?.purgedUrlCount || 0);
     const purgeMeta = purgeCount ? ` · purge ${purgeCount}` : "";
-    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}${purgeMeta}`;
+    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}${uploadMeta}${purgeMeta}`;
     const message = document.createElement("small");
     message.textContent = receipt.message || receipt.remoteVersion || "远端已接收。";
     item.append(title, meta, message);

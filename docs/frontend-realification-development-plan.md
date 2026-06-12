@@ -73,7 +73,7 @@ node scripts/control-inventory.js --check
 | 主后台编辑 | 对象、图层、灯光、基础物体、导入模型、保存快照可用；主后台项目档案区已显示统一 `ProjectRepository` 状态，并可配置远端项目仓库 API 真实 GET/PUT，支持拉取远端包进入恢复预览 | 保存范围主要是当前浏览器，远端 adapter 还不是账号协作后台 | 继续接账号化项目 repository、多人合并和服务端资产签名 |
 | 写实后台编辑 | 写实对象、相机、导入模型、快照、发布到演示可用；已纳入 `project-scene-repository-v1` 统一视图 | 和主后台对象 schema 仍有字段差异 | 继续统一字段迁移、完整 diff 和资产引用规则 |
 | 本机发布 | 主后台发布到前台，写实后台发布到演示，支持历史、差异、回滚 | 只是本机发布，不是线上部署 | UI 保持“本机发布”；线上发布必须走远端发布合同 |
-| 远端发布 | 可配置 endpoint/token，生成发布包、manifest、模型/贴图资产清单，预检、审核锁、POST 推送、DELETE 撤销、服务端回执持久化、HMAC 开发资产签名回执、CDN purge 撤销回执和 HTML 审计导出已有第一版 | 还不是账号权限、生产 CDN 托管、生产证书签名、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、生产证书资产签名、生产 CDN 回调和不可篡改审计日志 |
+| 远端发布 | 可配置 endpoint/token，生成发布包、manifest、模型/贴图资产清单，预检、审核锁、POST 推送、DELETE 撤销、服务端回执持久化、HMAC 开发资产签名回执、CDN upload 上传回执、CDN purge 撤销回执和 HTML 审计导出已有第一版 | 还不是账号权限、生产 CDN 托管、生产证书签名、服务端审批和不可篡改审计 | 增加生产服务端账号权限、远端审核状态、生产证书资产签名、生产 CDN 回调和不可篡改审计日志 |
 | 项目档案 | JSON 导出/导入、schema、迁移、字段恢复、模型哈希、恢复审计、统一项目仓库状态、远端项目仓库 API adapter、拉取预览、API 合同和本机 mock 服务可用 | 三方合并、完整 JSON 树、账号权限和远端资产校验仍弱 | 增加账号化服务端 repository、多人冲突解决和远端资产完整性校验 |
 | 后台权限 | 已显示“本机静态后台”风险提示 | 任何能打开页面的人都能编辑本机内容 | 后端版加入账号、角色、权限和操作审计 |
 
@@ -2220,7 +2220,7 @@ git diff --check
 
 仍待补：
 
-- 当前是 mock/HMAC 开发验收，不是生产证书签名、账号权限审计、CDN 上传回执或服务端不可篡改审计链。
+- 当前完成的是 mock/HMAC 开发签名回执；CDN upload 回执已在后续第 67 节记录完成。它仍不是生产证书签名、账号权限审计或服务端不可篡改审计链。
 
 验收：
 
@@ -2275,3 +2275,46 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化远端发布撤销回执`
+
+## 67. 2026-06-12 真实化远端发布 CDN 上传回执
+
+本次把远端发布从“只保存资产签名和撤销 purge”补成“发布成功时也能看到 CDN 上传摘要”：服务端响应里的 `cdnUploadSummary` 会被规范化、持久化并进入回执审计，后台回执列表能直接看到 CDN URL 数量。
+
+完成内容：
+
+- `project-remote-publish.js` 新增 `cdnUploadSummary` 规范化，发布回执会保存上传状态、provider、request id、URL 数量、base URL 和资产摘要。
+- 回执审计 HTML 新增 `CDN Upload` 字段，原始 receipt JSON 保留服务端上传摘要。
+- 主后台和写实后台远端发布回执列表新增 `CDN N` 摘要。
+- `scripts/remote-publish-mock-server.js` 在真实 POST 接收发布包后，为已签名模型/贴图资产生成 mock CDN URL。
+- `scripts/remote-publish-check.js` 覆盖 fake fetch 和真实 mock server 的 CDN upload 摘要、URL 数量、provider、审计导出和持久化。
+- 主后台 E2E 模拟远端发布返回 CDN upload 摘要，验证回执列表显示 `CDN 1` 且 localStorage 持久化。
+- `docs/remote-publish-api-contract.md` 补齐 POST 成功回执里的 CDN upload 字段和 mock/生产边界。
+
+真实化说明：
+
+- 数据来源：远端 POST 成功响应中的 `cdnUploadSummary` 和 mock server 根据已签名资产生成的 URL 明细。
+- 写入状态：写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].receipts[*].cdnUploadSummary`。
+- 成功反馈：后台回执列表显示 `CDN N`，审计导出显示 CDN upload 状态、provider、URL 数量和 base URL。
+- 失败反馈：没有服务端返回 CDN upload 字段时不会伪造成功，只显示“无 CDN upload 回执”。
+- 刷新后复现方式：刷新后台后仍可从远端发布回执审计读取 CDN 上传摘要。
+
+仍待补：
+
+- 当前是开发级 mock CDN URL 回执；不是生产 CDN 实际上传、账号空间隔离、CDN 回调验签或不可篡改服务端审计。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-mock-server.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化远端发布CDN上传回执`

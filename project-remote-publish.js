@@ -66,11 +66,12 @@
     const revokedAt = normalizeDate(source.revokedAt || receipt.revokedAt);
     const direction = normalizeReceiptDirection(source.direction || receipt.direction || receipt.receiptKind);
     const sourcePackageId = String(source.sourcePackageId || receipt.sourcePackageId || "").slice(0, 160);
+    const cdnUploadSummary = normalizeCdnUploadSummary(source.cdnUploadSummary || receipt.cdnUploadSummary || receipt.cdnUpload);
     const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || receipt.cdnPurgeSummary || receipt.cdnPurge);
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
     const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, revokedAt, direction, sourcePackageId, assetSignatureSummary, cdnPurgeSummary });
+      || sha256StableJson({ sceneId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, revokedAt, direction, sourcePackageId, assetSignatureSummary, cdnUploadSummary, cdnPurgeSummary });
     const warnings = normalizeWarningList(source.warnings || receipt.warnings);
     return {
       id: String(source.id || `receipt-${sceneId}-${receiptDigest.slice(0, 16)}`).slice(0, 180),
@@ -90,6 +91,7 @@
       message: String(source.message || "").slice(0, 180),
       warningCount: normalizeCount(source.warningCount ?? receipt.warningCount ?? warnings.length),
       warnings,
+      cdnUploadSummary,
       cdnPurgeSummary,
       assetSignatureSummary,
       assetSignatures,
@@ -1090,6 +1092,7 @@
     const receipt = source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : null;
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt?.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt?.assetSignatureSummary, assetSignatures);
+    const cdnUploadSummary = normalizeCdnUploadSummary(source.cdnUploadSummary || receipt?.cdnUploadSummary || source.cdnUpload || receipt?.cdnUpload);
     const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || receipt?.cdnPurgeSummary || source.cdnPurge || receipt?.cdnPurge);
     return {
       ok,
@@ -1108,6 +1111,7 @@
       warnings: normalizeWarningList(source.warnings || receipt?.warnings),
       assetSignatureSummary,
       assetSignatures,
+      cdnUploadSummary,
       cdnPurgeSummary
     };
   }
@@ -1241,6 +1245,7 @@
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary, assetSignatures);
     const direction = normalizeReceiptDirection(source.direction || source.receiptKind);
+    const cdnUploadSummary = normalizeCdnUploadSummary(source.cdnUploadSummary || source.cdnUpload);
     const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || source.cdnPurge);
     return {
       sceneId: source.sceneId ? normalizeSceneId(source.sceneId) : "",
@@ -1254,6 +1259,7 @@
       direction,
       remoteVersion: source.remoteVersion ? String(source.remoteVersion).slice(0, 120) : "",
       reason: source.reason ? String(source.reason).slice(0, 160) : "",
+      cdnUploadSummary,
       cdnPurgeSummary,
       assetSignatureSummary,
       assetSignatures
@@ -1291,6 +1297,7 @@
     const acceptedAt = normalizeDate(receipt.acceptedAt) || pushedAt;
     const assetSignatures = normalizeAssetSignatures(parsed.assetSignatures || receipt.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(parsed.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
+    const cdnUploadSummary = normalizeCdnUploadSummary(parsed.cdnUploadSummary || receipt.cdnUploadSummary || parsed.cdnUpload || receipt.cdnUpload);
     const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
       || sha256StableJson({
         sceneId: normalizedId,
@@ -1300,7 +1307,8 @@
         remoteVersion: parsed.remoteVersion || receipt.remoteVersion || "",
         acceptedAt,
         pushedAt,
-        assetSignatureSummary
+        assetSignatureSummary,
+        cdnUploadSummary
       });
     const warnings = normalizeWarningList(parsed.warnings || receipt.warnings);
     return normalizeRemoteReceipt({
@@ -1319,6 +1327,7 @@
       direction: "publish",
       warningCount: warnings.length,
       warnings,
+      cdnUploadSummary,
       assetSignatureSummary,
       assetSignatures,
       receiptKind: receipt.receiptKind || "",
@@ -1580,6 +1589,24 @@
     };
   }
 
+  function normalizeCdnUploadSummary(value = {}) {
+    const source = value && typeof value === "object" ? value : {};
+    const uploadedAssetCount = normalizeCount(source.uploadedAssetCount ?? source.assetCount);
+    const uploadedUrlCount = normalizeCount(source.uploadedUrlCount ?? source.urlCount);
+    return {
+      kind: String(source.kind || "mr-calligraphy-remote-publish-cdn-upload-summary-v1").slice(0, 120),
+      status: String(source.status || source.uploadStatus || "").slice(0, 80),
+      cdnProvider: String(source.cdnProvider || source.provider || "").slice(0, 120),
+      uploadRequestId: String(source.uploadRequestId || source.requestId || "").slice(0, 160),
+      uploadedAssetCount,
+      uploadedUrlCount,
+      baseUrl: String(source.baseUrl || source.cdnBaseUrl || "").slice(0, 240),
+      assetDigest: normalizeSha256(source.assetDigest),
+      uploadedAt: normalizeDate(source.uploadedAt || source.completedAt),
+      completedAt: normalizeDate(source.completedAt || source.uploadedAt)
+    };
+  }
+
   function normalizeAssetSignatures(value) {
     const signatures = Array.isArray(value) ? value : [];
     return signatures.map((record, index) => {
@@ -1639,6 +1666,7 @@
     const rows = audit.receipts.map((receipt) => {
       const warnings = receipt.warnings.length ? receipt.warnings.join("；") : "无";
       const assetSignatureText = formatAssetSignatureSummary(receipt.assetSignatureSummary);
+      const cdnUploadText = formatCdnUploadSummary(receipt.cdnUploadSummary);
       const cdnPurgeText = formatCdnPurgeSummary(receipt.cdnPurgeSummary);
       return `
         <section class="receipt">
@@ -1657,6 +1685,7 @@
             <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
             <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
             <dt>Asset Signatures</dt><dd>${escapeHtml(assetSignatureText)}</dd>
+            <dt>CDN Upload</dt><dd>${escapeHtml(cdnUploadText)}</dd>
             <dt>CDN Purge</dt><dd>${escapeHtml(cdnPurgeText)}</dd>
           </dl>
           <pre>${escapeHtml(JSON.stringify(receipt.receipt || {}, null, 2))}</pre>
@@ -1712,6 +1741,19 @@
     const provider = summary.cdnProvider || "CDN 未知";
     const requestId = summary.purgeRequestId ? ` · ${summary.purgeRequestId}` : "";
     return `${status} · ${provider} · ${purgedAssetCount} 个资产 / ${purgedUrlCount} 个 URL${requestId}`;
+  }
+
+  function formatCdnUploadSummary(summary = {}) {
+    const uploadedAssetCount = normalizeCount(summary.uploadedAssetCount);
+    const uploadedUrlCount = normalizeCount(summary.uploadedUrlCount);
+    if (!uploadedAssetCount && !uploadedUrlCount && !summary.status) {
+      return "无 CDN upload 回执";
+    }
+    const status = summary.status || "状态未知";
+    const provider = summary.cdnProvider || "CDN 未知";
+    const requestId = summary.uploadRequestId ? ` · ${summary.uploadRequestId}` : "";
+    const baseUrl = summary.baseUrl ? ` · ${summary.baseUrl}` : "";
+    return `${status} · ${provider} · ${uploadedAssetCount} 个资产 / ${uploadedUrlCount} 个 URL${requestId}${baseUrl}`;
   }
 
   function formatReceiptDirection(direction) {

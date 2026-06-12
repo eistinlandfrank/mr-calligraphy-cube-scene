@@ -231,15 +231,19 @@ async function run() {
   assert(mainPush.receipt.receiptDigest, "主场景回执审计记录应包含 receiptDigest。");
   assert(mainPush.receipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执应保存远端资产签名数量。");
   assert(mainPush.receipt.assetSignatures.length === 2, "主场景回执应保存每个资产的签名明细。");
+  assert(mainPush.receipt.cdnUploadSummary.uploadedUrlCount === 2, "主场景回执应保存 CDN 上传 URL 数量。");
+  assert(mainPush.receipt.cdnUploadSummary.cdnProvider === "e2e-cdn", "主场景回执应保存 CDN 上传 provider。");
   assert(mainPush.status.canRevoke, "主场景推送成功后应允许撤销最近远端发布。");
   const mainAudit = adapter.getReceiptAudit("mainScene");
   assert(mainAudit.total === 1, "主场景推送成功后应保存一条远端回执审计。");
   assert(mainAudit.latestReceipt.packageDigest === mainPackage.package.manifest.packageDigest, "主场景回执审计应保留 packageDigest。");
   assert(mainAudit.latestReceipt.assetSignatureSummary.signedAssetCount === 2, "主场景回执审计应保留资产签名摘要。");
+  assert(mainAudit.latestReceipt.cdnUploadSummary.uploadedUrlCount === 2, "主场景回执审计应保留 CDN 上传摘要。");
   const mainAuditExport = adapter.getReceiptAuditExport("mainScene");
   assert(mainAuditExport.ok && mainAuditExport.html.includes("MR 书法远端发布回执审计"), "主场景回执审计应可导出 HTML。");
   assert(mainAuditExport.html.includes("accepted-mainScene"), "主场景回执审计导出应包含远端 packageId。");
   assert(mainAuditExport.html.includes("Asset Signatures"), "主场景回执审计导出应包含资产签名摘要字段。");
+  assert(mainAuditExport.html.includes("CDN Upload"), "主场景回执审计导出应包含 CDN 上传摘要字段。");
   const lockedWorkflow = adapter.getWorkflow("mainScene", {
     sceneLabel: "主场景",
     storageKey: "mr-calligraphy-main-scene-published-v1",
@@ -397,6 +401,7 @@ async function run() {
   assert(persisted.scenes.mainScene.receipts[0].direction === "revoke", "主场景最新持久化回执应为撤销方向。");
   assert(persisted.scenes.mainScene.receipts[0].cdnPurgeSummary.purgedUrlCount > 0, "主场景撤销回执应持久化 CDN purge 摘要。");
   assert(persisted.scenes.mainScene.receipts[1].assetSignatureSummary.signedAssetCount === 2, "主场景发布回执应继续包含资产签名摘要。");
+  assert(persisted.scenes.mainScene.receipts[1].cdnUploadSummary.uploadedUrlCount === 2, "主场景发布回执应继续包含 CDN 上传摘要。");
   assert(persisted.scenes.realisticScene.lastPackageId === "accepted-realisticScene", "写实场景远端 packageId 应持久化。");
   assert(persisted.scenes.realisticScene.lastReleaseId === "realistic-release-1", "写实场景远端 releaseId 应持久化。");
   assert(persisted.scenes.realisticScene.review.status === "approved", "写实场景审核通过状态应持久化。");
@@ -406,7 +411,7 @@ async function run() {
 
   await runMockServerChecks(adapter, nativeFetch);
 
-  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、模型/贴图资产清单、资产摘要、远端资产签名回执、远端撤销、CDN purge 回执、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST/DELETE 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
+  console.log("远端发布检查通过：主后台和写实后台发布包、manifest 摘要、模型/贴图资产清单、资产摘要、远端资产签名回执、CDN upload 回执、远端撤销、CDN purge 回执、发布包预检、审核流、发布锁、服务端锁预检、失败释放临时锁、endpoint/token、fetch 检查、POST/DELETE 推送、mock 服务回执、回执审计导出和状态持久化已验证。");
 }
 
 async function runMockServerChecks(adapter, fetchApi) {
@@ -449,10 +454,14 @@ async function runMockServerChecks(adapter, fetchApi) {
     assert(mock.state.received[0].assetSignatureSummary.signedAssetCount === 2, "mock 回执应统计模型和贴图资产签名。");
     assert(mock.state.received[0].assetSignatureSummary.signingKeyId === "remote-publish-mock-asset-hmac-v1", "mock 回执应返回资产签名 key id。");
     assert(mock.state.received[0].assetSignatures.every((item) => /^[a-f0-9]{64}$/.test(item.signature)), "mock 回执资产签名应为 64 位 HMAC。");
+    assert(mock.state.received[0].cdnUploadSummary.uploadedUrlCount === 2, "mock 回执应返回 CDN 上传 URL 数量。");
+    assert(mock.state.received[0].cdnUploadSummary.assetUrls.every((item) => item.url.startsWith("https://mock-cdn.invalid/")), "mock 回执应返回可审计 CDN URL。");
     assert(pushed.receipt.assetSignatureSummary.signedAssetCount === 2, "adapter 应暴露 mock 服务资产签名摘要。");
+    assert(pushed.receipt.cdnUploadSummary.uploadedUrlCount === 2, "adapter 应暴露 mock 服务 CDN 上传摘要。");
     const mockAudit = adapter.getReceiptAudit("mainScene");
     assert(mockAudit.latestReceipt.receiptDigest === mock.state.received[0].receiptDigest, "mock 服务回执应进入本机审计列表。");
     assert(mockAudit.latestReceipt.assetSignatures.length === 2, "mock 服务资产签名明细应进入本机审计列表。");
+    assert(mockAudit.latestReceipt.cdnUploadSummary.uploadedUrlCount === 2, "mock 服务 CDN 上传摘要应进入本机审计列表。");
     const mockUnlocked = adapter.unlock("mainScene", options);
     assert(mockUnlocked.ok, "mock 服务重复校验前应可解除本机发布锁。");
     const mockBlockedByServerLock = await adapter.push("mainScene", options);
@@ -555,6 +564,7 @@ function createPublishedRecord(releaseId, note, options = {}) {
 
 function createFakeRemotePublishReceipt(body, acceptedAt) {
   const assetSignatures = createFakeAssetSignatures(body, acceptedAt);
+  const cdnUploadSummary = createFakeCdnUploadSummary(body, assetSignatures, acceptedAt);
   return {
     receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
     direction: "publish",
@@ -574,7 +584,24 @@ function createFakeRemotePublishReceipt(body, acceptedAt) {
       assetDigest: body.manifest.assetDigest,
       signedAt: acceptedAt
     },
+    cdnUploadSummary,
     assetSignatures
+  };
+}
+
+function createFakeCdnUploadSummary(body, assetSignatures, acceptedAt) {
+  const baseUrl = `https://e2e-cdn.invalid/${body.sceneId}/${body.manifest.packageDigest.slice(0, 12)}/`;
+  return {
+    kind: "mr-calligraphy-remote-publish-cdn-upload-summary-v1",
+    status: "uploaded",
+    cdnProvider: "e2e-cdn",
+    uploadRequestId: `upload-${body.sceneId}`,
+    uploadedAssetCount: assetSignatures.length,
+    uploadedUrlCount: assetSignatures.length,
+    baseUrl,
+    assetDigest: body.manifest.assetDigest,
+    uploadedAt: acceptedAt,
+    completedAt: acceptedAt
   };
 }
 

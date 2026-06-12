@@ -1596,6 +1596,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       body
     });
     if (method === "POST") {
+      const cdnUploadSummary = {
+        kind: "mr-calligraphy-remote-publish-cdn-upload-summary-v1",
+        status: "uploaded",
+        cdnProvider: "e2e-cdn",
+        uploadRequestId: "upload-e2e-mainScene",
+        uploadedAssetCount: Math.max(1, body.assetManifest.assets.length),
+        uploadedUrlCount: Math.max(1, body.assetManifest.assets.length),
+        baseUrl: `https://e2e-cdn.invalid/${body.sceneId}/`,
+        assetDigest: body.manifest.assetDigest,
+        uploadedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString(),
+        completedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString()
+      };
       latestRemotePublishReceipt = {
         receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
         direction: "publish",
@@ -1605,6 +1617,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         packageDigest: body.manifest.packageDigest,
         acceptedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString(),
         remoteVersion: "e2e-remote-v1",
+        cdnUploadSummary,
         message: "主场景远端 E2E 回执。"
       };
       await route.fulfill({
@@ -1617,6 +1630,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
           releaseId: body.release.id,
           packageDigest: body.manifest.packageDigest,
           remoteVersion: "e2e-remote-v1",
+          cdnUploadSummary,
           receipt: latestRemotePublishReceipt
         })
       });
@@ -1972,6 +1986,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 已接收");
   await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("1 条");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("e2e-mainScene");
+  await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("CDN 1");
 
   expect(remoteRequests.some((item) => item.method === "GET" && item.authorization === "Bearer e2e-token")).toBe(true);
   const postRequest = remoteRequests.find((item) => item.method === "POST");
@@ -1984,6 +1999,8 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(remoteState.scenes.mainScene.lastPackageId).toBe("e2e-mainScene");
   expect(remoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-remote-v1");
   expect(remoteState.scenes.mainScene.receipts[0].packageId).toBe("e2e-mainScene");
+  expect(remoteState.scenes.mainScene.receipts[0].cdnUploadSummary.uploadedUrlCount).toBe(1);
+  expect(remoteState.scenes.mainScene.receipts[0].cdnUploadSummary.cdnProvider).toBe("e2e-cdn");
 
   await expect(page.locator("#mainRemotePublishRevoke")).toBeEnabled();
   await page.locator("#mainRemotePublishRevoke").click();
