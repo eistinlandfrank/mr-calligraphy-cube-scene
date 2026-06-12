@@ -7248,3 +7248,41 @@
 提交：
 
 - 中文 commit message：`新增主后台导入删除审计`
+
+### 2026-06-12：新增写实导入删除审计
+
+功能名：写实后台导入模型软删除审计。
+
+完成内容：
+
+- `realistic-admin.html` 在导入模型控件下新增“导入删除审计”面板和“导出审计”按钮。
+- `realistic-scene.js` 新增 `mr-calligraphy-realistic-import-audit-v1` 本机审计日志，记录写实导入模型删除和恢复动作。
+- 删除写实导入模型时记录模型 ID、dbKey、标签、文件名、SHA-256、文件大小和审计说明。
+- 恢复导入模型时记录 `restored` 动作，证明该删除是本机软删除而非资产清理。
+- HTML 审计导出明确说明资产文件保留在 IndexedDB，以便恢复。
+- smoke test 写实后台页面检查新增 `realisticImportAuditStatus`、`realisticImportAuditList` 和 `realisticImportAuditExport` 标记。
+- Playwright 新增真实 `.glb` 导入、软删除、恢复、刷新持久化和 HTML 审计下载测试。
+
+真实化说明：
+
+- 数据来源：写实后台真实导入模型记录、IndexedDB 模型文件和写实草稿布局。
+- 写入状态：`mr-calligraphy-realistic-import-audit-v1.records[*]` 和 `mr-calligraphy-realistic-layout-v1[modelId].deleted`。
+- 成功反馈：审计列表显示“资产保留，可恢复”或“已恢复显示”，并保留 SHA 短码和文件大小。
+- 失败反馈：没有审计记录时导出按钮禁用，直接调用导出 API 会返回明确空状态。
+- 刷新后复现方式：审计记录保存在 localStorage，刷新写实后台后仍可查看和导出。
+
+仍待补：
+
+- 当前是写实导入模型软删除审计；物理清理 IndexedDB、服务端资产删除、CDN purge、账号权限、远端资产签名和不可篡改日志仍待补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "realistic admin records imported model deletion audit"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增写实导入删除审计`

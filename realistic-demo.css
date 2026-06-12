@@ -407,7 +407,8 @@ body.admin-page .design-panel {
 }
 
 .realistic-publish-panel,
-.realistic-history-panel {
+.realistic-history-panel,
+.realistic-import-audit-panel {
   display: grid;
   gap: 9px;
   margin-top: 14px;
@@ -442,6 +443,10 @@ body.admin-page .design-panel {
 
 .realistic-history-panel .realistic-panel-actions {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.realistic-import-audit-actions {
+  grid-template-columns: 1fr;
 }
 
 .realistic-publish-note {
@@ -633,6 +638,37 @@ body.admin-page .design-panel {
 .realistic-snapshot-list {
   display: grid;
   gap: 7px;
+}
+
+.realistic-import-audit-list {
+  display: grid;
+  gap: 6px;
+  max-height: 120px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.realistic-import-audit-list li {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 249, 237, 0.1);
+  border-left: 3px solid rgba(111, 201, 179, 0.62);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.realistic-import-audit-list strong {
+  color: #fffaf1;
+  font-size: 11px;
+}
+
+.realistic-import-audit-list span {
+  color: rgba(255, 249, 237, 0.62);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .realistic-publish-list {

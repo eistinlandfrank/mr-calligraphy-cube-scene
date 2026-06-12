@@ -83,6 +83,17 @@
         <input id="importModelInput" type="file" accept=".glb,.obj,model/gltf-binary,text/plain">
       </label>
       <p id="importStatus" class="import-status">导入后的模型会保存到本机浏览器，并同步到演示页。</p>
+      <section class="realistic-import-audit-panel" aria-label="写实导入模型删除审计">
+        <div class="realistic-panel-title">
+          <span>Import Audit</span>
+          <strong>导入删除审计</strong>
+        </div>
+        <div class="realistic-panel-actions realistic-import-audit-actions">
+          <button data-feature-state="real-export" id="realisticImportAuditExport" type="button">导出审计</button>
+        </div>
+        <p id="realisticImportAuditStatus" class="realistic-panel-status">尚无写实导入模型删除记录。</p>
+        <ul id="realisticImportAuditList" class="realistic-import-audit-list"></ul>
+      </section>
       <section class="realistic-publish-panel" aria-label="写实场景发布">
         <div class="realistic-panel-title">
           <span>Preview / Publish</span>

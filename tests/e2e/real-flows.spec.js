@@ -12,6 +12,7 @@ const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
 const REALISTIC_HISTORY_KEY = "mr-calligraphy-realistic-history-v1";
+const REALISTIC_IMPORT_AUDIT_KEY = "mr-calligraphy-realistic-import-audit-v1";
 const REALISTIC_PUBLISHED_KEY = "mr-calligraphy-realistic-published-v1";
 
 test.beforeEach(async ({ page }) => {
@@ -32,6 +33,7 @@ test.beforeEach(async ({ page }) => {
     PROJECT_REPOSITORY_REMOTE_KEY,
     REALISTIC_LAYOUT_KEY,
     REALISTIC_HISTORY_KEY,
+    REALISTIC_IMPORT_AUDIT_KEY,
     REALISTIC_PUBLISHED_KEY
   ]);
 });
@@ -2145,6 +2147,67 @@ test("realistic admin keeps local publish releases and rollback history", async 
   expect(published.action).toBe("rollback");
   expect(published.rollbackFrom).toBe(published.releases[2].id);
   expect(published.releases[0].note).toContain("回滚到 v1");
+});
+
+test("realistic admin records imported model deletion audit", async ({ page }) => {
+  test.setTimeout(60_000);
+  const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+
+  await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#designObjectSelect")).toBeVisible();
+  await expect(page.locator("#realisticImportAuditStatus")).toContainText("尚无写实导入模型删除记录");
+  await expect(page.locator("#realisticImportAuditExport")).toBeDisabled();
+
+  await page.locator("#importModelInput").setInputFiles(modelPath);
+  await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
+  await expect(page.locator("#designObjectSelect")).toContainText("books");
+  const importedObjectId = await page.locator("#designObjectSelect").inputValue();
+
+  let layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(importedRecord).toBeTruthy();
+  expect(importedRecord.fileName).toBe("books.glb");
+  expect(importedRecord.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(importedRecord.metrics.fileBytes).toBeGreaterThan(0);
+
+  await page.locator("#deleteObject").click();
+  await expect(page.locator("#realisticImportAuditStatus")).toContainText("已记录 1 条写实导入模型审计");
+  await expect(page.locator("#realisticImportAuditList")).toContainText("books");
+  await expect(page.locator("#realisticImportAuditList")).toContainText("资产保留，可恢复");
+
+  layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  expect(layout[importedObjectId].deleted).toBe(true);
+  let auditLog = await readJsonLocalStorage(page, REALISTIC_IMPORT_AUDIT_KEY);
+  expect(auditLog.records).toHaveLength(1);
+  expect(auditLog.records[0].modelId).toBe(importedObjectId);
+  expect(auditLog.records[0].cleanupStatus).toBe("soft-deleted-retained");
+  expect(auditLog.records[0].sha256).toBe(importedRecord.sha256);
+
+  await page.locator("#restoreObject").click();
+  await expect(page.locator("#realisticImportAuditStatus")).toContainText("已记录 2 条写实导入模型审计");
+  await expect(page.locator("#realisticImportAuditList")).toContainText("已恢复显示");
+  layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  expect(layout[importedObjectId].deleted).toBe(false);
+  auditLog = await readJsonLocalStorage(page, REALISTIC_IMPORT_AUDIT_KEY);
+  expect(auditLog.records[0].cleanupStatus).toBe("restored");
+  expect(auditLog.records[1].cleanupStatus).toBe("soft-deleted-retained");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#realisticImportAuditList")).toContainText("books");
+  const exportResult = await page.evaluate(() => window.MRRealisticImportAudit.getAuditExport());
+  expect(exportResult.ok).toBe(true);
+  expect(exportResult.html).toContain("MR 书法写实导入模型删除审计");
+  expect(exportResult.html).toContain("资产文件保留在 IndexedDB");
+  expect(exportResult.html).toContain(importedRecord.sha256);
+
+  const auditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#realisticImportAuditExport").click();
+  const auditDownload = await auditDownloadPromise;
+  expect(auditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-realistic-import-audit-.*\.html$/);
+  const auditPath = await auditDownload.path();
+  const auditHtml = fs.readFileSync(auditPath, "utf8");
+  expect(auditHtml).toContain("MR 书法写实导入模型删除审计");
+  expect(auditHtml).toContain(importedRecord.sha256);
 });
 
 async function drawPracticeStroke(page) {

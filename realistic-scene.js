@@ -8,6 +8,7 @@ import {
   createArrayBufferSha256,
   createImportMetrics,
   createModelStore,
+  formatBytes,
   formatImportMetrics,
   getImportFileType,
   measureImportedModel,
@@ -38,6 +39,9 @@ const deleteObjectButton = document.getElementById("deleteObject");
 const restoreObjectButton = document.getElementById("restoreObject");
 const importModelInput = document.getElementById("importModelInput");
 const importStatus = document.getElementById("importStatus");
+const importAuditStatus = document.getElementById("realisticImportAuditStatus");
+const importAuditList = document.getElementById("realisticImportAuditList");
+const importAuditExportButton = document.getElementById("realisticImportAuditExport");
 const previewDraftButton = document.getElementById("realisticPreviewDraft");
 const openLiveButton = document.getElementById("realisticOpenLive");
 const publishLayoutButton = document.getElementById("realisticPublishLayout");
@@ -72,12 +76,18 @@ const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
 const SCENE_HISTORY_STORAGE_KEY = "mr-calligraphy-realistic-history-v1";
 const SCENE_PUBLISHED_STORAGE_KEY = "mr-calligraphy-realistic-published-v1";
 const ADMIN_RISK_ACK_KEY = "mr-calligraphy-admin-risk-ack-v1";
+const IMPORT_AUDIT_KEY = "mr-calligraphy-realistic-import-audit-v1";
 const IMPORTED_MODEL_LIST_KEY = "importedModels";
 const IMPORT_DB_NAME = "mr-calligraphy-model-store";
 const IMPORT_DB_STORE = "models";
 const MAX_UNDO_STEPS = 256;
 const MAX_HISTORY_SNAPSHOTS = 10;
 const MAX_PUBLISH_RELEASES = 10;
+const MAX_IMPORT_AUDIT_RECORDS = 30;
+const IMPORT_AUDIT_STATUS_LABELS = {
+  "soft-deleted-retained": "资产保留，可恢复",
+  restored: "已恢复显示"
+};
 const importedModelStore = createModelStore({
   dbName: IMPORT_DB_NAME,
   storeName: IMPORT_DB_STORE,
@@ -157,6 +167,11 @@ buildDeskScene();
 loadImportedModels();
 bindUi();
 animate();
+
+window.MRRealisticImportAudit = {
+  getAuditLog: loadImportAuditLog,
+  getAuditExport: getImportAuditExport
+};
 
 function buildLights() {
   const key = new THREE.SpotLight(0xfff1d2, 520, 12, Math.PI * 0.18, 0.68, 1.4);
@@ -830,6 +845,205 @@ async function readImportedModel(record) {
   return importedModelStore.read(record);
 }
 
+function loadImportAuditLog() {
+  try {
+    const raw = window.localStorage.getItem(IMPORT_AUDIT_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const source = Array.isArray(parsed.records) ? parsed.records : Array.isArray(parsed) ? parsed : [];
+    return {
+      version: 1,
+      updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : "",
+      records: source.map(normalizeImportAuditRecord).filter(Boolean).slice(0, MAX_IMPORT_AUDIT_RECORDS)
+    };
+  } catch (error) {
+    console.warn("Realistic import audit log could not be read.", error);
+    return { version: 1, updatedAt: "", records: [] };
+  }
+}
+
+function normalizeImportAuditRecord(record = {}, index = 0) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const createdAt = Number.isFinite(Date.parse(record.createdAt)) ? record.createdAt : new Date().toISOString();
+  const cleanupStatus = IMPORT_AUDIT_STATUS_LABELS[record.cleanupStatus] ? record.cleanupStatus : "soft-deleted-retained";
+  return {
+    id: String(record.id || `realistic-import-audit-${Date.parse(createdAt) || Date.now()}-${index}`),
+    createdAt,
+    action: record.action === "restore" ? "restore" : "delete",
+    modelId: String(record.modelId || ""),
+    dbKey: String(record.dbKey || ""),
+    label: String(record.label || record.fileName || "写实导入模型").slice(0, 80),
+    fileName: String(record.fileName || "").slice(0, 160),
+    sha256: normalizeSha256(record.sha256),
+    fileBytes: Math.max(0, Math.round(readFiniteNumber(record.fileBytes, 0))),
+    cleanupStatus,
+    message: String(record.message || IMPORT_AUDIT_STATUS_LABELS[cleanupStatus]).slice(0, 240)
+  };
+}
+
+function saveImportAuditLog(records) {
+  const normalized = records.map(normalizeImportAuditRecord).filter(Boolean).slice(0, MAX_IMPORT_AUDIT_RECORDS);
+  try {
+    window.localStorage.setItem(IMPORT_AUDIT_KEY, JSON.stringify({
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      records: normalized
+    }));
+  } catch (error) {
+    console.warn("Realistic import audit log could not be saved.", error);
+  }
+  renderImportAuditPanel();
+  return normalized;
+}
+
+function recordImportAudit(record) {
+  const log = loadImportAuditLog();
+  const normalized = normalizeImportAuditRecord({
+    ...record,
+    id: record.id || `realistic-import-audit-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: record.createdAt || new Date().toISOString()
+  });
+  if (!normalized) {
+    return null;
+  }
+  saveImportAuditLog([
+    normalized,
+    ...log.records.filter((item) => item.id !== normalized.id)
+  ]);
+  return normalized;
+}
+
+function getImportedRecordById(id) {
+  return getImportedModelRecords().find((record) => record.id === id) || null;
+}
+
+function isImportedDesignObject(entry) {
+  return Boolean(entry?.id && getImportedRecordById(entry.id));
+}
+
+function createImportAuditBase(entry, action) {
+  const record = getImportedRecordById(entry?.id);
+  if (!record) {
+    return null;
+  }
+
+  const metrics = normalizeImportMetrics(record.metrics);
+  return {
+    action,
+    modelId: record.id,
+    dbKey: record.dbKey,
+    label: record.label || entry.label || record.fileName,
+    fileName: record.fileName,
+    sha256: normalizeSha256(record.sha256),
+    fileBytes: metrics.fileBytes || 0
+  };
+}
+
+function recordImportedObjectVisibilityAudit(entry, deleted) {
+  const base = createImportAuditBase(entry, deleted ? "delete" : "restore");
+  if (!base) {
+    return;
+  }
+
+  recordImportAudit({
+    ...base,
+    cleanupStatus: deleted ? "soft-deleted-retained" : "restored",
+    message: deleted
+      ? `写实导入模型已从场景中隐藏，模型文件保留在本机 IndexedDB，可恢复：${base.label}`
+      : `写实导入模型已恢复显示，继续使用本机 IndexedDB 文件：${base.label}`
+  });
+}
+
+function renderImportAuditPanel() {
+  const log = loadImportAuditLog();
+  const records = log.records;
+
+  if (importAuditExportButton) {
+    importAuditExportButton.disabled = !records.length;
+  }
+  if (importAuditStatus) {
+    importAuditStatus.textContent = records.length
+      ? `已记录 ${records.length} 条写实导入模型审计。最近：${records[0].message}`
+      : "尚无写实导入模型删除记录。";
+  }
+  if (!importAuditList) {
+    return;
+  }
+
+  importAuditList.replaceChildren();
+  records.slice(0, 6).forEach((record) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${record.label} · ${IMPORT_AUDIT_STATUS_LABELS[record.cleanupStatus] || "已记录"}`;
+    const meta = document.createElement("span");
+    const digest = record.sha256 ? record.sha256.slice(0, 12) : "无 SHA";
+    meta.textContent = `${formatDateTime(record.createdAt)} · ${digest} · ${record.fileBytes ? formatBytes(record.fileBytes) : "大小未知"}`;
+    const detail = document.createElement("span");
+    detail.textContent = record.message;
+    item.append(title, meta, detail);
+    importAuditList.appendChild(item);
+  });
+}
+
+function exportImportAudit() {
+  const result = getImportAuditExport();
+  if (!result.ok) {
+    setImportStatus(result.message);
+    renderImportAuditPanel();
+    return;
+  }
+  downloadHtmlFile(result.html, result.filename);
+  setImportStatus(result.message);
+}
+
+function getImportAuditExport() {
+  const records = loadImportAuditLog().records;
+  if (!records.length) {
+    return {
+      ok: false,
+      message: "暂无写实导入模型删除审计可导出。"
+    };
+  }
+
+  const rows = records.map((record) => {
+    const action = record.action === "restore" ? "恢复" : "删除";
+    const status = IMPORT_AUDIT_STATUS_LABELS[record.cleanupStatus] || record.cleanupStatus;
+    return `<tr><td>${escapeHtml(formatDateTime(record.createdAt))}</td><td>${escapeHtml(action)}</td><td>${escapeHtml(record.label)}</td><td>${escapeHtml(record.fileName)}</td><td>${escapeHtml(status)}</td><td>${escapeHtml(record.sha256 || "无")}</td><td>${escapeHtml(record.message)}</td></tr>`;
+  }).join("");
+
+  return {
+    ok: true,
+    message: `已导出 ${records.length} 条写实导入模型审计。`,
+    filename: `mr-calligraphy-realistic-import-audit-${Date.now()}.html`,
+    html: `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法写实导入模型删除审计</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; margin: 28px; color: #1e293b; }
+    h1 { margin: 0 0 8px; font-size: 22px; }
+    p { color: #475569; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 13px; }
+    th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f1f5f9; }
+    td:nth-child(6) { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>MR 书法写实导入模型删除审计</h1>
+  <p>导出时间：${escapeHtml(formatDateTime(new Date().toISOString()))}。写实后台删除导入模型是本机软删除：资产文件保留在 IndexedDB 以便恢复，不代表服务端资产清理或不可篡改审计。</p>
+  <table>
+    <thead><tr><th>时间</th><th>动作</th><th>模型</th><th>文件</th><th>结果</th><th>SHA-256</th><th>说明</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+</body>
+</html>`
+  };
+}
+
 function toDegrees(radians) {
   return THREE.MathUtils.radToDeg(radians);
 }
@@ -850,6 +1064,15 @@ function normalizeSha256(value) {
 
 function setImportStatus(message) {
   if (importStatus) importStatus.textContent = message;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function createLayoutSnapshot(label = "手动快照", options = {}) {
@@ -1842,6 +2065,10 @@ function setObjectDeleted(entry, deleted, recordUndo = true) {
   updateObjectOption(entry);
   updateDeletedUi();
   saveObjectTransform(entry);
+
+  if (recordUndo && isImportedDesignObject(entry)) {
+    recordImportedObjectVisibilityAudit(entry, deleted);
+  }
 }
 
 function deleteSelectedObject() {
@@ -2096,6 +2323,8 @@ function bindUi() {
     deleteObjectButton?.addEventListener("click", deleteSelectedObject);
     restoreObjectButton?.addEventListener("click", restoreSelectedObject);
     importModelInput?.addEventListener("change", handleImportModel);
+    importAuditExportButton?.addEventListener("click", exportImportAudit);
+    renderImportAuditPanel();
     previewDraftButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html?realisticPreview=draft"));
     openLiveButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html"));
     publishLayoutButton?.addEventListener("click", publishLayoutToDemo);
