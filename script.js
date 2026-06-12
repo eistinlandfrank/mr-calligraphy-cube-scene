@@ -942,6 +942,7 @@ const els = {
   artworkSearch: document.getElementById("artworkSearch"),
   artworkRepositoryStatus: document.getElementById("artworkRepositoryStatus"),
   artworkCollectionExportButton: document.getElementById("artworkCollectionExportButton"),
+  artworkClassroomReviewExportButton: document.getElementById("artworkClassroomReviewExportButton"),
   artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
   artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
   artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
@@ -4191,6 +4192,7 @@ function bindHistoryControls() {
     renderHistoryArtworkGallery();
   });
   els.artworkCollectionExportButton?.addEventListener("click", exportArtworkCollectionPage);
+  els.artworkClassroomReviewExportButton?.addEventListener("click", exportArtworkClassroomReviewPage);
   els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
   els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
   els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
@@ -8829,6 +8831,9 @@ function renderArtworkRepositoryStatus() {
   if (els.artworkCollectionExportButton) {
     els.artworkCollectionExportButton.disabled = !status.artworkCount;
   }
+  if (els.artworkClassroomReviewExportButton) {
+    els.artworkClassroomReviewExportButton.disabled = !status.artworkCount;
+  }
   renderArtworkRepositoryConflictPanel(status);
 }
 
@@ -9910,6 +9915,12 @@ function exportArtworkCollectionPage() {
   const result = window.MRAppState?.downloadArtworkCollectionPage?.();
   renderHistoryArtworkGallery();
   showNotice(result?.message || "当前没有可导出的离线作品集。");
+}
+
+function exportArtworkClassroomReviewPage() {
+  const result = window.MRAppState?.downloadArtworkClassroomReviewPage?.();
+  renderHistoryArtworkGallery();
+  showNotice(result?.message || "当前没有可导出的课堂评阅表。");
 }
 
 function openArtworkRepositoryImport() {

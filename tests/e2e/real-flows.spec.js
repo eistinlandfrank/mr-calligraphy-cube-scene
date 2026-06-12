@@ -1528,11 +1528,26 @@ test("front artwork repository exports and imports local artwork package", async
   expect(collectionHtml).toContain("E2E 作品仓库冲突版本");
   expect(collectionHtml).toContain("导入副本");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("离线 HTML 作品集");
+  await expect(page.locator("#artworkClassroomReviewExportButton")).toBeEnabled();
+  const reviewDownloadPromise = page.waitForEvent("download");
+  await page.locator("#artworkClassroomReviewExportButton").click();
+  const reviewDownload = await reviewDownloadPromise;
+  expect(reviewDownload.suggestedFilename()).toMatch(/^mr-calligraphy-classroom-review-.*\.html$/);
+  const reviewHtml = fs.readFileSync(await reviewDownload.path(), "utf8");
+  expect(reviewHtml).toContain("MR 课堂作品评阅表");
+  expect(reviewHtml).toContain("ClassroomReview: yes");
+  expect(reviewHtml).toContain("导出评阅 JSON");
+  expect(reviewHtml).toContain("data-review-field=\"teacherScore\"");
+  expect(reviewHtml).toContain("不是账号化教师端");
+  expect(reviewHtml).toContain("E2E 作品仓库冲突版本");
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅表");
   const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(resolvedState.artworks).toHaveLength(3);
   expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
   expect(resolvedState.artworkRepository.lastCollectionArtworkCount).toBe(3);
   expect(resolvedState.artworkRepository.lastCollectionExportedAt).toBeTruthy();
+  expect(resolvedState.artworkRepository.lastClassroomReviewArtworkCount).toBe(3);
+  expect(resolvedState.artworkRepository.lastClassroomReviewExportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastConflictRecords).toHaveLength(0);
 });
 

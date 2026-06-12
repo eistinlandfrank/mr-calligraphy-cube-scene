@@ -37,7 +37,7 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 73 | 24 | 0 | 0 | 0 | 0 |
+| `index.html` | 74 | 27 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
@@ -4119,3 +4119,45 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品集 HTML 导出`
+
+## 112. 2026-06-13 新增课堂评阅表导出
+
+本次给作品集新增一个本机课堂评阅出口。它不是教师端后台，但老师可以拿到一份真实离线 HTML，直接评阅当前浏览器里的作品，并导出评阅 JSON。
+
+完成内容：
+
+- 作品集工具区新增 `artworkClassroomReviewExportButton`，文案为“导出评阅表”。
+- 点击后调用 `MRAppState.downloadArtworkClassroomReviewPage()`，浏览器会下载 `mr-calligraphy-classroom-review-*.html`。
+- HTML 页面内置样式、作品卡片、五维评分建议、自动反馈、教师分数、评阅等级、评阅人、课堂批注和“导出评阅 JSON”按钮。
+- 评阅表里的输入会保存到该 HTML 所在浏览器的 localStorage，刷新后可恢复草稿。
+- 空作品状态下“导出评阅表”和其他作品导出按钮一起禁用。
+- 导出成功后刷新作品仓库状态，显示最近导出离线课堂评阅表的作品数量和时间。
+- Playwright 用例读取下载 HTML 文件，确认它包含真实作品内容、评阅字段、评阅 JSON 导出按钮和本机/非云端边界说明。
+- smoke test 新增 `artworkClassroomReviewExportButton` 标记。
+
+真实化说明：
+
+- 数据来源：前台本机作品集、关联练习、评分证据、截图和反馈。
+- 写入状态：`mr-calligraphy-learning-state-v1.artworkRepository.lastClassroomReviewExportedAt` 和 `lastClassroomReviewArtworkCount`。
+- 成功反馈：notice 显示文件名，状态栏显示“离线课堂评阅表”。
+- 失败反馈：没有作品时返回“还没有可导出的课堂评阅表”，不创建空壳下载。
+- 刷新后复现方式：最近导出状态从 localStorage 恢复；下载的 HTML 可离线打开，评阅草稿保存在打开该 HTML 的浏览器本机。
+
+仍待补：
+
+- 当前不是账号化教师端、云端批改、课堂作品墙、班级权限、CDN 托管或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅表导出`

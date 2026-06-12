@@ -9731,3 +9731,51 @@
 提交：
 
 - 中文 commit message：`新增作品集 HTML 导出`
+
+### 2026-06-13：新增课堂评阅表导出
+
+功能名：前台作品课堂评阅表导出。
+
+开发原因：
+
+- 作品集已经能导出离线展示页，但课堂评阅仍缺少一个老师可直接打开、填写和收集的入口。
+- 账号化教师端和课堂作品墙尚未接入，当前阶段需要先提供一个真实可用的本机文件闭环，避免把“课堂评阅”伪装成云端能力。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-classroom-review-v1` 课堂评阅表导出格式和边界说明。
+- 新增 `MRAppState.getArtworkClassroomReviewExport()` 和 `downloadArtworkClassroomReviewPage()`。
+- 课堂评阅表 HTML 包含作品截图、标题、字、风格、本机评分、五维评分建议、自动反馈和教师评阅表单。
+- 教师可在导出的 HTML 中填写分数、等级、评阅人和课堂批注；填写内容会保存到该 HTML 所在浏览器的 localStorage。
+- HTML 内置“导出评阅 JSON”按钮，可下载 `mr-calligraphy-classroom-review-notes-*.json`，便于线下收集评阅结果。
+- 导出后写入 `artworkRepository.lastClassroomReviewExportedAt` 和 `lastClassroomReviewArtworkCount`，状态栏按最近动作显示“离线课堂评阅表”结果。
+- 前台作品集新增“导出评阅表”真实按钮；无作品时禁用，有作品时触发浏览器下载 `mr-calligraphy-classroom-review-*.html`。
+- Playwright 作品仓库用例扩展为点击“导出评阅表”，读取下载 HTML 并验证评阅器、边界说明和冲突副本内容。
+- smoke test 新增 `artworkClassroomReviewExportButton` 页面标记。
+
+验收方式：
+
+- 保存或导入至少一幅作品后进入学习档案作品集。
+- 点击“导出评阅表”应下载 `mr-calligraphy-classroom-review-*.html`。
+- 用浏览器打开下载文件，应看到“MR 课堂作品评阅表”、作品卡片、教师分数、评阅等级、评阅人、课堂批注和“导出评阅 JSON”按钮。
+- 填写评阅后刷新该 HTML，应恢复本机评阅草稿；点击“导出评阅 JSON”应下载评阅结果。
+
+真实边界：
+
+- 数据来源：当前浏览器本机 `ArtworkRecord`、关联练习、评分证据、截图和反馈。
+- 这是可离线打开、填写、打印和导出评阅 JSON 的本机 HTML 文件，不是账号化教师端、课堂作品墙、云端批改、班级权限、生产 CDN 或不可篡改审计。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅表导出`

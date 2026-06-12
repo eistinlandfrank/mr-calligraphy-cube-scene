@@ -30,6 +30,8 @@
   const ARTWORK_REPOSITORY_BOUNDARY = "作品仓库导出当前浏览器中的 ArtworkRecord、关联练习摘要和评分证据，便于本机备份、迁移或课堂收集后手动导入；它不是账号化公开作品集、课堂作品墙或云端存储。";
   const ARTWORK_COLLECTION_KIND = "mr-calligraphy-artwork-collection-v1";
   const ARTWORK_COLLECTION_BOUNDARY = "作品集 HTML 导出会把当前浏览器里的多幅 ArtworkRecord 渲染成可离线打开、打印或手动分享的静态作品集；它不是云端公开链接、课堂作品墙、账号权限或生产 CDN。";
+  const ARTWORK_CLASSROOM_REVIEW_KIND = "mr-calligraphy-classroom-review-v1";
+  const ARTWORK_CLASSROOM_REVIEW_BOUNDARY = "课堂评阅表导出会把当前浏览器里的作品生成可离线打开、填写、打印和导出评阅 JSON 的 HTML；它不是账号化教师端、课堂作品墙、云端批改或生产权限系统。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -2038,6 +2040,8 @@
       lastImportedSessionCount: normalizeInteger(source.lastImportedSessionCount, 0, 0, 99999),
       lastCollectionExportedAt: normalizePlanDate(source.lastCollectionExportedAt),
       lastCollectionArtworkCount: normalizeInteger(source.lastCollectionArtworkCount, 0, 0, 99999),
+      lastClassroomReviewExportedAt: normalizePlanDate(source.lastClassroomReviewExportedAt),
+      lastClassroomReviewArtworkCount: normalizeInteger(source.lastClassroomReviewArtworkCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : null,
@@ -12678,6 +12682,12 @@
             at: repository.lastCollectionExportedAt,
             message: `最近导出 ${repository.lastCollectionArtworkCount} 幅作品的离线 HTML 作品集：${formatPlanDate(repository.lastCollectionExportedAt)}。`
           }
+        : null,
+      repository.lastClassroomReviewExportedAt
+        ? {
+            at: repository.lastClassroomReviewExportedAt,
+            message: `最近导出 ${repository.lastClassroomReviewArtworkCount} 幅作品的离线课堂评阅表：${formatPlanDate(repository.lastClassroomReviewExportedAt)}。`
+          }
         : null
     ]
       .filter(Boolean)
@@ -12714,6 +12724,8 @@
       lastImportedSessionCount: repository.lastImportedSessionCount,
       lastCollectionExportedAt: repository.lastCollectionExportedAt,
       lastCollectionArtworkCount: repository.lastCollectionArtworkCount,
+      lastClassroomReviewExportedAt: repository.lastClassroomReviewExportedAt,
+      lastClassroomReviewArtworkCount: repository.lastClassroomReviewArtworkCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
@@ -13042,6 +13054,291 @@
         <ul class="metrics">${metricRows}</ul>
         <ul class="feedback">${feedback}</ul>
         <p class="card-meta">${escapeHtml(evidence)}${artwork.session ? ` / ${escapeHtml(artwork.session.copybook || "")}` : ""}</p>
+      </div>
+    </article>`;
+  }
+
+  function getArtworkClassroomReviewExport(options = {}) {
+    const selectedIds = Array.isArray(options.ids)
+      ? new Set(options.ids.map(String).filter(Boolean))
+      : null;
+    const artworks = state.artworks
+      .filter((artwork) => !selectedIds || selectedIds.has(artwork.id))
+      .map(normalizeArtwork)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+    if (!artworks.length) {
+      return {
+        ok: false,
+        message: "还没有可导出的课堂评阅表。请先保存作品。"
+      };
+    }
+
+    const linkedSessions = getArtworkRepositoryLinkedSessions(artworks);
+    const exportedAt = new Date().toISOString();
+    const stamp = Date.now();
+    const reviewPackage = {
+      kind: ARTWORK_CLASSROOM_REVIEW_KIND,
+      version: VERSION,
+      packageId: `classroom-review-${stamp}`,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      boundary: ARTWORK_CLASSROOM_REVIEW_BOUNDARY,
+      summary: getArtworkRepositorySummary(artworks, linkedSessions),
+      artworks: artworks.map(decorateArtworkClassroomReviewItem),
+      linkedSessions: clone(linkedSessions)
+    };
+    return {
+      ok: true,
+      package: clone(reviewPackage),
+      html: createArtworkClassroomReviewHtml(reviewPackage),
+      filename: `mr-calligraphy-classroom-review-${stamp}.html`,
+      message: `已生成 ${artworks.length} 幅作品的离线课堂评阅表。${ARTWORK_CLASSROOM_REVIEW_BOUNDARY}`
+    };
+  }
+
+  function downloadArtworkClassroomReviewPage(options = {}) {
+    const result = getArtworkClassroomReviewExport(options);
+    if (!result.ok) {
+      recordArtworkRepositoryError(result.message);
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastClassroomReviewExportedAt: now,
+      lastClassroomReviewArtworkCount: result.package.artworks.length,
+      lastCheckedAt: now,
+      lastError: ""
+    });
+    addEvent("artwork-classroom-review-export", `导出课堂评阅表：${result.package.artworks.length} 幅作品`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      exportedArtworkCount: result.package.artworks.length,
+      status: getArtworkRepositoryStatus(),
+      message: `${result.message} 已下载：${result.filename}。`
+    };
+  }
+
+  function decorateArtworkClassroomReviewItem(artwork) {
+    const item = decorateArtworkCollectionItem(artwork);
+    const metricSource = item.metrics || {};
+    const rubric = SCORE_METRICS.map((metric) => {
+      const value = normalizeScore(metricSource[metric.key], 0);
+      return {
+        key: metric.key,
+        label: metric.label,
+        value,
+        suggestion: getClassroomReviewMetricSuggestion(metric.label, value)
+      };
+    });
+    return {
+      ...item,
+      reviewRubric: rubric,
+      reviewHint: item.score >= 88
+        ? "可作为课堂展示候选，重点确认章法完整度和落款安排。"
+        : item.score >= 76
+          ? "适合做同伴互评，重点记录一条保留项和一条改进项。"
+          : "建议教师优先给出结构、笔画或节奏中的一个可执行练习目标。"
+    };
+  }
+
+  function getClassroomReviewMetricSuggestion(label, value) {
+    if (value >= 88) return `${label}表现稳定，可记录保留做法。`;
+    if (value >= 76) return `${label}已有基础，评阅时补充一个具体改进点。`;
+    if (value > 0) return `${label}需要专项练习，建议给出下一次练习目标。`;
+    return `${label}暂无有效评分，评阅时以教师观察为准。`;
+  }
+
+  function createArtworkClassroomReviewHtml(reviewPackage) {
+    const summary = reviewPackage.summary || {};
+    const artworks = Array.isArray(reviewPackage.artworks) ? reviewPackage.artworks : [];
+    const cards = artworks.map((artwork, index) => createArtworkClassroomReviewCardHtml(artwork, index)).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 课堂作品评阅表 · ${escapeHtml(artworks.length)} 幅作品</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#64736c; --line:#dce5df; --paper:#fbf7ee; --card:#ffffff; --wash:#edf7f2; --jade:#257861; --amber:#b98238; --danger:#a8452f; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(1160px, calc(100% - 28px)); margin: 0 auto; padding: 24px 0 42px; }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1 { font-size: clamp(30px, 6vw, 54px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 19px; }
+    h3 { font-size: 16px; line-height: 1.25; }
+    button, input, textarea, select { font: inherit; }
+    button { min-height: 38px; padding: 0 14px; border: 1px solid var(--ink); border-radius: 8px; color: #fff; background: var(--ink); cursor: pointer; }
+    input, textarea, select { width: 100%; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--ink); }
+    input, select { min-height: 36px; padding: 0 9px; }
+    textarea { min-height: 86px; padding: 8px 9px; resize: vertical; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 800; }
+    .muted, .meta { color: var(--muted); }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; padding: 9px 0; background: var(--paper); }
+    header { display: grid; gap: 10px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+    .stat, .card, .boundary { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+    .stat { padding: 13px; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 3px; font-size: 26px; line-height: 1.1; }
+    .grid { display: grid; gap: 14px; margin-top: 18px; }
+    .card { display: grid; grid-template-columns: 240px minmax(0, 1fr); overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+    .artwork-media { display: grid; min-height: 240px; place-items: center; background: #f1e5ce; }
+    .artwork-media img { width: 100%; height: 100%; object-fit: contain; }
+    .artwork-media span { color: rgba(48, 34, 20, 0.72); font-size: 64px; font-weight: 900; }
+    .card-body { display: grid; gap: 11px; padding: 14px; }
+    .card-meta { color: var(--muted); font-size: 12px; font-weight: 760; }
+    .rubric { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+    .rubric span { min-height: 74px; padding: 8px; border-radius: 7px; background: var(--wash); color: var(--muted); font-size: 12px; }
+    .rubric strong { display: block; color: var(--ink); font-size: 18px; }
+    .feedback { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    .feedback li { padding-left: 8px; border-left: 3px solid rgba(37, 120, 97, 0.28); color: var(--muted); font-size: 12px; }
+    .review-form { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+    .review-form label:last-child { grid-column: 1 / -1; }
+    .boundary { display: grid; gap: 8px; margin-top: 18px; padding: 14px; }
+    .status { min-height: 28px; color: var(--jade); font-size: 13px; font-weight: 850; }
+    @media print { @page { size: A4; margin: 12mm; } body { background: #fff; font-size: 12px; } main { width: 100%; padding: 0; } .toolbar { display: none; } .card { grid-template-columns: 170px minmax(0, 1fr); } .artwork-media { min-height: 170px; } textarea { min-height: 64px; } }
+    @media (max-width: 900px) { .card { grid-template-columns: 1fr; } .artwork-media { min-height: 220px; } .rubric, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .review-form { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 620px) { main { width: min(100% - 20px, 1160px); } .rubric, .stats, .review-form { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-package-id="${escapeAttr(reviewPackage.packageId)}">
+  <main>
+    <div class="toolbar">
+      <button type="button" data-export-review-notes>导出评阅 JSON</button>
+      <button type="button" onclick="window.print()">打印 / 保存 PDF</button>
+    </div>
+    <header>
+      <p class="meta">MR Calligraphy Classroom Review · ${escapeHtml(formatDateTime(reviewPackage.exportedAt))}</p>
+      <h1>MR 课堂作品评阅表</h1>
+      <p class="muted">这份评阅表来自当前浏览器的真实作品记录。教师可离线填写评语、保存到本浏览器并导出 JSON，便于线下收集；它不是账号化教师端。</p>
+      <p class="status" data-review-status>等待填写评阅。</p>
+    </header>
+    <section class="stats" aria-label="评阅摘要">
+      <div class="stat"><span>作品</span><strong>${summary.total || artworks.length}</strong></div>
+      <div class="stat"><span>平均分</span><strong>${summary.averageScore || 0}</strong></div>
+      <div class="stat"><span>有截图</span><strong>${summary.imageCount || 0}</strong></div>
+      <div class="stat"><span>关联练习</span><strong>${summary.linkedSessionCount || 0}</strong></div>
+    </section>
+    <section class="grid" aria-label="待评阅作品">
+      ${cards}
+    </section>
+    <section class="boundary">
+      <h2>导出边界</h2>
+      <p class="muted">${escapeHtml(reviewPackage.boundary || ARTWORK_CLASSROOM_REVIEW_BOUNDARY)}</p>
+      <p class="muted">ClassroomReview: yes · PackageId: ${escapeHtml(reviewPackage.packageId)} · StorageKey: ${escapeHtml(reviewPackage.storageKey || STORAGE_KEY)}</p>
+    </section>
+  </main>
+  <script>
+(() => {
+  const packageId = document.body.dataset.packageId || "classroom-review";
+  const storageKey = "mr-calligraphy-classroom-review-notes:" + packageId;
+  const status = document.querySelector("[data-review-status]");
+  const cards = Array.from(document.querySelectorAll("[data-review-card]"));
+  function readSaved() {
+    try {
+      return JSON.parse(localStorage.getItem(storageKey) || "{}") || {};
+    } catch (error) {
+      return {};
+    }
+  }
+  function collect() {
+    return {
+      kind: "mr-calligraphy-classroom-review-notes-v1",
+      packageId,
+      exportedAt: new Date().toISOString(),
+      records: cards.map((card) => {
+        const get = (field) => card.querySelector('[data-review-field="' + field + '"]')?.value || "";
+        return {
+          artworkId: card.dataset.artworkId || "",
+          title: card.dataset.artworkTitle || "",
+          teacherScore: get("teacherScore"),
+          level: get("level"),
+          reviewer: get("reviewer"),
+          note: get("note")
+        };
+      })
+    };
+  }
+  function updateStatus(data = collect()) {
+    const filled = data.records.filter((record) => record.teacherScore || record.level || record.reviewer || record.note).length;
+    if (status) status.textContent = filled ? "已保存 " + filled + " 条本机评阅，可导出 JSON。" : "等待填写评阅。";
+  }
+  function restore() {
+    const saved = readSaved();
+    const byId = new Map((saved.records || []).map((record) => [record.artworkId, record]));
+    cards.forEach((card) => {
+      const record = byId.get(card.dataset.artworkId || "");
+      if (!record) return;
+      ["teacherScore", "level", "reviewer", "note"].forEach((field) => {
+        const input = card.querySelector('[data-review-field="' + field + '"]');
+        if (input) input.value = record[field] || "";
+      });
+    });
+    updateStatus();
+  }
+  function save() {
+    const data = collect();
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(data));
+      updateStatus(data);
+    } catch (error) {
+      if (status) status.textContent = "当前浏览器阻止本机保存，请直接导出评阅 JSON。";
+    }
+  }
+  document.addEventListener("input", (event) => {
+    if (event.target.closest("[data-review-card]")) save();
+  });
+  document.querySelector("[data-export-review-notes]")?.addEventListener("click", () => {
+    const data = collect();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "mr-calligraphy-classroom-review-notes-" + packageId + ".json";
+    document.body.appendChild(link);
+    link.click();
+    window.setTimeout(() => {
+      URL.revokeObjectURL(link.href);
+      link.remove();
+    }, 0);
+    updateStatus(data);
+  });
+  restore();
+})();
+  </script>
+</body>
+</html>`;
+  }
+
+  function createArtworkClassroomReviewCardHtml(artwork, index) {
+    const image = artwork.imageData
+      ? `<img src="${escapeAttr(artwork.imageData)}" alt="${escapeAttr(artwork.title)}">`
+      : `<span>${escapeHtml(artwork.glyph || "作品")}</span>`;
+    const feedback = artwork.feedback?.length
+      ? artwork.feedback.slice(0, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+      : `<li>暂无自动反馈；请以教师现场观察为准。</li>`;
+    const rubric = (artwork.reviewRubric || [])
+      .map((item) => `<span><strong>${item.value || "-"}</strong>${escapeHtml(item.label)}<br>${escapeHtml(item.suggestion)}</span>`)
+      .join("");
+    return `<article class="card" data-review-card data-artwork-id="${escapeAttr(artwork.id)}" data-artwork-title="${escapeAttr(artwork.title)}">
+      <div class="artwork-media">${image}</div>
+      <div class="card-body">
+        <h3>${escapeHtml(index + 1)}. ${escapeHtml(artwork.title)}</h3>
+        <p class="card-meta">${escapeHtml(formatDateTime(artwork.createdAt))} / ${escapeHtml(artwork.glyph || "-")} / ${escapeHtml(artwork.style || "-")} / 本机评分 ${escapeHtml(artwork.score || 0)}</p>
+        <div class="rubric">${rubric}</div>
+        <ul class="feedback">${feedback}</ul>
+        <p class="card-meta">${escapeHtml(artwork.reviewHint || "")}</p>
+        <div class="review-form">
+          <label>教师分数<input data-review-field="teacherScore" type="number" min="0" max="100" step="1" placeholder="0-100"></label>
+          <label>评阅等级<select data-review-field="level"><option value="">未评定</option><option value="展示">展示</option><option value="达标">达标</option><option value="需复练">需复练</option></select></label>
+          <label>评阅人<input data-review-field="reviewer" type="text" maxlength="40" placeholder="教师姓名"></label>
+          <label>课堂批注<textarea data-review-field="note" maxlength="800" placeholder="记录一条保留项和一条下一步练习建议"></textarea></label>
+        </div>
       </div>
     </article>`;
   }
@@ -15939,6 +16236,8 @@
     downloadArtworkRepository,
     getArtworkCollectionExport,
     downloadArtworkCollectionPage,
+    getArtworkClassroomReviewExport,
+    downloadArtworkClassroomReviewPage,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

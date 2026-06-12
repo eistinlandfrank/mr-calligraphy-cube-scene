@@ -30,7 +30,7 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 73 | 24 | 0 | 0 | 0 | 0 |
+| `index.html` | 74 | 27 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
@@ -4589,3 +4589,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增作品集 HTML 导出`
+
+## 112. 2026-06-13 新增课堂评阅表导出
+
+本次把作品集继续推进到“课堂可评阅”的本机文件闭环。老师不需要账号后台，也可以从当前浏览器作品集导出一份离线 HTML 评阅表，打开后填写分数、等级、评阅人和批注，并导出评阅 JSON 便于线下收集。
+
+完成内容：
+
+- 新增 `mr-calligraphy-classroom-review-v1` 导出格式和 `ARTWORK_CLASSROOM_REVIEW_BOUNDARY` 边界说明。
+- 新增 `MRAppState.getArtworkClassroomReviewExport()`，从本机作品、关联练习、评分证据、反馈和截图生成课堂评阅表 HTML。
+- 新增 `MRAppState.downloadArtworkClassroomReviewPage()`，真实触发 HTML 下载，并写入最近课堂评阅表导出时间和作品数。
+- 前台作品仓库工具区新增 `artworkClassroomReviewExportButton`，按钮文案为“导出评阅表”。
+- 评阅表 HTML 内置本机评阅器：可填写教师分数、等级、评阅人和课堂批注，自动保存到该 HTML 所在浏览器的 localStorage，并可导出 `mr-calligraphy-classroom-review-notes-*.json`。
+- E2E 用例会点击“导出评阅表”，读取下载 HTML，验证 `MR 课堂作品评阅表`、`ClassroomReview: yes`、评阅 JSON 导出按钮、教师分数字段、边界说明和冲突副本反馈。
+- smoke test 新增课堂评阅表按钮静态标记。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.artworks`、关联 `sessions`、作品截图、反馈和评分证据。
+- 写入状态：`artworkRepository.lastClassroomReviewExportedAt` 与 `lastClassroomReviewArtworkCount`。
+- 成功反馈：页面 notice 显示已生成并下载的文件名，作品仓库状态显示最近导出离线课堂评阅表。
+- 失败反馈：没有作品时返回明确失败并不触发假下载。
+- 刷新后复现方式：最近导出状态保存在 localStorage；下载的评阅表 HTML 可离线打开，并在打开后的浏览器里保存评阅草稿。
+
+仍待补：
+
+- 当前是本机离线评阅表和本机评阅 JSON，不是账号化教师端、课堂作品墙、云端批改、班级权限、生产 CDN 或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅表导出`
