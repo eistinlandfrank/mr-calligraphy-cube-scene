@@ -7519,7 +7519,7 @@ body.is-model-view .notice-panel {
 
 .artwork-repository-actions {
   display: grid;
-  grid-template-columns: repeat(4, minmax(76px, 1fr));
+  grid-template-columns: repeat(5, minmax(76px, 1fr));
   gap: 6px;
 }
 
@@ -7681,6 +7681,18 @@ body.is-model-view .notice-panel {
   color: rgba(255, 250, 241, 0.56);
   font-size: 10px;
   font-weight: 800;
+}
+
+.artwork-gallery-review {
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  color: #b6ffe9;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .artwork-gallery-stats span {

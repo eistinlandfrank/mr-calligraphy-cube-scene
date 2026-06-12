@@ -37,7 +37,7 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 74 | 27 | 0 | 0 | 0 | 0 |
+| `index.html` | 75 | 27 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
@@ -4161,3 +4161,45 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增课堂评阅表导出`
+
+## 113. 2026-06-13 新增课堂评阅导入回写
+
+本次把课堂评阅表从“只可导出和填写”推进到“可回写本机作品集”。离线评阅表导出的 JSON 可以重新导入前台，评阅摘要会显示在作品卡片上。
+
+完成内容：
+
+- `ArtworkRecord` 新增 `classroomReview` 字段，归一化教师分数、评阅等级、评阅人、课堂批注、来源包 ID 和 digest。
+- 新增 `MRAppState.importArtworkClassroomReviewNotes()`，支持导入 `mr-calligraphy-classroom-review-notes-v1` JSON。
+- 作品集工具区新增 `artworkClassroomReviewImportButton`，文案为“导入评阅”。
+- 新增隐藏文件输入 `artworkClassroomReviewImportInput`，通过真实 file chooser 读取 JSON。
+- 导入成功后刷新学习档案和作品集，卡片显示“课堂评阅：评阅人 / 等级 / 分数 / 批注”。
+- 导入统计写入 `artworkRepository.lastClassroomReviewImportedAt`、`lastClassroomReviewImportedCount` 和 `lastClassroomReviewSkippedCount`。
+- Playwright 用例覆盖 1 条匹配评阅和 1 条不存在作品评阅，确认回写 1 条、跳过 1 条。
+- smoke test 新增课堂评阅导入按钮和输入框标记。
+
+真实化说明：
+
+- 数据来源：评阅 JSON 的 `records` 和当前浏览器本机 `ArtworkRecord.id`。
+- 写入状态：`mr-calligraphy-learning-state-v1.artworks[*].classroomReview` 和 `artworkRepository` 导入统计。
+- 成功反馈：状态栏显示导入/跳过数量，作品卡片显示课堂评阅摘要。
+- 失败反馈：非法 JSON、kind 不匹配、缺 records、空评阅或无匹配作品时不写入假结果。
+- 刷新后复现方式：评阅摘要随本机作品记录持久化。
+
+仍待补：
+
+- 当前不是账号化教师端、云端批改、班级收件箱、服务端签名、权限控制或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅导入回写`

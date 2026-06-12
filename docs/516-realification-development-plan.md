@@ -9779,3 +9779,50 @@
 提交：
 
 - 中文 commit message：`新增课堂评阅表导出`
+
+### 2026-06-13：新增课堂评阅导入回写
+
+功能名：前台作品课堂评阅 JSON 导入回写。
+
+开发原因：
+
+- 课堂评阅表已经能离线填写并导出评阅 JSON，但主应用还不能回收这些评阅结果。
+- 如果评阅结果只能停留在下载文件里，课堂评阅仍不是完整闭环；需要把老师反馈重新写回本机作品集。
+
+完成内容：
+
+- `ArtworkRecord` 新增 `classroomReview` 字段，包含教师分数、评阅等级、评阅人、课堂批注、来源包 ID 和本机 digest。
+- 新增 `MRAppState.importArtworkClassroomReviewNotes()`，支持导入 `mr-calligraphy-classroom-review-notes-v1` JSON。
+- 导入时按 `records[*].artworkId` 匹配当前浏览器里的作品；匹配成功写回该作品，找不到作品或空评阅会跳过。
+- 作品仓库状态新增课堂评阅导入时间、导入数量和跳过数量。
+- 前台作品集新增“导入评阅”按钮和隐藏文件选择器。
+- 作品卡片新增课堂评阅摘要，显示评阅人、等级、教师分数和批注。
+- Playwright 作品仓库用例扩展为生成评阅 JSON、通过 UI 导入、确认作品卡片显示和 localStorage 持久化。
+- smoke test 新增 `artworkClassroomReviewImportButton` 和 `artworkClassroomReviewImportInput` 页面标记。
+
+验收方式：
+
+- 先导出课堂评阅表并在其中导出评阅 JSON，或准备同格式 JSON。
+- 打开前台作品集，点击“导入评阅”，选择评阅 JSON。
+- 状态栏应显示导入数量和跳过数量；对应作品卡片应显示课堂评阅摘要。
+- 刷新页面后，作品卡片仍应显示该课堂评阅。
+
+真实边界：
+
+- 数据来源：课堂评阅表导出的 JSON 和当前浏览器本机作品 ID。
+- 这是本机评阅回写，不是账号化教师端、班级批量收件箱、云端批改、权限校验、服务端签名或不可篡改审计。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅导入回写`

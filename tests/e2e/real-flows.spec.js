@@ -1541,6 +1541,41 @@ test("front artwork repository exports and imports local artwork package", async
   expect(reviewHtml).toContain("不是账号化教师端");
   expect(reviewHtml).toContain("E2E 作品仓库冲突版本");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅表");
+  const reviewNotesPackage = {
+    kind: "mr-calligraphy-classroom-review-notes-v1",
+    packageId: "e2e-classroom-review-notes",
+    exportedAt: new Date().toISOString(),
+    records: [
+      {
+        artworkId: seed.artworkIds[0],
+        title: "E2E 课堂评阅作品",
+        teacherScore: 96,
+        level: "展示",
+        reviewer: "E2E 王老师",
+        note: "课堂评阅回写成功，结构稳定。"
+      },
+      {
+        artworkId: "missing-artwork-id",
+        title: "不存在作品",
+        teacherScore: 60,
+        level: "需复练",
+        reviewer: "E2E 王老师",
+        note: "这条应被跳过。"
+      }
+    ]
+  };
+  const reviewImportFileChooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#artworkClassroomReviewImportButton").click();
+  const reviewImportFileChooser = await reviewImportFileChooserPromise;
+  await reviewImportFileChooser.setFiles({
+    name: "classroom-review-notes.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(reviewNotesPackage))
+  });
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("最近导入 1 条课堂评阅");
+  await expect(page.locator("#artworkGalleryGrid")).toContainText("E2E 王老师");
+  await expect(page.locator("#artworkGalleryGrid")).toContainText("96分");
+  await expect(page.locator("#artworkGalleryGrid")).toContainText("课堂评阅回写成功");
   const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(resolvedState.artworks).toHaveLength(3);
   expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
@@ -1548,6 +1583,16 @@ test("front artwork repository exports and imports local artwork package", async
   expect(resolvedState.artworkRepository.lastCollectionExportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastClassroomReviewArtworkCount).toBe(3);
   expect(resolvedState.artworkRepository.lastClassroomReviewExportedAt).toBeTruthy();
+  const reviewedArtwork = resolvedState.artworks.find((artwork) => artwork.id === seed.artworkIds[0]);
+  expect(reviewedArtwork.classroomReview.reviewer).toBe("E2E 王老师");
+  expect(reviewedArtwork.classroomReview.teacherScore).toBe(96);
+  expect(reviewedArtwork.classroomReview.level).toBe("展示");
+  expect(reviewedArtwork.classroomReview.note).toContain("结构稳定");
+  expect(reviewedArtwork.classroomReview.packageId).toBe("e2e-classroom-review-notes");
+  expect(reviewedArtwork.classroomReview.reviewDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(resolvedState.artworkRepository.lastClassroomReviewImportedCount).toBe(1);
+  expect(resolvedState.artworkRepository.lastClassroomReviewSkippedCount).toBe(1);
+  expect(resolvedState.artworkRepository.lastClassroomReviewImportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastConflictRecords).toHaveLength(0);
 });
 

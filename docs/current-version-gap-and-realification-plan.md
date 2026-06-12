@@ -30,7 +30,7 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 74 | 27 | 0 | 0 | 0 | 0 |
+| `index.html` | 75 | 27 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
@@ -4630,3 +4630,45 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增课堂评阅表导出`
+
+## 113. 2026-06-13 新增课堂评阅导入回写
+
+本次把“导出评阅表”继续补成可回收的闭环。老师在离线评阅表里导出的 `mr-calligraphy-classroom-review-notes-v1` JSON，可以通过前台作品集导回当前浏览器，按作品 ID 写回对应 `ArtworkRecord.classroomReview`。
+
+完成内容：
+
+- `ArtworkRecord` 新增 `classroomReview` 归一化字段，保存教师分数、评阅等级、评阅人、课堂批注、来源包 ID 和本机 digest。
+- 新增 `MRAppState.importArtworkClassroomReviewNotes()`，解析 `mr-calligraphy-classroom-review-notes-v1` JSON 并按 `artworkId` 回写本机作品。
+- 导入时会跳过不存在作品或空评阅记录，不会伪造成功，也不会创建假作品。
+- 作品仓库状态新增 `lastClassroomReviewImportedAt`、`lastClassroomReviewImportedCount` 和 `lastClassroomReviewSkippedCount`。
+- 前台作品集新增 `artworkClassroomReviewImportButton` 和 `artworkClassroomReviewImportInput`，通过真实 file chooser 导入评阅 JSON。
+- 作品卡片会显示课堂评阅摘要，包含评阅人、等级、教师分数和批注。
+- E2E 用例覆盖评阅 JSON 导入、跳过不存在作品、状态栏更新、作品卡片显示和 localStorage 回写。
+- smoke test 新增课堂评阅导入按钮和输入框标记。
+
+真实化说明：
+
+- 数据来源：离线评阅表导出的 `mr-calligraphy-classroom-review-notes-v1.records` 和当前浏览器本机 `artworks`。
+- 写入状态：匹配成功的作品会写入 `artworks[*].classroomReview`；导入统计写入 `artworkRepository`。
+- 成功反馈：状态栏显示导入数量和跳过数量，作品卡片立刻显示课堂评阅摘要。
+- 失败反馈：JSON 解析失败、kind 不匹配、缺少 records 或没有匹配作品时会返回明确失败，不写入假评阅。
+- 刷新后复现方式：课堂评阅随 `mr-calligraphy-learning-state-v1.artworks` 持久化，刷新后仍显示在作品集。
+
+仍待补：
+
+- 当前是本机评阅 JSON 回写，不是账号化教师端、班级批量收取、云端批改、权限校验、服务端签名或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅导入回写`

@@ -31,6 +31,7 @@
   const ARTWORK_COLLECTION_KIND = "mr-calligraphy-artwork-collection-v1";
   const ARTWORK_COLLECTION_BOUNDARY = "作品集 HTML 导出会把当前浏览器里的多幅 ArtworkRecord 渲染成可离线打开、打印或手动分享的静态作品集；它不是云端公开链接、课堂作品墙、账号权限或生产 CDN。";
   const ARTWORK_CLASSROOM_REVIEW_KIND = "mr-calligraphy-classroom-review-v1";
+  const ARTWORK_CLASSROOM_REVIEW_NOTES_KIND = "mr-calligraphy-classroom-review-notes-v1";
   const ARTWORK_CLASSROOM_REVIEW_BOUNDARY = "课堂评阅表导出会把当前浏览器里的作品生成可离线打开、填写、打印和导出评阅 JSON 的 HTML；它不是账号化教师端、课堂作品墙、云端批改或生产权限系统。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
@@ -470,11 +471,13 @@
     if (!record || typeof record !== "object") return null;
     const feedback = normalizeStringList(record.feedback);
     const fallbackTask = findTaskForState(record.mode, record.glyph, record.copybook);
+    const id = String(record.id || makeId("artwork"));
+    const title = String(record.title || "书法练习作品");
     return {
-      id: String(record.id || makeId("artwork")),
+      id,
       sessionId: record.sessionId ? String(record.sessionId) : null,
       taskId: getTaskById(record.taskId) ? String(record.taskId) : null,
-      title: String(record.title || "书法练习作品"),
+      title,
       glyph: String(record.glyph || "永"),
       mode: MODE_CONFIG[record.mode] ? record.mode : "single",
       copybook: String(record.copybook || fallbackTask?.copybook || "永字八法"),
@@ -488,8 +491,63 @@
       imageData: typeof record.imageData === "string" && record.imageData.startsWith("data:image/")
         ? record.imageData
         : null,
-      createdAt: String(record.createdAt || new Date().toISOString())
+      createdAt: String(record.createdAt || new Date().toISOString()),
+      classroomReview: normalizeArtworkClassroomReview(record.classroomReview, {
+        artworkId: id,
+        artworkTitle: title,
+        artworkCreatedAt: String(record.createdAt || "")
+      })
     };
+  }
+
+  function normalizeArtworkClassroomReview(review, context = {}) {
+    const source = review && typeof review === "object" ? review : {};
+    const teacherScoreSource = source.teacherScore ?? source.score ?? source.teacher_score;
+    const teacherScore = teacherScoreSource === "" || teacherScoreSource === null || typeof teacherScoreSource === "undefined"
+      ? null
+      : normalizeInteger(teacherScoreSource, -1, 0, 100);
+    const normalizedScore = teacherScore === -1 ? null : teacherScore;
+    const level = normalizeArtworkClassroomReviewLevel(source.level || source.reviewLevel || source.grade);
+    const reviewer = String(source.reviewer || source.teacher || "").trim().slice(0, 80);
+    const note = String(source.note || source.comment || source.feedback || "").trim().replace(/\s+/g, " ").slice(0, 800);
+    if (normalizedScore === null && !level && !reviewer && !note) return null;
+    const reviewedAt = normalizeIsoDate(source.reviewedAt || source.updatedAt || source.exportedAt || source.createdAt);
+    const packageId = String(source.packageId || context.packageId || "").trim().slice(0, 160);
+    const artworkId = String(context.artworkId || source.artworkId || "").trim().slice(0, 120);
+    const artworkTitle = String(context.artworkTitle || source.title || source.artworkTitle || "").trim().slice(0, 160);
+    const reviewSource = String(source.source || "classroom-review-notes-import").trim().slice(0, 80) || "classroom-review-notes-import";
+    const core = {
+      kind: ARTWORK_CLASSROOM_REVIEW_NOTES_KIND,
+      artworkId,
+      artworkTitle,
+      teacherScore: normalizedScore,
+      level: level || "",
+      reviewer: reviewer || "本机课堂评阅",
+      note,
+      reviewedAt,
+      packageId,
+      source: reviewSource
+    };
+    const reviewDigest = String(source.reviewDigest || source.digest || "").match(/^[a-f0-9]{64}$/i)
+      ? String(source.reviewDigest || source.digest).toLowerCase()
+      : sha256StableJson(core);
+    return {
+      teacherScore: normalizedScore,
+      level: level || "",
+      reviewer: reviewer || "本机课堂评阅",
+      note,
+      reviewedAt,
+      source: reviewSource,
+      packageId,
+      reviewDigest
+    };
+  }
+
+  function normalizeArtworkClassroomReviewLevel(value) {
+    const text = String(value || "").trim();
+    if (!text || text === "未评定") return "";
+    if (["展示", "达标", "需复练"].includes(text)) return text;
+    return text.slice(0, 40);
   }
 
   function normalizeReport(record) {
@@ -2042,6 +2100,9 @@
       lastCollectionArtworkCount: normalizeInteger(source.lastCollectionArtworkCount, 0, 0, 99999),
       lastClassroomReviewExportedAt: normalizePlanDate(source.lastClassroomReviewExportedAt),
       lastClassroomReviewArtworkCount: normalizeInteger(source.lastClassroomReviewArtworkCount, 0, 0, 99999),
+      lastClassroomReviewImportedAt: normalizePlanDate(source.lastClassroomReviewImportedAt),
+      lastClassroomReviewImportedCount: normalizeInteger(source.lastClassroomReviewImportedCount, 0, 0, 99999),
+      lastClassroomReviewSkippedCount: normalizeInteger(source.lastClassroomReviewSkippedCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : null,
@@ -12688,6 +12749,12 @@
             at: repository.lastClassroomReviewExportedAt,
             message: `最近导出 ${repository.lastClassroomReviewArtworkCount} 幅作品的离线课堂评阅表：${formatPlanDate(repository.lastClassroomReviewExportedAt)}。`
           }
+        : null,
+      repository.lastClassroomReviewImportedAt
+        ? {
+            at: repository.lastClassroomReviewImportedAt,
+            message: `最近导入 ${repository.lastClassroomReviewImportedCount} 条课堂评阅，跳过 ${repository.lastClassroomReviewSkippedCount} 条：${formatPlanDate(repository.lastClassroomReviewImportedAt)}。`
+          }
         : null
     ]
       .filter(Boolean)
@@ -12726,6 +12793,9 @@
       lastCollectionArtworkCount: repository.lastCollectionArtworkCount,
       lastClassroomReviewExportedAt: repository.lastClassroomReviewExportedAt,
       lastClassroomReviewArtworkCount: repository.lastClassroomReviewArtworkCount,
+      lastClassroomReviewImportedAt: repository.lastClassroomReviewImportedAt,
+      lastClassroomReviewImportedCount: repository.lastClassroomReviewImportedCount,
+      lastClassroomReviewSkippedCount: repository.lastClassroomReviewSkippedCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
@@ -13343,6 +13413,100 @@
     </article>`;
   }
 
+  function parseArtworkClassroomReviewNotes(input) {
+    let source = input;
+    if (typeof input === "string") {
+      try {
+        source = JSON.parse(input);
+      } catch (error) {
+        return { ok: false, message: "课堂评阅 JSON 解析失败。" };
+      }
+    }
+    if (!source || typeof source !== "object") {
+      return { ok: false, message: "课堂评阅 JSON 格式无效。" };
+    }
+    if (source.kind !== ARTWORK_CLASSROOM_REVIEW_NOTES_KIND) {
+      return { ok: false, message: "这不是 MR 书法课堂评阅 JSON。" };
+    }
+    if (!Array.isArray(source.records)) {
+      return { ok: false, message: "课堂评阅 JSON 缺少 records 数组。" };
+    }
+    return {
+      ok: true,
+      package: {
+        ...source,
+        packageId: String(source.packageId || "classroom-review-notes").slice(0, 160),
+        records: source.records
+      }
+    };
+  }
+
+  function importArtworkClassroomReviewNotes(input) {
+    const parsed = parseArtworkClassroomReviewNotes(input);
+    if (!parsed.ok) {
+      recordArtworkRepositoryError(parsed.message);
+      return parsed;
+    }
+
+    const packageId = parsed.package.packageId;
+    let importedCount = 0;
+    let skippedCount = 0;
+    const reviewedAt = normalizeIsoDate(parsed.package.exportedAt);
+    const byId = new Map(state.artworks.map((artwork, index) => [String(artwork.id), { artwork, index }]));
+    parsed.package.records.forEach((record) => {
+      const artworkId = String(record?.artworkId || "").trim();
+      const target = byId.get(artworkId);
+      if (!target) {
+        skippedCount += 1;
+        return;
+      }
+      const review = normalizeArtworkClassroomReview({
+        ...record,
+        packageId,
+        reviewedAt: record.reviewedAt || reviewedAt,
+        source: "classroom-review-notes-import"
+      }, {
+        artworkId,
+        artworkTitle: target.artwork.title,
+        artworkCreatedAt: target.artwork.createdAt,
+        packageId
+      });
+      if (!review) {
+        skippedCount += 1;
+        return;
+      }
+      state.artworks[target.index] = normalizeArtwork({
+        ...target.artwork,
+        classroomReview: review
+      });
+      importedCount += 1;
+    });
+
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastClassroomReviewImportedAt: now,
+      lastClassroomReviewImportedCount: importedCount,
+      lastClassroomReviewSkippedCount: skippedCount,
+      lastCheckedAt: now,
+      lastError: importedCount ? "" : "课堂评阅 JSON 没有匹配到可回写的本机作品。"
+    });
+    if (importedCount) {
+      addEvent("artwork-classroom-review-import", `导入课堂评阅：${importedCount} 条，跳过 ${skippedCount} 条`);
+    }
+    saveState();
+    return {
+      ok: importedCount > 0,
+      importedCount,
+      skippedCount,
+      packageId,
+      status: getArtworkRepositoryStatus(),
+      message: importedCount
+        ? `已导入 ${importedCount} 条课堂评阅并回写到本机作品，跳过 ${skippedCount} 条。`
+        : `课堂评阅 JSON 没有匹配到本机作品，已跳过 ${skippedCount} 条。`
+    };
+  }
+
   function getArtworkRepositorySummary(artworks = [], linkedSessions = []) {
     const artworkCount = artworks.length;
     const averageScore = artworkCount
@@ -13732,6 +13896,7 @@
       imageData: artwork.imageData || null,
       tags,
       feedback: clone(artwork.feedback || linkedSession?.feedback || []),
+      classroomReview: artwork.classroomReview ? clone(artwork.classroomReview) : null,
       sessionId: artwork.sessionId,
       hasStrokes: Boolean(linkedSession?.strokes?.length)
     };
@@ -13746,7 +13911,11 @@
       item.mode,
       `${item.score}`,
       ...(item.tags || []),
-      ...(item.feedback || [])
+      ...(item.feedback || []),
+      item.classroomReview?.reviewer,
+      item.classroomReview?.level,
+      item.classroomReview?.note,
+      item.classroomReview?.teacherScore
     ]
       .filter(Boolean)
       .join(" ")
@@ -16238,6 +16407,7 @@
     downloadArtworkCollectionPage,
     getArtworkClassroomReviewExport,
     downloadArtworkClassroomReviewPage,
+    importArtworkClassroomReviewNotes,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

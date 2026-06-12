@@ -943,6 +943,8 @@ const els = {
   artworkRepositoryStatus: document.getElementById("artworkRepositoryStatus"),
   artworkCollectionExportButton: document.getElementById("artworkCollectionExportButton"),
   artworkClassroomReviewExportButton: document.getElementById("artworkClassroomReviewExportButton"),
+  artworkClassroomReviewImportButton: document.getElementById("artworkClassroomReviewImportButton"),
+  artworkClassroomReviewImportInput: document.getElementById("artworkClassroomReviewImportInput"),
   artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
   artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
   artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
@@ -4193,6 +4195,8 @@ function bindHistoryControls() {
   });
   els.artworkCollectionExportButton?.addEventListener("click", exportArtworkCollectionPage);
   els.artworkClassroomReviewExportButton?.addEventListener("click", exportArtworkClassroomReviewPage);
+  els.artworkClassroomReviewImportButton?.addEventListener("click", openArtworkClassroomReviewImport);
+  els.artworkClassroomReviewImportInput?.addEventListener("change", importArtworkClassroomReviewNotes);
   els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
   els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
   els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
@@ -8834,6 +8838,9 @@ function renderArtworkRepositoryStatus() {
   if (els.artworkClassroomReviewExportButton) {
     els.artworkClassroomReviewExportButton.disabled = !status.artworkCount;
   }
+  if (els.artworkClassroomReviewImportButton) {
+    els.artworkClassroomReviewImportButton.disabled = !status.artworkCount || !window.FileReader;
+  }
   renderArtworkRepositoryConflictPanel(status);
 }
 
@@ -8973,6 +8980,16 @@ function createArtworkGalleryCard(artwork) {
   const meta = document.createElement("span");
   meta.textContent = `${formatHistoryTime(artwork.createdAt)} / ${artwork.glyph || "-"} / ${artwork.style || "-"} / ${artwork.score || 0}分`;
   body.append(title, meta);
+
+  if (artwork.classroomReview) {
+    const review = document.createElement("p");
+    review.className = "artwork-gallery-review";
+    const scoreText = artwork.classroomReview.teacherScore === null || typeof artwork.classroomReview.teacherScore === "undefined"
+      ? "未打分"
+      : `${artwork.classroomReview.teacherScore}分`;
+    review.textContent = `课堂评阅：${artwork.classroomReview.reviewer || "本机课堂评阅"} / ${artwork.classroomReview.level || "未评定"} / ${scoreText}${artwork.classroomReview.note ? ` · ${artwork.classroomReview.note}` : ""}`;
+    body.appendChild(review);
+  }
 
   const tags = document.createElement("div");
   tags.className = "artwork-gallery-tags";
@@ -9921,6 +9938,36 @@ function exportArtworkClassroomReviewPage() {
   const result = window.MRAppState?.downloadArtworkClassroomReviewPage?.();
   renderHistoryArtworkGallery();
   showNotice(result?.message || "当前没有可导出的课堂评阅表。");
+}
+
+function openArtworkClassroomReviewImport() {
+  if (!els.artworkClassroomReviewImportInput) {
+    showNotice("当前浏览器不支持课堂评阅文件选择。");
+    return;
+  }
+  els.artworkClassroomReviewImportInput.value = "";
+  els.artworkClassroomReviewImportInput.click();
+}
+
+async function importArtworkClassroomReviewNotes(event) {
+  const input = event.currentTarget;
+  const file = input?.files?.[0];
+  if (!file) return;
+
+  try {
+    const text = await file.text();
+    const result = window.MRAppState?.importArtworkClassroomReviewNotes?.(text);
+    activeArtworkSearch = "";
+    activeArtworkTag = "";
+    renderHistoryPanel(currentIndex);
+    showNotice(result?.message || "课堂评阅导入已处理。");
+  } catch (error) {
+    const result = window.MRAppState?.importArtworkClassroomReviewNotes?.("");
+    renderArtworkRepositoryStatus();
+    showNotice(result?.message || "课堂评阅导入失败，请检查 JSON 文件。");
+  } finally {
+    input.value = "";
+  }
 }
 
 function openArtworkRepositoryImport() {
