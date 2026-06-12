@@ -4039,3 +4039,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品仓库导入导出`
+
+## 110. 2026-06-13 新增作品仓库冲突审计
+
+本次把作品仓库导入冲突补成用户可处理的前台 UI。导入包与本机作品同 ID 且内容不同的时候，不再只有状态栏一句“跳过冲突”，而是会在作品集里显示冲突审计列表。
+
+完成内容：
+
+- 作品集新增 `artworkRepositoryConflictPanel`、`artworkRepositoryConflictStatus` 和 `artworkRepositoryConflictList`。
+- `renderArtworkRepositoryConflictPanel()` 会读取 `getArtworkRepositoryStatus().lastConflictRecords`，无冲突时隐藏，有冲突时展示。
+- 每条冲突显示记录类型、导入标题、本机更新时间、导入更新时间和字段差异。
+- 动态按钮使用 `data-feature-state="real-local"`，提供“另存导入副本”和“忽略审计”。
+- `handleArtworkRepositoryConflictAction()` 调用 `MRAppState.resolveArtworkRepositoryConflict()`，处理后刷新学习档案和作品集。
+- 样式复用现有报告/学习档案冲突审计视觉，移动端保持单列可读。
+- Playwright 用例覆盖冲突面板显示、点击“另存导入副本”后作品集数量从 2 变 3。
+
+真实化说明：
+
+- 数据来源：`artworkRepository.lastConflictRecords` 中保存的本机/导入字段差异和导入快照。
+- 写入状态：另存副本会写入新的 `ArtworkRecord`，必要时写入新的关联 `PracticeSession`。
+- 成功反馈：处理后 notice 显示结果，冲突面板隐藏或减少，作品集卡片刷新。
+- 失败反馈：找不到冲突或导入快照缺失时不展示假成功。
+- 刷新后复现方式：未处理冲突仍会显示在作品集；已另存副本的作品继续保存在本机作品集中。
+
+仍待补：
+
+- 当前是本机前台冲突处理，不是服务端多人合并、账号权限、生产审计签名或公开作品墙。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库冲突审计`

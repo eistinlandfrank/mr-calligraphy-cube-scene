@@ -9640,3 +9640,48 @@
 提交：
 
 - 中文 commit message：`新增作品仓库导入导出`
+
+### 2026-06-13：新增作品仓库冲突审计
+
+功能名：前台作品仓库导入冲突处理。
+
+开发原因：
+
+- 作品仓库导入已经能识别同 ID 差异并拒绝覆盖本机作品，但用户只能看到“跳过冲突”的状态，无法知道差异在哪里，也无法恢复导入包里的那幅作品。
+- 为了让本机作品迁移闭环更完整，需要把冲突变成可审计、可处理的真实前台操作。
+
+完成内容：
+
+- `ArtworkRepositoryConflict` 新增 `conflictId`、`typeLabel`、`fieldDiffs` 和 `incomingRecord` 快照。
+- `createArtworkRepositoryConflict()` 会记录作品/关联练习的字段差异，包括标题、字、风格、评分、反馈、标签、练习指标和状态。
+- 新增 `MRAppState.getArtworkRepositoryConflicts()` 和 `resolveArtworkRepositoryConflict()`。
+- 支持“另存导入副本”：把冲突作品另存为新的本机 `ArtworkRecord`，如果关联练习也冲突，会同步复制为新的 `PracticeSession` 并重新挂接。
+- 支持“忽略审计”：清理指定冲突，不伪造导入成功。
+- 前台作品集新增 `artworkRepositoryConflictPanel` 冲突审计面板，展示本机值/导入值差异和处理按钮。
+- Playwright 作品仓库用例扩展为先导出/导入，再导入同 ID 差异包，确认冲突面板出现，点击“另存导入副本”后作品集变为 3 幅。
+- smoke test 新增 `artworkRepositoryConflictPanel`、`artworkRepositoryConflictStatus` 和 `artworkRepositoryConflictList` 页面标记。
+
+验收方式：
+
+- 导入一个与本机作品同 ID 但标题、评分或标签不同的作品仓库包。
+- 作品集应显示“作品仓库冲突审计”，列出本机值和导入值差异。
+- 点击“另存导入副本”后，冲突作品应以新 ID 写入本机作品集，原本机作品不被覆盖。
+- 点击“忽略审计”只清理冲突状态，不新增作品，也不覆盖本机记录。
+
+真实边界：
+
+- 数据来源：作品仓库 JSON 包、本机 `ArtworkRecord`、关联 `PracticeSession` 和本机冲突审计状态。
+- 这不是服务端多人合并、账号化作品仓库、生产审计签名或公开作品墙；它是当前浏览器本机导入冲突处理闭环。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库冲突审计`

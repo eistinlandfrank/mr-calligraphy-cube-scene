@@ -4508,3 +4508,43 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增作品仓库导入导出`
+
+## 110. 2026-06-13 新增作品仓库冲突审计
+
+本次把作品仓库导入冲突从“只记录跳过数量”推进到“可看差异、可另存副本、可忽略审计”。导入包里如果有同 ID 但内容不同的作品或关联练习，系统不会覆盖本机记录，而是把导入快照和字段差异保存在冲突审计里，用户可以手动处理。
+
+完成内容：
+
+- `ArtworkRepositoryConflict` 增加 `conflictId`、`typeLabel`、`fieldDiffs` 和 `incomingRecord`。
+- `createArtworkRepositoryConflict()` 会对作品和关联练习生成字段差异，不再只保存标题和时间。
+- 新增 `MRAppState.getArtworkRepositoryConflicts()` 和 `resolveArtworkRepositoryConflict()`。
+- `resolveArtworkRepositoryConflict("copy-incoming")` 支持把导入包冲突作品另存为新的本机作品副本；若关联练习也冲突，会复制练习并重新挂接到作品。
+- `resolveArtworkRepositoryConflict("dismiss")` 支持忽略指定冲突审计。
+- 前台作品集新增 `artworkRepositoryConflictPanel`，展示本机值/导入值差异，并提供“另存导入副本 / 忽略审计”按钮。
+- E2E 作品仓库用例新增同 ID 差异包导入、冲突面板显示和另存副本断言。
+- smoke test 新增作品仓库冲突面板静态标记。
+
+真实化说明：
+
+- 数据来源：本机 `ArtworkRecord`、关联 `PracticeSession`、导入作品仓库包中的 `incomingRecord` 快照。
+- 写入状态：冲突写入 `mr-calligraphy-learning-state-v1.artworkRepository.lastConflictRecords`；另存副本写入 `artworks`，必要时同步写入新的 `sessions`。
+- 成功反馈：冲突面板列出字段差异，处理后面板刷新，作品集数量更新。
+- 失败反馈：缺少冲突、缺少导入快照或未知动作时返回明确失败，不修改作品集。
+- 刷新后复现方式：未处理冲突和另存后的作品副本都保存在 localStorage。
+
+仍待补：
+
+- 当前是本机冲突审计，不是服务端多人合并、账号化作品仓库、生产审计签名、课堂作品墙或公开作品集。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品仓库冲突审计`

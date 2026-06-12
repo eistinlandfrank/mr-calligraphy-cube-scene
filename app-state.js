@@ -2055,15 +2055,42 @@
     const id = String(record.id || "").trim();
     if (!id) return null;
     const type = ["artwork", "session"].includes(record.type) ? record.type : "artwork";
+    const incomingRecord = normalizeArtworkRepositoryIncomingRecord(type, record.incomingRecord || record.remoteRecord);
+    if (!incomingRecord) return null;
     return {
       id,
       type,
-      title: String(record.title || record.localTitle || record.remoteTitle || id).slice(0, 140),
+      conflictId: String(record.conflictId || `${type}:${id}`),
+      typeLabel: type === "session" ? "关联练习" : "作品",
+      title: String(record.title || record.localTitle || record.incomingTitle || record.remoteTitle || id).slice(0, 140),
       localTitle: String(record.localTitle || record.title || id).slice(0, 140),
       incomingTitle: String(record.incomingTitle || record.remoteTitle || record.title || id).slice(0, 140),
       localUpdatedAt: normalizePlanDate(record.localUpdatedAt),
       incomingUpdatedAt: normalizePlanDate(record.incomingUpdatedAt || record.remoteUpdatedAt),
-      detectedAt: normalizePlanDate(record.detectedAt) || new Date().toISOString()
+      detectedAt: normalizePlanDate(record.detectedAt) || new Date().toISOString(),
+      fieldDiffs: Array.isArray(record.fieldDiffs)
+        ? record.fieldDiffs.map(normalizeArtworkRepositoryFieldDiff).filter(Boolean).slice(0, 12)
+        : [],
+      incomingRecord
+    };
+  }
+
+  function normalizeArtworkRepositoryIncomingRecord(type, record) {
+    if (type === "session") return normalizeSession(record);
+    return normalizeArtwork(record);
+  }
+
+  function normalizeArtworkRepositoryFieldDiff(record) {
+    if (!record || typeof record !== "object") return null;
+    const field = String(record.field || "").trim();
+    if (!field) return null;
+    const incomingValue = record.incomingValue ?? record.remoteValue;
+    return {
+      field,
+      label: String(record.label || HISTORY_REPOSITORY_CONFLICT_LABELS[field] || field).slice(0, 32),
+      localValue: formatPlanRepositoryMergeValue(record.localValue),
+      incomingValue: formatPlanRepositoryMergeValue(incomingValue),
+      remoteValue: formatPlanRepositoryMergeValue(incomingValue)
     };
   }
 
@@ -12839,9 +12866,19 @@
     const local = type === "session" ? normalizeSession(localRecord) : normalizeArtwork(localRecord);
     const incoming = type === "session" ? normalizeSession(incomingRecord) : normalizeArtwork(incomingRecord);
     if (!local || !incoming) return null;
+    const fields = getArtworkRepositoryConflictFields(type);
+    const fieldDiffs = fields
+      .filter((field) => stablePlanStringify(local[field] ?? "") !== stablePlanStringify(incoming[field] ?? ""))
+      .map((field) => ({
+        field,
+        label: HISTORY_REPOSITORY_CONFLICT_LABELS[field] || field,
+        localValue: local[field],
+        incomingValue: incoming[field]
+      }));
     return normalizeArtworkRepositoryConflict({
       id: incoming.id,
       type,
+      conflictId: `${type}:${incoming.id}`,
       title: incoming.title || local.title || incoming.glyph || incoming.id,
       localTitle: local.title || local.glyph || local.id,
       incomingTitle: incoming.title || incoming.glyph || incoming.id,
@@ -12851,8 +12888,17 @@
       incomingUpdatedAt: type === "session"
         ? incoming.endedAt || incoming.snapshotAt || incoming.startedAt
         : incoming.createdAt,
-      detectedAt: new Date().toISOString()
+      detectedAt: new Date().toISOString(),
+      fieldDiffs,
+      incomingRecord: incoming
     });
+  }
+
+  function getArtworkRepositoryConflictFields(type) {
+    if (type === "session") {
+      return ["title", "glyph", "copybook", "score", "feedback", "metrics", "endedAt", "status"];
+    }
+    return ["title", "glyph", "style", "score", "feedback", "tags", "createdAt"];
   }
 
   function mergeArtworkRepositoryRecords(collection, incomingRecords, normalizeRecord, type) {
@@ -12940,6 +12986,147 @@
         ? `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习，跳过 ${skippedConflictCount} 条同 ID 差异记录。${ARTWORK_REPOSITORY_BOUNDARY}`
         : `已导入作品仓库包：新增 ${artworkMerge.importedCount} 幅作品、${sessionMerge.importedCount} 条关联练习。${ARTWORK_REPOSITORY_BOUNDARY}`
     };
+  }
+
+  function getArtworkRepositoryConflicts() {
+    const repository = normalizeArtworkRepository(state.artworkRepository);
+    return {
+      ok: true,
+      total: repository.lastConflictRecords.length,
+      conflicts: clone(repository.lastConflictRecords),
+      message: repository.lastConflictRecords.length
+        ? `作品仓库有 ${repository.lastConflictRecords.length} 条同 ID 差异记录待处理。`
+        : "暂无作品仓库冲突审计。"
+    };
+  }
+
+  function resolveArtworkRepositoryConflict(action, options = {}) {
+    const repository = normalizeArtworkRepository(state.artworkRepository);
+    const conflictId = String(options.conflictId || options.id || "").trim();
+    const conflicts = repository.lastConflictRecords;
+    const conflict = conflicts.find((item) => getArtworkRepositoryConflictKey(item) === conflictId || item.id === conflictId);
+    if (!conflict) {
+      return {
+        ok: false,
+        status: getArtworkRepositoryStatus(),
+        message: "未找到这条作品仓库冲突审计。"
+      };
+    }
+
+    const normalizedAction = action === "copy-remote" ? "copy-incoming" : String(action || "");
+    const resolvedKeys = new Set([getArtworkRepositoryConflictKey(conflict)]);
+    let message = "";
+
+    if (normalizedAction === "dismiss") {
+      message = `已忽略作品仓库冲突审计：${conflict.incomingTitle || conflict.id}。`;
+    } else if (normalizedAction === "copy-incoming") {
+      const copied = copyArtworkRepositoryIncomingConflict(conflict, conflicts);
+      if (!copied.ok) {
+        return {
+          ok: false,
+          status: getArtworkRepositoryStatus(),
+          message: copied.message
+        };
+      }
+      copied.resolvedConflictKeys.forEach((key) => resolvedKeys.add(key));
+      message = copied.message;
+    } else {
+      return {
+        ok: false,
+        status: getArtworkRepositoryStatus(),
+        message: "未知的作品仓库冲突处理方式。"
+      };
+    }
+
+    const nextConflicts = conflicts.filter((item) => !resolvedKeys.has(getArtworkRepositoryConflictKey(item)));
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...repository,
+      lastCheckedAt: now,
+      lastSkippedConflictCount: nextConflicts.length,
+      lastConflictRecords: nextConflicts,
+      lastError: nextConflicts.length
+        ? `作品仓库还有 ${nextConflicts.length} 条同 ID 差异记录待处理。`
+        : ""
+    });
+    addEvent("artwork-repository-conflict", message);
+    saveState();
+    return {
+      ok: true,
+      resolvedCount: resolvedKeys.size,
+      remainingConflictCount: nextConflicts.length,
+      status: getArtworkRepositoryStatus(),
+      message
+    };
+  }
+
+  function copyArtworkRepositoryIncomingConflict(conflict, conflicts = []) {
+    const normalized = normalizeArtworkRepositoryConflict(conflict);
+    if (!normalized?.incomingRecord) {
+      return { ok: false, message: "这条冲突缺少可另存的导入快照。" };
+    }
+    const resolvedConflictKeys = [getArtworkRepositoryConflictKey(normalized)];
+
+    if (normalized.type === "session") {
+      const session = makeArtworkRepositorySessionCopy(normalized.incomingRecord);
+      state.sessions.push(session);
+      return {
+        ok: true,
+        resolvedConflictKeys,
+        sessionId: session.id,
+        message: `已把冲突关联练习另存为本机副本：${session.title || session.id}。`
+      };
+    }
+
+    const artwork = normalizeArtwork(normalized.incomingRecord);
+    if (!artwork) {
+      return { ok: false, message: "这条冲突缺少可另存的作品快照。" };
+    }
+
+    let sessionId = artwork.sessionId;
+    const sessionConflict = sessionId
+      ? conflicts.find((item) => item.type === "session" && item.id === sessionId)
+      : null;
+    if (sessionConflict) {
+      const sessionSnapshot = normalizeSession(sessionConflict.incomingRecord);
+      if (sessionSnapshot) {
+        const session = makeArtworkRepositorySessionCopy(sessionSnapshot);
+        state.sessions.push(session);
+        sessionId = session.id;
+        resolvedConflictKeys.push(getArtworkRepositoryConflictKey(sessionConflict));
+      }
+    }
+
+    const copy = normalizeArtwork({
+      ...artwork,
+      id: makeId("artwork"),
+      sessionId,
+      title: `${artwork.title || "导入作品"}（导入副本）`,
+      tags: normalizeArtworkTags([...(artwork.tags || []), "导入副本"]),
+      createdAt: new Date().toISOString()
+    });
+    state.artworks.push(copy);
+    return {
+      ok: true,
+      resolvedConflictKeys,
+      artworkId: copy.id,
+      sessionId: copy.sessionId,
+      message: `已把冲突作品另存为本机副本：${copy.title}。`
+    };
+  }
+
+  function makeArtworkRepositorySessionCopy(record) {
+    const session = normalizeSession({
+      ...record,
+      id: makeId("session"),
+      title: `${record.title || `${record.glyph || "作品"}练习`}（导入副本）`,
+      snapshotAt: record.snapshotAt || new Date().toISOString()
+    });
+    return session;
+  }
+
+  function getArtworkRepositoryConflictKey(conflict) {
+    return conflict?.conflictId || `${conflict?.type || "artwork"}:${conflict?.id || ""}`;
   }
 
   function getArtworkGallery(options = {}) {
@@ -15468,6 +15655,7 @@
     getPracticeVideoRetrySource,
     getArtworkRepositoryStatus,
     getArtworkRepositoryPackage,
+    getArtworkRepositoryConflicts,
     getLatestReview,
     getReviewEvidenceExport,
     getHistory,
@@ -15500,6 +15688,7 @@
     importHistoryRepositoryPackage,
     importReportRepositoryPackage,
     importArtworkRepositoryPackage,
+    resolveArtworkRepositoryConflict,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
     checkRemoteReportRepository,

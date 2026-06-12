@@ -8404,7 +8404,8 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict,
 .history-repository-conflict,
-.report-repository-conflict {
+.report-repository-conflict,
+.artwork-repository-conflict {
   display: grid;
   gap: 8px;
   margin-top: 8px;
@@ -8417,27 +8418,31 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict[hidden],
 .history-repository-conflict[hidden],
-.report-repository-conflict[hidden] {
+.report-repository-conflict[hidden],
+.artwork-repository-conflict[hidden] {
   display: none;
 }
 
 .plan-repository-conflict-head,
 .history-repository-conflict-head,
-.report-repository-conflict-head {
+.report-repository-conflict-head,
+.artwork-repository-conflict-head {
   display: grid;
   gap: 3px;
 }
 
 .plan-repository-conflict-head strong,
 .history-repository-conflict-head strong,
-.report-repository-conflict-head strong {
+.report-repository-conflict-head strong,
+.artwork-repository-conflict-head strong {
   color: #fffaf1;
   font-size: 12px;
 }
 
 .plan-repository-conflict-head span,
 .history-repository-conflict-head span,
-.report-repository-conflict-head span {
+.report-repository-conflict-head span,
+.artwork-repository-conflict-head span {
   color: rgba(255, 244, 203, 0.82);
   font-size: 11px;
   font-weight: 760;
@@ -8446,7 +8451,8 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict-list,
 .history-repository-conflict-list,
-.report-repository-conflict-list {
+.report-repository-conflict-list,
+.artwork-repository-conflict-list {
   display: grid;
   gap: 5px;
   margin: 0;
@@ -8456,7 +8462,8 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict-list li,
 .history-repository-conflict-list li,
-.report-repository-conflict-list li {
+.report-repository-conflict-list li,
+.artwork-repository-conflict-list li {
   display: grid;
   gap: 2px;
   padding: 6px;
@@ -8467,14 +8474,16 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict-list strong,
 .history-repository-conflict-list strong,
-.report-repository-conflict-list strong {
+.report-repository-conflict-list strong,
+.artwork-repository-conflict-list strong {
   color: #fffaf1;
   font-size: 12px;
 }
 
 .plan-repository-conflict-list span,
 .history-repository-conflict-list span,
-.report-repository-conflict-list span {
+.report-repository-conflict-list span,
+.artwork-repository-conflict-list span {
   color: rgba(255, 250, 241, 0.68);
   font-size: 10px;
   font-weight: 720;
@@ -8482,20 +8491,23 @@ body.is-model-view .notice-panel {
 }
 
 .history-repository-conflict-item-head,
-.report-repository-conflict-item-head {
+.report-repository-conflict-item-head,
+.artwork-repository-conflict-item-head {
   display: grid;
   gap: 2px;
 }
 
 .history-repository-conflict-fields,
-.report-repository-conflict-fields {
+.report-repository-conflict-fields,
+.artwork-repository-conflict-fields {
   display: grid;
   gap: 5px;
   margin-top: 4px;
 }
 
 .history-repository-conflict-field,
-.report-repository-conflict-field {
+.report-repository-conflict-field,
+.artwork-repository-conflict-field {
   display: grid;
   gap: 2px;
   min-width: 0;
@@ -8508,13 +8520,16 @@ body.is-model-view .notice-panel {
 .history-repository-conflict-field strong,
 .history-repository-conflict-field span,
 .report-repository-conflict-field strong,
-.report-repository-conflict-field span {
+.report-repository-conflict-field span,
+.artwork-repository-conflict-field strong,
+.artwork-repository-conflict-field span {
   overflow-wrap: anywhere;
 }
 
 .plan-repository-merge-fields,
 .history-repository-conflict-fields,
-.report-repository-conflict-fields {
+.report-repository-conflict-fields,
+.artwork-repository-conflict-fields {
   display: grid;
   gap: 6px;
   margin-top: 4px;
@@ -8592,7 +8607,8 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict-actions,
 .history-repository-conflict-actions,
-.report-repository-conflict-actions {
+.report-repository-conflict-actions,
+.artwork-repository-conflict-actions {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 6px;
@@ -8600,7 +8616,8 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict-actions button,
 .history-repository-conflict-actions button,
-.report-repository-conflict-actions button {
+.report-repository-conflict-actions button,
+.artwork-repository-conflict-actions button {
   min-height: 32px;
   border: 1px solid rgba(247, 215, 139, 0.32);
   border-radius: 7px;
@@ -8616,7 +8633,9 @@ body.is-model-view .notice-panel {
 .history-repository-conflict-actions button:hover,
 .history-repository-conflict-actions button:focus-visible,
 .report-repository-conflict-actions button:hover,
-.report-repository-conflict-actions button:focus-visible {
+.report-repository-conflict-actions button:focus-visible,
+.artwork-repository-conflict-actions button:hover,
+.artwork-repository-conflict-actions button:focus-visible {
   border-color: rgba(247, 215, 139, 0.62);
   outline: none;
   background: rgba(122, 91, 35, 0.52);
@@ -8624,7 +8643,8 @@ body.is-model-view .notice-panel {
 
 .plan-repository-conflict-actions button:disabled,
 .history-repository-conflict-actions button:disabled,
-.report-repository-conflict-actions button:disabled {
+.report-repository-conflict-actions button:disabled,
+.artwork-repository-conflict-actions button:disabled {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.38);
   border-color: rgba(255, 255, 255, 0.12);

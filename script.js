@@ -944,6 +944,9 @@ const els = {
   artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
   artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
   artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
+  artworkRepositoryConflictPanel: document.getElementById("artworkRepositoryConflictPanel"),
+  artworkRepositoryConflictStatus: document.getElementById("artworkRepositoryConflictStatus"),
+  artworkRepositoryConflictList: document.getElementById("artworkRepositoryConflictList"),
   artworkTagList: document.getElementById("artworkTagList"),
   artworkGalleryGrid: document.getElementById("artworkGalleryGrid"),
   historyList: document.getElementById("historyList"),
@@ -4189,6 +4192,7 @@ function bindHistoryControls() {
   els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
   els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
   els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
+  els.artworkRepositoryConflictList?.addEventListener("click", handleArtworkRepositoryConflictAction);
   els.artworkTagList?.addEventListener("click", handleArtworkTagClick);
   els.artworkGalleryGrid?.addEventListener("click", handleArtworkGalleryAction);
   els.historyLoadMore?.addEventListener("click", () => {
@@ -8820,6 +8824,71 @@ function renderArtworkRepositoryStatus() {
   if (els.artworkRepositoryExportButton) {
     els.artworkRepositoryExportButton.disabled = !status.artworkCount;
   }
+  renderArtworkRepositoryConflictPanel(status);
+}
+
+function renderArtworkRepositoryConflictPanel(status) {
+  const panel = els.artworkRepositoryConflictPanel;
+  if (!panel) return;
+  const conflicts = Array.isArray(status?.lastConflictRecords) ? status.lastConflictRecords : [];
+  panel.hidden = !conflicts.length;
+  if (!conflicts.length) {
+    if (els.artworkRepositoryConflictList) {
+      els.artworkRepositoryConflictList.innerHTML = "";
+    }
+    return;
+  }
+
+  if (els.artworkRepositoryConflictStatus) {
+    els.artworkRepositoryConflictStatus.textContent = `${conflicts.length} 条导入包同 ID 差异记录已跳过，可另存导入副本或忽略审计。`;
+  }
+  if (!els.artworkRepositoryConflictList) return;
+  els.artworkRepositoryConflictList.innerHTML = "";
+  conflicts.forEach((conflict) => {
+    const item = document.createElement("li");
+    const head = document.createElement("div");
+    head.className = "artwork-repository-conflict-item-head";
+    const title = document.createElement("strong");
+    title.textContent = `${conflict.typeLabel || "作品"}：${conflict.incomingTitle || conflict.title || conflict.id}`;
+    const detail = document.createElement("span");
+    detail.textContent = `本机：${conflict.localTitle || conflict.id} / ${formatHistoryTime(conflict.localUpdatedAt)}；导入：${conflict.incomingTitle || conflict.id} / ${formatHistoryTime(conflict.incomingUpdatedAt)}`;
+    head.append(title, detail);
+    item.appendChild(head);
+
+    const fields = Array.isArray(conflict.fieldDiffs) ? conflict.fieldDiffs : [];
+    if (fields.length) {
+      const fieldList = document.createElement("div");
+      fieldList.className = "artwork-repository-conflict-fields";
+      fields.slice(0, 8).forEach((field) => {
+        const row = document.createElement("div");
+        row.className = "artwork-repository-conflict-field";
+        const label = document.createElement("strong");
+        label.textContent = field.label || field.field || "字段";
+        const value = document.createElement("span");
+        value.textContent = `本机：${field.localValue || "空"} / 导入：${field.incomingValue || field.remoteValue || "空"}`;
+        row.append(label, value);
+        fieldList.appendChild(row);
+      });
+      item.appendChild(fieldList);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "artwork-repository-conflict-actions";
+    [
+      ["copy-incoming", "另存导入副本"],
+      ["dismiss", "忽略审计"]
+    ].forEach(([action, label]) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.dataset.featureState = "real-local";
+      button.dataset.artworkConflictAction = action;
+      button.dataset.artworkConflictId = conflict.conflictId || "";
+      button.textContent = label;
+      actions.appendChild(button);
+    });
+    item.appendChild(actions);
+    els.artworkRepositoryConflictList.appendChild(item);
+  });
 }
 
 function renderArtworkTagList(tags = []) {
@@ -9860,6 +9929,16 @@ async function importArtworkRepository(event) {
   } finally {
     input.value = "";
   }
+}
+
+function handleArtworkRepositoryConflictAction(event) {
+  const button = event.target?.closest?.("[data-artwork-conflict-action]");
+  if (!button) return;
+  const action = button.dataset.artworkConflictAction || "";
+  const conflictId = button.dataset.artworkConflictId || "";
+  const result = window.MRAppState?.resolveArtworkRepositoryConflict?.(action, { conflictId });
+  renderHistoryPanel(currentIndex);
+  showNotice(result?.message || "作品仓库冲突处理失败。");
 }
 
 function copyArtworkLink(artworkId) {

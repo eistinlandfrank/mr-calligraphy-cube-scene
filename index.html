@@ -434,6 +434,13 @@
                 <input id="artworkRepositoryImportInput" type="file" accept="application/json,.json" hidden>
               </div>
             </div>
+            <div id="artworkRepositoryConflictPanel" class="artwork-repository-conflict" aria-label="作品仓库冲突审计" hidden>
+              <div class="artwork-repository-conflict-head">
+                <strong>作品仓库冲突审计</strong>
+                <span id="artworkRepositoryConflictStatus">导入包同 ID 差异记录已跳过。</span>
+              </div>
+              <ul id="artworkRepositoryConflictList" class="artwork-repository-conflict-list"></ul>
+            </div>
             <div id="artworkTagList" class="artwork-tag-list" aria-label="作品标签"></div>
             <div id="artworkGalleryGrid" class="artwork-gallery-grid"></div>
           </section>

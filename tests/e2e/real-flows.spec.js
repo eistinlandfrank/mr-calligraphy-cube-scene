@@ -1474,6 +1474,52 @@ test("front artwork repository exports and imports local artwork package", async
   expect(importedState.artworkRepository.lastImportedArtworkCount).toBe(2);
   expect(importedState.artworkRepository.lastImportedSessionCount).toBe(2);
   expect(importedState.artworkRepository.lastPackageId).toBe(repositoryPackage.packageId);
+
+  const conflictPackage = {
+    ...repositoryPackage,
+    packageId: "e2e-artwork-conflict-package",
+    artworks: [
+      {
+        ...repositoryPackage.artworks[0],
+        title: "E2E 导入冲突作品",
+        score: 99,
+        feedback: ["E2E 作品仓库冲突版本"],
+        tags: ["导入冲突"]
+      }
+    ],
+    linkedSessions: []
+  };
+  conflictPackage.records = {
+    artworks: conflictPackage.artworks,
+    sessions: []
+  };
+  conflictPackage.summary = {
+    ...repositoryPackage.summary,
+    total: 1,
+    linkedSessionCount: 0,
+    latestArtworkId: conflictPackage.artworks[0].id
+  };
+
+  const conflictFileChooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#artworkRepositoryImportButton").click();
+  const conflictFileChooser = await conflictFileChooserPromise;
+  await conflictFileChooser.setFiles({
+    name: "artwork-repository-conflict.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(conflictPackage))
+  });
+
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("同 ID 差异");
+  await expect(page.locator("#artworkRepositoryConflictPanel")).toBeVisible();
+  await expect(page.locator("#artworkRepositoryConflictList")).toContainText("E2E 导入冲突作品");
+  await expect(page.locator("#artworkRepositoryConflictList")).toContainText("评分");
+  await page.locator("#artworkRepositoryConflictList [data-artwork-conflict-action='copy-incoming']").click();
+  await expect(page.locator("#artworkRepositoryConflictPanel")).toBeHidden();
+  await expect(page.locator("#artworkGalleryStatus")).toContainText("3/3 幅作品");
+  const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(resolvedState.artworks).toHaveLength(3);
+  expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
+  expect(resolvedState.artworkRepository.lastConflictRecords).toHaveLength(0);
 });
 
 test("front share repository shows retryable remote failure recovery", async ({ page }) => {
