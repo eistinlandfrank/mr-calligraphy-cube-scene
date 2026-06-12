@@ -51,6 +51,7 @@ const importModelMaterialUpdateButton = document.getElementById("realisticImport
 const importMaterialStatus = document.getElementById("realisticImportMaterialStatus");
 const importAuditStatus = document.getElementById("realisticImportAuditStatus");
 const importAuditList = document.getElementById("realisticImportAuditList");
+const importAuditCleanupButton = document.getElementById("realisticImportAuditCleanup");
 const importAuditExportButton = document.getElementById("realisticImportAuditExport");
 const previewDraftButton = document.getElementById("realisticPreviewDraft");
 const openLiveButton = document.getElementById("realisticOpenLive");
@@ -96,6 +97,8 @@ const MAX_PUBLISH_RELEASES = 10;
 const MAX_IMPORT_AUDIT_RECORDS = 30;
 const IMPORT_AUDIT_STATUS_LABELS = {
   "soft-deleted-retained": "资产保留，可恢复",
+  "storage-deleted": "文件已清理",
+  "delete-failed": "文件清理失败",
   restored: "已恢复显示"
 };
 const importedModelStore = createModelStore({
@@ -902,6 +905,10 @@ async function readImportedModel(record) {
   return importedModelStore.read(record);
 }
 
+async function deleteImportedModelData(record) {
+  return importedModelStore.delete(record);
+}
+
 function loadImportAuditLog() {
   try {
     const raw = window.localStorage.getItem(IMPORT_AUDIT_KEY);
@@ -986,16 +993,29 @@ function createImportAuditBase(entry, action) {
     return null;
   }
 
+  return createImportAuditBaseFromRecord(record, action, entry.label);
+}
+
+function createImportAuditBaseFromRecord(record, action, fallbackLabel = "") {
+  if (!record) {
+    return null;
+  }
+
   const metrics = normalizeImportMetrics(record.metrics);
   return {
     action,
     modelId: record.id,
     dbKey: record.dbKey,
-    label: record.label || entry.label || record.fileName,
+    label: record.label || fallbackLabel || record.fileName,
     fileName: record.fileName,
     sha256: normalizeSha256(record.sha256),
     fileBytes: metrics.fileBytes || 0
   };
+}
+
+function getDeletedImportedRecords() {
+  return getImportedModelRecords()
+    .filter((record) => savedSceneLayout[record.id]?.deleted === true);
 }
 
 function recordImportedObjectVisibilityAudit(entry, deleted) {
@@ -1016,9 +1036,13 @@ function recordImportedObjectVisibilityAudit(entry, deleted) {
 function renderImportAuditPanel() {
   const log = loadImportAuditLog();
   const records = log.records;
+  const deletedRecords = getDeletedImportedRecords();
 
   if (importAuditExportButton) {
     importAuditExportButton.disabled = !records.length;
+  }
+  if (importAuditCleanupButton) {
+    importAuditCleanupButton.disabled = !deletedRecords.length;
   }
   if (importAuditStatus) {
     importAuditStatus.textContent = records.length
@@ -1053,6 +1077,105 @@ function exportImportAudit() {
   }
   downloadHtmlFile(result.html, result.filename);
   setImportStatus(result.message);
+}
+
+async function cleanupDeletedImportedModelFiles() {
+  const deletedRecords = getDeletedImportedRecords();
+  if (!deletedRecords.length) {
+    setImportStatus("没有可清理的已删除写实导入模型。");
+    renderImportAuditPanel();
+    return;
+  }
+
+  const confirmed = window.confirm(`将永久清理 ${deletedRecords.length} 个已删除写实导入模型文件，并从写实草稿移除记录。继续？`);
+  if (!confirmed) {
+    setImportStatus("已取消清理已删除写实导入模型文件。");
+    return;
+  }
+
+  if (importAuditCleanupButton) {
+    importAuditCleanupButton.disabled = true;
+  }
+
+  let cleaned = 0;
+  let failed = 0;
+  for (const record of deletedRecords) {
+    const base = createImportAuditBaseFromRecord(record, "delete");
+    try {
+      await deleteImportedModelData(record);
+      removeImportedRecordFromDraft(record.id);
+      removeImportedEntryFromScene(record.id);
+      cleaned += 1;
+      recordImportAudit({
+        ...base,
+        cleanupStatus: "storage-deleted",
+        message: `已永久清理写实导入模型文件并从草稿移除记录：${base.label}`
+      });
+    } catch (error) {
+      console.warn("Realistic imported model file could not be cleaned.", error);
+      failed += 1;
+      recordImportAudit({
+        ...base,
+        cleanupStatus: "delete-failed",
+        message: `写实导入模型文件清理失败，草稿记录已保留：${base.label}`
+      });
+    }
+  }
+
+  saveSceneLayout();
+  if (cleaned) {
+    createLayoutSnapshot(`清理导入模型：${cleaned} 个`, { status: false });
+  }
+  renderImportAuditPanel();
+  renderPublishDiff();
+  setImportStatus(failed
+    ? `已清理 ${cleaned} 个写实导入模型文件，${failed} 个清理失败。`
+    : `已清理 ${cleaned} 个写实导入模型文件，并从写实草稿移除。`);
+}
+
+function removeImportedRecordFromDraft(modelId) {
+  savedSceneLayout[IMPORTED_MODEL_LIST_KEY] = getImportedModelRecords()
+    .filter((record) => record.id !== modelId);
+  delete savedSceneLayout[modelId];
+}
+
+function removeImportedEntryFromScene(modelId) {
+  const entry = designObjects.get(modelId);
+  if (!entry) {
+    removeDesignObjectOption(modelId);
+    return;
+  }
+
+  const wasSelected = selectedDesignObject?.id === modelId;
+  if (wasSelected) {
+    transformControls?.detach();
+    selectedDesignObject = null;
+  }
+
+  disposeImportedEntryModelChildren(entry.object);
+  scene.remove(entry.object);
+  designObjects.delete(modelId);
+  removeDesignObjectOption(modelId);
+
+  if (wasSelected) {
+    const nextOption = designObjectSelect
+      ? Array.from(designObjectSelect.options).find((option) => designObjects.has(option.value))
+      : null;
+    if (nextOption) {
+      selectDesignObject(nextOption.value);
+    } else {
+      updateDeletedUi();
+      syncImportedMaterialEditorFromSelection();
+    }
+  }
+}
+
+function removeDesignObjectOption(modelId) {
+  if (!designObjectSelect) {
+    return;
+  }
+  const option = Array.from(designObjectSelect.options).find((item) => item.value === modelId);
+  option?.remove();
 }
 
 function getImportAuditExport() {
@@ -1091,7 +1214,7 @@ function getImportAuditExport() {
 </head>
 <body>
   <h1>MR 书法写实导入模型删除审计</h1>
-  <p>导出时间：${escapeHtml(formatDateTime(new Date().toISOString()))}。写实后台删除导入模型是本机软删除：资产文件保留在 IndexedDB 以便恢复，不代表服务端资产清理或不可篡改审计。</p>
+  <p>导出时间：${escapeHtml(formatDateTime(new Date().toISOString()))}。写实后台删除导入模型默认是本机软删除：资产文件保留在 IndexedDB 以便恢复；执行“清理已删除文件”后会删除本机 IndexedDB 文件并从写实草稿移除记录，但不代表服务端资产清理或不可篡改审计。</p>
   <table>
     <thead><tr><th>时间</th><th>动作</th><th>模型</th><th>文件</th><th>结果</th><th>SHA-256</th><th>说明</th></tr></thead>
     <tbody>${rows}</tbody>
@@ -2907,6 +3030,7 @@ function bindUi() {
     importModelMetalnessInput?.addEventListener("input", updateImportMetalnessOutput);
     importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
     importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
+    importAuditCleanupButton?.addEventListener("click", cleanupDeletedImportedModelFiles);
     importAuditExportButton?.addEventListener("click", exportImportAudit);
     renderImportAuditPanel();
     previewDraftButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html?realisticPreview=draft"));

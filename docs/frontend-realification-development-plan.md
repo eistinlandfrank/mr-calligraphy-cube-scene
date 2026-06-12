@@ -40,7 +40,7 @@ node scripts/control-inventory.js --check
 | `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 38 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 23 | 2 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 24 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
@@ -1710,7 +1710,7 @@ git diff --check
 
 仍待补：
 
-- 当前是写实后台本机软删除审计，不是物理清理 IndexedDB、服务端资产删除、CDN purge、账号权限审计或不可篡改日志。
+- 当前是写实后台本机软删除审计；后续已补“清理已删除文件”用于物理清理本机 IndexedDB，但仍不是服务端资产删除、CDN purge、账号权限审计或不可篡改日志。
 
 验收：
 
@@ -1962,3 +1962,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化导入模型发布差异明细`
+
+## 59. 2026-06-12 真实化写实导入模型已删除文件物理清理
+
+本次把写实后台导入模型删除从“只可软删除和恢复”推进到可明确执行本机文件清理：用户先删除导入模型，确认不再恢复后，可点击“清理已删除文件”永久删除 IndexedDB 中的模型二进制，并从写实草稿移除导入记录。
+
+完成内容：
+
+- `realistic-admin.html` 的导入删除审计面板新增“清理已删除文件”按钮。
+- `realistic-scene.js` 新增已删除导入模型筛选，只有 `layout[modelId].deleted === true` 的导入模型可被清理。
+- 清理前弹出确认，避免把软删除的可恢复资产误删。
+- 清理成功后调用导入模型仓库 `delete(record)`，删除 `mr-calligraphy-model-store.models` 中的 IndexedDB 文件。
+- 清理成功后从 `mr-calligraphy-realistic-layout-v1.importedModels` 和对象状态中移除记录，并从当前 Three.js 场景和对象下拉框移除该对象。
+- 审计日志新增 `storage-deleted` 和 `delete-failed` 状态，HTML 导出说明软删除和物理清理的边界。
+- smoke test 写实后台页面检查新增 `realisticImportAuditCleanup` 标记。
+- Playwright 写实导入删除审计用例覆盖软删除、恢复、再次删除、确认清理、IndexedDB 记录消失、草稿记录移除、刷新后审计持久化和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：写实草稿 layout、写实导入模型记录和 IndexedDB 模型仓库。
+- 写入状态：清理成功会移除 `importedModels[*]` 和 `layout[modelId]`，并在 `mr-calligraphy-realistic-import-audit-v1.records[*].cleanupStatus` 写入 `storage-deleted`。
+- 成功反馈：状态栏显示已清理数量，审计列表显示“文件已清理”，清理按钮在没有已删除模型时禁用。
+- 失败反馈：IndexedDB 删除失败时保留草稿记录并写入 `delete-failed` 审计。
+- 刷新后复现方式：刷新写实后台后，被清理模型不再出现在草稿导入列表，审计记录仍可查看和导出。
+
+仍待补：
+
+- 当前完成的是本机 IndexedDB 文件清理；服务端资产删除、CDN purge、远端资产签名、账号权限审计、多人协作审计和不可篡改日志仍未完成。
+
+验收：
+
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "realistic admin records imported model deletion audit"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化写实导入模型物理清理`

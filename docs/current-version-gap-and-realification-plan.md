@@ -33,7 +33,7 @@ node scripts/control-inventory.js
 | `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 38 | 6 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 23 | 2 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 24 | 2 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：四个入口 HTML 的静态按钮和导航链接已经没有 `demo-content` 或缺失标记；前台动态场景热点按钮也已纳入清单脚本并改为本机真实交互。下一步要审计的是“标为真实的控件是否足够真实”。
@@ -2332,7 +2332,7 @@ node scripts/control-inventory.js
 
 仍待补：
 
-- 当前是本机写实导入模型软删除审计；物理清理 IndexedDB、服务端资产删除、CDN purge、账号权限审计和不可篡改日志仍待补齐。
+- 当前是本机写实导入模型软删除审计；本机 IndexedDB 物理清理已在后续“清理已删除文件”中补齐，服务端资产删除、CDN purge、账号权限审计和不可篡改日志仍待补齐。
 
 验收：
 
@@ -2570,3 +2570,39 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`真实化导入模型发布差异明细`
+
+### 2026-06-12：真实化写实导入模型物理清理
+
+完成内容：
+
+- 写实后台导入删除审计区新增“清理已删除文件”按钮，并纳入 `real-local` 控件清单。
+- 按钮只在存在已软删除导入模型时启用，清理前弹出确认。
+- 清理成功会删除 IndexedDB `mr-calligraphy-model-store.models` 中对应的导入模型二进制。
+- 清理成功会从 `mr-calligraphy-realistic-layout-v1.importedModels` 和 `layout[modelId]` 移除该模型，并同步移除当前场景对象和选择器选项。
+- 审计日志新增 `storage-deleted` 与 `delete-failed`，清理失败时保留草稿记录。
+- HTML 审计导出说明软删除默认保留资产，执行清理后才删除本机 IndexedDB 文件。
+- Playwright 扩展写实导入模型删除审计用例，覆盖软删除、恢复、再次删除、确认清理、IndexedDB 删除、草稿记录移除、刷新后审计和下载文件内容。
+
+真实化说明：
+
+- 数据来源：真实写实导入模型记录、写实草稿 layout 和 IndexedDB 模型仓库。
+- 写入状态：删除 `importedModels[*]`、删除对象状态、写入 `mr-calligraphy-realistic-import-audit-v1.records[*].cleanupStatus = "storage-deleted"`。
+- 成功反馈：页面状态显示清理数量，审计列表显示“文件已清理”，无待清理模型时按钮禁用。
+- 失败反馈：IndexedDB 删除失败会写入 `delete-failed`，并保留草稿记录与场景对象。
+- 刷新后复现方式：被清理模型不再从草稿恢复，审计记录仍持久化。
+
+仍待补：
+
+- 当前完成本机 IndexedDB 物理清理；服务端资产删除、CDN purge、远端资产签名、账号权限审计和多人协作审计仍待补齐。
+
+验收：
+
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "realistic admin records imported model deletion audit"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化写实导入模型物理清理`

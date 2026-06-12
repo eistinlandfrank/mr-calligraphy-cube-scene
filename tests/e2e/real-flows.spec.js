@@ -2384,11 +2384,13 @@ test("realistic admin records imported model deletion audit", async ({ page }) =
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticImportAuditStatus")).toContainText("尚无写实导入模型删除记录");
+  await expect(page.locator("#realisticImportAuditCleanup")).toBeDisabled();
   await expect(page.locator("#realisticImportAuditExport")).toBeDisabled();
 
   await page.locator("#importModelInput").setInputFiles(modelPath);
   await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
   await expect(page.locator("#designObjectSelect")).toContainText("books");
+  await expect(page.locator("#realisticImportAuditCleanup")).toBeDisabled();
   const importedObjectId = await page.locator("#designObjectSelect").inputValue();
 
   let layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
@@ -2402,6 +2404,7 @@ test("realistic admin records imported model deletion audit", async ({ page }) =
   await expect(page.locator("#realisticImportAuditStatus")).toContainText("已记录 1 条写实导入模型审计");
   await expect(page.locator("#realisticImportAuditList")).toContainText("books");
   await expect(page.locator("#realisticImportAuditList")).toContainText("资产保留，可恢复");
+  await expect(page.locator("#realisticImportAuditCleanup")).toBeEnabled();
 
   layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
   expect(layout[importedObjectId].deleted).toBe(true);
@@ -2416,16 +2419,37 @@ test("realistic admin records imported model deletion audit", async ({ page }) =
   await expect(page.locator("#realisticImportAuditList")).toContainText("已恢复显示");
   layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
   expect(layout[importedObjectId].deleted).toBe(false);
+  await expect(page.locator("#realisticImportAuditCleanup")).toBeDisabled();
   auditLog = await readJsonLocalStorage(page, REALISTIC_IMPORT_AUDIT_KEY);
   expect(auditLog.records[0].cleanupStatus).toBe("restored");
   expect(auditLog.records[1].cleanupStatus).toBe("soft-deleted-retained");
 
+  await page.locator("#deleteObject").click();
+  await expect(page.locator("#realisticImportAuditCleanup")).toBeEnabled();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.locator("#realisticImportAuditCleanup").click();
+  await expect(page.locator("#importStatus")).toContainText("已清理 1 个写实导入模型文件", { timeout: 30_000 });
+  await expect(page.locator("#realisticImportAuditList")).toContainText("文件已清理");
+  await expect(page.locator("#realisticImportAuditCleanup")).toBeDisabled();
+
+  layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  expect(layout.importedModels.some((item) => item.id === importedObjectId)).toBe(false);
+  expect(layout[importedObjectId]).toBeUndefined();
+  auditLog = await readJsonLocalStorage(page, REALISTIC_IMPORT_AUDIT_KEY);
+  expect(auditLog.records[0].cleanupStatus).toBe("storage-deleted");
+  expect(auditLog.records[0].modelId).toBe(importedObjectId);
+  expect(auditLog.records[0].sha256).toBe(importedRecord.sha256);
+  const storedAfterCleanup = await hasStoredImportedModel(page, importedRecord.dbKey || importedObjectId);
+  expect(storedAfterCleanup).toBe(false);
+
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#realisticImportAuditList")).toContainText("books");
+  await expect(page.locator("#realisticImportAuditList")).toContainText("文件已清理");
   const exportResult = await page.evaluate(() => window.MRRealisticImportAudit.getAuditExport());
   expect(exportResult.ok).toBe(true);
   expect(exportResult.html).toContain("MR 书法写实导入模型删除审计");
   expect(exportResult.html).toContain("资产文件保留在 IndexedDB");
+  expect(exportResult.html).toContain("清理已删除文件");
   expect(exportResult.html).toContain(importedRecord.sha256);
 
   const auditDownloadPromise = page.waitForEvent("download");
@@ -2436,6 +2460,7 @@ test("realistic admin records imported model deletion audit", async ({ page }) =
   const auditHtml = fs.readFileSync(auditPath, "utf8");
   expect(auditHtml).toContain("MR 书法写实导入模型删除审计");
   expect(auditHtml).toContain(importedRecord.sha256);
+  expect(auditHtml).toContain("文件已清理");
 });
 
 async function drawPracticeStroke(page) {
@@ -2472,6 +2497,28 @@ async function setRangeValue(page, selector, value) {
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }, value);
+}
+
+async function hasStoredImportedModel(page, dbKey) {
+  return page.evaluate((modelDbKey) => {
+    return new Promise((resolve, reject) => {
+      const openRequest = window.indexedDB.open("mr-calligraphy-model-store", 1);
+      openRequest.onerror = () => reject(openRequest.error);
+      openRequest.onsuccess = () => {
+        const db = openRequest.result;
+        if (!db.objectStoreNames.contains("models")) {
+          db.close();
+          resolve(false);
+          return;
+        }
+        const transaction = db.transaction("models", "readonly");
+        const request = transaction.objectStore("models").get(modelDbKey);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(Boolean(request.result));
+        transaction.oncomplete = () => db.close();
+      };
+    });
+  }, dbKey);
 }
 
 async function getSameOriginEndpoint(page, path) {
