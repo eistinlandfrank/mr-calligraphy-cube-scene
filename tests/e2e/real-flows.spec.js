@@ -1561,6 +1561,145 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   }).toBe(true);
 });
 
+test("main admin project repository keeps local data on remote failures", async ({ page }) => {
+  const rejectedCheckPath = "/e2e-project-repository-rejected-check";
+  const invalidJsonPath = "/e2e-project-repository-invalid-json";
+  const emptyPullPath = "/e2e-project-repository-empty-pull";
+  const rejectedPushPath = "/e2e-project-repository-rejected-push";
+  const networkPushPath = "/e2e-project-repository-network-push";
+  const projectRepositoryRequests = [];
+  const objectLabel = `E2E 项目仓库失败保留 ${Date.now()}`;
+
+  await page.route(`**${rejectedCheckPath}`, async (route) => {
+    const request = route.request();
+    projectRepositoryRequests.push({
+      path: rejectedCheckPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.fulfill({
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "项目仓库远端 E2E 拒绝检查。"
+      })
+    });
+  });
+
+  await page.route(`**${invalidJsonPath}`, async (route) => {
+    const request = route.request();
+    projectRepositoryRequests.push({
+      path: invalidJsonPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "text/html",
+      body: "<!doctype html><title>not json</title>"
+    });
+  });
+
+  await page.route(`**${emptyPullPath}**`, async (route) => {
+    const request = route.request();
+    projectRepositoryRequests.push({
+      path: emptyPullPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "项目仓库远端 E2E 可访问，但没有返回项目仓库包。",
+        remoteVersion: "e2e-empty-project-repository-v1"
+      })
+    });
+  });
+
+  await page.route(`**${rejectedPushPath}`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? request.postDataJSON() : null;
+    projectRepositoryRequests.push({
+      path: rejectedPushPath,
+      method,
+      authorization: request.headers().authorization || "",
+      body
+    });
+    await route.fulfill({
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "项目仓库包结构被 E2E 服务端拒绝。"
+      })
+    });
+  });
+
+  await page.route(`**${networkPushPath}`, async (route) => {
+    const request = route.request();
+    projectRepositoryRequests.push({
+      path: networkPushPath,
+      method: request.method(),
+      authorization: request.headers().authorization || ""
+    });
+    await route.abort("failed");
+  });
+
+  await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await page.locator("#mainNewObjectName").fill(objectLabel);
+  await page.locator("#mainNewObjectType").selectOption("box");
+  await page.locator("#mainNewObjectAdd").click();
+  await expect(page.locator("#mainCustomStatus")).toContainText(`已新增：${objectLabel}`);
+  await page.locator(".project-repository-remote summary").click();
+
+  await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, rejectedCheckPath), "project-rejected-check-token");
+  await page.locator("#projectRepositoryCheckRemote").click();
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("HTTP 401");
+  let projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.lastError).toContain("HTTP 401");
+  expect(projectRepositoryRequests.some((item) => item.path === rejectedCheckPath && item.method === "GET" && item.authorization === "Bearer project-rejected-check-token")).toBe(true);
+
+  await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, invalidJsonPath), "project-invalid-json-token");
+  await page.locator("#projectRepositoryCheckRemote").click();
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("不是 JSON");
+  projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.lastError).toContain("不是 JSON");
+  expect(projectRepositoryRequests.some((item) => item.path === invalidJsonPath && item.method === "GET" && item.authorization === "Bearer project-invalid-json-token")).toBe(true);
+
+  await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, emptyPullPath), "project-empty-pull-token");
+  await page.locator("#projectRepositoryPullRemote").click();
+  await expect(page.locator("#projectArchiveStatus")).toContainText("远端响应中没有项目仓库包");
+  projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.lastError).toContain("远端响应中没有项目仓库包");
+  expect(projectRepositoryRequests.some((item) => item.path === emptyPullPath && item.method === "GET" && item.authorization === "Bearer project-empty-pull-token")).toBe(true);
+
+  await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, rejectedPushPath), "project-rejected-push-token");
+  await page.locator("#projectRepositoryPushRemote").click();
+  await expect(page.locator("#projectArchiveStatus")).toContainText("HTTP 422");
+  projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.lastError).toContain("HTTP 422");
+  const rejectedPut = projectRepositoryRequests.find((item) => item.path === rejectedPushPath && item.method === "PUT");
+  expect(rejectedPut.authorization).toBe("Bearer project-rejected-push-token");
+  expect(rejectedPut.body.kind).toBe("mr-calligraphy-project-repository-package-v1");
+  expect(rejectedPut.body.archive.kind).toBe("mr-calligraphy-project-archive");
+  expect(rejectedPut.body.projectSchema.kind).toBe("mr-calligraphy-project-schema");
+
+  await configureProjectRepositoryRemoteInUi(page, await getSameOriginEndpoint(page, networkPushPath), "project-network-push-token");
+  await page.locator("#projectRepositoryPushRemote").click();
+  await expect(page.locator("#projectArchiveStatus")).toContainText("网络请求异常");
+  projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
+  expect(projectRepositoryState.lastError).toContain("网络请求异常");
+  expect(projectRepositoryRequests.some((item) => item.path === networkPushPath && item.method === "PUT" && item.authorization === "Bearer project-network-push-token")).toBe(true);
+
+  const layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
+  expect(layout.customObjects.some((item) => item.label === objectLabel)).toBe(true);
+});
+
 test("realistic admin keeps local publish releases and rollback history", async ({ page }) => {
   const firstNote = `E2E 写实初版 ${Date.now()}`;
   const secondNote = `E2E 写实二版 ${Date.now()}`;
@@ -1631,6 +1770,13 @@ async function readJsonLocalStorage(page, key) {
 
 async function getSameOriginEndpoint(page, path) {
   return page.evaluate((endpointPath) => new URL(endpointPath, window.location.href).toString(), path);
+}
+
+async function configureProjectRepositoryRemoteInUi(page, endpoint, token = "") {
+  await page.locator("#projectRepositoryEndpoint").fill(endpoint);
+  await page.locator("#projectRepositoryToken").fill(token);
+  await page.locator("#projectRepositorySaveRemote").click();
+  await expect(page.locator("#projectArchiveStatus")).toContainText("已保存远端项目仓库 API 配置");
 }
 
 async function configurePlanRepositoryRemoteInUi(page, endpoint, token = "") {

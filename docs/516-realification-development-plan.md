@@ -6724,3 +6724,55 @@
 提交：
 
 - 中文 commit message：`新增项目仓库回执审计导出`
+
+### 2026-06-12：新增项目仓库远端失败反馈
+
+功能名：主后台项目仓库远端 API 失败反馈与本机数据保护。
+
+涉及文件：
+
+- `project-archive.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/project-repository-api-contract.md`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- `parseProjectRepositoryResponse()` 改为严格要求 JSON；200 但返回 HTML / 纯文本不再被当成远端可用。
+- 项目仓库远端检查、推送和拉取统一格式化 HTTP、非 JSON、空响应和网络异常错误。
+- HTTP 非 2xx 和 `ok:false` 会带上 `HTTP <status>` 写入 `mr-calligraphy-project-repository-remote-v1.lastError`。
+- 网络中断会显示“网络请求异常”，避免把浏览器英文异常直接暴露成不可理解状态。
+- 新增 Playwright 用例覆盖 401、非 JSON、无项目包、PUT 422 和网络中断，并确认失败后本机主场景布局仍保留。
+
+真实化说明：
+
+- 数据来源：真实 `fetch` 响应状态、JSON body、浏览器网络异常和本机项目布局。
+- 写入状态：失败写入 `mr-calligraphy-project-repository-remote-v1.lastError`，不清空 `receipts`、`versions` 或本机项目档案。
+- 成功反馈：合法 JSON 成功路径保持不变。
+- 失败反馈：后台状态条显示 HTTP 状态、非 JSON、无项目包或网络异常。
+- 刷新后复现方式：`lastError` 保存在本机项目仓库远端状态，刷新后仍可看到最近错误。
+
+已知限制：
+
+- 当前仍是前端 adapter 的失败反馈，不是生产账号服务端、集中日志或告警系统。
+
+验收方式：
+
+- 浏览器验收：`npm run test:e2e -- --grep "main admin project repository keeps local data"`。
+- 脚本验收：`node scripts/smoke-test.js --base-url=http://localhost:41496/`。
+
+当前验证结果：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `npm run test:e2e -- --grep "main admin project repository keeps local data"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库远端失败反馈`

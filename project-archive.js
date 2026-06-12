@@ -610,7 +610,7 @@
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
-      return persistProjectRepositoryRemoteError(`远端项目仓库 API 检查失败：${error?.message || "未知错误"}。`);
+      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("检查", error));
     }
   }
 
@@ -687,7 +687,7 @@
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
-      return persistProjectRepositoryRemoteError(`远端项目仓库推送失败：${error?.message || "未知错误"}。`);
+      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("推送", error));
     }
   }
 
@@ -750,7 +750,7 @@
         status: getProjectRepositoryRemoteStatus()
       };
     } catch (error) {
-      return persistProjectRepositoryRemoteError(`远端项目仓库拉取失败：${error?.message || "未知错误"}。`);
+      return persistProjectRepositoryRemoteError(formatProjectRepositoryRemoteError("拉取", error));
     }
   }
 
@@ -811,19 +811,38 @@
     let payload = null;
     let text = "";
     try {
-      payload = await response.clone().json();
-    } catch (jsonError) {
-      try {
-        text = await response.text();
-      } catch (textError) {
-        text = "";
-      }
+      text = await response.text();
+    } catch (textError) {
+      text = "";
     }
-    const message = String(payload?.message || text || fallbackMessage || "").slice(0, 220);
+    if (text.trim()) {
+      try {
+        payload = JSON.parse(text);
+      } catch (jsonError) {
+        throw new Error(`${fallbackMessage || "远端项目仓库 API 返回失败。"} 远端返回的不是 JSON。`);
+      }
+    } else {
+      throw new Error(`${fallbackMessage || "远端项目仓库 API 返回失败。"} 远端没有返回 JSON。`);
+    }
+    const statusText = response.status ? `HTTP ${response.status}` : "";
+    const remoteMessage = String(payload?.message || payload?.error || fallbackMessage || "").slice(0, 220);
+    const message = [statusText, remoteMessage].filter(Boolean).join("：");
     if (!response.ok || payload?.ok === false) {
       throw new Error(message || fallbackMessage || "远端项目仓库 API 返回失败。");
     }
-    return payload && typeof payload === "object" ? payload : { ok: true, message };
+    return payload;
+  }
+
+  function formatProjectRepositoryRemoteError(action, error) {
+    const raw = String(error?.message || "未知错误").trim();
+    const normalized = raw.toLowerCase();
+    const isNetworkError = error instanceof TypeError ||
+      normalized.includes("failed to fetch") ||
+      normalized.includes("networkerror") ||
+      normalized.includes("load failed") ||
+      normalized.includes("network request failed");
+    const reason = isNetworkError ? "网络请求异常" : raw;
+    return `远端项目仓库${action}失败：${reason}。`;
   }
 
   function persistProjectRepositoryRemoteError(message) {

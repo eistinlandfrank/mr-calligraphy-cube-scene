@@ -98,6 +98,8 @@ Authorization: Bearer <token>
 
 ## 5. 失败响应
 
+失败响应必须是 JSON。前端会把 HTTP 非 2xx、`ok:false`、空响应和非 JSON 响应都视为失败，并把错误写入 `mr-calligraphy-project-repository-remote-v1.lastError`；失败不会清空本机项目档案、已保存版本列表或回执列表。
+
 失败响应建议返回：
 
 ```json
@@ -118,6 +120,8 @@ Authorization: Bearer <token>
 | `405` | 方法不支持 |
 | `422` | 项目仓库包结构或摘要校验失败 |
 | `500` | 服务端内部错误 |
+
+如果 endpoint 返回 200 但 body 不是 JSON，前端会显示“远端返回的不是 JSON”；如果网络中断，会显示“网络请求异常”。这两个状态都不会被当作远端可用。
 
 ## 6. 本机 mock 服务
 
@@ -169,4 +173,4 @@ npm run test:e2e -- --grep "main admin publishes"
 7. 连续推送两次仓库包后，“远端版本”应出现两个版本。
 8. 选择旧版本并点击“拉取预览”，应看到旧版本远端包进入项目档案导入预览，仍需用户确认恢复范围。
 
-当前 E2E 会断言 PUT body 是 `mr-calligraphy-project-repository-package-v1`，包含 `archive`、`projectSchema`、`repository` 和 64 位 `packageDigest`，并确认 Bearer token、远端回执、回执审计 HTML 下载、版本列表和带 `packageId` 的 GET 历史版本拉取预览会写入本机状态。
+当前 E2E 会断言 PUT body 是 `mr-calligraphy-project-repository-package-v1`，包含 `archive`、`projectSchema`、`repository` 和 64 位 `packageDigest`，并确认 Bearer token、远端回执、回执审计 HTML 下载、版本列表和带 `packageId` 的 GET 历史版本拉取预览会写入本机状态。另有失败用例覆盖 401、非 JSON、无项目包、PUT 422 和网络中断，确认错误写入 `lastError` 且本机项目数据不被清空。

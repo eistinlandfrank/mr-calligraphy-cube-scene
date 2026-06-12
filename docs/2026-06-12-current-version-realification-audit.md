@@ -87,7 +87,7 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化；计划仓库和报告仓库都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化；计划仓库、报告仓库和项目仓库都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
 
 真实化方向：
 
@@ -279,6 +279,7 @@ npm run test:e2e
 - 追加学习计划日历提醒导出记录：`MRAppState.getPlanCalendarExport()` 会从真实计划项生成 `.ics`，前台“导出日历”可下载包含 `VCALENDAR`、`VEVENT` 和 `VALARM` 的文件；数据层和 E2E 已验证结构与下载内容。
 - 追加计划仓库回执审计记录：远端计划 API 返回的 `receipt/latestReceipt` 会写入 `lastReceipt` 和最近 12 条 `receipts`，前台计划远端同步区可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证摘要、方向、endpoint 和导出文件内容。
 - 追加项目仓库回执审计记录：远端项目仓库 API 返回的 `receipt/latestReceipt` 会写入 `mr-calligraphy-project-repository-remote-v1.receipts`，主后台远端项目仓库面板可查看回执摘要并导出 HTML 审计页；E2E 已验证 packageId、sourcePackageId、receiptDigest、方向和下载文件内容。
+- 追加项目仓库远端失败反馈记录：主后台项目仓库远端 adapter 会拒绝非 JSON 响应，HTTP 错误、无项目包和网络中断会写入 `lastError`；E2E 已验证 401、非 JSON、无项目包、PUT 422、网络中断和失败后本机布局保留。
 
 已知限制：
 

@@ -1288,3 +1288,38 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增项目仓库回执审计导出`
+
+## 41. 2026-06-12 新增项目仓库远端失败反馈
+
+本次把主后台项目仓库远端 adapter 的坏响应处理补成真实失败路径：坏 endpoint 不再看起来像检查通过。
+
+完成内容：
+
+- `parseProjectRepositoryResponse()` 严格要求 JSON 响应。
+- 200 但返回 HTML / 纯文本时显示“远端返回的不是 JSON”。
+- HTTP 非 2xx 与 `ok:false` 会把 `HTTP <status>` 写入 `lastError`。
+- 网络中断统一显示“网络请求异常”。
+- E2E 覆盖 401、非 JSON、无项目包、PUT 422 和网络中断，并确认本机项目布局不会被失败远端清空。
+
+真实化说明：
+
+- 数据来源：真实 `fetch` 响应和本机项目布局。
+- 写入状态：`mr-calligraphy-project-repository-remote-v1.lastError`。
+- 成功反馈：合法 JSON 成功路径不变。
+- 失败反馈：后台状态条显示具体错误。
+- 刷新后复现方式：错误状态随本机远端配置状态持久化。
+
+仍待补：
+
+- 当前是前端错误反馈，不是生产服务端监控、账号级告警或集中审计。
+
+验收：
+
+- `node --check project-archive.js && node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `npm run test:e2e -- --grep "main admin project repository keeps local data"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库远端失败反馈`
