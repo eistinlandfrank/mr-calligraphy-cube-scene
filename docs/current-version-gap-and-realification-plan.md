@@ -57,7 +57,7 @@ node scripts/control-inventory.js
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和本机作品记录 | 作品只在当前浏览器可见 | 增加公开作品集适配、跨设备作品库和课堂评阅入口 |
 | 生成视频 | 能用真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和分享链路 | UI 写明 WebM；后续加格式转换、封面图和异步导出队列 |
-| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；PDF 仍缺服务端签名验真、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、服务端签名回执、服务端 PDF 渲染和导出验收 |
+| 导出报告 | 能生成 HTML 报告、站内报告详情、原生 PDF 报告、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、报告对比、多报告趋势、本机教师批注、本机验真摘要、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告冲突审计、字段级合并和远端副本另存 | 本机 JSON 包只是手动备份/迁移，报告仓库 adapter 只是用户配置 endpoint 的真实 GET/PUT；当前签名回执是 mock/HMAC 开发验收，不是生产证书签名、不可篡改审计和云端长期报告产品 | 继续增加账号化 ReportRepository、教师身份审计、生产证书签名、服务端 PDF 渲染和导出验收 |
 | 学习档案 | 有筛选、趋势、详情、回收站、导出、直达链接、远端 API 推送/拉取、分页 `nextPageUrl` 自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务 | 还没有账号登录、托管档案仓库、生产级分页查询、服务端教师批注审计和长期归档 | 继续增加账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 | 分享成果 | 能导出离线 HTML 分享页；已新增同浏览器内可访问的本机 `?share=...` 链接、复制/访问计数和撤销记录 | 没有微信、社群、课堂、公网托管或跨设备公开链接 | 离线导出按钮保持 `real-export`，本机分享服务标记 `real-local`，不能写成“已发布到社交平台”；后续加生产公开链接服务 |
 
@@ -228,7 +228,7 @@ node scripts/control-inventory.js
 | P1 | 任务驱动学习路径 | 10 步学习路径需要真实进度和真实下一步 | 第一版已完成：任务依赖、完成规则、锁定状态、选择拦截、`LearningPathService`、路径完成证据和测试 |
 | P1 | 后台权限风险提示 | 当前后台可直接编辑 | 第一版已完成：主后台和写实后台风险提示、本机确认状态、烟测标记 |
 | P1 | 统一项目仓库和远端 adapter | 主后台和写实后台长期分叉，用户难判断草稿、发布、资产和远端保存是否齐 | 第一版已完成：`ProjectRepository` 状态、`project-scene-repository-v1` 统一视图、主后台仓库状态面板、远端项目仓库 API adapter、版本历史拉取预览、API 合同、mock 服务、E2E 和项目 Schema 检查 |
-| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、服务端签名验真、不可篡改审计和生产长期报告仓库 | 账号化 ReportRepository、教师端身份与服务端审计 |
+| P2 | 报告 PDF/云端适配 | 原生 PDF、本机教师批注、本机验真摘要、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、同 ID 冲突审计和本机字段级合并已完成，但仍缺账号化教师端、生产证书签名验真、不可篡改审计和生产长期报告仓库 | 账号化 ReportRepository、教师端身份与服务端审计 |
 | P2 | 项目档案 merge 和冲突解决 | 字段级 merge、模型冲突处理和导入影响报告已有第一版，但还缺多人协作级冲突审计 | 冲突审计历史、远端资产完整性校验、多人合并策略 |
 | P2 | 后台远端发布生产化 | 远端发布 API adapter、发布包 manifest/digest、发布前预检、审核流、发布锁、服务端锁预检、资产清单哈希、服务端合同文档和 mock server 已完成第一版，但仍缺服务端账号权限、服务端资产签名和不可篡改审计 | 服务端审批合同强化、服务端资产签名、账号权限和审计签名 |
 | P3 | Playwright 环境和深层用例 | 需要证明真实交互可用 | 可运行 E2E、canvas 非空检查 |
@@ -1752,3 +1752,38 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增学习报告PDF能力雷达图`
+
+### 2026-06-12：新增报告仓库签名回执
+
+完成内容：
+
+- `scripts/report-repository-mock-server.js` 的报告仓库 receipt 新增 `signatureAlgorithm`、`signingKeyId`、`signedFields` 和 64 位 `signature`。
+- mock 服务使用 `HMAC-SHA256` 为 receipt 核心字段生成签名，支持 `REPORT_REPOSITORY_MOCK_SIGNING_SECRET` 和 `REPORT_REPOSITORY_MOCK_SIGNING_KEY_ID` 覆盖本机签名配置。
+- `MRAppState` 新增报告仓库签名回执规范化，只有 kind、摘要和签名字段完整时才保存到 `reportRepository.lastSignedReceipt`。
+- 远端检查、推送和拉取会读取 `receipt/latestReceipt`，并在报告仓库摘要中提示最近签名回执。
+- 学习状态检查和 Playwright 浏览器用例都覆盖签名回执保存与持久化。
+
+真实化说明：
+
+- 数据来源：远端报告仓库 API 返回的 receipt。
+- 写入状态：最近签名回执写入 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`；本机 JSON 导出/导入会清空旧远端签名，避免状态混淆。
+- 成功反馈：报告仓库摘要显示签名算法、key id、签名前 12 位和仓库摘要前 12 位。
+- 失败反馈：缺少 signature、digest 或 receipt kind 不匹配时不会伪造成签名回执。
+- 刷新后复现方式：签名回执随本机学习状态持久化，刷新后仍可在报告仓库摘要和状态对象中读取。
+
+仍待补：
+
+- 当前是本机 mock/HMAC 回执，不是账号化教师端、生产证书签名、不可篡改日志或云端长期报告仓库。
+- 前端目前保存服务端签名回执，但不持有生产公钥，也不做完整证书链验签。
+
+验收：
+
+- `node --check app-state.js && node --check scripts/report-repository-mock-server.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库签名回执`

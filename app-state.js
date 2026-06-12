@@ -20,7 +20,8 @@
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
   const HISTORY_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_REPOSITORY_KIND = "mr-calligraphy-report-repository-v1";
-  const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，但仍不包含账号化教师端、服务端签章、不可篡改审计或云端 PDF 渲染。";
+  const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
+  const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
@@ -783,8 +784,48 @@
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictReports,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId) : null,
+      lastSignedReceipt: normalizeReportRepositorySignedReceipt(source.lastSignedReceipt || source.signedReceipt || source.receipt || null),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
+  }
+
+  function normalizeReportRepositorySignedReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const receiptKind = String(record.receiptKind || "").trim();
+    const signatureAlgorithm = String(record.signatureAlgorithm || "").trim().slice(0, 40);
+    const signingKeyId = String(record.signingKeyId || "").trim().slice(0, 80);
+    const repositoryDigest = normalizeReportRepositoryHex(record.repositoryDigest);
+    const receiptDigest = normalizeReportRepositoryHex(record.receiptDigest);
+    const signature = normalizeReportRepositoryHex(record.signature);
+    if (receiptKind !== REPORT_REPOSITORY_RECEIPT_KIND || !signatureAlgorithm || !signingKeyId || !repositoryDigest || !receiptDigest || !signature) {
+      return null;
+    }
+    const signedFields = Array.isArray(record.signedFields)
+      ? record.signedFields.map((field) => String(field || "").trim()).filter(Boolean).slice(0, 16)
+      : [];
+    return {
+      receiptKind,
+      remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
+      packageId: String(record.packageId || "").trim().slice(0, 120),
+      sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      repositoryDigest,
+      acceptedAt: normalizePlanDate(record.acceptedAt),
+      reportCount: normalizeInteger(record.reportCount, 0, 0, 99999),
+      warningCount: normalizeInteger(record.warningCount, 0, 0, 99999),
+      warnings: Array.isArray(record.warnings)
+        ? record.warnings.map((warning) => String(warning || "").slice(0, 160)).filter(Boolean).slice(0, 8)
+        : [],
+      receiptDigest,
+      signatureAlgorithm,
+      signingKeyId,
+      signedFields,
+      signature
+    };
+  }
+
+  function normalizeReportRepositoryHex(value) {
+    const hex = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
   }
 
   function normalizeReportRepositoryConflict(record) {
@@ -4403,6 +4444,10 @@
       tone = "warning";
       message = repository.lastError;
     }
+    const signedReceiptSummary = getReportRepositorySignedReceiptSummary(repository.lastSignedReceipt);
+    if (signedReceiptSummary && !repository.lastError) {
+      message = `${message} ${signedReceiptSummary}`;
+    }
 
     return {
       ok: true,
@@ -4430,8 +4475,19 @@
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictReports: clone(repository.lastConflictReports),
       lastPackageId: repository.lastPackageId,
+      lastSignedReceipt: repository.lastSignedReceipt ? clone(repository.lastSignedReceipt) : null,
+      signedReceiptStatus: signedReceiptSummary,
       lastError: repository.lastError
     };
+  }
+
+  function getReportRepositorySignedReceiptSummary(receipt) {
+    const normalized = normalizeReportRepositorySignedReceipt(receipt);
+    if (!normalized) return "";
+    const signatureShort = normalized.signature.slice(0, 12);
+    const digestShort = normalized.repositoryDigest.slice(0, 12);
+    const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
+    return `已收到远端签名回执：${normalized.signatureAlgorithm} / ${normalized.signingKeyId}，签名 ${signatureShort}，仓库摘要 ${digestShort}${acceptedAt}。`;
   }
 
   function getReportRepositoryRemoteConfig() {
@@ -4501,6 +4557,7 @@
       lastCheckedAt: now,
       lastExportedReportCount: result.package.reports.length,
       lastPackageId: result.package.packageId,
+      lastSignedReceipt: null,
       lastRemoteStatus: "",
       lastError: ""
     });
@@ -4659,6 +4716,7 @@
       lastSkippedConflictCount: merged.skippedConflictCount,
       lastConflictReports: merged.conflicts,
       lastPackageId: parsed.package.packageId || null,
+      lastSignedReceipt: null,
       lastRemoteStatus: "",
       lastError: merged.skippedConflictCount
         ? `有 ${merged.skippedConflictCount} 份同 ID 差异报告已跳过，已保存冲突审计，未覆盖本机报告。`
@@ -4695,6 +4753,7 @@
         remoteEndpoint: "",
         remoteToken: "",
         lastCheckedAt: new Date().toISOString(),
+        lastSignedReceipt: null,
         lastRemoteStatus: "",
         lastError: ""
       });
@@ -4719,6 +4778,7 @@
       mode: "remote-api",
       remoteEndpoint: validation.endpoint,
       remoteToken,
+      lastSignedReceipt: validation.endpoint === repository.remoteEndpoint ? repository.lastSignedReceipt : null,
       lastCheckedAt: new Date().toISOString(),
       lastRemoteStatus: "远端报告 API 已配置，尚未检查服务可用性。",
       lastError: ""
@@ -4758,10 +4818,12 @@
         ? payload.repository
         : payload;
     const parsed = parseReportRepositoryPackage(candidate);
+    const signedReceipt = normalizeReportRepositorySignedReceipt(payload.receipt || payload.latestReceipt || payload.signedReceipt || null);
     if (parsed.ok) {
       return {
         ok: true,
         package: parsed.package,
+        signedReceipt,
         message: payload.message || `远端报告仓库包含 ${parsed.package.reports.length} 份报告。`
       };
     }
@@ -4769,6 +4831,7 @@
       return {
         ok: true,
         package: null,
+        signedReceipt,
         message: payload.message || "远端报告 API 检查通过，但没有返回报告包。"
       };
     }
@@ -4826,6 +4889,7 @@
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
       const reportCount = parsed.package?.reports?.length || 0;
+      const signedReceipt = parsed.signedReceipt || repository.lastSignedReceipt || null;
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
@@ -4834,6 +4898,7 @@
         lastRemoteDirection: "check",
         lastRemoteReportCount: reportCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastSignedReceipt: signedReceipt,
         lastRemoteStatus: parsed.message,
         lastError: ""
       });
@@ -4843,6 +4908,7 @@
         ok: true,
         status: getReportRepositoryStatus(),
         package: parsed.package || null,
+        signedReceipt: signedReceipt ? clone(signedReceipt) : null,
         message: `${parsed.message} ${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -4893,6 +4959,10 @@
         return { ok: false, status: getReportRepositoryStatus(), message: parsed.message };
       }
 
+      const signedReceipt = parsed.signedReceipt || null;
+      const remoteStatus = signedReceipt
+        ? `已推送 ${reportCount} 份报告到远端 API，并收到签名回执 ${signedReceipt.signature.slice(0, 12)}。`
+        : `已推送 ${reportCount} 份报告到远端 API，远端未返回签名回执。`;
       state.reportRepository = normalizeReportRepository({
         ...repository,
         mode: "remote-api",
@@ -4903,9 +4973,10 @@
         lastExportedAt: now,
         lastExportedReportCount: reportCount,
         lastPackageId: acceptedPackageId,
+        lastSignedReceipt: signedReceipt,
         lastSkippedConflictCount: 0,
         lastConflictReports: [],
-        lastRemoteStatus: `已推送 ${reportCount} 份报告到远端 API。`,
+        lastRemoteStatus: remoteStatus,
         lastError: ""
       });
       addEvent("report-repository-remote-push", `推送报告到远端 API：${reportCount} 份报告`);
@@ -4915,7 +4986,8 @@
         status: getReportRepositoryStatus(),
         packageId: acceptedPackageId,
         pushedReportCount: reportCount,
-        message: `已推送 ${reportCount} 份报告到远端 API。${REPORT_REPOSITORY_BOUNDARY}`
+        signedReceipt: signedReceipt ? clone(signedReceipt) : null,
+        message: `${remoteStatus} ${REPORT_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatReportRepositoryNetworkError("推送", error);
@@ -4954,6 +5026,7 @@
 
       const imported = importReportRepositoryPackage(parsed.package);
       const now = new Date().toISOString();
+      const signedReceipt = parsed.signedReceipt || repository.lastSignedReceipt || null;
       state.reportRepository = normalizeReportRepository({
         ...state.reportRepository,
         mode: "remote-api",
@@ -4966,6 +5039,7 @@
         lastImportedAt: now,
         lastImportedReportCount: imported.importedCount || 0,
         lastPackageId: parsed.package.packageId || repository.lastPackageId || null,
+        lastSignedReceipt: signedReceipt,
         lastSkippedConflictCount: imported.skippedConflictCount || 0,
         lastRemoteStatus: `已从远端 API 拉取 ${parsed.package.reports.length} 份报告，新增 ${imported.importedCount || 0}，跳过冲突 ${imported.skippedConflictCount || 0}。`,
         lastError: imported.skippedConflictCount
@@ -4980,6 +5054,7 @@
         importedCount: imported.importedCount || 0,
         skippedConflictCount: imported.skippedConflictCount || 0,
         pulledReportCount: parsed.package.reports.length,
+        signedReceipt: signedReceipt ? clone(signedReceipt) : null,
         message: imported.skippedConflictCount
           ? `已从远端 API 拉取报告：新增 ${imported.importedCount || 0}，跳过 ${imported.skippedConflictCount} 份同 ID 差异报告，并保存冲突审计。${REPORT_REPOSITORY_BOUNDARY}`
           : `已从远端 API 拉取报告：新增 ${imported.importedCount || 0} 份报告。${REPORT_REPOSITORY_BOUNDARY}`

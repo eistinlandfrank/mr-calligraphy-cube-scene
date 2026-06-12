@@ -40,6 +40,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const reportRequests = [];
   let remoteHistoryPackage = null;
   let remoteReportPackage = null;
+  let latestReportReceipt = null;
 
   await page.route(`**${historyEndpointPath}`, async (route) => {
     const request = route.request();
@@ -98,6 +99,22 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
         packageId: "e2e-report-package",
         acceptedAt: new Date().toISOString()
       };
+      latestReportReceipt = {
+        receiptKind: "mr-calligraphy-report-repository-receipt-v1",
+        remoteVersion: "e2e-report-v1",
+        packageId: remoteReportPackage.packageId,
+        sourcePackageId: body.packageId,
+        repositoryDigest: "a".repeat(64),
+        acceptedAt: remoteReportPackage.acceptedAt,
+        reportCount: body.summary.total,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: "b".repeat(64),
+        signatureAlgorithm: "HMAC-SHA256",
+        signingKeyId: "e2e-report-signing-key-v1",
+        signedFields: ["receiptKind", "packageId", "sourcePackageId", "repositoryDigest", "acceptedAt", "reportCount", "receiptDigest"],
+        signature: "c".repeat(64)
+      };
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -106,7 +123,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
           message: `远端报告 E2E 已接收 ${body.summary.total} 份报告。`,
           remoteVersion: "e2e-report-v1",
           packageId: remoteReportPackage.packageId,
-          package: remoteReportPackage
+          package: remoteReportPackage,
+          receipt: latestReportReceipt
         })
       });
       return;
@@ -120,7 +138,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
           ? `远端报告 E2E 可读，当前包含 ${remoteReportPackage.summary.total} 份报告。`
           : "远端报告 E2E 可访问，当前尚未接收报告包。",
         remoteVersion: "e2e-report-v1",
-        package: remoteReportPackage
+        package: remoteReportPackage,
+        latestReceipt: latestReportReceipt
       })
     });
   });
@@ -283,6 +302,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.locator("#reportRepositoryPushButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已推送 1 份报告");
+  await expect(page.locator("#reportRepositorySummary")).toContainText("签名回执");
 
   const reportPutRequest = reportRequests.find((item) => item.method === "PUT");
   expect(reportPutRequest.authorization).toBe("Bearer report-token");
@@ -295,10 +315,15 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastRemoteDirection).toBe("push");
   expect(learningState.reportRepository.lastPackageId).toBe("e2e-report-package");
+  expect(learningState.reportRepository.lastSignedReceipt.signatureAlgorithm).toBe("HMAC-SHA256");
+  expect(learningState.reportRepository.lastSignedReceipt.signingKeyId).toBe("e2e-report-signing-key-v1");
+  expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
 
   await page.locator("#reportRepositoryPullButton").click();
   await expect(page.locator("#reportRepositorySummary")).toContainText("已从远端 API 拉取 1 份报告");
   expect(reportRequests.some((item) => item.method === "GET" && item.authorization === "Bearer report-token")).toBe(true);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportRepository.lastSignedReceipt.signature).toBe("c".repeat(64));
 
   remoteReportPackage = {
     ...remoteReportPackage,

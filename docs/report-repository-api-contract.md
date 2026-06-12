@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-报告仓库同步包接收浏览器本机生成的 `ReportRecord` 和本机 SHA-256 验真摘要。本机 JSON 导出/导入用于同浏览器或跨设备手动备份恢复；远端报告仓库 API 用来验证“报告可被远端保存和拉取”的真实 HTTP 闭环。它们都不是账号化教师端、服务端签名、不可篡改审计、服务端 PDF 渲染或云端长期报告产品本身。
+报告仓库同步包接收浏览器本机生成的 `ReportRecord` 和本机 SHA-256 验真摘要。本机 JSON 导出/导入用于同浏览器或跨设备手动备份恢复；远端报告仓库 API 用来验证“报告可被远端保存和拉取”的真实 HTTP 闭环，并保存远端返回的签名回执。当前 mock 服务的签名回执是 HMAC-SHA256 开发验收能力，不是账号化教师端、生产证书签名、不可篡改审计、服务端 PDF 渲染或云端长期报告产品本身。
 
 生产服务端必须重新校验报告包结构，并在账号、教师身份、权限、服务端时间、签名证书和长期审计上做服务端隔离；前端本机校验只能作为提交前保护。
 
@@ -86,12 +86,29 @@ Authorization: Bearer <token>
     "repositoryDigest": "64位sha256",
     "acceptedAt": "2026-06-12T00:00:00.000Z",
     "reportCount": 3,
-    "receiptDigest": "64位sha256"
+    "warningCount": 0,
+    "warnings": [],
+    "receiptDigest": "64位sha256",
+    "signatureAlgorithm": "HMAC-SHA256",
+    "signingKeyId": "report-repository-mock-hmac-v1",
+    "signedFields": [
+      "receiptKind",
+      "remoteVersion",
+      "packageId",
+      "sourcePackageId",
+      "repositoryDigest",
+      "acceptedAt",
+      "reportCount",
+      "warningCount",
+      "warnings",
+      "receiptDigest"
+    ],
+    "signature": "64位hmac-sha256"
   }
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt`，并把远端报告数量、最近 packageId、同步方向、跳过冲突数量和远端状态写回 `mr-calligraphy-learning-state-v1.reportRepository`。
+前端 adapter 当前会读取 `message`、`package.packageId`、`package.summary`、`package.reports`、`package.verifications` 和可选 `receipt/latestReceipt`。如果回执包含 `receiptKind`、`repositoryDigest`、`receiptDigest`、`signatureAlgorithm`、`signingKeyId` 和 64 位 `signature`，前端会把它规范化保存到 `mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`，并在报告仓库摘要里提示最近签名回执。
 
 ## 6. 同 ID 差异策略
 
@@ -152,7 +169,8 @@ mock 服务会：
 
 - 校验报告包 `kind`、`version`、`summary`、`reports` 和 `verifications`。
 - 保存最近一次报告仓库包。
-- 返回 `mr-calligraphy-report-repository-receipt-v1` 回执。
+- 返回 `mr-calligraphy-report-repository-receipt-v1` 回执，并用 `HMAC-SHA256` 生成 `signature`。
+- 可通过 `REPORT_REPOSITORY_MOCK_SIGNING_SECRET` 和 `REPORT_REPOSITORY_MOCK_SIGNING_KEY_ID` 替换本机签名 secret 和 key id。
 - 校验 Bearer token。
 - 支持 `GET` 拉取最近报告包。
 
@@ -171,4 +189,5 @@ npm run test:e2e -- --grep "front practice saves real strokes"
 - 站内报告面板“导入同步包”会通过文件选择器导入 JSON 包，并写入本机 `reports` 与 `reportRepository` 状态。
 - `configureReportRepositoryRemote()` 持久化 endpoint/token。
 - 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header。
+- 推送后 mock server 返回签名回执，前端保存到 `lastSignedReceipt`；再次 GET 检查或拉取时会保留最近签名回执。
 - 拉取同 ID 差异报告时不静默覆盖本机报告，而是生成本机冲突审计并支持字段级合并或远端副本另存。

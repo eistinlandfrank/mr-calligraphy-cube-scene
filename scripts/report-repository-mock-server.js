@@ -5,9 +5,28 @@ const http = require("http");
 
 const PACKAGE_KIND = "mr-calligraphy-report-repository-v1";
 const VERSION = 1;
+const REMOTE_VERSION = "mr-calligraphy-report-repository-mock-v1";
+const RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
+const SIGNATURE_ALGORITHM = "HMAC-SHA256";
+const DEFAULT_SIGNING_KEY_ID = "report-repository-mock-hmac-v1";
+const DEFAULT_SIGNING_SECRET = "mr-calligraphy-report-repository-mock-signing-secret";
+const RECEIPT_SIGNED_FIELDS = [
+  "receiptKind",
+  "remoteVersion",
+  "packageId",
+  "sourcePackageId",
+  "repositoryDigest",
+  "acceptedAt",
+  "reportCount",
+  "warningCount",
+  "warnings",
+  "receiptDigest"
+];
 
 function createReportRepositoryMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.REPORT_REPOSITORY_MOCK_TOKEN || "").trim();
+  const signingSecret = String(options.signingSecret || process.env.REPORT_REPOSITORY_MOCK_SIGNING_SECRET || DEFAULT_SIGNING_SECRET);
+  const signingKeyId = String(options.signingKeyId || process.env.REPORT_REPOSITORY_MOCK_SIGNING_KEY_ID || DEFAULT_SIGNING_KEY_ID).trim() || DEFAULT_SIGNING_KEY_ID;
   const state = {
     startedAt: new Date().toISOString(),
     package: null,
@@ -31,7 +50,7 @@ function createReportRepositoryMockServer(options = {}) {
         return sendJson(response, 401, {
           ok: false,
           message: auth.message,
-          remoteVersion: "mr-calligraphy-report-repository-mock-v1"
+          remoteVersion: REMOTE_VERSION
         });
       }
 
@@ -42,7 +61,7 @@ function createReportRepositoryMockServer(options = {}) {
           message: state.package
             ? `远端报告仓库 mock 可读，当前包含 ${reportCount} 份报告。`
             : "远端报告仓库 mock 服务可访问，当前尚未接收报告包。",
-          remoteVersion: "mr-calligraphy-report-repository-mock-v1",
+          remoteVersion: REMOTE_VERSION,
           contract: createContract(),
           package: state.package,
           receiptCount: state.receipts.length,
@@ -59,11 +78,11 @@ function createReportRepositoryMockServer(options = {}) {
             message: validation.message,
             errors: validation.errors,
             warnings: validation.warnings,
-            remoteVersion: "mr-calligraphy-report-repository-mock-v1"
+            remoteVersion: REMOTE_VERSION
           });
         }
 
-        const receipt = createReceipt(payload, validation);
+        const receipt = createReceipt(payload, validation, { signingSecret, signingKeyId });
         state.package = {
           ...clone(payload),
           packageId: receipt.packageId,
@@ -217,7 +236,18 @@ function createContract() {
     packageKind: PACKAGE_KIND,
     requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "storageKey", "summary", "reports", "verifications"],
     requiredReportFields: ["id", "createdAt", "averageScore"],
-    receiptFields: ["ok", "message", "packageId", "repositoryDigest", "remoteVersion", "receipt"]
+    receiptFields: [
+      "ok",
+      "message",
+      "packageId",
+      "repositoryDigest",
+      "remoteVersion",
+      "receipt",
+      "receipt.signatureAlgorithm",
+      "receipt.signingKeyId",
+      "receipt.signedFields",
+      "receipt.signature"
+    ]
   };
 }
 
@@ -300,7 +330,7 @@ function validateVerificationList(value, reports, errors, warnings) {
   });
 }
 
-function createReceipt(payload, validation) {
+function createReceipt(payload, validation, signatureOptions = {}) {
   const repositoryDigest = sha256StableJson({
     kind: payload.kind,
     version: payload.version,
@@ -311,9 +341,9 @@ function createReceipt(payload, validation) {
   });
   const acceptedAt = new Date().toISOString();
   const reportCount = getReportCount(payload);
-  return {
-    receiptKind: "mr-calligraphy-report-repository-receipt-v1",
-    remoteVersion: "mr-calligraphy-report-repository-mock-v1",
+  const receipt = {
+    receiptKind: RECEIPT_KIND,
+    remoteVersion: REMOTE_VERSION,
     packageId: `mock-report-repository-${repositoryDigest.slice(0, 12)}`,
     sourcePackageId: String(payload.packageId || ""),
     repositoryDigest,
@@ -327,6 +357,32 @@ function createReceipt(payload, validation) {
       acceptedAt
     })
   };
+  const signedFields = RECEIPT_SIGNED_FIELDS.slice();
+  const signaturePayload = {
+    signedFields,
+    values: createReceiptSignaturePayload(receipt, signedFields)
+  };
+  return {
+    ...receipt,
+    signatureAlgorithm: SIGNATURE_ALGORITHM,
+    signingKeyId: signatureOptions.signingKeyId || DEFAULT_SIGNING_KEY_ID,
+    signedFields,
+    signature: signReceiptPayload(signaturePayload, signatureOptions.signingSecret || DEFAULT_SIGNING_SECRET)
+  };
+}
+
+function createReceiptSignaturePayload(receipt, signedFields) {
+  return signedFields.reduce((payload, field) => {
+    payload[field] = receipt[field];
+    return payload;
+  }, {});
+}
+
+function signReceiptPayload(payload, signingSecret) {
+  return crypto
+    .createHmac("sha256", signingSecret)
+    .update(stableStringify(payload))
+    .digest("hex");
 }
 
 function getReportCount(payload) {

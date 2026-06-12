@@ -19,7 +19,7 @@
 
 ## 2. 我对当前版本的判断
 
-这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
+这一版已经不是早期纯静态 Demo。前台已有本机学习状态、书写画布、作品保存、学习档案、档案远端 API adapter、报告、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告冲突审计、PDF/HTML/WebM/JSON 导出、学习计划、计划提醒边界、远端计划 API adapter、服务端合同和本机 mock 服务；主后台和写实后台已有对象编辑、模型导入、保存历史、本机发布、回滚、项目档案、远端发布包预检、审核锁和资产清单。
 
 但它还不是一个真实可交付产品。最大问题不是“按钮没有绑定”，而是“按钮看起来像生产功能，实际只是本机原型能力”。用户看到 AI、评分、分享、同步、发布、后台这些词时，会自然期待账号、后端、权限、云端数据和端到端稳定性；当前很多地方还只做到本机状态或文件导出。
 
@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名和服务端 PDF 渲染验收 |
+| 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，签名回执还是 mock/HMAC 开发验收，还没有账号教师端、生产证书签名、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、生产证书验真和服务端 PDF 渲染验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -144,7 +144,7 @@ node scripts/control-inventory.js --check
 目标：评分不再像固定模板，报告能被复盘和验证。
 
 - 评分结果显示证据点、覆盖范围、重心、停顿、压感和维度理由；本机 `ScoreService` 已记录并展示最近评分证据摘要。
-- 原生 PDF 已补能力条形图、能力雷达图、分数趋势图、最近作品 JPEG 截图嵌入和本机验真摘要；后续继续增强服务端验真回执、报告仓库远端 API adapter 的生产化和本机冲突审计。
+- 原生 PDF 已补能力条形图、能力雷达图、分数趋势图、最近作品 JPEG 截图嵌入和本机验真摘要；报告仓库已补 mock/HMAC 签名回执；后续继续增强生产证书验真、报告仓库远端 API adapter 的账号化和服务端冲突审计。
 - 报告 schema 固定版本，继续支持账号化服务端保存、教师批注和签名审计。
 - 分享页和报告页必须带本机/云端来源说明。
 
@@ -1109,3 +1109,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习报告PDF能力雷达图`
+
+## 36. 2026-06-12 新增报告仓库签名回执
+
+本次把报告仓库远端 adapter 从“只保存 packageId 和 receipt 摘要”推进到“保存可追踪的远端签名回执”。
+
+完成内容：
+
+- 报告仓库 mock server 生成 `mr-calligraphy-report-repository-receipt-v1` 时，新增 `HMAC-SHA256` 签名、签名 key id 和签名字段列表。
+- `MRAppState` 新增 `lastSignedReceipt` 状态，规范化保存远端 `receipt/latestReceipt`。
+- 远端推送成功后，报告仓库摘要会显示“签名回执”及签名/仓库摘要短码。
+- 远端 GET 检查和拉取会保留最近签名回执；本机 JSON 导出/导入会清掉旧远端签名。
+- 数据层和 Playwright 都验证签名回执会从远端响应写入本机学习状态。
+
+真实化说明：
+
+- 数据来源：远端报告仓库 API 响应。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportRepository.lastSignedReceipt`。
+- 成功反馈：报告仓库摘要出现签名算法、key id、签名短码和仓库摘要短码。
+- 失败反馈：缺少完整签名字段的 receipt 不会进入 `lastSignedReceipt`。
+- 刷新后复现方式：签名回执随本机学习状态持久化，刷新后仍可读取。
+
+仍待补：
+
+- 当前是本机 mock/HMAC 签名回执，不是生产证书、公钥验签、教师身份审计或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js && node --check scripts/report-repository-mock-server.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库签名回执`
