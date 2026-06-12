@@ -15,6 +15,8 @@
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，但仍不包含账号权限、教师端排课或后台推送。";
+  const PLAN_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-plan-repository-receipt-v1";
+  const PLAN_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_KIND = "mr-calligraphy-history-repository-v1";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品和报告记录；配置远端 API 后会通过 fetch 同步档案包并按 nextPageUrl 追取分页，但仍不包含账号权限、教师批注审计或公开作品墙。";
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
@@ -642,6 +644,10 @@
     const lastRemoteDirection = ["check", "push", "pull"].includes(source.lastRemoteDirection)
       ? source.lastRemoteDirection
       : "";
+    const receipts = normalizePlanRepositoryReceipts(source);
+    const lastReceipt = normalizePlanRepositoryReceipt(source.lastReceipt || source.latestReceipt || source.receipt || null)
+      || receipts[0]
+      || null;
     return {
       mode: ["local-json", "remote-api"].includes(source.mode) ? source.mode : "local-json",
       remoteEndpoint: typeof source.remoteEndpoint === "string" ? source.remoteEndpoint.trim() : "",
@@ -675,8 +681,104 @@
       lastSyncConflictPlans: Array.isArray(source.lastSyncConflictPlans)
         ? source.lastSyncConflictPlans.map(normalizePlan).filter(Boolean).slice(0, 12)
         : [],
+      lastReceipt,
+      receipts: appendPlanRepositoryReceipt({ receipts }, lastReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
+  }
+
+  function normalizePlanRepositoryReceipts(source = {}) {
+    const candidates = Array.isArray(source.receipts)
+      ? source.receipts
+      : Array.isArray(source.planReceipts)
+        ? source.planReceipts
+        : [];
+    const seen = new Set();
+    const receipts = [];
+    candidates
+      .map(normalizePlanRepositoryReceipt)
+      .filter(Boolean)
+      .forEach((receipt) => {
+        const key = getPlanRepositoryReceiptKey(receipt);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        receipts.push(receipt);
+      });
+    return receipts.slice(0, PLAN_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function normalizePlanRepositoryReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const receiptKind = String(record.receiptKind || "").trim();
+    const repositoryDigest = normalizePlanRepositoryHex(record.repositoryDigest);
+    const receiptDigest = normalizePlanRepositoryHex(record.receiptDigest);
+    if (receiptKind !== PLAN_REPOSITORY_RECEIPT_KIND || !repositoryDigest || !receiptDigest) {
+      return null;
+    }
+    const warnings = Array.isArray(record.warnings)
+      ? record.warnings.map((warning) => String(warning || "").slice(0, 160)).filter(Boolean).slice(0, 8)
+      : [];
+    return {
+      receiptKind,
+      id: String(record.id || `plan-receipt-${receiptDigest.slice(0, 16)}`).slice(0, 120),
+      remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
+      packageId: String(record.packageId || "").trim().slice(0, 120),
+      sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
+      endpoint: String(record.endpoint || "").trim().slice(0, 240),
+      receivedAt: normalizePlanDate(record.receivedAt),
+      repositoryDigest,
+      acceptedAt: normalizePlanDate(record.acceptedAt),
+      planCount: normalizeInteger(record.planCount, 0, 0, 99999),
+      warningCount: normalizeInteger(record.warningCount, warnings.length, 0, 99999),
+      warnings,
+      receiptDigest,
+      message: String(record.message || "").slice(0, 180)
+    };
+  }
+
+  function decoratePlanRepositoryReceipt(receipt, context = {}) {
+    const normalized = normalizePlanRepositoryReceipt({
+      ...receipt,
+      direction: context.direction || receipt?.direction,
+      endpoint: context.endpoint || receipt?.endpoint,
+      receivedAt: context.receivedAt || receipt?.receivedAt,
+      message: context.message || receipt?.message
+    });
+    return normalized;
+  }
+
+  function appendPlanRepositoryReceipt(repository, receipt) {
+    const normalized = normalizePlanRepositoryReceipt(receipt);
+    const existing = Array.isArray(repository?.receipts) ? repository.receipts : [];
+    if (!normalized) {
+      return existing
+        .map(normalizePlanRepositoryReceipt)
+        .filter(Boolean)
+        .slice(0, PLAN_REPOSITORY_MAX_RECEIPTS);
+    }
+    const seen = new Set([getPlanRepositoryReceiptKey(normalized)]);
+    const next = [normalized];
+    existing
+      .map(normalizePlanRepositoryReceipt)
+      .filter(Boolean)
+      .forEach((item) => {
+        const key = getPlanRepositoryReceiptKey(item);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        next.push(item);
+      });
+    return next.slice(0, PLAN_REPOSITORY_MAX_RECEIPTS);
+  }
+
+  function getPlanRepositoryReceiptKey(receipt) {
+    if (!receipt) return "";
+    return receipt.receiptDigest || `${receipt.repositoryDigest}:${receipt.packageId}:${receipt.sourcePackageId}:${receipt.acceptedAt}` || receipt.id || "";
+  }
+
+  function normalizePlanRepositoryHex(value) {
+    const hex = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
   }
 
   function normalizePlanRepositoryConflict(record) {
@@ -2440,6 +2542,10 @@
       tone = "warning";
       message = repository.lastError;
     }
+    const receiptSummary = getPlanRepositoryReceiptSummary(repository.lastReceipt);
+    if (receiptSummary && !repository.lastError) {
+      message = `${message} ${receiptSummary}`;
+    }
 
     return {
       ok: true,
@@ -2475,8 +2581,126 @@
       lastSyncConflictCount: repository.lastSyncConflictCount,
       lastSyncConflictPlanIds: [...repository.lastSyncConflictPlanIds],
       lastSyncConflicts: clone(repository.lastSyncConflicts),
+      lastReceipt: repository.lastReceipt ? clone(repository.lastReceipt) : null,
+      receiptCount: repository.receipts.length,
+      receipts: clone(repository.receipts),
+      receiptStatus: receiptSummary,
       lastError: repository.lastError
     };
+  }
+
+  function getPlanRepositoryReceiptSummary(receipt) {
+    const normalized = normalizePlanRepositoryReceipt(receipt);
+    if (!normalized) return "";
+    const digestShort = normalized.repositoryDigest.slice(0, 12);
+    const receiptShort = normalized.receiptDigest.slice(0, 12);
+    const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
+    return `已收到远端计划回执：仓库摘要 ${digestShort}，回执 ${receiptShort}${acceptedAt}。`;
+  }
+
+  function getPlanRepositoryReceiptAudit() {
+    const repository = normalizePlanRepository(state.planRepository);
+    const receipts = repository.receipts;
+    return {
+      ok: true,
+      kind: "mr-calligraphy-plan-repository-receipt-audit-v1",
+      total: receipts.length,
+      latestReceipt: receipts[0] || null,
+      receipts: clone(receipts),
+      boundary: PLAN_REPOSITORY_BOUNDARY,
+      message: receipts.length
+        ? `已保存 ${receipts.length} 条计划仓库回执，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        : "暂无计划仓库回执。"
+    };
+  }
+
+  function getPlanRepositoryReceiptAuditExport() {
+    const audit = getPlanRepositoryReceiptAudit();
+    if (!audit.total) {
+      return {
+        ok: false,
+        message: "暂无可导出的计划仓库回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-plan-repository-receipts-${exportedAt.slice(0, 10)}.html`,
+      html: renderPlanRepositoryReceiptAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.total} 条计划仓库回执审计导出。`
+    };
+  }
+
+  function downloadPlanRepositoryReceiptAudit() {
+    const result = getPlanRepositoryReceiptAuditExport();
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      receiptCount: result.audit.total,
+      message: result.message
+    };
+  }
+
+  function renderPlanRepositoryReceiptAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const warnings = Array.isArray(receipt.warnings) && receipt.warnings.length ? receipt.warnings.join("；") : "无";
+      return `
+        <section class="receipt">
+          <h2>${escapeHtml(receipt.packageId || receipt.sourcePackageId || "packageId 未知")}</h2>
+          <dl>
+            <dt>方向</dt><dd>${escapeHtml(formatPlanRepositoryReceiptDirection(receipt.direction))}</dd>
+            <dt>计划数量</dt><dd>${escapeHtml(receipt.planCount || 0)}</dd>
+            <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
+            <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
+            <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
+            <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
+            <dt>Received At</dt><dd>${escapeHtml(receipt.receivedAt || "未知")}</dd>
+            <dt>Message</dt><dd>${escapeHtml(receipt.message || "无")}</dd>
+            <dt>Warnings</dt><dd>${escapeHtml(warnings)}</dd>
+          </dl>
+          <pre>${escapeHtml(JSON.stringify(receipt, null, 2))}</pre>
+        </section>`;
+    }).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法计划仓库回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 12px; font-size: 17px; overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 6px; background: #1f2937; color: #f8fafc; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法计划仓库回执审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatPlanRepositoryReceiptDirection(direction) {
+    return {
+      check: "检查",
+      push: "推送",
+      pull: "拉取"
+    }[direction] || "远端回执";
   }
 
   function getPlanReminderServiceStatus(planId = null) {
@@ -7378,6 +7602,9 @@
       lastCheckedAt: now,
       lastExportedPlanCount: result.package.plans.length,
       lastPackageId: result.package.packageId,
+      lastReceipt: null,
+      receipts: [],
+      lastRemoteStatus: "",
       lastError: ""
     });
     addEvent("plan-repository-export", `导出计划同步包：${result.package.plans.length} 份计划`);
@@ -7434,6 +7661,9 @@
       lastCheckedAt: now,
       lastImportedPlanCount: incomingPlans.length,
       lastPackageId: parsed.package.packageId || null,
+      lastReceipt: null,
+      receipts: [],
+      lastRemoteStatus: "",
       lastError: ""
     });
     if (options.skipAutoSync !== true) {
@@ -7723,6 +7953,8 @@
         lastSyncConflicts: [],
         lastSyncConflictPlans: [],
         lastCheckedAt: new Date().toISOString(),
+        lastReceipt: null,
+        receipts: [],
         lastRemoteStatus: "",
         lastError: ""
       });
@@ -7751,6 +7983,8 @@
       remoteEndpoint: validation.endpoint,
       remoteToken,
       autoSyncEnabled: config.autoSyncEnabled === false ? false : true,
+      lastReceipt: validation.endpoint === repository.remoteEndpoint ? repository.lastReceipt : null,
+      receipts: validation.endpoint === repository.remoteEndpoint ? repository.receipts : [],
       lastCheckedAt: new Date().toISOString(),
       lastRemoteStatus: "远端计划 API 配置已保存，尚未检查服务可用性。",
       lastError: ""
@@ -7818,10 +8052,12 @@
         ? payload.repository
         : payload;
     const parsed = parsePlanRepositoryPackage(candidate);
+    const receipt = normalizePlanRepositoryReceipt(payload.receipt || payload.latestReceipt || null);
     if (parsed.ok) {
       return {
         ok: true,
         package: parsed.package,
+        receipt,
         message: payload.message || `远端计划仓库包含 ${parsed.package.plans.length} 份计划。`
       };
     }
@@ -7829,6 +8065,7 @@
       return {
         ok: true,
         package: null,
+        receipt,
         message: payload.message || "远端计划 API 检查通过，但没有返回计划包。"
       };
     }
@@ -7893,6 +8130,15 @@
       }
 
       const remotePlanCount = parsed.package?.plans?.length || 0;
+      const parsedReceipt = parsed.receipt
+        ? decoratePlanRepositoryReceipt(parsed.receipt, {
+          direction: "check",
+          endpoint: repository.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const receipt = parsedReceipt || repository.lastReceipt || null;
       state.planRepository = normalizePlanRepository({
         ...repository,
         mode: "remote-api",
@@ -7901,6 +8147,8 @@
         lastRemoteDirection: "check",
         lastRemotePlanCount: remotePlanCount,
         lastPackageId: parsed.package?.packageId || repository.lastPackageId,
+        lastReceipt: receipt,
+        receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
         lastRemoteStatus: parsed.message,
         lastError: ""
       });
@@ -7910,6 +8158,7 @@
         ok: true,
         status: getPlanRepositoryStatus(),
         package: parsed.package || null,
+        receipt: receipt ? clone(receipt) : null,
         message: `${parsed.message} ${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -7960,6 +8209,17 @@
         return { ok: false, status: getPlanRepositoryStatus(), message: parsed.message };
       }
 
+      const receipt = parsed.receipt
+        ? decoratePlanRepositoryReceipt(parsed.receipt, {
+          direction: "push",
+          endpoint: repository.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const remoteStatus = receipt
+        ? `已推送 ${planCount} 份计划到远端 API，并收到回执 ${receipt.receiptDigest.slice(0, 12)}。`
+        : `已推送 ${planCount} 份计划到远端 API，远端未返回完整回执。`;
       state.planRepository = normalizePlanRepository({
         ...repository,
         mode: "remote-api",
@@ -7982,7 +8242,9 @@
         lastSyncConflictPlanIds: [],
         lastSyncConflicts: [],
         lastSyncConflictPlans: [],
-        lastRemoteStatus: `已推送 ${planCount} 份计划到远端 API。`,
+        lastReceipt: receipt,
+        receipts: appendPlanRepositoryReceipt(repository, receipt),
+        lastRemoteStatus: remoteStatus,
         lastError: ""
       });
       addEvent("plan-repository-remote-push", `推送计划到远端 API：${planCount} 份计划`);
@@ -7992,7 +8254,8 @@
         status: getPlanRepositoryStatus(),
         packageId: acceptedPackageId,
         pushedPlanCount: planCount,
-        message: `已推送 ${planCount} 份计划到远端 API。${PLAN_REPOSITORY_BOUNDARY}`
+        receipt: receipt ? clone(receipt) : null,
+        message: `${remoteStatus} ${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatPlanRepositoryNetworkError("推送", error);
@@ -8031,6 +8294,15 @@
 
       const now = new Date().toISOString();
       const incomingPlans = parsed.package.plans.map(normalizePlan).filter(Boolean);
+      const parsedReceipt = parsed.receipt
+        ? decoratePlanRepositoryReceipt(parsed.receipt, {
+          direction: "pull",
+          endpoint: repository.remoteEndpoint,
+          receivedAt: now,
+          message: parsed.message
+        })
+        : null;
+      const receipt = parsedReceipt || repository.lastReceipt || null;
       const conflicts = options.force === true ? [] : detectPlanRepositoryConflicts(incomingPlans, repository);
       if (conflicts.length) {
         const conflictRecords = getPlanRepositoryConflictRecords(conflicts);
@@ -8045,6 +8317,8 @@
           lastSyncConflictPlanIds: conflicts.map((item) => item.id),
           lastSyncConflicts: conflictRecords,
           lastSyncConflictPlans: conflictPlans,
+          lastReceipt: receipt,
+          receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
           lastError: `远端计划与本机待同步变更存在 ${conflicts.length} 个冲突，请先推送本机计划或使用强制拉取。`
         });
         saveState();
@@ -8053,6 +8327,7 @@
           conflict: true,
           conflicts,
           status: getPlanRepositoryStatus(),
+          receipt: receipt ? clone(receipt) : null,
           message: state.planRepository.lastError
         };
       }
@@ -8088,6 +8363,8 @@
         lastSyncConflictPlanIds: [],
         lastSyncConflicts: [],
         lastSyncConflictPlans: [],
+        lastReceipt: receipt,
+        receipts: appendPlanRepositoryReceipt(repository, parsedReceipt),
         lastRemoteStatus: `已从远端 API 拉取 ${planCount} 份计划，新增 ${imported.importedCount}，更新 ${imported.updatedCount}。`,
         lastError: ""
       });
@@ -8099,6 +8376,7 @@
         importedCount: imported.importedCount,
         updatedCount: imported.updatedCount,
         pulledPlanCount: planCount,
+        receipt: receipt ? clone(receipt) : null,
         message: `已从远端 API 拉取计划：新增 ${imported.importedCount}，更新 ${imported.updatedCount}。${PLAN_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
@@ -10323,6 +10601,8 @@
     getPlanRepositoryStatus,
     getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
+    getPlanRepositoryReceiptAudit,
+    getPlanRepositoryReceiptAuditExport,
     getPlanCalendarExport,
     getHistoryRepositoryStatus,
     getHistoryRepositoryRemoteConfig,
@@ -10360,6 +10640,7 @@
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
     downloadHistoryRepository,
+    downloadPlanRepositoryReceiptAudit,
     downloadReportRepository,
     downloadReportRepositoryReceiptAudit,
     configurePlanRepositoryRemote,

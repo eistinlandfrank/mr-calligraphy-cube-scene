@@ -952,6 +952,10 @@ const els = {
   planRepositoryRemoteButton: document.getElementById("planRepositoryRemoteButton"),
   planRepositoryPushButton: document.getElementById("planRepositoryPushButton"),
   planRepositoryPullButton: document.getElementById("planRepositoryPullButton"),
+  planRepositoryReceiptAudit: document.getElementById("planRepositoryReceiptAudit"),
+  planRepositoryReceiptStatus: document.getElementById("planRepositoryReceiptStatus"),
+  planRepositoryReceiptList: document.getElementById("planRepositoryReceiptList"),
+  planRepositoryReceiptExportButton: document.getElementById("planRepositoryReceiptExportButton"),
   planRepositoryConflictPanel: document.getElementById("planRepositoryConflictPanel"),
   planRepositoryConflictStatus: document.getElementById("planRepositoryConflictStatus"),
   planRepositoryConflictList: document.getElementById("planRepositoryConflictList"),
@@ -3895,6 +3899,7 @@ function bindPlanControls() {
   els.planRepositoryRemoteButton?.addEventListener("click", checkPlanRepositoryRemote);
   els.planRepositoryPushButton?.addEventListener("click", pushPlanRepositoryRemote);
   els.planRepositoryPullButton?.addEventListener("click", pullPlanRepositoryRemote);
+  els.planRepositoryReceiptExportButton?.addEventListener("click", exportPlanRepositoryReceipts);
   els.planRepositoryKeepLocalButton?.addEventListener("click", () => resolvePlanRepositoryConflict("keep-local"));
   els.planRepositoryUseRemoteButton?.addEventListener("click", () => resolvePlanRepositoryConflict("use-remote"));
   els.planRepositoryCopyRemoteButton?.addEventListener("click", () => resolvePlanRepositoryConflict("copy-remote"));
@@ -6692,7 +6697,43 @@ function renderPlanRepositoryStatus(planHistory = []) {
   if (els.planRepositoryPullButton) {
     els.planRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
+  renderPlanRepositoryReceipts();
   renderPlanRepositoryConflictPanel(status);
+}
+
+function renderPlanRepositoryReceipts() {
+  const audit = window.MRAppState?.getPlanRepositoryReceiptAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.planRepositoryReceiptStatus) {
+    els.planRepositoryReceiptStatus.textContent = audit?.message || "暂无计划仓库回执。";
+    els.planRepositoryReceiptStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.planRepositoryReceiptExportButton) {
+    els.planRepositoryReceiptExportButton.disabled = !receipts.length;
+  }
+  if (!els.planRepositoryReceiptList) return;
+  els.planRepositoryReceiptList.replaceChildren();
+  receipts.slice(0, 5).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.packageId || receipt.sourcePackageId || "计划仓库回执";
+    const meta = document.createElement("span");
+    const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
+    const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
+    meta.textContent = `${formatPlanRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.planCount || 0} 份计划`;
+    item.append(title, meta, detail);
+    els.planRepositoryReceiptList.appendChild(item);
+  });
+}
+
+function formatPlanRepositoryReceiptDirection(direction) {
+  return {
+    check: "检查",
+    push: "推送",
+    pull: "拉取"
+  }[direction] || "回执";
 }
 
 function renderPlanRepositoryConflictPanel(status) {
@@ -7081,6 +7122,16 @@ function downloadPlanRepositoryPackage() {
   renderPlanPanel(currentIndex);
 }
 
+function exportPlanRepositoryReceipts() {
+  const result = window.MRAppState?.downloadPlanRepositoryReceiptAudit?.();
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的计划仓库回执。");
+  }
+  renderPlanPanel(currentIndex);
+}
+
 function choosePlanRepositoryImport() {
   if (!els.planRepositoryImportInput) {
     showNotice("当前浏览器不支持选择同步包文件。");
@@ -7239,6 +7290,7 @@ function setPlanRepositoryRemoteBusy(isBusy) {
     els.planRepositoryRemoteButton,
     els.planRepositoryPushButton,
     els.planRepositoryPullButton,
+    els.planRepositoryReceiptExportButton,
     els.planRepositoryKeepLocalButton,
     els.planRepositoryUseRemoteButton,
     els.planRepositoryCopyRemoteButton,

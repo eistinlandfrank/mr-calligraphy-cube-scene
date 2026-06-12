@@ -795,6 +795,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   const planEndpointPath = "/e2e-plan-repository";
   const planRequests = [];
   let remotePlanPackage = null;
+  let latestPlanReceipt = null;
 
   await page.route(`**${planEndpointPath}`, async (route) => {
     const request = route.request();
@@ -812,6 +813,18 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
         packageId: "e2e-plan-package",
         acceptedAt: new Date().toISOString()
       });
+      latestPlanReceipt = {
+        receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
+        remoteVersion: "e2e-plan-v1",
+        packageId: remotePlanPackage.packageId,
+        sourcePackageId: body.packageId,
+        repositoryDigest: "d".repeat(64),
+        acceptedAt: remotePlanPackage.acceptedAt,
+        planCount: body.summary.planCount,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: "e".repeat(64)
+      };
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -820,7 +833,8 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
           message: `远端计划 E2E 已接收 ${body.summary.planCount} 份计划。`,
           remoteVersion: "e2e-plan-v1",
           packageId: remotePlanPackage.packageId,
-          package: remotePlanPackage
+          package: remotePlanPackage,
+          receipt: latestPlanReceipt
         })
       });
       return;
@@ -835,7 +849,8 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
           ? `远端计划 E2E 可读，当前包含 ${remotePlanPackage.summary.planCount} 份计划。`
           : "远端计划 E2E 可访问，当前尚未接收计划包。",
         remoteVersion: "e2e-plan-v1",
-        package: remotePlanPackage
+        package: remotePlanPackage,
+        latestReceipt: latestPlanReceipt
       })
     });
   });
@@ -875,12 +890,29 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
 
   await page.locator("#planRepositoryPushButton").click();
   await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
+  await expect(page.locator("#planRepositoryReceiptStatus")).toContainText("已保存 1 条计划仓库回执");
+  await expect(page.locator("#planRepositoryReceiptList")).toContainText("e2e-plan-package");
+  await expect(page.locator("#planRepositoryReceiptList")).toContainText("仓库 dddddddddddd");
 
   const putRequest = planRequests.find((item) => item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer plan-token");
   expect(putRequest.body.kind).toBe("mr-calligraphy-plan-repository-v1");
   expect(putRequest.body.summary.planCount).toBe(1);
   expect(putRequest.body.plans[0].id).toBe(seedPlan.id);
+
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepository.receipts).toHaveLength(1);
+  expect(learningState.planRepository.receipts[0].receiptDigest).toBe("e".repeat(64));
+  expect(learningState.planRepository.receipts[0].direction).toBe("push");
+
+  const planReceiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planRepositoryReceiptExportButton").click();
+  const planReceiptDownload = await planReceiptDownloadPromise;
+  expect(planReceiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-repository-receipts-.*\.html$/);
+  const planReceiptPath = await planReceiptDownload.path();
+  const planReceiptHtml = fs.readFileSync(planReceiptPath, "utf8");
+  expect(planReceiptHtml).toContain("MR 书法计划仓库回执审计");
+  expect(planReceiptHtml).toContain("e".repeat(64));
 
   const remoteUpdatedAt = new Date(Date.now() + 60000).toISOString();
   remotePlanPackage = cloneJson({
@@ -924,7 +956,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   await expect(page.locator("#planRepositoryConflictList")).toContainText(seedPlan.title);
   await expect(page.locator("#planRepositoryConflictList")).toContainText("远端冲突");
 
-  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.planRepository.lastSyncConflictCount).toBe(1);
   expect(learningState.planRepository.lastSyncConflictPlans[0].title).toBe("远端冲突计划");
 

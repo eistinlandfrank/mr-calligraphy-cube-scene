@@ -87,14 +87,14 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化；计划仓库和报告仓库都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
 
 真实化方向：
 
 - 补生产服务端仓库。
 - 补登录态和 token 刷新。
 - 将当前 `.ics` 本机日历导出升级为账号化提醒、教师端通知和后台任务下发。
-- 补账号化分页查询、服务端冲突合并、签名回执和不可篡改审计；前端 adapter 已能按 `nextPageUrl` 自动追取学习档案分页，并把同 ID 差异保存为本机冲突审计和字段级合并表单。
+- 补账号化分页查询、服务端冲突合并、生产签名回执和不可篡改审计；前端 adapter 已能按 `nextPageUrl` 自动追取学习档案分页，并把同 ID 差异保存为本机冲突审计和字段级合并表单，计划仓库也已能保存远端 receipt 到本机审计列表。
 - mock server 保留为本地开发验收，不再作为产品能力宣传。
 
 ### 2.9 浏览器级验收还不够
@@ -202,7 +202,7 @@ npm run test:e2e
 
 - `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现；`ReportRepository` 与 `ProjectRepository` 远端 API adapter 第一版已完成，仍需账号空间和服务端合并。
 - 登录态、用户 ID、角色、token 刷新和服务端分页。
-- 计划仓库冲突解决已从计划级扩展到前端字段级第一版；后续仍需服务端合并审计、账号空间隔离和更复杂的计划项增删合并。
+- 计划仓库冲突解决已从计划级扩展到前端字段级第一版，远端 receipt 也已能写入本机审计列表并导出 HTML；后续仍需服务端合并审计、账号空间隔离和更复杂的计划项增删合并。
 
 验收：
 
@@ -277,6 +277,7 @@ npm run test:e2e
 - 追加报告仓库冲突审计记录：同 ID 差异报告会写入 `reportRepository.lastConflictReports`，前台可审阅字段差异，按字段采用远端值，也可另存远端报告副本；数据层和 E2E 已验证真实写回。
 - 追加报告仓库签名回执审计记录：远端 `receipt/latestReceipt` 会写入 `lastSignedReceipt` 和最近 12 条 `signedReceipts`，站内报告可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证签名、摘要、方向和导出文件内容。
 - 追加学习计划日历提醒导出记录：`MRAppState.getPlanCalendarExport()` 会从真实计划项生成 `.ics`，前台“导出日历”可下载包含 `VCALENDAR`、`VEVENT` 和 `VALARM` 的文件；数据层和 E2E 已验证结构与下载内容。
+- 追加计划仓库回执审计记录：远端计划 API 返回的 `receipt/latestReceipt` 会写入 `lastReceipt` 和最近 12 条 `receipts`，前台计划远端同步区可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证摘要、方向、endpoint 和导出文件内容。
 
 已知限制：
 

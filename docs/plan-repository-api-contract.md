@@ -76,7 +76,14 @@ Authorization: Bearer <token>
 }
 ```
 
-前端 adapter 当前会读取 `message`、`package.packageId` 和 `package.plans`，并把远端计划数量、最近 packageId、同步方向、冲突状态和自动同步队列状态写回 `mr-calligraphy-learning-state-v1`。
+前端 adapter 当前会读取 `message`、`package.packageId`、`package.plans`、`receipt` 和 `latestReceipt`，并把远端计划数量、最近 packageId、同步方向、冲突状态、自动同步队列状态和最近 12 条回执审计写回 `mr-calligraphy-learning-state-v1`。
+
+前端只会保存字段完整的 `mr-calligraphy-plan-repository-receipt-v1`：
+
+- `repositoryDigest` 和 `receiptDigest` 必须是 64 位十六进制摘要。
+- 回执会补充本机收到方向、endpoint 和收到时间。
+- 回执审计可从前台“远端 API 同步 / 回执审计”导出 HTML。
+- 这仍是本机审计留存，不是服务端不可篡改日志或账号化权限审计。
 
 ## 5. 失败响应
 

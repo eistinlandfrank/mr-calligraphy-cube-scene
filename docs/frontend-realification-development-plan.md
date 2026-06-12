@@ -54,7 +54,7 @@ node scripts/control-inventory.js --check
 | 学习路径 | 步骤导航、热点路由、阶段记录、本机任务进度已有第一版；本机 `LearningPathService` 已用任务、练习、作品、报告和计划推导 10 步标题、说明、完成状态、证据和下一步动作 | 还不是云端课程编排、教师下发任务或跨设备学习进度；视觉场景仍保留静态兜底 | 后续扩展课程包、教师端排课、班级进度和跨设备同步 |
 | AI 讲解 | 浏览器本机语音能朗读讲解段落；本机 `LectureService` 会记录语音能力、播放段落、文本降级、失败和完成状态 | 不是云端 AI 音频，也不是按真实笔迹实时生成 | 保留本机语音 fallback，后续在同一讲解服务接口扩展云端 AI 音频/文本 |
 | 书写练习 | 鼠标/触控笔迹、撤销、清空、回放、保存和基础评分可用；本机 `ScoreService` 会记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点 | 缺压感、笔锋、笔画顺序模型、硬件适配和专业评分模型 | 继续扩展范字路径库、笔画顺序校验、压感字段和服务端评分来源 |
-| 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒和教师端通知 | 做账号化 repository、服务端合并策略、跨设备提醒和教师端视图 |
+| 学习计划 | 计划生成、编辑、顺延、复盘、依赖图、周期循环、本机提醒、`.ics` 日历导出、JSON 同步包、远端 API 推送/拉取、API 合同、本机 mock 服务、远端回执审计、自动同步队列、冲突检测、三策略冲突解决、字段级合并和推送失败保队列已有第一版 | 还没有账号登录、托管计划仓库、远端推送提醒、教师端通知和服务端不可篡改审计 | 做账号化 repository、服务端合并策略、跨设备提醒、教师端视图和生产审计 |
 | 学习档案 | 本机历史、详情路由、回收站、趋势、作品集、标签编辑、导出、远端 API 推送/拉取、`nextPageUrl` 分页自动追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务已有第一版 | 还没有账号登录、托管档案仓库、生产级分页查询、长期归档和服务端教师批注审计 | 做账号化 history repository、云端详情 URL、服务端合并审计和长期归档 |
 
 ### 4.2 作品、报告和分享
@@ -134,7 +134,7 @@ node scripts/control-inventory.js --check
 
 目标：学习计划和学习档案不再只靠单浏览器。
 
-- 继续推进账号化计划 repository；计划 API 合同、mock 服务、自动同步队列、冲突检测和手动解决 UI 第一版已完成。
+- 继续推进账号化计划 repository；计划 API 合同、mock 服务、自动同步队列、冲突检测、手动解决 UI 和本机回执审计第一版已完成。
 - 增加账号化计划 repository、学习档案 repository 和报告 repository；学习档案远端 API adapter、报告仓库远端 API adapter、合同和 mock 服务第一版已完成。
 - 增加跨设备提醒、教师端通知和远端任务下发；当前已先补 `.ics` 日历提醒导出，让本机计划可导入系统/手机日历。
 - 拉取远端数据时不得静默覆盖本机待同步修改。
@@ -1217,3 +1217,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习计划日历提醒导出`
+
+## 39. 2026-06-12 新增计划仓库回执审计导出
+
+本次把计划仓库远端 receipt 从“mock 服务返回字段”推进为“前台可查看、可导出的本机审计证据”。
+
+完成内容：
+
+- `MRAppState` 新增计划仓库回执规范化、`lastReceipt` 和最近 12 条 `receipts`。
+- 远端检查、推送、拉取会读取 `receipt/latestReceipt`，并记录方向、endpoint 和本机收到时间。
+- 前台计划远端同步区新增“回执审计”列表和“导出回执”按钮。
+- “导出回执”会下载 `mr-calligraphy-plan-repository-receipts-*.html`。
+- 数据层、smoke test 和 E2E 都覆盖回执保存、摘要展示和 HTML 下载。
+
+真实化说明：
+
+- 数据来源：远端计划仓库 API 返回的 `mr-calligraphy-plan-repository-receipt-v1`。
+- 写入状态：`mr-calligraphy-learning-state-v1.planRepository.receipts`。
+- 成功反馈：页面显示回执数量、仓库摘要短码和回执短码。
+- 失败反馈：字段不完整的 receipt 不会被保存；暂无回执时导出返回明确失败。
+- 刷新后复现方式：审计列表随本机学习状态持久化。
+
+仍待补：
+
+- 当前是本机审计导出，不是服务端不可篡改审计、生产签名证书链或账号空间审计。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front plan repository detects remote conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库回执审计`

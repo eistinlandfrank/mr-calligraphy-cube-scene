@@ -822,7 +822,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {
@@ -1047,13 +1047,27 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     assert(pushedMock.packageId.startsWith("mock-plan-repository-"), "计划仓库 mock 应返回服务端 packageId。");
     assert(mock.state.package.packageId === pushedMock.packageId, "计划仓库 mock 应在内存中保存最近计划包。");
     assert(mock.state.receipts[0].repositoryDigest, "计划仓库 mock 应返回 repositoryDigest 回执。");
+    assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].receiptDigest), "计划仓库 mock 应返回 64 位 receiptDigest。");
+    assert(pushedMock.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库推送结果应暴露服务端回执。");
+    const receiptStatus = window.MRAppState.getPlanRepositoryStatus();
+    assert(receiptStatus.lastReceipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库状态应持久化最近回执。");
+    assert(receiptStatus.receiptCount === 1, "计划仓库状态应统计最近回执数量。");
+    assert(receiptStatus.receipts[0].direction === "push", "计划仓库回执应记录同步方向。");
+    const receiptAudit = window.MRAppState.getPlanRepositoryReceiptAudit();
+    assert(receiptAudit.ok && receiptAudit.total === 1, "计划仓库回执审计 API 应返回最近回执。");
+    assert(receiptAudit.receipts[0].receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库回执审计应保留 receiptDigest。");
+    const receiptExport = window.MRAppState.getPlanRepositoryReceiptAuditExport();
+    assert(receiptExport.ok && receiptExport.html.includes("MR 书法计划仓库回执审计"), "计划仓库回执审计应可导出 HTML。");
+    assert(receiptExport.html.includes(mock.state.receipts[0].repositoryDigest), "计划仓库回执审计 HTML 应包含仓库摘要。");
 
     const checkedAfterPush = await window.MRAppState.checkRemotePlanRepository();
     assert(checkedAfterPush.ok && checkedAfterPush.package.plans.length === mock.state.package.plans.length, "计划仓库 mock GET 应返回最近 PUT 保存的计划包。");
+    assert(checkedAfterPush.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库 GET 检查应带回最近回执。");
 
     const pulledMock = await window.MRAppState.pullPlanRepositoryFromRemote({ force: true });
     assert(pulledMock.ok, "计划仓库 mock 应支持真实 GET 拉取。");
     assert(pulledMock.pulledPlanCount === mock.state.package.plans.length, "计划仓库 mock 拉取结果应保留远端计划数量。");
+    assert(pulledMock.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库拉取结果应保留远端回执。");
 
     const badTokenConfig = window.MRAppState.configurePlanRepositoryRemote({
       remoteEndpoint: mock.endpoint,

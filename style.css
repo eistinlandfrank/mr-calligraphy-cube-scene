@@ -4805,29 +4805,34 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.report-repository-receipt {
+.report-repository-receipt,
+.plan-repository-receipt {
   display: grid;
   gap: 7px;
+  margin-top: 8px;
   padding: 8px;
   border: 1px solid rgba(116, 255, 219, 0.18);
   border-radius: 8px;
   background: rgba(24, 70, 65, 0.16);
 }
 
-.report-repository-receipt-head {
+.report-repository-receipt-head,
+.plan-repository-receipt-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.report-repository-receipt-head strong {
+.report-repository-receipt-head strong,
+.plan-repository-receipt-head strong {
   color: #e8fff9;
   font-size: 12px;
   font-weight: 880;
 }
 
-.report-repository-receipt-head button {
+.report-repository-receipt-head button,
+.plan-repository-receipt-head button {
   min-height: 28px;
   border: 1px solid rgba(116, 255, 219, 0.28);
   border-radius: 7px;
@@ -4838,14 +4843,16 @@ body.is-model-view .notice-panel {
   font-weight: 850;
 }
 
-.report-repository-receipt-head button:disabled {
+.report-repository-receipt-head button:disabled,
+.plan-repository-receipt-head button:disabled {
   cursor: not-allowed;
   color: rgba(255, 250, 241, 0.38);
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.05);
 }
 
-.report-repository-receipt p {
+.report-repository-receipt p,
+.plan-repository-receipt p {
   margin: 0;
   color: rgba(255, 250, 241, 0.7);
   font-size: 11px;
@@ -4853,11 +4860,13 @@ body.is-model-view .notice-panel {
   line-height: 1.45;
 }
 
-.report-repository-receipt p[data-receipt-tone="ready"] {
+.report-repository-receipt p[data-receipt-tone="ready"],
+.plan-repository-receipt p[data-receipt-tone="ready"] {
   color: #e8fff9;
 }
 
-.report-repository-receipt-list {
+.report-repository-receipt-list,
+.plan-repository-receipt-list {
   display: grid;
   gap: 6px;
   margin: 0;
@@ -4865,7 +4874,8 @@ body.is-model-view .notice-panel {
   list-style: none;
 }
 
-.report-repository-receipt-list li {
+.report-repository-receipt-list li,
+.plan-repository-receipt-list li {
   display: grid;
   gap: 3px;
   padding: 7px;
@@ -4876,17 +4886,23 @@ body.is-model-view .notice-panel {
 
 .report-repository-receipt-list strong,
 .report-repository-receipt-list span,
-.report-repository-receipt-list small {
+.report-repository-receipt-list small,
+.plan-repository-receipt-list strong,
+.plan-repository-receipt-list span,
+.plan-repository-receipt-list small {
   overflow-wrap: anywhere;
 }
 
-.report-repository-receipt-list strong {
+.report-repository-receipt-list strong,
+.plan-repository-receipt-list strong {
   color: #fffaf1;
   font-size: 11px;
 }
 
 .report-repository-receipt-list span,
-.report-repository-receipt-list small {
+.report-repository-receipt-list small,
+.plan-repository-receipt-list span,
+.plan-repository-receipt-list small {
   color: rgba(255, 250, 241, 0.66);
   font-size: 10px;
   line-height: 1.4;
