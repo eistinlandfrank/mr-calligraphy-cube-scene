@@ -5350,6 +5350,7 @@
     const pdfFeatures = pdfResult?.features || {};
     const latestArtwork = findReportArtwork(normalizedReport);
     const trendCount = normalizeInteger(pdfFeatures.trendCount, 0, 0, 99);
+    const radarMetricCount = normalizeInteger(pdfFeatures.radarMetricCount, 0, 0, 99);
     return {
       ok: true,
       report: clone(normalizedReport),
@@ -5361,6 +5362,8 @@
       features: {
         metricBars: true,
         metricCount: 5,
+        radarChart: Boolean(pdfFeatures.radarChart),
+        radarMetricCount,
         trendBars: Boolean(pdfFeatures.trendBars),
         trendCount,
         artworkCard: true,
@@ -5374,8 +5377,8 @@
         verificationDigest: verification?.digest || ""
       },
       message: pdfFeatures.artworkImageEmbedded
-        ? "已生成包含能力条形图、分数趋势图、最近作品截图、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
-        : "已生成包含能力条形图、分数趋势图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        ? "已生成包含能力条形图、能力雷达图、分数趋势图、最近作品截图、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        : "已生成包含能力条形图、能力雷达图、分数趋势图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
     };
   }
 
@@ -5421,6 +5424,7 @@
       label,
       value: normalizeScore(normalizedReport.scoreBreakdown?.[key], 0)
     }));
+    const radarMetricCount = metricItems.filter((item) => item.value > 0).length;
     const trendItems = (normalizedReport.trend.length ? normalizedReport.trend : getReportTrend(normalizedReport))
       .map(normalizeReportTrendPoint)
       .filter((item) => item && item.score > 0)
@@ -5436,7 +5440,7 @@
       { text: `练习次数：${normalizedReport.sessionCount}    保存作品：${normalizedReport.artworkCount}    平均评分：${normalizedReport.averageScore}    学习分钟：${normalizedReport.learningMinutes}`, size: 12 },
       { text: "", size: 6 },
       { text: "能力维度", size: 16 },
-      { type: "metricBars", items: metricItems },
+      { type: "metricBars", items: metricItems, radarChart: radarMetricCount > 0 },
       { text: "分数趋势", size: 16 },
       { type: "trendBars", items: trendItems },
       { text: "", size: 6 },
@@ -5485,6 +5489,8 @@
       subject: normalizedReport.id,
       source: STORAGE_KEY,
       metricCount: metricItems.length,
+      radarChart: radarMetricCount > 0,
+      radarMetricCount,
       trendCount: trendItems.length,
       artworkCard: true,
       artworkAvailable: Boolean(latestArtwork),
@@ -5500,6 +5506,8 @@
     return {
       pdf,
       features: {
+        radarChart: radarMetricCount > 0,
+        radarMetricCount,
         trendBars: trendItems.length > 0,
         trendCount: trendItems.length,
         artworkImageEmbedded: Boolean(artworkPdfImage),
@@ -5604,8 +5612,17 @@
     const strokeRect = (x, rectY, width, height, color = "0.72 0.78 0.75") => {
       content.push(`${color} RG 0.8 w ${x} ${rectY} ${width} ${height} re S`);
     };
+    const formatPdfNumber = (value) => Number(value || 0).toFixed(2).replace(/\.?0+$/, "");
     const drawStrokeLine = (x1, y1, x2, y2, color = "0.72 0.78 0.75", width = 0.8) => {
       content.push(`${color} RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S`);
+    };
+    const drawPolygon = (points = [], strokeColor = "0.72 0.78 0.75", fillColor = "", width = 0.8) => {
+      const validPoints = points.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+      if (validPoints.length < 3) return;
+      const path = validPoints
+        .map((point, index) => `${formatPdfNumber(point.x)} ${formatPdfNumber(point.y)} ${index ? "l" : "m"}`)
+        .join(" ");
+      content.push(`${fillColor ? `${fillColor} rg ` : ""}${strokeColor} RG ${width} w ${path} h ${fillColor ? "B" : "S"}`);
     };
     const drawLine = (text, size = 12) => {
       const lineHeight = Math.max(14, Math.round(size * 1.45));
@@ -5635,7 +5652,7 @@
       content.push(`q ${width} 0 0 ${height} ${offsetX} ${offsetY} cm /${registered.name} Do Q`);
       return true;
     };
-    const drawMetricBars = (items = []) => {
+    const drawMetricBars = (items = [], options = {}) => {
       const normalizedItems = items
         .map((item) => ({
           label: String(item.label || item.key || "维度"),
@@ -5645,15 +5662,17 @@
       if (!normalizedItems.length) return;
 
       const rowHeight = 23;
+      const withRadar = Boolean(options.radarChart && normalizedItems.some((item) => item.value > 0));
       const labelX = marginX;
       const trackX = marginX + 68;
-      const trackWidth = 310;
+      const trackWidth = withRadar ? 178 : 310;
       const trackHeight = 9;
       const valueX = trackX + trackWidth + 14;
-      const blockHeight = normalizedItems.length * rowHeight + 12;
+      const blockHeight = Math.max(normalizedItems.length * rowHeight + 12, withRadar ? 126 : 0);
       if (y - blockHeight < minY) return;
 
       content.push(`% MetricBars: ${normalizedItems.length}`);
+      content.push(`% RadarChart: ${withRadar ? normalizedItems.length : 0}`);
       drawRect(marginX - 10, y - blockHeight + 6, 466, blockHeight, "0.97 0.99 0.97");
       strokeRect(marginX - 10, y - blockHeight + 6, 466, blockHeight, "0.81 0.87 0.84");
       normalizedItems.forEach((item, index) => {
@@ -5664,6 +5683,35 @@
         drawRect(trackX, rowY - 1, fillWidth, trackHeight, "0.14 0.48 0.40");
         drawTextAt(`${item.value} 分`, 10, valueX, rowY);
       });
+      if (withRadar) {
+        const cardY = y - blockHeight + 6;
+        const centerX = marginX + 374;
+        const centerY = cardY + 64;
+        const radius = 42;
+        const angleFor = (index) => -Math.PI / 2 + (Math.PI * 2 * index) / normalizedItems.length;
+        const pointFor = (score, index) => {
+          const distance = radius * (normalizeScore(score, 0) / 100);
+          const angle = angleFor(index);
+          return {
+            x: Number((centerX + Math.cos(angle) * distance).toFixed(2)),
+            y: Number((centerY + Math.sin(angle) * distance).toFixed(2))
+          };
+        };
+        const outerPoints = normalizedItems.map((_, index) => pointFor(100, index));
+        [0.25, 0.5, 0.75, 1].forEach((ratio) => {
+          drawPolygon(
+            normalizedItems.map((_, index) => pointFor(100 * ratio, index)),
+            "0.76 0.82 0.79",
+            "",
+            0.45
+          );
+        });
+        outerPoints.forEach((point) => drawStrokeLine(centerX, centerY, point.x, point.y, "0.76 0.82 0.79", 0.45));
+        const areaPoints = normalizedItems.map((item, index) => pointFor(item.value, index));
+        drawPolygon(areaPoints, "0.14 0.48 0.40", "0.70 0.84 0.80", 1.1);
+        areaPoints.forEach((point) => drawRect(point.x - 1.6, point.y - 1.6, 3.2, 3.2, "0.08 0.36 0.30"));
+        drawTextAt("能力雷达", 8, centerX - 24, centerY + radius + 11);
+      }
       y -= blockHeight + 8;
     };
     const drawTrendBars = (items = []) => {
@@ -5748,7 +5796,7 @@
 
     lines.forEach((line) => {
       if (line.type === "metricBars") {
-        drawMetricBars(line.items);
+        drawMetricBars(line.items, { radarChart: line.radarChart });
         return;
       }
       if (line.type === "trendBars") {
@@ -5782,6 +5830,7 @@
     const pdfComments = [
       `% Source: ${source}`,
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
+      `% RadarChart: ${metadata.radarChart ? Number(metadata.radarMetricCount) || 0 : 0}`,
       `% TrendBars: ${Number(metadata.trendCount) || 0}`,
       `% ArtworkCard: ${metadata.artworkCard ? "yes" : "no"}`,
       `% ArtworkAvailable: ${metadata.artworkAvailable ? "yes" : "no"}`,

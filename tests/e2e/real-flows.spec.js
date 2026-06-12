@@ -257,6 +257,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const reportPdfPath = await reportPdfDownload.path();
   const reportPdfText = fs.readFileSync(reportPdfPath, "utf8");
   expect(reportPdfText).toContain("%PDF-1.4");
+  expect(reportPdfText).toContain("RadarChart:");
   expect(reportPdfText).toContain("TrendBars:");
   expect(reportPdfText).toContain("ArtworkImageEmbedded: yes");
   expect(reportPdfText).toContain("/Subtype /Image");
