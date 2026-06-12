@@ -55,6 +55,8 @@ const importModelNameInput = document.getElementById("mainImportModelName");
 const importModelInput = document.getElementById("mainImportModel");
 const importStatus = document.getElementById("mainImportStatus");
 const importModelColorInput = document.getElementById("mainImportModelColor");
+const importModelOpacityInput = document.getElementById("mainImportModelOpacity");
+const importModelOpacityValue = document.getElementById("mainImportModelOpacityValue");
 const importModelMaterialUpdateButton = document.getElementById("mainImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
 const importAuditStatus = document.getElementById("mainImportAuditStatus");
@@ -549,6 +551,7 @@ async function handleImportModel(event) {
       fileName: file.name,
       type,
       color: importModelColorInput?.value || "#c8b08a",
+      opacity: normalizeImportOpacity(importModelOpacityInput?.value),
       position: [0, -1.05, -3.2],
       rotation: [0, 0, 0],
       scale: 1
@@ -654,6 +657,7 @@ function prepareImportedModel(model) {
 
 function applyImportedModelMaterial(root, record, options = {}) {
   const color = new THREE.Color(normalizeImportColor(record.color || "#c8b08a"));
+  const opacity = normalizeImportOpacity(record.opacity);
 
   root.traverse((child) => {
     if (!child.isMesh) {
@@ -663,9 +667,12 @@ function applyImportedModelMaterial(root, record, options = {}) {
     const previous = child.material;
     const sourceMaterials = Array.isArray(previous) ? previous : [previous].filter(Boolean);
     const nextMaterials = sourceMaterials.length
-      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color))
+      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color, opacity))
       : [new THREE.MeshStandardMaterial({
           color,
+          opacity,
+          transparent: opacity < 0.999,
+          depthWrite: opacity >= 0.999,
           roughness: 0.64,
           metalness: 0.02
         })];
@@ -678,7 +685,7 @@ function applyImportedModelMaterial(root, record, options = {}) {
   });
 }
 
-function cloneImportedMaterial(material, color) {
+function cloneImportedMaterial(material, color, opacity) {
   const next = material?.clone
     ? material.clone()
     : new THREE.MeshStandardMaterial({
@@ -689,6 +696,9 @@ function cloneImportedMaterial(material, color) {
   if (next.color?.set) {
     next.color.set(color);
   }
+  next.opacity = opacity;
+  next.transparent = opacity < 0.999;
+  next.depthWrite = opacity >= 0.999;
   next.needsUpdate = true;
   return next;
 }
@@ -878,6 +888,7 @@ function normalizeImportedModel(record = {}, index = 0) {
     fileName,
     type,
     color: normalizeImportColor(record.color || "#c8b08a"),
+    opacity: normalizeImportOpacity(record.opacity),
     position: [
       readNumber(position[0], 0),
       readNumber(position[1], -1.05),
@@ -918,6 +929,10 @@ function normalizeImportColor(value) {
   const string = String(value || "").trim();
 
   return /^#[0-9a-f]{6}$/i.test(string) ? string : "#c8b08a";
+}
+
+function normalizeImportOpacity(value) {
+  return clampNumber(value, 0.2, 1, 1);
 }
 
 function normalizeSha256(value) {
@@ -3152,9 +3167,10 @@ function syncImportedMaterialEditorFromSelection() {
     if (importModelColorInput) {
       importModelColorInput.value = "#c8b08a";
     }
+    setImportOpacityControl(1);
     showImportMaterialStatus(selectedEntry
       ? "当前选中对象不是导入模型；可导入 GLB / OBJ 后再编辑外观。"
-      : "选中导入模型后，可调整颜色并写入草稿和发布版本。");
+      : "选中导入模型后，可调整颜色和透明度并写入草稿和发布版本。");
     return;
   }
 
@@ -3162,11 +3178,12 @@ function syncImportedMaterialEditorFromSelection() {
   if (importModelColorInput) {
     importModelColorInput.value = normalizeImportColor(record.color || "#c8b08a");
   }
+  setImportOpacityControl(record.opacity);
   if (importModelMaterialUpdateButton) {
     importModelMaterialUpdateButton.disabled = !canEditImportedEntry(entry);
   }
   showImportMaterialStatus(canEditImportedEntry(entry)
-    ? `已载入：${entry.label}。调整主色调后点击“更新导入外观”。`
+    ? `已载入：${entry.label}。调整主色调和透明度后点击“更新导入外观”。`
     : `已载入：${entry.label}，需恢复显示并解锁后才能更新外观。`);
 }
 
@@ -3185,10 +3202,12 @@ function updateSelectedImportedMaterial() {
   const beforeSnapshot = snapshot(entry);
   const nextRecord = normalizeImportedModel({
     ...beforeRecord,
-    color: importModelColorInput?.value || beforeRecord.color
+    color: importModelColorInput?.value || beforeRecord.color,
+    opacity: importModelOpacityInput?.value ?? beforeRecord.opacity
   });
 
-  if (beforeRecord.color === nextRecord.color) {
+  if (beforeRecord.color === nextRecord.color
+      && normalizeImportOpacity(beforeRecord.opacity) === nextRecord.opacity) {
     showImportMaterialStatus("当前导入模型外观没有变化。");
     return;
   }
@@ -3203,8 +3222,22 @@ function updateSelectedImportedMaterial() {
   saveEntry(entry);
   selectObject(entry.id);
   createLayoutSnapshot(`外观：${entry.label}`, { notice: false });
-  showImportMaterialStatus(`已更新：${entry.label}。主色调已写入本机布局和后续发布版本。`);
+  showImportMaterialStatus(`已更新：${entry.label}。主色调和透明度已写入本机布局和后续发布版本。`);
   showNotice(`已更新导入外观：${entry.label}`);
+}
+
+function setImportOpacityControl(value) {
+  const opacity = normalizeImportOpacity(value);
+  if (importModelOpacityInput) {
+    importModelOpacityInput.value = String(opacity);
+  }
+  if (importModelOpacityValue) {
+    importModelOpacityValue.textContent = opacity.toFixed(2);
+  }
+}
+
+function updateImportOpacityOutput() {
+  setImportOpacityControl(importModelOpacityInput?.value);
 }
 
 function applyImportedRecordToEntry(entry, record) {
@@ -3650,6 +3683,7 @@ function bindUi() {
   newObjectTypeSelect?.addEventListener("change", () => syncCustomSizeInputs(true));
   syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
+  importModelOpacityInput?.addEventListener("input", updateImportOpacityOutput);
   importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
   importAuditExportButton?.addEventListener("click", exportImportAudit);
   renderImportAuditPanel();

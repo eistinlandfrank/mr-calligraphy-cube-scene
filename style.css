@@ -633,6 +633,19 @@ button {
   align-items: end;
 }
 
+.main-import-opacity-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
+  gap: 8px;
+  align-items: end;
+}
+
+.main-import-opacity-row output {
+  color: rgba(255, 244, 216, 0.82);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
 .main-custom-size-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

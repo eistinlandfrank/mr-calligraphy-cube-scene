@@ -127,7 +127,14 @@
             </label>
             <button data-feature-state="real-local" id="mainImportModelMaterialUpdate" type="button">更新导入外观</button>
           </div>
-          <p id="mainImportMaterialStatus" class="main-import-status">选中导入模型后，可调整颜色并写入草稿和发布版本。</p>
+          <div class="main-import-opacity-row">
+            <label for="mainImportModelOpacity">
+              <span>透明度</span>
+              <input id="mainImportModelOpacity" type="range" min="0.2" max="1" step="0.05" value="1">
+            </label>
+            <output id="mainImportModelOpacityValue" for="mainImportModelOpacity">1.00</output>
+          </div>
+          <p id="mainImportMaterialStatus" class="main-import-status">选中导入模型后，可调整颜色和透明度，并写入草稿和发布版本。</p>
           <div class="main-project-audit" aria-label="导入模型删除审计">
             <div class="main-project-audit-head">
               <strong>导入模型删除审计</strong>

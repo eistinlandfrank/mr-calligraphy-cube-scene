@@ -1224,6 +1224,7 @@ function normalizeMainImportedModel(record = {}, index = 0) {
     fileName,
     type,
     color: normalizeMainColor(record.color || "#c8b08a"),
+    opacity: normalizeMainOpacity(record.opacity),
     position: [
       readMainNumber(position[0], 0),
       readMainNumber(position[1], -1.05),
@@ -1243,6 +1244,11 @@ function normalizeMainColor(value, fallback = "#c8b08a") {
   const string = String(value || "").trim();
 
   return /^#[0-9a-f]{6}$/i.test(string) ? string : fallback;
+}
+
+function normalizeMainOpacity(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(number, 0.2, 1) : 1;
 }
 
 function getMainImportFileType(fileName) {
@@ -1387,7 +1393,8 @@ function getRenderableImportedModelSpecs() {
       rotationY: state.ry,
       rotationZ: state.rz,
       scale: state.scale * readMainNumber(record.baseScale, 1),
-      color: normalizeMainColor(record.color || "#c8b08a")
+      color: normalizeMainColor(record.color || "#c8b08a"),
+      opacity: normalizeMainOpacity(record.opacity)
     };
   }).filter(Boolean);
 }
@@ -2419,7 +2426,7 @@ function createRoomRenderer(canvas) {
         modelVertices = result.vertices;
         furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, hasRenderableModels);
         window.MR_LOADED_MODEL_COUNT = result.loaded;
-        window.MR_LOADED_MODEL_VERTICES = modelVertices.length / 11;
+        window.MR_LOADED_MODEL_VERTICES = modelVertices.length / 12;
         showNotice(`已加载 ${result.loaded} 个 3D 模型。`);
         updateCubeTransform();
       })
@@ -2468,6 +2475,8 @@ function createRoomRenderer(canvas) {
 
   gl.useProgram(program);
   gl.enable(gl.DEPTH_TEST);
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
   gl.disable(gl.CULL_FACE);
   gl.clearColor(0.06, 0.055, 0.048, 1);
   gl.uniform1i(locations.texture, 0);
@@ -2498,14 +2507,14 @@ function createRoomRenderer(canvas) {
 const ROOM_VERTEX_SHADER = `
   attribute vec3 aPosition;
   attribute vec2 aTexCoord;
-  attribute vec3 aColor;
+  attribute vec4 aColor;
   attribute vec3 aNormal;
 
   uniform mat4 uProjection;
   uniform mat4 uView;
 
   varying vec2 vTexCoord;
-  varying vec3 vColor;
+  varying vec4 vColor;
   varying float vLight;
 
   void main() {
@@ -2525,13 +2534,14 @@ const ROOM_FRAGMENT_SHADER = `
   uniform float uUseTexture;
 
   varying vec2 vTexCoord;
-  varying vec3 vColor;
+  varying vec4 vColor;
   varying float vLight;
 
   void main() {
     vec4 texel = texture2D(uTexture, vTexCoord);
-    vec3 base = mix(vColor, texel.rgb, uUseTexture);
-    gl_FragColor = vec4(base * vLight, 1.0);
+    vec3 base = mix(vColor.rgb, texel.rgb, uUseTexture);
+    float alpha = mix(vColor.a, texel.a * vColor.a, uUseTexture);
+    gl_FragColor = vec4(base * vLight, alpha);
   }
 `;
 
@@ -2883,7 +2893,7 @@ function parseObjModel(arrayBuffer, spec) {
   }
 
   const bounds = getObjPositionBounds(positions);
-  const color = spec.color ? hexToRgb(spec.color) : [0.72, 0.5, 0.32];
+  const color = withAlpha(spec.color ? hexToRgb(spec.color) : [0.72, 0.5, 0.32], spec.opacity);
   const rx = degToRad(spec.rotationX || 0);
   const ry = degToRad(spec.rotationY || 0);
   const rz = degToRad(spec.rotationZ || 0);
@@ -3059,15 +3069,19 @@ function normalizeGlbComponent(value, componentType) {
 
 function getGlbMaterialColor(gltf, materialIndex, spec) {
   if (spec.color) {
-    return hexToRgb(spec.color).map((channel) => clamp(channel, 0.04, 1));
+    return withAlpha(hexToRgb(spec.color).map((channel) => clamp(channel, 0.04, 1)), spec.opacity);
   }
 
   const material = (gltf.materials || [])[materialIndex] || {};
   const pbr = material.pbrMetallicRoughness || {};
   const base = pbr.baseColorFactor || [0.72, 0.5, 0.32, 1];
   const tint = spec.tint || [1, 1, 1];
+  const opacity = spec.opacity ?? base[3];
 
-  return [0, 1, 2].map((channel) => clamp(base[channel] * (tint[channel] || 1), 0.04, 1));
+  return withAlpha(
+    [0, 1, 2].map((channel) => clamp(base[channel] * (tint[channel] || 1), 0.04, 1)),
+    opacity
+  );
 }
 
 function pushGlbModelVertex(vertices, position, normal, color, bounds, spec) {
@@ -3361,6 +3375,10 @@ function hexToRgb(value) {
   ];
 }
 
+function withAlpha(color, opacity = 1) {
+  return [color[0], color[1], color[2], normalizeMainOpacity(opacity)];
+}
+
 function buildQuad(topLeft, topRight, bottomRight, bottomLeft, color, normal) {
   const vertices = [];
 
@@ -3425,7 +3443,7 @@ function pushVertex(vertices, position, uv, color, normal) {
   vertices.push(
     position[0], position[1], position[2],
     uv[0], uv[1],
-    color[0], color[1], color[2],
+    color[0], color[1], color[2], color[3] ?? 1,
     normal[0], normal[1], normal[2]
   );
 }
@@ -3439,12 +3457,12 @@ function createMesh(gl, vertices, texture) {
   return {
     buffer,
     texture,
-    count: vertices.length / 11
+    count: vertices.length / 12
   };
 }
 
 function drawRoomMesh(gl, locations, mesh, texture, useTexture) {
-  const stride = 11 * Float32Array.BYTES_PER_ELEMENT;
+  const stride = 12 * Float32Array.BYTES_PER_ELEMENT;
 
   gl.bindBuffer(gl.ARRAY_BUFFER, mesh.buffer);
   gl.enableVertexAttribArray(locations.position);
@@ -3452,9 +3470,9 @@ function drawRoomMesh(gl, locations, mesh, texture, useTexture) {
   gl.enableVertexAttribArray(locations.texCoord);
   gl.vertexAttribPointer(locations.texCoord, 2, gl.FLOAT, false, stride, 3 * Float32Array.BYTES_PER_ELEMENT);
   gl.enableVertexAttribArray(locations.color);
-  gl.vertexAttribPointer(locations.color, 3, gl.FLOAT, false, stride, 5 * Float32Array.BYTES_PER_ELEMENT);
+  gl.vertexAttribPointer(locations.color, 4, gl.FLOAT, false, stride, 5 * Float32Array.BYTES_PER_ELEMENT);
   gl.enableVertexAttribArray(locations.normal);
-  gl.vertexAttribPointer(locations.normal, 3, gl.FLOAT, false, stride, 8 * Float32Array.BYTES_PER_ELEMENT);
+  gl.vertexAttribPointer(locations.normal, 3, gl.FLOAT, false, stride, 9 * Float32Array.BYTES_PER_ELEMENT);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);

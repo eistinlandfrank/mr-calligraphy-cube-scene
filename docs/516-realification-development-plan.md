@@ -7366,3 +7366,43 @@
 提交：
 
 - 中文 commit message：`真实化写实导入外观编辑`
+
+### 2026-06-12：真实化导入模型透明度编辑
+
+功能名：导入模型透明度编辑。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 在导入模型外观区域新增透明度滑杆和数值显示。
+- `main-admin-scene.js` 与 `realistic-scene.js` 为导入模型记录新增 `opacity` 字段，默认归一化为 `1`。
+- 导入模型时读取当前透明度；选中导入模型时回填已保存透明度。
+- 点击更新外观会克隆导入 mesh 的材质并设置透明度，后台 Three.js 画布即时更新。
+- 外观更新写入主后台和写实后台 layout 的 `importedModels[*].opacity`，并支持撤回。
+- 发布后，透明度进入主前台和写实演示页各自 published layout。
+- `script.js` 前台主场景 WebGL 顶点改为 RGBA，GLB 和 OBJ 都按 `opacity` 渲染 alpha。
+- smoke test 主后台和写实后台页面检查新增透明度控件。
+- Playwright 更新真实 `.glb` 导入、更新透明度、草稿持久化、发布持久化和演示页读取测试。
+
+真实化说明：
+
+- 数据来源：真实导入模型记录、IndexedDB 模型文件、草稿布局和发布快照。
+- 写入状态：`importedModels[*].opacity`，发布后进入各自 published layout。
+- 成功反馈：状态栏显示“已载入”和“已更新”，后台画布立即显示透明效果。
+- 失败反馈：未选中导入模型、隐藏、锁定或删除时更新按钮禁用。
+- 刷新后复现方式：刷新后台或打开演示页，导入模型透明度仍从本机布局读取。
+
+仍待补：
+
+- 当前是主色调和透明度覆盖；贴图替换、PBR 参数、导入文件替换、版本差异、服务端资产签名和多人审计还未完成。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型透明度编辑`

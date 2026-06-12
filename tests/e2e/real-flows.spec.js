@@ -1905,6 +1905,7 @@ test("main admin updates imported model material and publishes it", async ({ pag
 
   const importedObjectId = await page.locator("#mainObjectSelect").inputValue();
   await page.locator("#mainImportModelColor").fill("#2255aa");
+  await setRangeValue(page, "#mainImportModelOpacity", "0.55");
   await page.locator("#mainImportModelMaterialUpdate").click();
   await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已更新：${importLabel}`);
   await expect(page.locator("#mainPublishDiffList")).toContainText(importLabel);
@@ -1914,6 +1915,7 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(importedRecord).toBeTruthy();
   expect(importedRecord.label).toBe(importLabel);
   expect(importedRecord.color).toBe("#2255aa");
+  expect(importedRecord.opacity).toBeCloseTo(0.55, 2);
 
   await page.locator("#mainPublishLayout").click();
   await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
@@ -1921,6 +1923,7 @@ test("main admin updates imported model material and publishes it", async ({ pag
   const publishedImportedRecord = published.layout.importedModels.find((item) => item.id === importedObjectId);
   expect(publishedImportedRecord).toBeTruthy();
   expect(publishedImportedRecord.color).toBe("#2255aa");
+  expect(publishedImportedRecord.opacity).toBeCloseTo(0.55, 2);
   expect(published.stats.importedCount).toBeGreaterThan(0);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
@@ -1930,6 +1933,7 @@ test("main admin updates imported model material and publishes it", async ({ pag
   const frontImportedRecord = frontLayout.importedModels.find((item) => item.id === importedObjectId);
   expect(frontImportedRecord).toBeTruthy();
   expect(frontImportedRecord.color).toBe("#2255aa");
+  expect(frontImportedRecord.opacity).toBeCloseTo(0.55, 2);
 });
 
 test("main admin records imported model deletion audit", async ({ page }) => {
@@ -2208,6 +2212,7 @@ test("realistic admin updates imported model material and publishes it", async (
 
   const importedObjectId = await page.locator("#designObjectSelect").inputValue();
   await page.locator("#realisticImportModelColor").fill("#2255aa");
+  await setRangeValue(page, "#realisticImportModelOpacity", "0.6");
   await page.locator("#realisticImportModelMaterialUpdate").click();
   await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已更新：books");
   await expect(page.locator("#realisticPublishDiffList")).toContainText("books");
@@ -2217,6 +2222,7 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(importedRecord).toBeTruthy();
   expect(importedRecord.fileName).toBe("books.glb");
   expect(importedRecord.color).toBe("#2255aa");
+  expect(importedRecord.opacity).toBeCloseTo(0.6, 2);
 
   await page.locator("#realisticPublishLayout").click();
   await expect(page.locator("#realisticPublishStatus")).toContainText("已发布到演示");
@@ -2224,6 +2230,7 @@ test("realistic admin updates imported model material and publishes it", async (
   const publishedImportedRecord = published.layout.importedModels.find((item) => item.id === importedObjectId);
   expect(publishedImportedRecord).toBeTruthy();
   expect(publishedImportedRecord.color).toBe("#2255aa");
+  expect(publishedImportedRecord.opacity).toBeCloseTo(0.6, 2);
   expect(published.stats.importedCount).toBeGreaterThan(0);
 
   await page.goto("/realistic-demo.html", { waitUntil: "domcontentloaded" });
@@ -2233,6 +2240,7 @@ test("realistic admin updates imported model material and publishes it", async (
   const demoImportedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
   expect(demoImportedRecord).toBeTruthy();
   expect(demoImportedRecord.color).toBe("#2255aa");
+  expect(demoImportedRecord.opacity).toBeCloseTo(0.6, 2);
 });
 
 test("realistic admin records imported model deletion audit", async ({ page }) => {
@@ -2322,6 +2330,14 @@ async function readJsonLocalStorage(page, key) {
     const raw = window.localStorage.getItem(storageKey);
     return raw ? JSON.parse(raw) : null;
   }, key);
+}
+
+async function setRangeValue(page, selector, value) {
+  await page.locator(selector).evaluate((input, nextValue) => {
+    input.value = nextValue;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
 }
 
 async function getSameOriginEndpoint(page, path) {

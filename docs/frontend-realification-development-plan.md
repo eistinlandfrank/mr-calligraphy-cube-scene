@@ -1803,3 +1803,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化写实导入外观编辑`
+
+## 55. 2026-06-12 真实化导入模型透明度编辑
+
+本次把导入模型外观从“只改主色调”推进到可真实调整透明度：主后台和写实后台都能选中真实导入的 GLB / OBJ，修改透明度，写入草稿和发布快照；普通前台 WebGL 渲染也会读取 alpha。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 的导入模型外观区新增透明度滑杆和数值显示。
+- `main-admin-scene.js` 与 `realistic-scene.js` 的导入模型记录新增 `opacity` 字段，旧记录默认归一化为 `1`，编辑范围限制为 `0.2-1`。
+- 导入模型时会读取当前透明度；选中导入模型时会回填已保存透明度。
+- 点击“更新导入外观 / 更新外观”会克隆并更新导入模型材质，设置 `opacity`、`transparent` 和 `depthWrite`，后台画布即时显示半透明效果。
+- 透明度写入 `mr-calligraphy-main-scene-layout-v1.importedModels[*].opacity` 和 `mr-calligraphy-realistic-layout-v1.importedModels[*].opacity`。
+- 发布后透明度进入 `mr-calligraphy-main-scene-published-v1.layout.importedModels[*].opacity` 和 `mr-calligraphy-realistic-published-v1.layout.importedModels[*].opacity`。
+- `script.js` 的普通前台 WebGL 顶点格式从 RGB 扩展到 RGBA，GLB / OBJ 导入模型会把 `opacity` 写入顶点 alpha，并启用 alpha blend。
+- smoke test 主后台和写实后台页面检查新增透明度控件。
+- Playwright 更新主后台和写实后台导入模型外观用例，验证真实 `.glb` 导入、透明度更新、草稿持久化、发布持久化和演示页布局读取。
+
+真实化说明：
+
+- 数据来源：真实导入模型记录、IndexedDB 模型文件、草稿布局和本机发布快照。
+- 写入状态：主后台与写实后台的 `importedModels[*].opacity`，发布后进入各自 published layout。
+- 成功反馈：选中导入模型后透明度滑杆回填；更新后状态栏提示已写入，后台画布立即显示透明效果。
+- 失败反馈：未选中导入模型、隐藏、锁定或删除时，更新按钮禁用并显示原因。
+- 刷新后复现方式：刷新后台或打开发布演示页，透明度仍由本机布局读取。
+
+仍待补：
+
+- 当前完成主色调和透明度；贴图替换、PBR 参数、导入文件替换、版本差异对比、远端资产签名和多人审计仍待继续补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型透明度编辑`

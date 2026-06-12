@@ -95,7 +95,14 @@
           </label>
           <button data-feature-state="real-local" id="realisticImportModelMaterialUpdate" type="button">更新外观</button>
         </div>
-        <p id="realisticImportMaterialStatus" class="realistic-panel-status">选中写实导入模型后，可调整颜色并写入草稿和发布版本。</p>
+        <div class="realistic-import-opacity-row">
+          <label for="realisticImportModelOpacity">
+            <span>透明度</span>
+            <input id="realisticImportModelOpacity" type="range" min="0.2" max="1" step="0.05" value="1">
+          </label>
+          <output id="realisticImportModelOpacityValue" for="realisticImportModelOpacity">1.00</output>
+        </div>
+        <p id="realisticImportMaterialStatus" class="realistic-panel-status">选中写实导入模型后，可调整颜色和透明度并写入草稿和发布版本。</p>
       </section>
       <section class="realistic-import-audit-panel" aria-label="写实导入模型删除审计">
         <div class="realistic-panel-title">
