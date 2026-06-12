@@ -208,6 +208,9 @@ assert(sharePackage.html.includes("永字作品 2"), "作品分享页 HTML 应�
 assert(sharePackage.html.includes("data:image/"), "作品分享页 HTML 应嵌入作品截图。");
 assert(sharePackage.html.includes("不是云端公开链接"), "作品分享页应明确本机导出边界。");
 assert(sharePackage.html.includes("结构"), "作品分享页应包含能力维度。");
+assert(!sharePackage.share.features.scoreEvidence, "旧作品缺少逐笔证据时分享包不应声明包含评分证据。");
+assert(sharePackage.html.includes("不会补造评分依据"), "旧作品分享页应说明不会伪造评分证据。");
+assert(!sharePackage.html.includes("路径误差热力</h2>"), "旧作品分享页缺少真实证据时不应渲染假热力图。");
 
 const emptyShareStatus = window.MRAppState.getShareServiceStatus("artwork-2");
 assert(emptyShareStatus.total === 0, "初始分享服务不应伪造已有链接。");
@@ -547,6 +550,18 @@ assert(reviewEvidenceExport.evidencePackage.features.heatmap, "复盘证据页�
 assert(reviewEvidenceExport.html.includes("MR 书法复盘证据"), "复盘证据页 HTML 应包含标题。");
 assert(reviewEvidenceExport.html.includes("路径误差热力") && reviewEvidenceExport.html.includes("逐笔路径贴合"), "复盘证据页 HTML 应包含热力和逐笔路径证据。");
 assert(reviewEvidenceExport.html.includes("local-heuristic-v2.2.0"), "复盘证据页 HTML 应包含评分算法版本。");
+const evidenceArtwork = window.MRAppState.saveArtwork();
+assert(evidenceArtwork.ok, "带评分证据的当前练习应可保存为作品。");
+const evidenceSharePackage = window.MRAppState.getArtworkSharePackage(evidenceArtwork.artwork.id);
+assert(evidenceSharePackage.ok, "带评分证据的作品分享页应能生成。");
+assert(evidenceSharePackage.share.features.scoreEvidence, "带评分证据的作品分享包应声明包含评分证据。");
+assert(evidenceSharePackage.share.features.heatmap, "带评分证据的作品分享包应声明包含路径热力。");
+assert(evidenceSharePackage.share.scoreEvidence.algorithmVersion === "local-heuristic-v2.2.0", "作品分享包应保留评分算法版本。");
+assert(evidenceSharePackage.html.includes("评分证据"), "带评分证据的作品分享页 HTML 应包含评分证据区。");
+assert(evidenceSharePackage.html.includes("路径误差热力"), "带评分证据的作品分享页 HTML 应包含路径热力。");
+assert(evidenceSharePackage.html.includes("逐笔路径贴合"), "带评分证据的作品分享页 HTML 应包含逐笔路径贴合。");
+assert(evidenceSharePackage.html.includes("逐笔轨迹匹配"), "带评分证据的作品分享页 HTML 应包含逐笔轨迹匹配。");
+assert(evidenceSharePackage.message.includes("评分证据"), "带评分证据的作品分享页消息应提示包含证据。");
 assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
 assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.2.0"), "评分服务状态消息应显示算法版本。");
 const persistedScoreService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).scoreService;

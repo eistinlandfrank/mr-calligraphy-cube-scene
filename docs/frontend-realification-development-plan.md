@@ -3487,3 +3487,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增复盘证据离线导出`
+
+## 96. 2026-06-12 新增分享页评分证据
+
+本次把作品分享页从“展示作品和建议”推进到“展示可追溯评分依据”。用户保存真实书写后导出的分享页，会同步包含评分算法、路径误差热力和逐笔证据；旧作品缺少证据时只显示空状态，不补造假热力图。
+
+完成内容：
+
+- `app-state.js` 的 `getArtworkSharePackage()` 新增 `scoreEvidence`、`scoreEvidenceSource` 和 `features`。
+- 作品分享页新增“评分证据”区块，展示算法版本、范字、笔顺匹配、路径贴合、采样、压感和评分理由。
+- 分享页复用复盘证据页的 4×4 路径误差热力渲染，保证本机下载页与证据页使用同一份数据。
+- 分享页新增逐笔路径贴合和逐笔轨迹匹配列表。
+- 旧作品或迁移记录缺少真实热力、逐笔或压感细节时，分享页只提示“不会补造评分依据”。
+- 远端分享包 summary 新增 `scoreEvidence` 和 `scoreEvidenceSource`，mock 发布可验证远端 HTML 仍包含真实证据。
+- 数据层脚本和 Playwright 前台真实流程新增断言，覆盖下载分享页、远端分享包和旧作品空状态。
+
+真实化说明：
+
+- 数据来源：真实书写保存后的 `scoreEvidence`，不是硬编码演示文字。
+- 写入状态：不新增字段，读取已持久化的 `artworks[*].scoreEvidence` 或关联 `sessions[*].scoreEvidence`。
+- 成功反馈：点击“导出分享页”后，HTML 中出现“评分证据”“路径误差热力”“逐笔路径贴合”和算法版本。
+- 失败反馈：没有真实细节证据时不渲染热力格、不生成逐笔列表，只显示明确空状态。
+- 刷新后复现方式：保存作品、刷新页面、再次导出分享页，仍从本机状态读取同一份证据。
+
+仍待补：
+
+- 当前仍是本机离线分享页，不是云端作品墙、生产 CDN、教师签章证书或专业模型评分报告。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享页评分证据`

@@ -8006,6 +8006,15 @@
 
     const session = findArtworkSession(artwork);
     const metrics = pickRealMetrics(session?.metrics) || {};
+    const scoreEvidenceSource = hasUsableScoreEvidence(artwork.scoreEvidence)
+      ? { type: "artwork", id: artwork.id, record: artwork, rawScoreEvidence: artwork.scoreEvidence }
+      : hasUsableScoreEvidence(session?.scoreEvidence)
+        ? { type: "session", id: session.id, record: session, rawScoreEvidence: session.scoreEvidence }
+        : null;
+    const scoreEvidence = scoreEvidenceSource
+      ? normalizeScoreEvidence(scoreEvidenceSource.rawScoreEvidence, scoreEvidenceSource.record)
+      : null;
+    const scoreEvidenceFeatures = getScoreEvidenceFeatureFlags(scoreEvidence);
     const exportedAt = new Date().toISOString();
     const share = {
       exportedAt,
@@ -8029,6 +8038,17 @@
           }
         : null,
       metrics,
+      scoreEvidence,
+      scoreEvidenceSource: scoreEvidenceSource
+        ? {
+            type: scoreEvidenceSource.type,
+            id: scoreEvidenceSource.id
+          }
+        : null,
+      features: {
+        scoreEvidence: Boolean(scoreEvidence),
+        ...scoreEvidenceFeatures
+      },
       report: state.reports[state.reports.length - 1]
         ? {
             id: state.reports[state.reports.length - 1].id,
@@ -8044,7 +8064,9 @@
       share: clone(share),
       html: createArtworkShareHtml(share),
       filename: `mr-calligraphy-share-${makeDownloadSlug(artwork.glyph || artwork.id)}-${artwork.id}.html`,
-      message: `已生成“${artwork.title}”的本机分享页，包含作品图、评分、标签、反馈和打印样式。`
+      message: scoreEvidence
+        ? `已生成“${artwork.title}”的本机分享页，包含作品图、评分、标签、反馈、评分证据和打印样式。`
+        : `已生成“${artwork.title}”的本机分享页，包含作品图、评分、标签、反馈和打印样式；当前作品没有可嵌入的评分证据。`
     };
   }
 
@@ -8108,7 +8130,9 @@
         title: decorated.title,
         glyph: decorated.glyph,
         htmlBytes: packageResult.html.length,
-        imageEmbedded: Boolean(packageResult.share?.artwork?.imageData)
+        imageEmbedded: Boolean(packageResult.share?.artwork?.imageData),
+        scoreEvidence: Boolean(packageResult.share?.features?.scoreEvidence),
+        scoreEvidenceSource: packageResult.share?.scoreEvidenceSource?.type || ""
       },
       records: [clone(record)],
       shares: [{
@@ -9185,6 +9209,18 @@
       || normalizeInteger(evidence.pressurePointCount, 0, 0, 99999) > 0;
   }
 
+  function getScoreEvidenceFeatureFlags(scoreEvidence) {
+    const evidence = scoreEvidence?.evidence && typeof scoreEvidence.evidence === "object"
+      ? scoreEvidence.evidence
+      : {};
+    return {
+      heatmap: Array.isArray(evidence.pathErrorHotspots) && evidence.pathErrorHotspots.length > 0,
+      strokePathErrors: Array.isArray(evidence.strokePathErrors) && evidence.strokePathErrors.length > 0,
+      strokeMatches: Array.isArray(evidence.strokeMatches) && evidence.strokeMatches.length > 0,
+      pressure: normalizeInteger(evidence.pressurePointCount, 0, 0, 99999) > 0
+    };
+  }
+
   function createReviewEvidenceHtml(packageData) {
     const scoreEvidence = packageData.scoreEvidence || {};
     const evidence = scoreEvidence.evidence || {};
@@ -9341,6 +9377,13 @@
   function createArtworkShareHtml(share) {
     const artwork = share.artwork;
     const metrics = share.metrics || {};
+    const scoreEvidence = share.scoreEvidence || null;
+    const evidence = scoreEvidence?.evidence || {};
+    const evidenceSourceText = share.scoreEvidenceSource?.type === "artwork"
+      ? "作品评分证据"
+      : share.scoreEvidenceSource?.type === "session"
+        ? "练习评分证据"
+        : "无评分证据";
     const feedback = artwork.feedback?.length
       ? artwork.feedback
       : share.session?.feedback?.length
@@ -9354,6 +9397,12 @@
     const artworkImage = artwork.imageData
       ? `<figure class="artwork"><img src="${escapeAttr(artwork.imageData)}" alt="${escapeAttr(artwork.title)}"><figcaption>${escapeHtml(artwork.title)} · ${artwork.score || 0} 分</figcaption></figure>`
       : `<div class="artwork-empty">${escapeHtml(artwork.glyph || "作品")}</div>`;
+    const scoreEvidenceBlock = scoreEvidence
+      ? createArtworkShareEvidenceBlock(scoreEvidence, evidence, evidenceSourceText)
+      : `<section class="box score-evidence score-evidence-empty">
+          <h2>评分证据</h2>
+          <p class="muted">这幅作品没有可嵌入的路径热力、逐笔路径或压感证据；分享页不会补造评分依据。请用新版画布完成一次真实书写并保存作品后重新导出。</p>
+        </section>`;
     const watermarkText = `MR 书法本机作品分享 · ${artwork.id} · ${formatDateTime(share.exportedAt)}`;
 
     return `<!doctype html>
@@ -9363,7 +9412,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>${escapeHtml(artwork.title)} · MR 书法作品分享</title>
   <style>
-    :root { color-scheme: light; --ink:#17221f; --muted:#5f6f69; --line:#d9e6df; --jade:#257861; --gold:#bb8138; --paper:#fbf7ee; --wash:#eef8f3; }
+    :root { color-scheme: light; --ink:#17221f; --muted:#5f6f69; --line:#d9e6df; --jade:#257861; --gold:#bb8138; --paper:#fbf7ee; --wash:#eef8f3; --hot:#f07b4b; }
     * { box-sizing: border-box; }
     body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
     main { position: relative; z-index: 1; width: min(880px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 40px; }
@@ -9388,12 +9437,28 @@
     .stat strong { display: block; margin-top: 4px; font-size: 28px; line-height: 1.1; }
     .tags { display: flex; flex-wrap: wrap; gap: 6px; }
     .tags span { min-height: 26px; padding: 3px 9px; border-radius: 99px; color: var(--ink); background: #edf5ef; font-size: 12px; font-weight: 800; }
-    .metrics, .feedback { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
+    .metrics, .feedback, .evidence-list, .reason-list, .evidence-stats { display: grid; gap: 8px; margin: 8px 0 0; padding: 0; list-style: none; }
     .metrics li { display: grid; grid-template-columns: 56px 1fr 38px; gap: 9px; align-items: center; }
     .metrics b { height: 11px; overflow: hidden; border-radius: 99px; background: var(--line); }
     .metrics i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--jade), var(--gold)); }
     .metrics strong { text-align: right; }
     .feedback li { padding-left: 10px; border-left: 3px solid rgba(37, 120, 97, 0.28); color: var(--muted); }
+    .score-evidence { display: grid; gap: 12px; }
+    .evidence-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .evidence-stats li { padding: 9px; border-radius: 7px; background: var(--wash); }
+    .evidence-stats span { display: block; color: var(--muted); font-size: 12px; }
+    .evidence-stats strong { display: block; margin-top: 2px; font-size: 16px; }
+    .evidence-list li { display: grid; grid-template-columns: minmax(0, 1fr) 88px; gap: 8px; padding: 8px; border-radius: 7px; background: var(--wash); }
+    .evidence-list strong { text-align: right; }
+    .evidence-list small { grid-column: 1 / -1; color: var(--muted); }
+    .reason-list li { padding-left: 10px; border-left: 3px solid rgba(37, 120, 97, 0.28); color: var(--muted); }
+    .heatmap { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 8px; }
+    .heat-cell { position: relative; display: grid; place-items: center; min-height: 60px; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .heat-cell::before { content: ""; position: absolute; inset: 18%; border-radius: 999px; opacity: var(--heat-alpha, 0.12); transform: scale(var(--heat-scale, 0.45)); background: radial-gradient(circle, #f4c96f 0%, var(--hot) 56%, rgba(240, 123, 75, 0) 72%); }
+    .heat-cell[data-active="true"] { border-color: rgba(187, 129, 56, 0.56); background: #fff8eb; }
+    .heat-cell em, .heat-cell small { position: relative; z-index: 1; max-width: 100%; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+    .heat-cell em { display: block; font-style: normal; font-weight: 900; }
+    .heat-cell small { color: var(--muted); font-size: 11px; }
     footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     @media print {
       @page { size: A4; margin: 14mm; }
@@ -9404,7 +9469,7 @@
       header, .artwork, .panel, .box, .stat { break-inside: avoid; page-break-inside: avoid; }
       .artwork img { max-height: 430px; }
     }
-    @media (max-width: 760px) { main { width: min(100% - 20px, 880px); padding-top: 18px; } .layout, .stats { grid-template-columns: 1fr; } .artwork-empty { min-height: 260px; } }
+    @media (max-width: 760px) { main { width: min(100% - 20px, 880px); padding-top: 18px; } .layout, .stats, .evidence-stats { grid-template-columns: 1fr; } .artwork-empty { min-height: 260px; } .heat-cell { min-height: 54px; } }
   </style>
 </head>
 <body>
@@ -9414,7 +9479,7 @@
     <header>
       <p class="meta">MR Calligraphy Artwork · ${escapeHtml(formatDateTime(artwork.createdAt))}</p>
       <h1>${escapeHtml(artwork.title)}</h1>
-      <p class="muted">这是一份本机导出的作品分享页，包含作品图、基础评分、标签和复盘建议；不是云端公开链接。</p>
+      <p class="muted">这是一份本机导出的作品分享页，包含作品图、基础评分、标签、复盘建议和可追溯评分证据；不是云端公开链接。</p>
       <div class="tags">${tags.map((tag) => `<span>${escapeHtml(tag)}</span>`).join("")}</div>
     </header>
     <section class="layout">
@@ -9430,6 +9495,7 @@
           <h2>能力维度</h2>
           <ul class="metrics">${metricRows}</ul>
         </section>
+        ${scoreEvidenceBlock}
         <section class="box">
           <h2>复盘建议</h2>
           <ol class="feedback">${feedback.slice(0, 6).map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ol>
@@ -9445,6 +9511,57 @@
   </main>
 </body>
 </html>`;
+  }
+
+  function createArtworkShareEvidenceBlock(scoreEvidence, evidence, sourceText) {
+    const heatmap = createReviewEvidenceHeatmapHtml(evidence.pathErrorHotspots);
+    const targetStrokeText = Array.isArray(evidence.targetStrokeNames) && evidence.targetStrokeNames.length
+      ? evidence.targetStrokeNames.slice(0, 8).join("、")
+      : "暂无范字笔顺";
+    const warningText = Array.isArray(evidence.strokeOrderWarnings) && evidence.strokeOrderWarnings.length
+      ? `<p class="muted">笔顺提醒：${escapeHtml(evidence.strokeOrderWarnings.slice(0, 3).join("；"))}</p>`
+      : "";
+    const strokePathRows = Array.isArray(evidence.strokePathErrors) && evidence.strokePathErrors.length
+      ? evidence.strokePathErrors.slice(0, 8).map((item) => `<li><span>第 ${item.index} 笔 ${escapeHtml(item.expected || "")}</span><strong>贴合 ${item.fitPercent || 0}%</strong><small>误差 ${item.errorPercent || 0}% / ${item.sampleCount || 0} 点</small></li>`).join("")
+      : `<li><span>暂无逐笔路径误差。</span><strong>-</strong><small>旧作品缺少真实路径误差字段时不生成假数据。</small></li>`;
+    const strokeMatchRows = Array.isArray(evidence.strokeMatches) && evidence.strokeMatches.length
+      ? evidence.strokeMatches.slice(0, 8).map((item) => `<li><span>第 ${item.index} 笔 ${escapeHtml(item.expected || "")}</span><strong>${escapeHtml(getStrokeMatchStatusLabel(item.status))}</strong><small>匹配 ${item.matchScore || 0} 分 / 最佳 ${escapeHtml(item.matched || "-")}</small></li>`).join("")
+      : `<li><span>暂无逐笔轨迹匹配。</span><strong>-</strong><small>没有真实笔顺匹配时不补造。</small></li>`;
+    const reasonRows = Array.isArray(scoreEvidence.reasons) && scoreEvidence.reasons.length
+      ? scoreEvidence.reasons.slice(0, 5).map((reason) => `<li>${escapeHtml(reason.label || reason.key)} ${normalizeScore(reason.score, 0)} 分：${escapeHtml(reason.evidence || "")}</li>`).join("")
+      : `<li>暂无评分理由。</li>`;
+
+    return `<section class="box score-evidence">
+          <h2>评分证据</h2>
+          <p class="muted">来源：${escapeHtml(sourceText)}。该证据来自本机保存的笔迹采样和启发式算法，不等同于专业书法评级。</p>
+          <ul class="evidence-stats">
+            <li><span>算法</span><strong>${escapeHtml(scoreEvidence.algorithmVersion || scoreEvidence.kind || DEFAULT_SCORE_ALGORITHM_VERSION)}</strong></li>
+            <li><span>范字</span><strong>${escapeHtml(scoreEvidence.copybook || evidence.copybook || "通用范字")}</strong></li>
+            <li><span>笔顺</span><strong>匹配 ${evidence.strokeOrderMatchPercent || 0}% / 覆盖 ${evidence.strokeOrderCoveragePercent || 0}%</strong></li>
+            <li><span>路径</span><strong>贴合 ${evidence.pathFitPercent || 0}% / 误差 ${evidence.pathErrorPercent || 0}%</strong></li>
+            <li><span>采样</span><strong>${evidence.pointCount || 0} 点 / 热力 ${evidence.pathErrorSampleCount || 0} 点</strong></li>
+            <li><span>压感</span><strong>${evidence.pressurePointCount || 0} 点 / 跨度 ${evidence.pressureSpreadPercent || 0}%</strong></li>
+          </ul>
+          <p class="muted">范字笔顺：${escapeHtml(targetStrokeText)}</p>
+          ${warningText}
+          <div>
+            <h2>路径误差热力</h2>
+            ${heatmap}
+          </div>
+          <div>
+            <h2>逐笔路径贴合</h2>
+            <ul class="evidence-list">${strokePathRows}</ul>
+          </div>
+          <div>
+            <h2>逐笔轨迹匹配</h2>
+            <ul class="evidence-list">${strokeMatchRows}</ul>
+          </div>
+          <div>
+            <h2>评分理由</h2>
+            <ol class="reason-list">${reasonRows}</ol>
+          </div>
+          <p class="muted">${escapeHtml(scoreEvidence.disclaimer || "本机评分证据仅用于练习复盘。")}</p>
+        </section>`;
   }
 
   function makeDownloadSlug(value) {

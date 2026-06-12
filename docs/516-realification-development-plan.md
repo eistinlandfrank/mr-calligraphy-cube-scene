@@ -9051,3 +9051,42 @@
 提交：
 
 - 中文 commit message：`新增复盘证据离线导出`
+
+### 2026-06-12：新增分享页评分证据
+
+功能名：作品分享页评分证据嵌入。
+
+完成内容：
+
+- `MRAppState.getArtworkSharePackage()` 会把可用 `scoreEvidence` 写入分享包，并标记 `features.scoreEvidence`、`features.heatmap`、`features.strokePathErrors`、`features.strokeMatches` 和 `features.pressure`。
+- 分享页新增评分证据区，展示算法版本、范字、笔顺、路径、采样、压感、评分理由和本机评分边界。
+- 分享页内嵌 4×4 路径误差热力、逐笔路径贴合列表和逐笔轨迹匹配列表。
+- 旧作品缺少真实热力或逐笔证据时，分享页只显示“不补造评分依据”的空状态，不伪造证据。
+- 远端作品分享包 summary 记录是否包含评分证据和证据来源，mock 服务发布的 HTML 可验证同一份证据。
+- 数据层和前台 E2E 覆盖本机下载、远端分享、旧作品空状态和真实证据 HTML 内容。
+
+真实化说明：
+
+- 数据来源：真实笔迹采样生成的 `scoreEvidence.evidence` 细节字段。
+- 写入状态：不新增状态字段，导出分享页时读取本机作品或关联练习的评分证据。
+- 成功反馈：分享页 HTML 直接展示“评分证据”“路径误差热力”“逐笔路径贴合”和“逐笔轨迹匹配”。
+- 失败反馈：旧记录没有真实证据时只显示空状态，不输出静态假图。
+- 刷新后复现方式：保存带评分证据的作品后刷新，导出分享页仍能复现证据区。
+
+仍待补：
+
+- 当前是本机作品分享 HTML，不是公网作品墙、账号体系、教师签章、云端存证或专业模型证书。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享页评分证据`

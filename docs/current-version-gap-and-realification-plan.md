@@ -3989,3 +3989,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增复盘证据离线导出`
+
+### 2026-06-12：新增分享页评分证据
+
+完成内容：
+
+- `MRAppState.getArtworkSharePackage()` 新增 `scoreEvidence`、`scoreEvidenceSource` 和 `features`，作品分享包会随作品携带真实评分证据。
+- 评分证据来源优先读取作品自身的 `scoreEvidence`，旧作品缺少证据时再读取关联练习；没有热力、逐笔匹配、逐笔路径或压感细节时不声明证据。
+- 作品分享页新增“评分证据”区块，展示算法版本、范字、笔顺匹配、路径贴合、采样、压感、4×4 路径误差热力、逐笔路径贴合、逐笔轨迹匹配和评分理由。
+- 旧作品分享页显示“不补造评分依据”的空状态，不渲染假热力图。
+- 远端分享包 summary 新增 `scoreEvidence` 和 `scoreEvidenceSource`，发布到用户配置 endpoint 的 HTML 与本机下载页保持同一份证据。
+- 数据层和 E2E 均覆盖旧作品无证据边界、真实作品证据嵌入、下载分享页和远端分享包内容。
+
+真实化说明：
+
+- 数据来源：真实书写保存后的 `scoreEvidence.evidence.pathErrorHotspots`、`strokePathErrors`、`strokeMatches` 和压感采样。
+- 写入状态：不新增持久化字段，分享页导出时读取 `mr-calligraphy-learning-state-v1.artworks[*].scoreEvidence` 或关联 `sessions[*].scoreEvidence`。
+- 成功反馈：点击“导出分享页”下载的 `mr-calligraphy-share-*.html` 可直接看到评分证据、路径热力和逐笔明细。
+- 失败反馈：旧作品缺少真实细节证据时只提示无法嵌入证据，不生成静态假图或假列表。
+- 刷新后复现方式：保存一幅带真实评分证据的作品，刷新后在复盘区导出分享页或发布远端分享包，证据仍来自本机持久化记录。
+
+仍待补：
+
+- 当前是本机分享页内嵌评分证据，不是生产 CDN 作品墙、云端不可篡改证书、教师签章或专业模型评级。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/learning-state-check.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增分享页评分证据`
