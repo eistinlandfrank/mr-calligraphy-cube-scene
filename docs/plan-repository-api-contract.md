@@ -5,7 +5,7 @@
 
 ## 1. 边界
 
-远端计划仓库 API 接收的是浏览器本机学习计划同步包，用来验证跨设备计划同步的真实 HTTP 闭环。当前 adapter 已支持 `Workspace` 空间 ID：前端会把空间写入请求头和同步包，mock 服务会按空间隔离最近计划包。它仍不是完整账号系统、教师端排课、后台推送提醒或云端权限模型。
+远端计划仓库 API 接收的是浏览器本机学习计划同步包，用来验证跨设备计划同步的真实 HTTP 闭环。当前 adapter 已支持 `Workspace` 空间 ID：前端会把空间写入请求头和同步包，mock 服务会按空间隔离最近计划包；远端回执会在本机重算 `receiptDigest`，用于确认回执声明字段是否自洽、workspace 是否匹配当前空间。它仍不是完整账号系统、教师端排课、后台推送提醒或云端权限模型。
 
 生产服务端必须重新校验计划包结构，并在账号、空间、权限和数据版本上做服务端隔离；前端本机校验只能作为提交前保护。
 
@@ -94,10 +94,36 @@ X-MR-Workspace-Id: <workspaceId>
 - `repositoryDigest` 和 `receiptDigest` 必须是 64 位十六进制摘要。
 - 回执里的 `workspaceId` 会进入本机回执审计；切换 workspace 会清空当前 endpoint 下的本机回执视图，避免误把其他空间的回执当成当前空间。
 - 回执会补充本机收到方向、endpoint 和收到时间。
+- 回执会补充 `verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`，用于页面和审计导出显示本机一致性校验结果。
 - 回执审计可从前台“远端 API 同步 / 回执审计”导出 HTML。
 - 这仍是本机审计留存，不是服务端不可篡改日志或账号化权限审计。
 
-## 5. 失败响应
+## 5. 本机一致性校验
+
+前端收到 `receipt` 或 `latestReceipt` 后，会使用稳定 JSON 重新计算：
+
+```json
+{
+  "sourcePackageId": "<receipt.sourcePackageId>",
+  "workspaceId": "<receipt.workspaceId>",
+  "repositoryDigest": "<receipt.repositoryDigest>",
+  "acceptedAt": "<receipt.acceptedAt>"
+}
+```
+
+重算结果必须等于 `receipt.receiptDigest`。同时，回执里的 `workspaceId` 必须匹配当前计划仓库配置的 Workspace。
+
+校验结果：
+
+| 状态 | 说明 |
+| --- | --- |
+| `verified` | `receiptDigest` 与声明字段一致，且 Workspace 匹配当前空间 |
+| `workspace-mismatch` | `receiptDigest` 自洽，但回执空间不是当前空间 |
+| `digest-mismatch` | `receiptDigest` 无法按声明字段重算匹配，回执可能损坏或被篡改 |
+
+这个校验只能证明回执字段自洽和空间匹配，不能替代生产 HMAC 私钥验签、公钥验签、证书链、账号权限或服务端不可篡改审计。
+
+## 6. 失败响应
 
 失败响应建议返回：
 
@@ -120,7 +146,7 @@ X-MR-Workspace-Id: <workspaceId>
 | `422` | 计划包结构校验失败 |
 | `500` | 服务端内部错误 |
 
-## 6. 本机 mock 服务
+## 7. 本机 mock 服务
 
 启动 mock server：
 
@@ -147,9 +173,9 @@ mock 服务会：
 - `PUT` 校验 `mr-calligraphy-plan-repository-v1` 结构并保存到对应 workspace 的内存槽。
 - 支持浏览器跨端口 `OPTIONS` 预检。
 - 校验可选 Bearer token。
-- 返回 `mr-calligraphy-plan-repository-receipt-v1` 回执和 `repositoryDigest`。
+- 返回 `mr-calligraphy-plan-repository-receipt-v1` 回执、`repositoryDigest` 和可被前端重算匹配的 `receiptDigest`。
 
-## 7. 验收
+## 8. 验收
 
 脚本验收：
 
@@ -158,4 +184,4 @@ node scripts/learning-state-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、Workspace header、计划仓库回执、按空间隔离拉取最近计划包和错误 token 拒绝。
+`learning-state-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `PUT` 验证 endpoint、Bearer token、Workspace header、计划仓库回执、本机一致性校验、篡改回执摘要不匹配、按空间隔离拉取最近计划包和错误 token 拒绝。

@@ -49,7 +49,7 @@ node scripts/control-inventory.js
 | AI 讲解 | 浏览器本机语音合成能朗读本机讲解段落；已新增本机 `LectureService` adapter，记录语音能力、播放段落、降级、失败和完成状态 | 不是云端 AI 音频，也不是根据真实笔迹动态生成 | UI 保持“本机语音讲解”定位；后续扩展云端生成和音频资源 |
 | 书写练习 | 支持鼠标/触控笔迹、撤销、清空、回放和本机保存 | 缺压感、笔锋、笔画顺序模型和硬件适配 | 增加范字路径库、笔画顺序校验、压感字段、专业评分接口和离线 fallback |
 | 评分反馈 | 能从本机笔迹计算结构、笔画、笔法、力度、流畅度；已新增本机 `ScoreService` adapter，记录评分来源、算法版本、最近证据摘要、累计评分次数和采样点 | 仍是启发式评分，容易被误解为专业识别模型 | 继续保持“基础练习评分”边界；后续扩展范字路径库、笔顺模型、硬件压感和服务端专业评分来源 |
-| 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint/token/Workspace 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单和 `.ics` 日历提醒；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本和字段级合并入口；推送 422 或网络中断时会保留待同步队列；远端计划仓库 API 合同、本机 mock 服务、Workspace 空间隔离和回执审计导出已完成第一版 | 缺真正账号登录、后台托管仓库、远端提醒、教师端通知和服务端不可篡改审计 | 继续增加账号同步、后台计划仓库、教师端通知、远端提醒和服务端审计 |
+| 学习计划 | 可按本机状态生成、勾选、顺延、复盘、管理计划项，显示任务依赖图，生成下周期，检查浏览器通知权限，触发页面打开时的一次性本机通知，导出/导入 JSON 同步包，配置远端 API endpoint/token/Workspace 并通过 `fetch` 检查、推送、拉取计划仓库，可导出离线 HTML 计划单和 `.ics` 日历提醒；计划变更已进入自动同步队列，拉取远端时会检测本机待同步冲突，并提供保留本机、采用远端、另存远端副本和字段级合并入口；推送 422 或网络中断时会保留待同步队列；远端计划仓库 API 合同、本机 mock 服务、Workspace 空间隔离、回执审计导出和回执本机一致性校验已完成第一版 | 缺真正账号登录、后台托管仓库、远端提醒、教师端通知和服务端不可篡改审计 | 继续增加账号同步、后台计划仓库、教师端通知、远端提醒和服务端审计 |
 
 ### 3.2 作品、报告和分享
 
@@ -3265,3 +3265,43 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告仓库回执本机校验`
+
+### 2026-06-12：新增计划仓库回执本机校验
+
+完成内容：
+
+- 计划仓库远端回执新增本机一致性校验字段。
+- 前端会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 回执会检查 workspace 是否匹配当前计划仓库空间。
+- 计划仓库状态、回执列表、审计 HTML 和本机状态都保留校验结果。
+- 状态层脚本覆盖真实 mock 回执校验通过，并验证篡改 `receiptDigest` 的回执会被标记为摘要不匹配。
+- Playwright 前台计划仓库用例验证页面、localStorage 和审计 HTML 都显示本机校验通过。
+- `docs/plan-repository-api-contract.md` 同步本机一致性校验规则和生产边界。
+
+真实化说明：
+
+- 数据来源：远端计划仓库 API 返回的 `receipt/latestReceipt` 和当前配置的 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.planRepository.lastReceipt` 与 `receipts[*]` 的校验字段。
+- 成功反馈：状态栏、回执列表和导出的审计 HTML 都显示“本机校验通过”。
+- 失败反馈：摘要被篡改或公式不匹配会显示“摘要不匹配”；空间不一致会显示“空间不匹配”。
+- 刷新后复现方式：校验字段随回执进入本机学习状态，刷新后重新读取仍会规范化保留校验结果。
+
+仍待补：
+
+- 当前校验只能证明计划仓库回执声明字段一致和空间匹配，不能替代生产 HMAC 私钥验签、证书链、公钥验签、账号权限或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front plan repository detects remote conflicts and saves a remote copy"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库回执本机校验`

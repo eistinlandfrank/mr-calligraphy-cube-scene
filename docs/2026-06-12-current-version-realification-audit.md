@@ -88,14 +88,14 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST/DELETE 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布已补 Workspace 空间 ID，请求头、同步包或发布包、回执和 mock server 都能按空间隔离，计划仓库还能保存回执审计；报告仓库、项目仓库、作品分享远端 API 和远端发布都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST/DELETE 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库、项目仓库、作品分享远端 API 和后台远端发布已补 Workspace 空间 ID，请求头、同步包或发布包、回执和 mock server 都能按空间隔离，计划仓库还能保存回执审计并重算 `receiptDigest` 做本机一致性校验；报告仓库、项目仓库、作品分享远端 API 和远端发布都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
 
 真实化方向：
 
 - 补生产服务端仓库。
 - 补登录态和 token 刷新。
 - 将当前 `.ics` 本机日历导出升级为账号化提醒、教师端通知和后台任务下发。
-- 补账号化分页查询、服务端冲突合并、生产签名回执和不可篡改审计；前端 adapter 已能按 `nextPageUrl` 自动追取学习档案分页，并把同 ID 差异保存为本机冲突审计和字段级合并表单，计划仓库也已能保存远端 receipt 到本机审计列表。
+- 补账号化分页查询、服务端冲突合并、生产签名回执和不可篡改审计；前端 adapter 已能按 `nextPageUrl` 自动追取学习档案分页，并把同 ID 差异保存为本机冲突审计和字段级合并表单，计划仓库也已能保存远端 receipt 到本机审计列表并做本机一致性校验。
 - mock server 保留为本地开发验收，不再作为产品能力宣传。
 
 ### 2.9 浏览器级验收还不够
@@ -279,6 +279,7 @@ npm run test:e2e
 - 追加报告仓库签名回执审计记录：远端 `receipt/latestReceipt` 会写入 `lastSignedReceipt` 和最近 12 条 `signedReceipts`，站内报告可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证签名、摘要、方向和导出文件内容。
 - 追加学习计划日历提醒导出记录：`MRAppState.getPlanCalendarExport()` 会从真实计划项生成 `.ics`，前台“导出日历”可下载包含 `VCALENDAR`、`VEVENT` 和 `VALARM` 的文件；数据层和 E2E 已验证结构与下载内容。
 - 追加计划仓库回执审计记录：远端计划 API 返回的 `receipt/latestReceipt` 会写入 `lastReceipt` 和最近 12 条 `receipts`，前台计划远端同步区可查看回执摘要并导出 HTML 审计页；数据层和 E2E 已验证摘要、方向、endpoint 和导出文件内容。
+- 追加计划仓库回执本机校验记录：前端会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`，页面、localStorage 和回执审计 HTML 会显示“本机校验通过 / 空间不匹配 / 摘要不匹配”；数据层已验证真实 mock 回执通过和篡改摘要失败，E2E 已验证页面与导出文件显示校验结果。
 - 追加项目仓库回执审计记录：远端项目仓库 API 返回的 `receipt/latestReceipt` 会写入 `mr-calligraphy-project-repository-remote-v1.receipts`，主后台远端项目仓库面板可查看回执摘要并导出 HTML 审计页；E2E 已验证 packageId、sourcePackageId、receiptDigest、方向和下载文件内容。
 - 追加项目仓库远端失败反馈记录：主后台项目仓库远端 adapter 会拒绝非 JSON 响应，HTTP 错误、无项目包和网络中断会写入 `lastError`；E2E 已验证 401、非 JSON、无项目包、PUT 422、网络中断和失败后本机布局保留。
 - 追加报告教师批注审计记录：保存和清除教师批注会写入 `mr-calligraphy-learning-state-v1.reportTeacherReviewAudits`，前台报告详情可查看最近审计并导出 HTML；数据层和 E2E 已验证 `save/clear`、SHA-256 摘要、预览、下载文件和刷新持久化。

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+const crypto = require("crypto");
+
 global.window = global;
 global.CustomEvent = class CustomEvent {
   constructor(type, options = {}) {
@@ -765,24 +767,47 @@ async function runRemoteRepositoryChecks() {
     plans: [remotePlan]
   };
   let capturedPushPackage = null;
+  let latestPlanReceipt = null;
   const fetchCalls = [];
   global.fetch = async (url, options = {}) => {
     fetchCalls.push({ url, options });
     if (options.method === "PUT") {
       capturedPushPackage = JSON.parse(options.body);
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = "b".repeat(64);
+      latestPlanReceipt = {
+        receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
+        remoteVersion: "remote-plan-test-v1",
+        workspaceId: capturedPushPackage.workspaceId,
+        packageId: "remote-accepted-package",
+        sourcePackageId: capturedPushPackage.packageId,
+        repositoryDigest,
+        acceptedAt,
+        planCount: capturedPushPackage.plans.length,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: sha256StableJson({
+          sourcePackageId: capturedPushPackage.packageId,
+          workspaceId: capturedPushPackage.workspaceId,
+          repositoryDigest,
+          acceptedAt
+        })
+      };
       return createJsonResponse({
         ok: true,
         message: "远端已接收计划仓库。",
         package: {
           ...capturedPushPackage,
           packageId: "remote-accepted-package"
-        }
+        },
+        receipt: latestPlanReceipt
       });
     }
     return createJsonResponse({
       ok: true,
       message: "远端计划仓库可读。",
-      package: remotePackage
+      package: remotePackage,
+      latestReceipt: latestPlanReceipt
     });
   };
 
@@ -799,6 +824,9 @@ async function runRemoteRepositoryChecks() {
   assert(capturedPushPackage.workspaceId === "class-alpha", "远端推送包应包含计划仓库 workspaceId。");
   assert(capturedPushPackage.plans.length >= 3, "远端推送应包含当前本机计划列表。");
   assert(pushedRemote.packageId === "remote-accepted-package", "推送结果应记录远端接收的 packageId。");
+  assert(pushedRemote.receipt.verificationStatus === "verified", "计划仓库推送回执应标记本机校验通过。");
+  assert(pushedRemote.receipt.verificationExpectedDigest === pushedRemote.receipt.receiptDigest, "计划仓库推送回执应保留重算摘要。");
+  assert(pushedRemote.status.message.includes("本机校验通过"), "计划仓库状态摘要应提示回执本机校验结果。");
   assert(!pushedRemote.status.pendingAutoSync, "推送成功后应清空待自动同步队列。");
 
   const pulledRemote = await window.MRAppState.pullPlanRepositoryFromRemote();
@@ -951,6 +979,8 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planRepository.lastPackageId === "remote-accepted-package", "字段合并前的远端基线推送 packageId 应持久化。");
   assert(persistedPlanState.planRepository.lastRemoteDirection === "push", "字段级合并后最近远端方向应保留为基线推送。");
   assert(persistedPlanState.planRepository.lastRemotePlanCount === remotePackage.plans.length, "计划 repository 应记录最近远端计划数量。");
+  assert(persistedPlanState.planRepository.lastReceipt.verificationStatus === "verified", "计划 repository 应持久化回执本机校验状态。");
+  assert(persistedPlanState.planRepository.lastReceipt.verificationExpectedDigest === persistedPlanState.planRepository.lastReceipt.receiptDigest, "计划 repository 应持久化回执重算摘要。");
   assert(persistedPlanState.planRepository.pendingAutoSync, "字段级合并后的混合版本应继续显示待同步。");
   assert(persistedPlanState.planRepository.pendingReason.includes("字段级合并"), "字段级合并待同步原因应持久化。");
   assert(persistedPlanState.planRepository.lastAutoSyncAt, "计划 repository 应持久化最近自动同步时间。");
@@ -960,12 +990,25 @@ async function runRemoteRepositoryChecks() {
   assert(persistedRemotePlan.items[0].title === "字段合并保留本机任务标题", "字段级合并后的本机任务标题应持久化到 localStorage。");
   assert(persistedRemotePlan.items[0].detail === "字段合并时采用的远端任务说明。", "字段级合并后的远端任务说明应持久化到 localStorage。");
 
+  global.fetch = async () => createJsonResponse({
+    ok: true,
+    message: "远端返回了被篡改的计划仓库回执。",
+    package: remotePackage,
+    latestReceipt: {
+      ...latestPlanReceipt,
+      receiptDigest: "0".repeat(64)
+    }
+  });
+  const tamperedPlanReceiptCheck = await window.MRAppState.checkRemotePlanRepository();
+  assert(tamperedPlanReceiptCheck.ok, "计划仓库篡改回执检查仍应完成远端读取。");
+  assert(tamperedPlanReceiptCheck.receipt.verificationStatus === "digest-mismatch", "计划仓库篡改回执应被标记为摘要不匹配。");
+
   await runReportRepositoryMockServerChecks(nativeFetch);
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
@@ -1414,17 +1457,24 @@ async function runPlanRepositoryMockServerChecks(fetchApi) {
     assert(/^[a-f0-9]{64}$/.test(mock.state.receipts[0].receiptDigest), "计划仓库 mock 应返回 64 位 receiptDigest。");
     assert(pushedMock.receipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库推送结果应暴露服务端回执。");
     assert(pushedMock.receipt.workspaceId === "alpha-class", "计划仓库推送结果应暴露 workspace 回执。");
+    assert(pushedMock.receipt.verificationStatus === "verified", "计划仓库 mock 推送结果应标记本机校验通过。");
+    assert(pushedMock.receipt.verificationExpectedDigest === pushedMock.receipt.receiptDigest, "计划仓库 mock 推送结果应保留重算摘要。");
     const receiptStatus = window.MRAppState.getPlanRepositoryStatus();
     assert(receiptStatus.lastReceipt.receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库状态应持久化最近回执。");
     assert(receiptStatus.lastReceipt.workspaceId === "alpha-class", "计划仓库状态应持久化回执 workspace。");
+    assert(receiptStatus.lastReceipt.verificationStatus === "verified", "计划仓库状态应持久化回执校验状态。");
     assert(receiptStatus.receiptCount === 1, "计划仓库状态应统计最近回执数量。");
     assert(receiptStatus.receipts[0].direction === "push", "计划仓库回执应记录同步方向。");
     const receiptAudit = window.MRAppState.getPlanRepositoryReceiptAudit();
     assert(receiptAudit.ok && receiptAudit.total === 1, "计划仓库回执审计 API 应返回最近回执。");
+    assert(receiptAudit.verifiedCount === 1, "计划仓库回执审计应统计本机校验通过数量。");
     assert(receiptAudit.receipts[0].receiptDigest === mock.state.receipts[0].receiptDigest, "计划仓库回执审计应保留 receiptDigest。");
+    assert(receiptAudit.receipts[0].verificationStatus === "verified", "计划仓库回执审计应保留校验状态。");
     const receiptExport = window.MRAppState.getPlanRepositoryReceiptAuditExport();
     assert(receiptExport.ok && receiptExport.html.includes("MR 书法计划仓库回执审计"), "计划仓库回执审计应可导出 HTML。");
     assert(receiptExport.html.includes(mock.state.receipts[0].repositoryDigest), "计划仓库回执审计 HTML 应包含仓库摘要。");
+    assert(receiptExport.html.includes("本机校验通过"), "计划仓库回执审计 HTML 应包含本机校验结果。");
+    assert(receiptExport.html.includes("重算摘要"), "计划仓库回执审计 HTML 应包含重算摘要字段。");
     assert(receiptExport.html.includes("alpha-class"), "计划仓库回执审计 HTML 应包含 workspace。");
 
     const checkedAfterPush = await window.MRAppState.checkRemotePlanRepository();
@@ -1477,6 +1527,20 @@ function createJsonResponse(payload, ok = true, status = 200) {
     status,
     text: async () => JSON.stringify(payload)
   };
+}
+
+function sha256StableJson(value) {
+  return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableStringify).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
 }
 
 function createSession(id, glyph, score, time, metrics = {}) {

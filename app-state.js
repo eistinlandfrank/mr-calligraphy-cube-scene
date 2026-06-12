@@ -1069,8 +1069,11 @@
       ? source.lastRemoteDirection
       : "";
     const workspaceId = normalizePlanRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
-    const receipts = normalizePlanRepositoryReceipts(source);
-    const lastReceipt = normalizePlanRepositoryReceipt(source.lastReceipt || source.latestReceipt || source.receipt || null)
+    const receipts = normalizePlanRepositoryReceipts(source, { expectedWorkspaceId: workspaceId });
+    const lastReceipt = normalizePlanRepositoryReceipt({
+      ...(source.lastReceipt || source.latestReceipt || source.receipt || {}),
+      expectedWorkspaceId: workspaceId
+    })
       || receipts[0]
       || null;
     return {
@@ -1108,7 +1111,7 @@
         ? source.lastSyncConflictPlans.map(normalizePlan).filter(Boolean).slice(0, 12)
         : [],
       lastReceipt,
-      receipts: appendPlanRepositoryReceipt({ receipts }, lastReceipt),
+      receipts: appendPlanRepositoryReceipt({ receipts, workspaceId }, lastReceipt),
       lastError: source.lastError ? String(source.lastError).slice(0, 180) : ""
     };
   }
@@ -1122,7 +1125,7 @@
     return normalized || PLAN_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
-  function normalizePlanRepositoryReceipts(source = {}) {
+  function normalizePlanRepositoryReceipts(source = {}, context = {}) {
     const candidates = Array.isArray(source.receipts)
       ? source.receipts
       : Array.isArray(source.planReceipts)
@@ -1131,7 +1134,10 @@
     const seen = new Set();
     const receipts = [];
     candidates
-      .map(normalizePlanRepositoryReceipt)
+      .map((receipt) => normalizePlanRepositoryReceipt({
+        ...receipt,
+        expectedWorkspaceId: context.expectedWorkspaceId || source.workspaceId || source.remoteWorkspaceId || source.accountId
+      }))
       .filter(Boolean)
       .forEach((receipt) => {
         const key = getPlanRepositoryReceiptKey(receipt);
@@ -1153,23 +1159,78 @@
     const warnings = Array.isArray(record.warnings)
       ? record.warnings.map((warning) => String(warning || "").slice(0, 160)).filter(Boolean).slice(0, 8)
       : [];
+    const workspaceId = normalizePlanRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId);
+    const acceptedAt = normalizePlanDate(record.acceptedAt);
+    const verification = verifyPlanRepositoryReceipt({
+      ...record,
+      sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
+      workspaceId,
+      repositoryDigest,
+      acceptedAt,
+      receiptDigest
+    }, {
+      expectedWorkspaceId: record.expectedWorkspaceId || record.contextWorkspaceId || record.currentWorkspaceId || ""
+    });
     return {
       receiptKind,
       id: String(record.id || `plan-receipt-${receiptDigest.slice(0, 16)}`).slice(0, 120),
       remoteVersion: String(record.remoteVersion || "").trim().slice(0, 80),
       packageId: String(record.packageId || "").trim().slice(0, 120),
       sourcePackageId: String(record.sourcePackageId || "").trim().slice(0, 120),
-      workspaceId: normalizePlanRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId),
+      workspaceId,
       direction: ["check", "push", "pull"].includes(record.direction) ? record.direction : "",
       endpoint: String(record.endpoint || "").trim().slice(0, 240),
       receivedAt: normalizePlanDate(record.receivedAt),
       repositoryDigest,
-      acceptedAt: normalizePlanDate(record.acceptedAt),
+      acceptedAt,
       planCount: normalizeInteger(record.planCount, 0, 0, 99999),
       warningCount: normalizeInteger(record.warningCount, warnings.length, 0, 99999),
       warnings,
       receiptDigest,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationDigest: verification.digest,
+      verificationExpectedDigest: verification.expectedDigest,
+      verificationWorkspaceStatus: verification.workspaceStatus,
       message: String(record.message || "").slice(0, 180)
+    };
+  }
+
+  function verifyPlanRepositoryReceipt(receipt = {}, context = {}) {
+    const sourcePackageId = String(receipt.sourcePackageId || "").trim();
+    const workspaceId = normalizePlanRepositoryWorkspaceId(receipt.workspaceId || receipt.remoteWorkspaceId || receipt.accountId);
+    const repositoryDigest = normalizePlanRepositoryHex(receipt.repositoryDigest);
+    const acceptedAt = normalizePlanDate(receipt.acceptedAt);
+    const receiptDigest = normalizePlanRepositoryHex(receipt.receiptDigest);
+    const expectedWorkspaceId = context.expectedWorkspaceId
+      ? normalizePlanRepositoryWorkspaceId(context.expectedWorkspaceId)
+      : "";
+    const expectedDigest = sourcePackageId && workspaceId && repositoryDigest && acceptedAt
+      ? sha256StableJson({
+        sourcePackageId,
+        workspaceId,
+        repositoryDigest,
+        acceptedAt
+      })
+      : "";
+    const digestOk = Boolean(expectedDigest && receiptDigest && expectedDigest === receiptDigest);
+    const workspaceOk = !expectedWorkspaceId || expectedWorkspaceId === workspaceId;
+    const status = digestOk && workspaceOk
+      ? "verified"
+      : digestOk
+        ? "workspace-mismatch"
+        : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 与计划仓库声明字段一致，Workspace 匹配当前空间。",
+      "workspace-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执空间 ${workspaceId} 与当前空间 ${expectedWorkspaceId} 不一致。`,
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按 sourcePackageId、workspaceId、repositoryDigest 和 acceptedAt 重算匹配。"
+    };
+    return {
+      status,
+      message: messages[status],
+      digest: receiptDigest,
+      expectedDigest,
+      workspaceStatus: workspaceOk ? "matched" : "mismatch"
     };
   }
 
@@ -1179,6 +1240,7 @@
       direction: context.direction || receipt?.direction,
       endpoint: context.endpoint || receipt?.endpoint,
       workspaceId: context.workspaceId || receipt?.workspaceId,
+      expectedWorkspaceId: context.workspaceId || receipt?.expectedWorkspaceId,
       receivedAt: context.receivedAt || receipt?.receivedAt,
       message: context.message || receipt?.message
     });
@@ -1186,18 +1248,27 @@
   }
 
   function appendPlanRepositoryReceipt(repository, receipt) {
-    const normalized = normalizePlanRepositoryReceipt(receipt);
+    const normalized = normalizePlanRepositoryReceipt({
+      ...receipt,
+      expectedWorkspaceId: repository?.workspaceId || receipt?.expectedWorkspaceId
+    });
     const existing = Array.isArray(repository?.receipts) ? repository.receipts : [];
     if (!normalized) {
       return existing
-        .map(normalizePlanRepositoryReceipt)
+        .map((item) => normalizePlanRepositoryReceipt({
+          ...item,
+          expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+        }))
         .filter(Boolean)
         .slice(0, PLAN_REPOSITORY_MAX_RECEIPTS);
     }
     const seen = new Set([getPlanRepositoryReceiptKey(normalized)]);
     const next = [normalized];
     existing
-      .map(normalizePlanRepositoryReceipt)
+      .map((item) => normalizePlanRepositoryReceipt({
+        ...item,
+        expectedWorkspaceId: repository?.workspaceId || item?.expectedWorkspaceId
+      }))
       .filter(Boolean)
       .forEach((item) => {
         const key = getPlanRepositoryReceiptKey(item);
@@ -3128,21 +3199,25 @@
     const digestShort = normalized.repositoryDigest.slice(0, 12);
     const receiptShort = normalized.receiptDigest.slice(0, 12);
     const acceptedAt = normalized.acceptedAt ? `，${formatPlanDate(normalized.acceptedAt)}` : "";
-    return `已收到远端计划回执：仓库摘要 ${digestShort}，回执 ${receiptShort}${acceptedAt}。`;
+    const verificationLabel = formatPlanRepositoryReceiptVerificationStatus(normalized.verificationStatus);
+    return `已收到远端计划回执：仓库摘要 ${digestShort}，回执 ${receiptShort}${acceptedAt}；${verificationLabel}。`;
   }
 
   function getPlanRepositoryReceiptAudit() {
     const repository = normalizePlanRepository(state.planRepository);
     const receipts = repository.receipts;
+    const verifiedCount = receipts.filter((receipt) => receipt.verificationStatus === "verified").length;
     return {
       ok: true,
       kind: "mr-calligraphy-plan-repository-receipt-audit-v1",
+      workspaceId: repository.workspaceId,
       total: receipts.length,
+      verifiedCount,
       latestReceipt: receipts[0] || null,
       receipts: clone(receipts),
       boundary: PLAN_REPOSITORY_BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条计划仓库回执，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        ? `已保存 ${receipts.length} 条计划仓库回执，本机校验通过 ${verifiedCount} 条，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
         : "暂无计划仓库回执。"
     };
   }
@@ -3190,6 +3265,9 @@
             <dt>计划数量</dt><dd>${escapeHtml(receipt.planCount || 0)}</dd>
             <dt>Repository Digest</dt><dd>${escapeHtml(receipt.repositoryDigest || "未知")}</dd>
             <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>本机校验</dt><dd>${escapeHtml(formatPlanRepositoryReceiptVerificationStatus(receipt.verificationStatus))}</dd>
+            <dt>校验说明</dt><dd>${escapeHtml(receipt.verificationMessage || "未执行")}</dd>
+            <dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "未知")}</dd>
             <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
             <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || PLAN_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
             <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
@@ -3235,6 +3313,14 @@
       push: "推送",
       pull: "拉取"
     }[direction] || "远端回执";
+  }
+
+  function formatPlanRepositoryReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "workspace-mismatch": "空间不匹配",
+      "digest-mismatch": "摘要不匹配"
+    }[status] || "未校验";
   }
 
   function getPlanReminderServiceStatus(planId = null) {

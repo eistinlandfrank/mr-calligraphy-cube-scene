@@ -7585,9 +7585,9 @@ function renderPlanRepositoryReceipts() {
     const meta = document.createElement("span");
     const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
     const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
-    meta.textContent = `${formatPlanRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
+    meta.textContent = `${formatPlanRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest} · ${formatPlanRepositoryReceiptVerificationStatus(receipt.verificationStatus)}`;
     const detail = document.createElement("small");
-    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.workspaceId || "local-browser"} / ${receipt.planCount || 0} 份计划`;
+    detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.workspaceId || "local-browser"} / ${receipt.planCount || 0} 份计划 / ${receipt.verificationMessage || "本机校验未执行"}`;
     item.append(title, meta, detail);
     els.planRepositoryReceiptList.appendChild(item);
   });
@@ -7599,6 +7599,14 @@ function formatPlanRepositoryReceiptDirection(direction) {
     push: "推送",
     pull: "拉取"
   }[direction] || "回执";
+}
+
+function formatPlanRepositoryReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "workspace-mismatch": "空间不匹配",
+    "digest-mismatch": "摘要不匹配"
+  }[status] || "未校验";
 }
 
 function renderPlanRepositoryConflictPanel(status) {

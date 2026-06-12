@@ -56,7 +56,7 @@
 - 书写练习仍是第一版：已有书写画布、笔迹采样、撤销、清空和回放，但还没有压感硬件适配和高级笔法识别。
 - 评分算法仍需升级：当前结构、笔画、笔法、力度、流畅度由启发式算法计算，并已保存基础评分证据和维度理由，但还不是专业模型。
 - 任务系统已有第一版本机任务库、任务依赖和任务级进度：当前字、碑帖、模式、任务标题、等级、练习重点、步骤、前置任务、完成条件、锁定状态、笔画拆解/创作实践/复习巩固阶段记录、练习次数、作品数、报告数和完成百分比可写入或刷新读取；仍缺云端课程库、更细逐步骤评分规则和教师端任务下发。
-- 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、`.ics` 日历导出、同步仓库、远端 API adapter、计划仓库 API 合同、本机 mock 服务、Workspace 空间隔离、远端回执审计、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测、保留本机、采用远端、另存远端副本和字段级合并第一版；仍缺账号化托管仓库、远端提醒、教师端通知、计划项增删合并和服务端合并审计。
+- 学习计划已有第一版提醒、复盘、任务依赖图、周期循环、离线导出、`.ics` 日历导出、同步仓库、远端 API adapter、计划仓库 API 合同、本机 mock 服务、Workspace 空间隔离、远端回执审计、回执本机一致性校验、自动同步队列、冲突检测和冲突解决入口：计划项支持到期、提醒、顺延、复盘动作、复盘完成时间、依赖 ID、依赖图、周期规则、生成下周期、HTML 计划单导出、JSON 同步包、远端推送/拉取、本机待同步冲突检测、保留本机、采用远端、另存远端副本和字段级合并第一版；仍缺账号化托管仓库、远端提醒、教师端通知、计划项增删合并和服务端合并审计。
 - 历史记录仍需扩展：已有记录列表、筛选、最近分数趋势、按日聚合趋势、维度级长期趋势、作品对比、作品集搜索、标签筛选、标签编辑、作品直达路由、详情展开、复制直达链接、重命名、单条/批量删除、回收站恢复、所选导出、加载更多、档案导出、远端学习档案 API adapter、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、`nextPageUrl` 分页追取、同 ID 冲突审计、字段级合并、远端冲突另存副本、API 合同和本机 mock 服务，但还没有账号化托管仓库、生产级分页查询、服务端教师批注审计和长期归档。
 - 已有第一版项目级导入导出：主后台可打包/恢复学习状态、房间配置、场景布局和本机导入模型，并已补差异预览、二次确认和选择性恢复；仍缺版本历史和远端协作。
 - 统一项目 schema 已有第一版：项目档案会额外写入 `projectSchema`，归一化描述学习、房间、主场景、写实场景和导入模型资产；项目档案迁移预检、执行记录、导入模型 SHA-256、主后台发布版本摘要、写实发布版本摘要、localStorage 深层字段恢复、字段 JSON 片段展开预览、导入模型单模型差异预览、单模型选择恢复、模型元数据片段对照、模型完整 JSON 安全预览、命名冲突策略选择、自定义命名、远端发布包模型/贴图资产清单、本机发布锁、服务端锁预检、服务端合同文档、mock server 和 HMAC 开发资产签名回执已补第一版，仍缺对象 schema 统一、三方字段合并、完整 JSON 树和生产证书资产签名。
@@ -8281,3 +8281,45 @@
 提交：
 
 - 中文 commit message：`新增报告仓库回执本机校验`
+
+### 2026-06-12：新增计划仓库回执本机校验
+
+功能名：计划仓库远端回执本机一致性校验。
+
+完成内容：
+
+- `app-state.js` 为 `normalizePlanRepositoryReceipt()` 新增本机校验字段：`verificationStatus`、`verificationMessage`、`verificationDigest`、`verificationExpectedDigest` 和 `verificationWorkspaceStatus`。
+- 新增 `verifyPlanRepositoryReceipt()`，用 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算 `receiptDigest`。
+- 计划仓库状态摘要、回执列表和回执审计 HTML 都会展示“本机校验通过 / 空间不匹配 / 摘要不匹配”。
+- `script.js` 的前台回执列表新增校验状态与校验说明。
+- `scripts/learning-state-check.js` 新增真实 mock 回执校验通过、localStorage 持久化和篡改摘要不匹配验收。
+- `tests/e2e/real-flows.spec.js` 的计划仓库用例改为生成真实可重算 receipt，并验证页面、localStorage 和 HTML 审计导出。
+- `docs/plan-repository-api-contract.md`、`docs/smoke-test.md` 和当前开发文档同步验收范围与生产边界。
+
+真实化说明：
+
+- 数据来源：远端计划仓库 API 返回的 `receipt/latestReceipt` 与当前计划仓库 Workspace。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.planRepository.lastReceipt` 与 `receipts[*]`。
+- 成功反馈：计划仓库摘要、回执列表和审计 HTML 显示“本机校验通过”。
+- 失败反馈：回执摘要无法重算时显示“摘要不匹配”；回执自洽但 workspace 不同则显示“空间不匹配”。
+- 刷新后复现方式：校验结果随本机学习状态持久化，刷新前台后仍能读取。
+
+仍待补：
+
+- 当前是本机一致性校验，不是生产私钥验签、公钥证书链、账号权限、教师端审批或服务端不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front plan repository detects remote conflicts and saves a remote copy"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库回执本机校验`

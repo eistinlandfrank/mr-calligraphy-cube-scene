@@ -1234,10 +1234,12 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
     });
 
     if (method === "PUT") {
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = "d".repeat(64);
       remotePlanPackage = cloneJson({
         ...body,
         packageId: "e2e-plan-package",
-        acceptedAt: new Date().toISOString()
+        acceptedAt
       });
       latestPlanReceipt = {
         receiptKind: "mr-calligraphy-plan-repository-receipt-v1",
@@ -1245,12 +1247,17 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
         workspaceId: body.workspaceId,
         packageId: remotePlanPackage.packageId,
         sourcePackageId: body.packageId,
-        repositoryDigest: "d".repeat(64),
-        acceptedAt: remotePlanPackage.acceptedAt,
+        repositoryDigest,
+        acceptedAt,
         planCount: body.summary.planCount,
         warningCount: 0,
         warnings: [],
-        receiptDigest: "e".repeat(64)
+        receiptDigest: sha256StableJson({
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          repositoryDigest,
+          acceptedAt
+        })
       };
       await route.fulfill({
         status: 201,
@@ -1320,8 +1327,10 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   await page.locator("#planRepositoryPushButton").click();
   await expect(page.locator("#planRepositorySummary")).toContainText("已推送 1 份计划");
   await expect(page.locator("#planRepositoryReceiptStatus")).toContainText("已保存 1 条计划仓库回执");
+  await expect(page.locator("#planRepositoryReceiptStatus")).toContainText("本机校验通过 1 条");
   await expect(page.locator("#planRepositoryReceiptList")).toContainText("e2e-plan-package");
   await expect(page.locator("#planRepositoryReceiptList")).toContainText("仓库 dddddddddddd");
+  await expect(page.locator("#planRepositoryReceiptList")).toContainText("本机校验通过");
 
   const putRequest = planRequests.find((item) => item.method === "PUT");
   expect(putRequest.authorization).toBe("Bearer plan-token");
@@ -1333,7 +1342,9 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
 
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.planRepository.receipts).toHaveLength(1);
-  expect(learningState.planRepository.receipts[0].receiptDigest).toBe("e".repeat(64));
+  expect(learningState.planRepository.receipts[0].receiptDigest).toBe(latestPlanReceipt.receiptDigest);
+  expect(learningState.planRepository.receipts[0].verificationStatus).toBe("verified");
+  expect(learningState.planRepository.receipts[0].verificationExpectedDigest).toBe(latestPlanReceipt.receiptDigest);
   expect(learningState.planRepository.receipts[0].direction).toBe("push");
   expect(learningState.planRepository.receipts[0].workspaceId).toBe("class-e2e");
   expect(learningState.planRepository.workspaceId).toBe("class-e2e");
@@ -1345,7 +1356,9 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   const planReceiptPath = await planReceiptDownload.path();
   const planReceiptHtml = fs.readFileSync(planReceiptPath, "utf8");
   expect(planReceiptHtml).toContain("MR 书法计划仓库回执审计");
-  expect(planReceiptHtml).toContain("e".repeat(64));
+  expect(planReceiptHtml).toContain(latestPlanReceipt.receiptDigest);
+  expect(planReceiptHtml).toContain("本机校验通过");
+  expect(planReceiptHtml).toContain("重算摘要");
 
   const remoteUpdatedAt = new Date(Date.now() + 60000).toISOString();
   remotePlanPackage = cloneJson({
