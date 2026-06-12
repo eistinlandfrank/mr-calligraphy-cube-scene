@@ -63,7 +63,7 @@ node scripts/control-inventory.js --check
 | --- | --- | --- | --- |
 | 保存作品 | 能保存笔迹、截图、评分、标签和作品对比 | 作品只在当前浏览器可见 | 增加作品 repository、公开作品集和课堂评阅入口 |
 | 视频导出 | 可从真实笔迹导出 WebM 回放 | 不是 MP4/GIF，没有封面、压缩和异步队列 | 增加转码 adapter、封面图、导出队列和失败重试 |
-| 报告导出 | HTML 报告、原生 PDF、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名、PDF 趋势图/雷达图位图和服务端 PDF 渲染验收 |
+| 报告导出 | HTML 报告、原生 PDF、PDF 能力条形图、PDF 分数趋势图、PDF 最近作品 JPEG 截图嵌入、报告对比、多报告趋势、字段交互、本机教师批注、本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、同 ID 冲突审计、字段级合并和远端副本另存已有第一版 | 仍主要是本机报告；本机 JSON 包只是手动备份/迁移，远端报告仓库只是用户配置 endpoint 的真实 GET/PUT，还没有账号教师端、服务端签名证书、不可篡改审计和服务端 PDF 生成 | 增加账号化 ReportRepository、服务端保存、教师身份审计、服务端验真签名、PDF 雷达图位图和服务端 PDF 渲染验收 |
 | 分享成果 | 可导出离线 HTML 分享页；可生成、复制、访问和撤销当前浏览器内的本机分享链接 | 没有公网公开链接、社群分享或课堂发布 | 离线导出保持 `real-export`，本机分享服务标记 `real-local`；后续增加生产公开分享服务和权限控制 |
 
 ### 4.3 主后台和写实后台
@@ -144,7 +144,7 @@ node scripts/control-inventory.js --check
 目标：评分不再像固定模板，报告能被复盘和验证。
 
 - 评分结果显示证据点、覆盖范围、重心、停顿、压感和维度理由；本机 `ScoreService` 已记录并展示最近评分证据摘要。
-- 原生 PDF 继续增强趋势图/雷达图、报告 ID 和服务端验真回执；最近作品 JPEG 截图嵌入、本机验真摘要、报告仓库远端 API adapter 和本机冲突审计第一版已完成。
+- 原生 PDF 继续增强雷达图、报告 ID 和服务端验真回执；能力条形图、分数趋势图、最近作品 JPEG 截图嵌入、本机验真摘要、报告仓库远端 API adapter 和本机冲突审计第一版已完成。
 - 报告 schema 固定版本，继续支持账号化服务端保存、教师批注和签名审计。
 - 分享页和报告页必须带本机/云端来源说明。
 
@@ -1025,7 +1025,7 @@ git diff --check
 
 仍待补：
 
-- PNG 转码、雷达图/趋势图位图、服务端签名验真和服务端 PDF 渲染仍未接入。
+- PNG 转码、雷达图位图、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 验收：
 
@@ -1038,3 +1038,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`嵌入学习报告PDF作品截图`
+
+## 34. 2026-06-12 新增学习报告 PDF 分数趋势图
+
+本次把原生 PDF 从“只展示能力条形图和最近作品卡片”推进到“能展示真实分数趋势”。
+
+完成内容：
+
+- `createReportPdf()` 新增 PDF 趋势数据准备逻辑，优先读取 `ReportRecord.trend`。
+- 旧报告没有 `trend` 时，会按报告生成时间从本机 `PracticeSession` 和 `ArtworkRecord` 回填真实分数，不把未来记录画入历史报告。
+- `createSimplePdf()` 新增原生 PDF 趋势条绘制块，使用矩形、横轴和序号展示最近 8 条记录。
+- `getReportPdfExport()` 暴露 `trendBars` 和 `trendCount` feature。
+- 数据层和 Playwright 都会验证下载出的 PDF 包含 `TrendBars` 标记。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机报告、练习和作品评分。
+- 写入状态：不改写 `mr-calligraphy-learning-state-v1`，只影响下载的 PDF 文件。
+- 成功反馈：PDF 导出 message、features 和文件注释都会包含趋势图能力。
+- 失败反馈：没有真实分数时显示空趋势说明，不显示伪造曲线。
+- 刷新后复现方式：本机状态保留后，再次打开站内报告下载 PDF 仍能生成趋势图。
+
+仍待补：
+
+- 当前是轻量原生 PDF 趋势条，不是完整雷达图位图；服务端签名、教师身份审计、不可篡改日志和服务端 PDF 渲染仍待接入。
+
+验收：
+
+- `node --check app-state.js && node --check scripts/learning-state-check.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习报告PDF分数趋势图`

@@ -266,6 +266,8 @@ assert(reportPdfExport.pdf.startsWith("%PDF-1.4"), "PDF 报告内容应包含 PD
 assert(reportPdfExport.pdf.includes("mr-calligraphy-learning-state-v1"), "PDF 报告应包含本机数据来源。");
 assert(reportPdfExport.features.metricBars, "PDF 报告应声明包含能力条形图。");
 assert(reportPdfExport.features.metricCount === 5, "PDF 报告应包含五项能力条形图。");
+assert(reportPdfExport.features.trendBars, "PDF 报告应声明包含分数趋势图。");
+assert(reportPdfExport.features.trendCount === 4, "PDF 报告应按报告时间回填 4 条趋势记录。");
 assert(reportPdfExport.features.artworkCard, "PDF 报告应声明包含最近作品卡片。");
 assert(reportPdfExport.features.artworkAvailable, "PDF 报告应识别最近作品记录。");
 assert(reportPdfExport.features.artworkImageAvailable, "PDF 报告应识别最近作品截图来源。");
@@ -276,6 +278,7 @@ assert(/^[a-f0-9]{64}$/.test(reportPdfExport.verification.digest), "PDF 报告�
 assert(reportPdfExport.features.verificationDigest === reportPdfExport.verification.digest, "PDF feature 应暴露同一个验真摘要。");
 assert(!reportPdfExport.features.teacherReview, "未批注报告不应伪造教师批注。");
 assert(reportPdfExport.pdf.includes("MetricBars: 5"), "PDF 内容应包含能力条形图标记。");
+assert(reportPdfExport.pdf.includes("TrendBars: 4"), "PDF 内容应包含分数趋势图标记。");
 assert(reportPdfExport.pdf.includes("ArtworkCard: yes"), "PDF 内容应包含作品卡片标记。");
 assert(reportPdfExport.pdf.includes("ArtworkImageEmbedded: yes"), "PDF 内容应包含作品截图嵌入标记。");
 assert(reportPdfExport.pdf.includes("/Subtype /Image"), "PDF 内容应包含图片 XObject。");
@@ -805,7 +808,7 @@ async function runRemoteRepositoryChecks() {
   await runHistoryRepositoryMockServerChecks(nativeFetch);
   await runPlanRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告 PDF 作品截图嵌入、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、报告原生 PDF、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告教师批注、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runReportRepositoryMockServerChecks(fetchApi) {

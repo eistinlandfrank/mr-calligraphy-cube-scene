@@ -4178,10 +4178,16 @@
     }, {});
   }
 
-  function getReportTrend() {
+  function getReportTrend(report = null) {
+    const cutoffTime = Date.parse(report?.createdAt || "");
+    const hasCutoff = Number.isFinite(cutoffTime);
+    const isInRange = (value) => {
+      const time = Date.parse(value || "");
+      return !hasCutoff || Number.isNaN(time) || time <= cutoffTime;
+    };
     return [
       ...state.sessions
-        .filter((session) => Number.isFinite(session.score) && session.score > 0)
+        .filter((session) => Number.isFinite(session.score) && session.score > 0 && isInRange(session.endedAt || session.startedAt))
         .map((session) => ({
           label: `${session.glyph}练习`,
           type: "practice",
@@ -4189,7 +4195,7 @@
           createdAt: session.endedAt || session.startedAt
         })),
       ...state.artworks
-        .filter((artwork) => Number.isFinite(artwork.score) && artwork.score > 0)
+        .filter((artwork) => Number.isFinite(artwork.score) && artwork.score > 0 && isInRange(artwork.createdAt))
         .map((artwork) => ({
           label: artwork.title,
           type: "artwork",
@@ -5343,6 +5349,7 @@
     const pdf = typeof pdfResult === "string" ? pdfResult : pdfResult.pdf;
     const pdfFeatures = pdfResult?.features || {};
     const latestArtwork = findReportArtwork(normalizedReport);
+    const trendCount = normalizeInteger(pdfFeatures.trendCount, 0, 0, 99);
     return {
       ok: true,
       report: clone(normalizedReport),
@@ -5354,6 +5361,8 @@
       features: {
         metricBars: true,
         metricCount: 5,
+        trendBars: Boolean(pdfFeatures.trendBars),
+        trendCount,
         artworkCard: true,
         artworkAvailable: Boolean(latestArtwork),
         artworkImageAvailable: Boolean(latestArtwork?.imageData),
@@ -5365,8 +5374,8 @@
         verificationDigest: verification?.digest || ""
       },
       message: pdfFeatures.artworkImageEmbedded
-        ? "已生成包含能力条形图、最近作品截图、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
-        : "已生成包含能力条形图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        ? "已生成包含能力条形图、分数趋势图、最近作品截图、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
+        : "已生成包含能力条形图、分数趋势图、最近作品卡片、教师批注状态和本机验真摘要的原生 PDF 学习报告。"
     };
   }
 
@@ -5412,6 +5421,10 @@
       label,
       value: normalizeScore(normalizedReport.scoreBreakdown?.[key], 0)
     }));
+    const trendItems = (normalizedReport.trend.length ? normalizedReport.trend : getReportTrend(normalizedReport))
+      .map(normalizeReportTrendPoint)
+      .filter((item) => item && item.score > 0)
+      .slice(-8);
     const artworkPdfImage = createReportPdfArtworkImage(latestArtwork);
     const lines = [
       { text: "MR 书法学习报告", size: 22 },
@@ -5424,6 +5437,8 @@
       { text: "", size: 6 },
       { text: "能力维度", size: 16 },
       { type: "metricBars", items: metricItems },
+      { text: "分数趋势", size: 16 },
+      { type: "trendBars", items: trendItems },
       { text: "", size: 6 },
       { text: "最近练习与作品", size: 16 },
       {
@@ -5470,6 +5485,7 @@
       subject: normalizedReport.id,
       source: STORAGE_KEY,
       metricCount: metricItems.length,
+      trendCount: trendItems.length,
       artworkCard: true,
       artworkAvailable: Boolean(latestArtwork),
       artworkImageAvailable: Boolean(latestArtwork?.imageData),
@@ -5484,6 +5500,8 @@
     return {
       pdf,
       features: {
+        trendBars: trendItems.length > 0,
+        trendCount: trendItems.length,
         artworkImageEmbedded: Boolean(artworkPdfImage),
         artworkImageMime: artworkPdfImage?.mimeType || "",
         artworkImageDigest: artworkPdfImage?.digest || ""
@@ -5586,6 +5604,9 @@
     const strokeRect = (x, rectY, width, height, color = "0.72 0.78 0.75") => {
       content.push(`${color} RG 0.8 w ${x} ${rectY} ${width} ${height} re S`);
     };
+    const drawStrokeLine = (x1, y1, x2, y2, color = "0.72 0.78 0.75", width = 0.8) => {
+      content.push(`${color} RG ${width} w ${x1} ${y1} m ${x2} ${y2} l S`);
+    };
     const drawLine = (text, size = 12) => {
       const lineHeight = Math.max(14, Math.round(size * 1.45));
       if (y < minY) return;
@@ -5645,6 +5666,47 @@
       });
       y -= blockHeight + 8;
     };
+    const drawTrendBars = (items = []) => {
+      const normalizedItems = items
+        .map((item, index) => ({
+          label: String(item.label || `记录${index + 1}`),
+          score: normalizeScore(item.score, 0)
+        }))
+        .filter((item) => item.score > 0)
+        .slice(-8);
+      const blockHeight = normalizedItems.length ? 86 : 48;
+      if (y - blockHeight < minY) return;
+
+      const cardX = marginX - 10;
+      const cardY = y - blockHeight + 8;
+      content.push(`% TrendBars: ${normalizedItems.length}`);
+      drawRect(cardX, cardY, 466, blockHeight, "0.97 0.98 0.99");
+      strokeRect(cardX, cardY, 466, blockHeight, "0.80 0.85 0.88");
+
+      if (!normalizedItems.length) {
+        drawTextAt("暂无真实分数趋势。完成练习或保存作品后，PDF 会写入趋势图。", 10, marginX, y - 22);
+        y -= blockHeight + 8;
+        return;
+      }
+
+      const chartX = marginX + 6;
+      const chartY = cardY + 22;
+      const chartWidth = 406;
+      const chartHeight = 38;
+      const columnWidth = chartWidth / normalizedItems.length;
+      drawTextAt("按创建时间排序，最多展示最近 8 条练习/作品分数。", 9, marginX, y - 16);
+      drawStrokeLine(chartX, chartY, chartX + chartWidth, chartY, "0.70 0.76 0.78", 0.7);
+      normalizedItems.forEach((item, index) => {
+        const barHeight = Math.max(5, Number(((chartHeight * item.score) / 100).toFixed(2)));
+        const barWidth = Math.max(12, Math.min(28, Number((columnWidth * 0.42).toFixed(2))));
+        const barX = Number((chartX + index * columnWidth + (columnWidth - barWidth) / 2).toFixed(2));
+        const barY = chartY;
+        drawRect(barX, barY, barWidth, barHeight, "0.18 0.43 0.64");
+        drawTextAt(`${item.score}`, 7, Math.max(cardX + 4, barX - 1), barY + barHeight + 7);
+        drawTextAt(`${index + 1}`, 7, barX + barWidth / 2 - 2, cardY + 9);
+      });
+      y -= blockHeight + 8;
+    };
     const drawArtworkCard = (artwork, session, image = null) => {
       const blockHeight = artwork ? 92 : 52;
       if (y - blockHeight < minY) return;
@@ -5689,6 +5751,10 @@
         drawMetricBars(line.items);
         return;
       }
+      if (line.type === "trendBars") {
+        drawTrendBars(line.items);
+        return;
+      }
       if (line.type === "artworkCard") {
         drawArtworkCard(line.artwork, line.session, line.image);
         return;
@@ -5716,6 +5782,7 @@
     const pdfComments = [
       `% Source: ${source}`,
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
+      `% TrendBars: ${Number(metadata.trendCount) || 0}`,
       `% ArtworkCard: ${metadata.artworkCard ? "yes" : "no"}`,
       `% ArtworkAvailable: ${metadata.artworkAvailable ? "yes" : "no"}`,
       `% ArtworkImageAvailable: ${metadata.artworkImageAvailable ? "yes" : "no"}`,

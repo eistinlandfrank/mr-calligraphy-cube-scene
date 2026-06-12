@@ -4978,7 +4978,7 @@
 
 已知限制：
 
-- 第一版原生 PDF 是文本摘要型 PDF；后续已补能力条形图、作品卡片和最近作品 JPEG 截图嵌入，雷达图/趋势图位图仍待补。
+- 第一版原生 PDF 是文本摘要型 PDF；后续已补能力条形图、分数趋势图、作品卡片和最近作品 JPEG 截图嵌入，雷达图位图仍待补。
 - 云端长期报告、教师批注、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 ### 2026-06-11：增强学习报告 PDF 图表
@@ -5023,7 +5023,7 @@
 
 后续状态：
 
-- 后续版本已补最近作品 JPEG 截图嵌入；雷达图、趋势图、服务端签名验真和服务端 PDF 渲染仍未接入。
+- 后续版本已补最近作品 JPEG 截图嵌入和分数趋势图；雷达图、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 提交：
 
@@ -6293,7 +6293,7 @@
 
 已知限制：
 
-- 当前嵌入的是浏览器书写画布保存出的 JPEG 截图；PNG 转码、雷达图/趋势图位图、服务端签名验真和服务端 PDF 渲染仍未接入。
+- 当前嵌入的是浏览器书写画布保存出的 JPEG 截图；后续已补 PDF 分数趋势图，PNG 转码、雷达图位图、服务端签名验真和服务端 PDF 渲染仍未接入。
 
 验收方式：
 
@@ -6313,3 +6313,59 @@
 提交：
 
 - 中文 commit message：`嵌入学习报告PDF作品截图`
+
+### 2026-06-12：新增学习报告 PDF 分数趋势图
+
+功能名：学习报告原生 PDF 分数趋势图。
+
+涉及文件：
+
+- `app-state.js`
+- `scripts/learning-state-check.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+
+已完成：
+
+- `createReportPdf()` 会准备最多 8 条趋势记录，优先读取 `ReportRecord.trend`。
+- 对旧报告没有 `trend` 的情况，PDF 会从本机练习和作品按报告生成时间回填真实分数，不把报告之后的记录算入历史报告。
+- `createSimplePdf()` 新增 `trendBars` 原生绘制块，用矩形、横轴、分数和序号生成轻量趋势图。
+- `getReportPdfExport()` 新增 `features.trendBars` 和 `features.trendCount`。
+- PDF 注释新增 `TrendBars: N`，便于自动化验收确认下载文件不是只改文案。
+- 学习状态检查和 Playwright 前台下载流程都覆盖 `TrendBars` 标记。
+
+真实化说明：
+
+- 数据来源：当前浏览器本机 `ReportRecord.trend`、`PracticeSession.score` 和 `ArtworkRecord.score`。
+- 写入状态：本功能只影响下载出的 PDF 文件，不修改本机学习状态。
+- 成功反馈：导出 message、feature 和 PDF 注释都显示分数趋势能力。
+- 失败反馈：没有真实分数时只显示空趋势说明，不伪造趋势曲线。
+- 刷新后复现方式：报告、练习和作品仍在本机状态时，再次下载 PDF 会按同一时间范围生成趋势图。
+
+已知限制：
+
+- 当前是轻量原生 PDF 趋势条，不是完整雷达图位图。
+- 服务端签名验真、教师身份审计、不可篡改日志和服务端 PDF 渲染仍未接入。
+
+验收方式：
+
+- 手工验收：完成至少一次练习和作品保存后生成报告，打开站内报告并点击“下载 PDF”，PDF 应包含分数趋势区域。
+- 脚本验收：`node scripts/learning-state-check.js` 验证 `trendBars` feature 和 `TrendBars: N`；`npm run test:e2e -- --grep "front practice saves real strokes"` 验证浏览器下载 PDF 包含趋势图标记。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习报告PDF分数趋势图`
