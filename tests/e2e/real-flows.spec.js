@@ -812,6 +812,19 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#videoExportRecords")).toContainText("已完成");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.videoExportService.jobs.some((job) => job.retryOf === failedVideoJob.id && job.status === "succeeded")).toBe(true);
+  await expect(page.locator("#reviewDownloadVideoAudit")).toBeEnabled();
+  const videoAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reviewDownloadVideoAudit").click();
+  const videoAuditDownload = await videoAuditDownloadPromise;
+  expect(videoAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-video-export-audit-.*\.html$/);
+  const videoAuditPath = await videoAuditDownload.path();
+  const videoAuditHtml = fs.readFileSync(videoAuditPath, "utf8");
+  expect(videoAuditHtml).toContain("MR 书法视频导出回执审计");
+  expect(videoAuditHtml).toContain(learningState.videoExportService.records[0].videoFilename);
+  expect(videoAuditHtml).toContain("当前浏览器不支持 Canvas 视频录制");
+  expect(videoAuditHtml).toContain(failedVideoJob.id);
+  expect(videoAuditHtml).toContain("重试来源");
+  expect(videoAuditHtml).toContain("审计摘要");
 
   await page.locator("#reviewCreateShareLink").click();
   await expect(page.locator("#shareServiceSummary")).toContainText("1 条有效链接");

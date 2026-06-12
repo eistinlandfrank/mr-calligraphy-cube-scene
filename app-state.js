@@ -22,6 +22,8 @@
   const SHARE_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
   const SHARE_REPOSITORY_MAX_RECEIPTS = 12;
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
+  const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
+  const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
@@ -9915,6 +9917,258 @@
     };
   }
 
+  function getPracticeVideoExportAudit() {
+    const records = state.videoExportService.records
+      .map(createVideoExportAuditRecord)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+    const jobs = state.videoExportService.jobs
+      .map(createVideoExportAuditJob)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.updatedAt || b.createdAt || 0) - Date.parse(a.updatedAt || a.createdAt || 0));
+    const succeededCount = jobs.filter((job) => job.status === "succeeded").length;
+    const failedCount = jobs.filter((job) => job.status === "failed").length;
+    const retryCount = jobs.filter((job) => job.retryOf).length;
+    const audit = {
+      ok: true,
+      kind: VIDEO_EXPORT_AUDIT_KIND,
+      version: VERSION,
+      storageKey: STORAGE_KEY,
+      totalRecords: records.length,
+      totalJobs: jobs.length,
+      succeededCount,
+      failedCount,
+      retryCount,
+      latestRecordId: records[0]?.id || "",
+      latestJobId: jobs[0]?.id || "",
+      lastExportedAt: state.videoExportService.lastExportedAt,
+      lastError: state.videoExportService.lastError,
+      records,
+      jobs,
+      videoBoundary: VIDEO_EXPORT_BOUNDARY,
+      boundary: VIDEO_EXPORT_AUDIT_BOUNDARY
+    };
+    audit.auditDigest = sha256StableJson({
+      kind: audit.kind,
+      version: audit.version,
+      storageKey: audit.storageKey,
+      totalRecords: audit.totalRecords,
+      totalJobs: audit.totalJobs,
+      succeededCount,
+      failedCount,
+      retryCount,
+      latestRecordId: audit.latestRecordId,
+      latestJobId: audit.latestJobId,
+      lastExportedAt: audit.lastExportedAt,
+      lastError: audit.lastError,
+      records,
+      jobs
+    });
+    audit.message = jobs.length || records.length
+      ? `已汇总 ${records.length} 条 WebM 导出记录和 ${jobs.length} 条本机队列任务，失败 ${failedCount} 条，重试 ${retryCount} 条。`
+      : "暂无可审计的视频导出记录。";
+    return audit;
+  }
+
+  function getPracticeVideoExportAuditExport() {
+    const audit = getPracticeVideoExportAudit();
+    if (!audit.totalRecords && !audit.totalJobs) {
+      return {
+        ok: false,
+        message: "暂无可导出的视频导出回执审计。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-video-export-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderPracticeVideoExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.totalJobs} 条视频导出任务和 ${audit.totalRecords} 条 WebM 产物的回执审计。`
+    };
+  }
+
+  function downloadPracticeVideoExportAudit() {
+    const result = getPracticeVideoExportAuditExport();
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      audit: result.audit,
+      message: `已下载视频导出回执审计：${result.filename}。`
+    };
+  }
+
+  function createVideoExportAuditRecord(record) {
+    const normalized = decorateVideoExportRecord(record);
+    if (!normalized) return null;
+    const payload = {
+      id: normalized.id,
+      source: normalized.source,
+      sourceId: normalized.sourceId,
+      artworkId: normalized.artworkId,
+      sessionId: normalized.sessionId,
+      glyph: normalized.glyph,
+      title: normalized.title,
+      artworkTitle: normalized.artworkTitle,
+      sessionTitle: normalized.sessionTitle,
+      videoFilename: normalized.videoFilename,
+      coverFilename: normalized.coverFilename,
+      mimeType: normalized.mimeType,
+      videoBytes: normalized.videoBytes,
+      coverBytes: normalized.coverBytes,
+      durationMs: normalized.durationMs,
+      strokeCount: normalized.strokeCount,
+      pointCount: normalized.pointCount,
+      coverDataDigest: normalized.coverDataUrl
+        ? sha256StableJson({ coverDataUrl: normalized.coverDataUrl })
+        : "",
+      createdAt: normalized.createdAt,
+      createdLabel: normalized.createdLabel,
+      durationLabel: normalized.durationLabel,
+      videoSizeLabel: normalized.videoSizeLabel,
+      coverSizeLabel: normalized.coverSizeLabel,
+      sourceLabel: normalized.sourceLabel,
+      message: normalized.message
+    };
+    payload.recordDigest = sha256StableJson(payload);
+    return payload;
+  }
+
+  function createVideoExportAuditJob(job) {
+    const normalized = decorateVideoExportJob(job);
+    if (!normalized) return null;
+    const payload = {
+      id: normalized.id,
+      status: normalized.status,
+      statusLabel: normalized.statusLabel,
+      source: normalized.source,
+      sourceLabel: normalized.sourceLabel,
+      sourceId: normalized.sourceId,
+      artworkId: normalized.artworkId,
+      sessionId: normalized.sessionId,
+      glyph: normalized.glyph,
+      title: normalized.title,
+      strokeCount: normalized.strokeCount,
+      pointCount: normalized.pointCount,
+      retryOf: normalized.retryOf,
+      retryCount: normalized.retryCount,
+      recordId: normalized.recordId,
+      videoFilename: normalized.videoFilename,
+      coverFilename: normalized.coverFilename,
+      error: normalized.error,
+      canRetry: normalized.canRetry,
+      createdAt: normalized.createdAt,
+      queuedAt: normalized.queuedAt,
+      startedAt: normalized.startedAt,
+      finishedAt: normalized.finishedAt,
+      updatedAt: normalized.updatedAt,
+      createdLabel: normalized.createdLabel,
+      updatedLabel: normalized.updatedLabel
+    };
+    payload.jobDigest = sha256StableJson(payload);
+    return payload;
+  }
+
+  function renderPracticeVideoExportAuditHtml(audit, exportedAt) {
+    const recordCards = audit.records.length
+      ? audit.records.map((record) => `
+        <article>
+          <h2>${escapeHtml(record.title || record.videoFilename || "WebM 导出记录")}</h2>
+          <dl>
+            <dt>来源</dt><dd>${escapeHtml(record.sourceLabel || record.source || "未知")}</dd>
+            <dt>视频文件</dt><dd>${escapeHtml(record.videoFilename || "未记录")}</dd>
+            <dt>封面文件</dt><dd>${escapeHtml(record.coverFilename || "未记录")}</dd>
+            <dt>视频大小</dt><dd>${escapeHtml(record.videoSizeLabel || `${record.videoBytes || 0} B`)}</dd>
+            <dt>封面大小</dt><dd>${escapeHtml(record.coverSizeLabel || `${record.coverBytes || 0} B`)}</dd>
+            <dt>时长</dt><dd>${escapeHtml(record.durationLabel || "未知")}</dd>
+            <dt>笔迹采样</dt><dd>${escapeHtml(`${record.strokeCount || 0} 笔 / ${record.pointCount || 0} 点`)}</dd>
+            <dt>封面摘要</dt><dd>${escapeHtml(record.coverDataDigest || "无")}</dd>
+            <dt>记录摘要</dt><dd>${escapeHtml(record.recordDigest || "无")}</dd>
+            <dt>导出时间</dt><dd>${escapeHtml(formatDateTime(record.createdAt))}</dd>
+          </dl>
+          <p>${escapeHtml(record.message || "本机 WebM 导出记录。")}</p>
+        </article>`).join("")
+      : `<p class="empty">暂无 WebM 产物记录。</p>`;
+    const jobCards = audit.jobs.length
+      ? audit.jobs.map((job) => `
+        <article data-status="${escapeAttr(job.status)}">
+          <h2>${escapeHtml(job.title || job.id)} · ${escapeHtml(job.statusLabel || getVideoExportJobStatusLabel(job.status))}</h2>
+          <dl>
+            <dt>任务 ID</dt><dd>${escapeHtml(job.id)}</dd>
+            <dt>状态</dt><dd>${escapeHtml(job.statusLabel || job.status)}</dd>
+            <dt>来源</dt><dd>${escapeHtml(job.sourceLabel || job.source || "未知")}</dd>
+            <dt>重试来源</dt><dd>${escapeHtml(job.retryOf || "非重试任务")}</dd>
+            <dt>重试次数</dt><dd>${escapeHtml(job.retryCount || 0)}</dd>
+            <dt>关联记录</dt><dd>${escapeHtml(job.recordId || "未生成 WebM")}</dd>
+            <dt>视频文件</dt><dd>${escapeHtml(job.videoFilename || "未生成")}</dd>
+            <dt>封面文件</dt><dd>${escapeHtml(job.coverFilename || "未生成")}</dd>
+            <dt>错误原因</dt><dd>${escapeHtml(job.error || "无")}</dd>
+            <dt>排队时间</dt><dd>${escapeHtml(formatDateTime(job.queuedAt || job.createdAt))}</dd>
+            <dt>完成时间</dt><dd>${escapeHtml(job.finishedAt ? formatDateTime(job.finishedAt) : "未完成")}</dd>
+            <dt>任务摘要</dt><dd>${escapeHtml(job.jobDigest || "无")}</dd>
+          </dl>
+        </article>`).join("")
+      : `<p class="empty">暂无队列任务。</p>`;
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MR 书法视频导出回执审计</title>
+  <style>
+    body{margin:0;padding:32px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f7f4ee;color:#1f2421}
+    main{max-width:980px;margin:0 auto}
+    h1{margin:0 0 8px;font-size:28px}
+    h2{margin:0 0 12px;font-size:17px}
+    .meta,.empty{color:#5c665f;line-height:1.6}
+    .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:20px 0}
+    .stat,article{border:1px solid #d8d0c2;border-radius:10px;background:#fffdf8;box-shadow:0 10px 24px rgba(46,39,27,.08)}
+    .stat{padding:14px}
+    .stat span{display:block;color:#6d766f;font-size:12px}
+    .stat strong{display:block;margin-top:5px;font-size:22px}
+    section{margin-top:24px}
+    article{margin:10px 0;padding:18px}
+    article[data-status="failed"]{border-color:#dfb25b;background:#fff8e7}
+    dl{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px 12px;margin:0}
+    dt{font-weight:800;color:#405047}
+    dd{margin:0;word-break:break-word}
+    pre{white-space:pre-wrap;word-break:break-word;border:1px solid #d8d0c2;border-radius:10px;padding:14px;background:#1f2421;color:#f8f2e8}
+    footer{margin-top:28px;color:#6d766f;font-size:12px;line-height:1.6}
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Video Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法视频导出回执审计</h1>
+    <p class="meta">${escapeHtml(audit.message)}<br>${escapeHtml(audit.boundary)}<br>${escapeHtml(audit.videoBoundary)}</p>
+    <div class="stats">
+      <div class="stat"><span>WebM 记录</span><strong>${escapeHtml(audit.totalRecords)}</strong></div>
+      <div class="stat"><span>队列任务</span><strong>${escapeHtml(audit.totalJobs)}</strong></div>
+      <div class="stat"><span>失败任务</span><strong>${escapeHtml(audit.failedCount)}</strong></div>
+      <div class="stat"><span>重试任务</span><strong>${escapeHtml(audit.retryCount)}</strong></div>
+    </div>
+    <section>
+      <h2>WebM 产物</h2>
+      ${recordCards}
+    </section>
+    <section>
+      <h2>队列任务</h2>
+      ${jobCards}
+    </section>
+    <section>
+      <h2>原始审计 JSON</h2>
+      <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    </section>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(STORAGE_KEY)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function decorateVideoExportRecord(record) {
     const normalized = normalizeVideoExportRecord(record);
     if (!normalized) return null;
@@ -14012,6 +14266,8 @@
     getShareRepositoryReceiptAudit,
     getShareRepositoryReceiptAuditExport,
     getPracticeVideoExportStatus,
+    getPracticeVideoExportAudit,
+    getPracticeVideoExportAuditExport,
     getPracticeVideoRetrySource,
     getLatestReview,
     getReviewEvidenceExport,
@@ -14034,6 +14290,7 @@
     downloadReportRepository,
     downloadReportRepositoryReceiptAudit,
     downloadReportTeacherReviewAudit,
+    downloadPracticeVideoExportAudit,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

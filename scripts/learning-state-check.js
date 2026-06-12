@@ -294,6 +294,21 @@ assert(retrySource.ok && retrySource.source.strokes.length, "失败任务应能�
 const retryJob = window.MRAppState.retryPracticeVideoExportJob(failedVideoJob.job.id);
 assert(retryJob.ok && retryJob.job.retryOf === failedVideoJob.job.id, "重试应创建新的队列任务并关联原失败任务。");
 
+const videoAudit = window.MRAppState.getPracticeVideoExportAudit();
+assert(videoAudit.kind === "mr-calligraphy-video-export-audit-v1", "视频导出应生成本机回执审计包。");
+assert(videoAudit.totalRecords === 1, "视频导出审计应统计 WebM 产物记录。");
+assert(videoAudit.totalJobs === 3, "视频导出审计应统计原任务、失败任务和重试任务。");
+assert(videoAudit.failedCount === 1 && videoAudit.retryCount === 1, "视频导出审计应统计失败和重试任务。");
+assert(videoAudit.records[0].coverDataDigest, "视频导出审计应保存封面摘要而不是只留临时文案。");
+assert(videoAudit.auditDigest && videoAudit.auditDigest.length === 64, "视频导出审计应包含稳定摘要。");
+const videoAuditExport = window.MRAppState.getPracticeVideoExportAuditExport();
+assert(videoAuditExport.ok, "视频导出审计应能导出 HTML。");
+assert(videoAuditExport.filename.startsWith("mr-calligraphy-video-export-audit-"), "视频导出审计文件名应可识别。");
+assert(videoAuditExport.html.includes("MR 书法视频导出回执审计"), "视频导出审计 HTML 应包含标题。");
+assert(videoAuditExport.html.includes("mr-calligraphy-replay-yong.webm"), "视频导出审计 HTML 应包含真实 WebM 文件名。");
+assert(videoAuditExport.html.includes("浏览器不支持 Canvas 视频录制"), "视频导出审计 HTML 应包含失败原因。");
+assert(videoAuditExport.html.includes(failedVideoJob.job.id), "视频导出审计 HTML 应包含重试来源任务。");
+
 const persistedVideoState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 assert(
   persistedVideoState.videoExportService.records[0].videoFilename === "mr-calligraphy-replay-yong.webm",
@@ -1059,7 +1074,7 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列和失败重试、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {

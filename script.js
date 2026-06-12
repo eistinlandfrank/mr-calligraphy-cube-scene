@@ -834,6 +834,7 @@ const els = {
   reviewReplay: document.getElementById("reviewReplay"),
   reviewDownloadVideo: document.getElementById("reviewDownloadVideo"),
   reviewDownloadVideoCover: document.getElementById("reviewDownloadVideoCover"),
+  reviewDownloadVideoAudit: document.getElementById("reviewDownloadVideoAudit"),
   reviewDownloadImage: document.getElementById("reviewDownloadImage"),
   reviewDownloadEvidence: document.getElementById("reviewDownloadEvidence"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
@@ -4007,6 +4008,7 @@ function bindReviewControls() {
   els.reviewReplay?.addEventListener("click", replayLatestArtwork);
   els.reviewDownloadVideo?.addEventListener("click", downloadLatestPracticeVideo);
   els.reviewDownloadVideoCover?.addEventListener("click", downloadLatestPracticeVideoCover);
+  els.reviewDownloadVideoAudit?.addEventListener("click", downloadPracticeVideoExportAudit);
   els.reviewDownloadImage?.addEventListener("click", downloadLatestArtworkImage);
   els.reviewDownloadEvidence?.addEventListener("click", downloadLatestReviewEvidence);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
@@ -5002,6 +5004,10 @@ function renderVideoExportPanel(artwork, session) {
   const currentRecord = status?.currentRecord || null;
   if (els.reviewDownloadVideoCover) {
     els.reviewDownloadVideoCover.disabled = !currentRecord?.coverDataUrl;
+  }
+  if (els.reviewDownloadVideoAudit) {
+    const hasAudit = Boolean((status?.queueTotal || 0) || (status?.total || 0));
+    els.reviewDownloadVideoAudit.disabled = !hasAudit;
   }
   if (els.videoExportSummary) {
     els.videoExportSummary.textContent = status
@@ -7191,6 +7197,12 @@ function downloadLatestPracticeVideoCover() {
   }
   downloadDataUrl(record.coverDataUrl, record.coverFilename || `mr-calligraphy-replay-cover-${Date.now()}.png`);
   showNotice(`已下载视频封面：${record.coverFilename || "PNG 封面"}。`);
+}
+
+function downloadPracticeVideoExportAudit() {
+  const result = window.MRAppState?.downloadPracticeVideoExportAudit?.();
+  showNotice(result?.message || "暂无可导出的视频导出回执审计。");
+  renderLearningState();
 }
 
 function downloadDataUrl(dataUrl, filename) {
