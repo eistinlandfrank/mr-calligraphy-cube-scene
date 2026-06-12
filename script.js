@@ -842,6 +842,7 @@ const els = {
   shareRemoteStatus: document.getElementById("shareRemoteStatus"),
   shareRemoteEndpointInput: document.getElementById("shareRemoteEndpointInput"),
   shareRemoteTokenInput: document.getElementById("shareRemoteTokenInput"),
+  shareRemoteWorkspaceInput: document.getElementById("shareRemoteWorkspaceInput"),
   shareRemoteSaveButton: document.getElementById("shareRemoteSaveButton"),
   shareRemoteCheckButton: document.getElementById("shareRemoteCheckButton"),
   shareRemotePushButton: document.getElementById("shareRemotePushButton"),
@@ -4935,6 +4936,9 @@ function renderShareServicePanel(artwork) {
   if (els.shareRemoteTokenInput && document.activeElement !== els.shareRemoteTokenInput) {
     els.shareRemoteTokenInput.value = config?.remoteToken || "";
   }
+  if (els.shareRemoteWorkspaceInput && document.activeElement !== els.shareRemoteWorkspaceInput) {
+    els.shareRemoteWorkspaceInput.value = config?.workspaceId || status?.workspaceId || "local-browser";
+  }
   if (els.shareRemoteStatus) {
     const receiptText = status?.lastReceipt?.receiptDigest
       ? ` 回执 ${status.lastReceipt.receiptDigest.slice(0, 12)}。`
@@ -4944,7 +4948,7 @@ function renderShareServicePanel(artwork) {
       : "";
     els.shareRemoteStatus.textContent = status?.remoteConfigured
       ? `${status.lastError || status.lastRemoteStatus || "远端分享 API 已配置，尚未检查。"}${receiptText}${publicText} ${config?.boundary || ""}`
-      : `尚未配置远端分享 API。${config?.boundary || ""}`;
+      : `尚未配置远端分享 API，当前空间 ${config?.workspaceId || status?.workspaceId || "local-browser"}。${config?.boundary || ""}`;
     els.shareRemoteStatus.dataset.shareRemoteTone = status?.lastError
       ? "warning"
       : status?.lastRemotePublicUrl
@@ -4966,7 +4970,8 @@ function renderShareServicePanel(artwork) {
     els.shareRemotePushButton.disabled = !status?.remoteConfigured || !activeRecord?.isActive;
   }
   if (els.shareRemoteRevokeButton) {
-    els.shareRemoteRevokeButton.disabled = !status?.remoteConfigured || !activeRecord?.remotePublicUrl || Boolean(activeRecord?.remoteRevokedAt);
+    const remoteMatchesWorkspace = !activeRecord?.remoteWorkspaceId || activeRecord.remoteWorkspaceId === status?.workspaceId;
+    els.shareRemoteRevokeButton.disabled = !status?.remoteConfigured || !activeRecord?.remotePublicUrl || Boolean(activeRecord?.remoteRevokedAt) || !remoteMatchesWorkspace;
   }
   if (els.shareRemoteCopyButton) {
     els.shareRemoteCopyButton.disabled = !status?.lastRemotePublicUrl || Boolean(activeRecord?.remoteRevokedAt);
@@ -4992,10 +4997,11 @@ function renderShareServicePanel(artwork) {
     const title = document.createElement("strong");
     title.textContent = record.artworkTitle || record.title;
     const meta = document.createElement("span");
+    const remoteWorkspaceText = record.remoteWorkspaceId ? ` ${record.remoteWorkspaceId}` : "";
     const remoteText = record.remoteRevokedAt
-      ? " / 远端已撤销"
+      ? ` / 远端已撤销${remoteWorkspaceText}`
       : record.remotePublicUrl
-        ? " / 已发布远端"
+        ? ` / 已发布远端${remoteWorkspaceText}`
         : "";
     meta.textContent = `${record.statusLabel} / ${record.permissionLabel} / 浏览 ${record.viewCount || 0} / 复制 ${record.copyCount || 0}${remoteText}`;
     body.append(title, meta);
@@ -5039,7 +5045,7 @@ function renderShareRepositoryReceipts() {
     const meta = document.createElement("span");
     const digest = receipt.repositoryDigest ? receipt.repositoryDigest.slice(0, 12) : "摘要未知";
     const receiptDigest = receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "回执未知";
-    meta.textContent = `${formatShareRepositoryReceiptDirection(receipt.direction)} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
+    meta.textContent = `${formatShareRepositoryReceiptDirection(receipt.direction)} · 空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatHistoryTime(receipt.receivedAt || receipt.acceptedAt)} · 仓库 ${digest} · 回执 ${receiptDigest}`;
     const detail = document.createElement("small");
     const publicText = receipt.publicUrl ? "有公开链接" : "未返回公开链接";
     detail.textContent = `${receipt.remoteVersion || "远端版本未知"} / ${receipt.shareCount || 0} 条分享 / ${publicText}`;
@@ -5109,9 +5115,11 @@ function revokeActiveArtworkShareLink(shareId = activeArtworkShareId) {
 function saveShareRemoteConfig() {
   const endpoint = els.shareRemoteEndpointInput?.value || "";
   const token = els.shareRemoteTokenInput?.value || "";
+  const workspaceId = els.shareRemoteWorkspaceInput?.value || "";
   const result = window.MRAppState?.configureShareServiceRemote?.({
     remoteEndpoint: endpoint,
-    remoteToken: token
+    remoteToken: token,
+    workspaceId
   });
   showNotice(result?.message || "远端分享 API 配置保存失败。");
   renderLearningState();
@@ -5200,6 +5208,7 @@ function exportShareRepositoryReceipts() {
 function setShareRemoteBusy(isBusy) {
   [
     els.shareRemoteSaveButton,
+    els.shareRemoteWorkspaceInput,
     els.shareRemoteCheckButton,
     els.shareRemotePushButton,
     els.shareRemoteRevokeButton,

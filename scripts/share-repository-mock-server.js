@@ -6,12 +6,15 @@ const http = require("http");
 const PACKAGE_KIND = "mr-calligraphy-share-repository-v1";
 const RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
 const VERSION = 1;
+const DEFAULT_WORKSPACE_ID = "local-browser";
 
 function createShareRepositoryMockServer(options = {}) {
   const requiredToken = String(options.token || process.env.SHARE_REPOSITORY_MOCK_TOKEN || "").trim();
   const publicBaseUrl = String(options.publicBaseUrl || process.env.SHARE_REPOSITORY_PUBLIC_BASE_URL || "https://share.example.test").replace(/\/+$/, "");
   const state = {
     startedAt: new Date().toISOString(),
+    latestWorkspaceId: DEFAULT_WORKSPACE_ID,
+    workspaces: {},
     package: null,
     revokedShares: [],
     receipts: []
@@ -40,46 +43,58 @@ function createShareRepositoryMockServer(options = {}) {
       }
 
       if (request.method === "GET") {
+        const workspaceId = getRequestWorkspaceId(request);
+        const workspace = getWorkspaceState(state, workspaceId);
         return sendJson(response, 200, {
           ok: true,
-          message: state.package
-            ? `远端分享 mock 可读，当前保存 ${state.package.records.length} 条分享记录。`
-            : "远端分享 mock 服务可访问，当前尚未接收分享包。",
+          message: workspace.package
+            ? `远端分享 mock 可读，空间 ${workspaceId} 当前保存 ${workspace.package.records.length} 条分享记录。`
+            : `远端分享 mock 服务可访问，空间 ${workspaceId} 当前尚未接收分享包。`,
           remoteVersion: "mr-calligraphy-share-repository-mock-v1",
+          workspaceId,
           contract: createContract(),
-          package: state.package,
-          receiptCount: state.receipts.length,
-          latestReceipt: state.receipts[0] || null,
-          publicUrl: state.receipts[0]?.publicUrl || ""
+          package: workspace.package,
+          receiptCount: workspace.receipts.length,
+          latestReceipt: workspace.receipts[0] || null,
+          publicUrl: workspace.receipts[0]?.publicUrl || ""
         });
       }
 
       if (request.method === "PUT") {
         const payload = await readJsonBody(request);
-        const validation = validateShareRepositoryPackage(payload);
+        const workspaceId = getRequestWorkspaceId(request, payload.workspaceId);
+        const validation = validateShareRepositoryPackage(payload, { workspaceId });
         if (!validation.ok) {
           return sendJson(response, 422, {
             ok: false,
             message: validation.message,
             errors: validation.errors,
             warnings: validation.warnings,
+            workspaceId,
             remoteVersion: "mr-calligraphy-share-repository-mock-v1"
           });
         }
 
-        const receipt = createReceipt(payload, validation, publicBaseUrl);
-        state.package = {
+        const workspace = getWorkspaceState(state, workspaceId);
+        const receipt = createReceipt(payload, validation, publicBaseUrl, workspaceId);
+        workspace.package = {
           ...clone(payload),
+          workspaceId,
           packageId: receipt.packageId,
           acceptedAt: receipt.acceptedAt,
           repositoryDigest: receipt.repositoryDigest,
           publicUrl: receipt.publicUrl
         };
-        state.receipts.unshift(receipt);
+        workspace.receipts.unshift(receipt);
+        state.latestWorkspaceId = workspaceId;
+        state.package = workspace.package;
+        state.receipts = workspace.receipts;
+        state.revokedShares = workspace.revokedShares;
 
         return sendJson(response, 201, {
           ok: true,
-          message: `远端分享 mock 已接收 ${payload.records.length} 条分享记录。`,
+          message: `远端分享 mock 已接收 ${payload.records.length} 条分享记录，空间 ${workspaceId}。`,
+          workspaceId,
           remoteVersion: receipt.remoteVersion,
           packageId: receipt.packageId,
           repositoryDigest: receipt.repositoryDigest,
@@ -92,33 +107,42 @@ function createShareRepositoryMockServer(options = {}) {
 
       if (request.method === "DELETE") {
         const payload = mergeRevokeQuery(await readJsonBody(request), request.url);
-        const validation = validateShareRevokeRequest(payload, state.package);
+        const workspaceId = getRequestWorkspaceId(request, payload.workspaceId);
+        const workspace = getWorkspaceState(state, workspaceId);
+        const validation = validateShareRevokeRequest(payload, workspace.package, { workspaceId });
         if (!validation.ok) {
           return sendJson(response, 422, {
             ok: false,
             message: validation.message,
             errors: validation.errors,
             warnings: validation.warnings,
+            workspaceId,
             remoteVersion: "mr-calligraphy-share-repository-mock-v1"
           });
         }
 
-        const receipt = createRevokeReceipt(payload, validation, state.package, publicBaseUrl);
-        state.revokedShares.unshift({
+        const receipt = createRevokeReceipt(payload, validation, workspace.package, publicBaseUrl, workspaceId);
+        workspace.revokedShares.unshift({
           shareId: receipt.shareId,
           packageId: receipt.packageId,
+          workspaceId,
           publicUrl: receipt.publicUrl,
           revokedAt: receipt.acceptedAt,
           receiptDigest: receipt.receiptDigest
         });
-        if (state.package) {
-          state.package = applyRevokeToPackage(state.package, receipt);
+        if (workspace.package) {
+          workspace.package = applyRevokeToPackage(workspace.package, receipt);
         }
-        state.receipts.unshift(receipt);
+        workspace.receipts.unshift(receipt);
+        state.latestWorkspaceId = workspaceId;
+        state.package = workspace.package;
+        state.receipts = workspace.receipts;
+        state.revokedShares = workspace.revokedShares;
 
         return sendJson(response, 200, {
           ok: true,
-          message: `远端分享 mock 已撤销 ${receipt.shareId}。`,
+          message: `远端分享 mock 已撤销 ${receipt.shareId}，空间 ${workspaceId}。`,
+          workspaceId,
           remoteVersion: receipt.remoteVersion,
           packageId: receipt.packageId,
           repositoryDigest: receipt.repositoryDigest,
@@ -208,6 +232,39 @@ function validateAuth(request, requiredToken) {
   return { ok: false, message: "作品分享 mock 拒绝请求：Authorization token 不匹配。" };
 }
 
+function getRequestWorkspaceId(request, fallback = "") {
+  let queryWorkspace = "";
+  try {
+    const parsed = new URL(request.url || "/", "http://localhost");
+    queryWorkspace = parsed.searchParams.get("workspaceId") || "";
+  } catch (error) {
+    queryWorkspace = "";
+  }
+  return normalizeWorkspaceId(request.headers["x-mr-workspace-id"] || queryWorkspace || fallback);
+}
+
+function getWorkspaceState(state, workspaceId) {
+  const normalizedId = normalizeWorkspaceId(workspaceId);
+  if (!state.workspaces[normalizedId]) {
+    state.workspaces[normalizedId] = {
+      workspaceId: normalizedId,
+      package: null,
+      revokedShares: [],
+      receipts: []
+    };
+  }
+  return state.workspaces[normalizedId];
+}
+
+function normalizeWorkspaceId(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-zA-Z0-9_.:-]/g, "")
+    .slice(0, 64);
+  return normalized || DEFAULT_WORKSPACE_ID;
+}
+
 function readJsonBody(request) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -234,7 +291,8 @@ function mergeRevokeQuery(payload, requestUrl) {
       version: base.version || VERSION,
       shareId: base.shareId || url.searchParams.get("shareId") || "",
       packageId: base.packageId || url.searchParams.get("packageId") || "",
-      publicUrl: base.publicUrl || url.searchParams.get("publicUrl") || ""
+      publicUrl: base.publicUrl || url.searchParams.get("publicUrl") || "",
+      workspaceId: base.workspaceId || url.searchParams.get("workspaceId") || ""
     };
   } catch (error) {
     return base;
@@ -249,7 +307,8 @@ function sendEmpty(response, statusCode) {
 function sendJson(response, statusCode, payload) {
   const body = JSON.stringify(payload, null, 2);
   response.writeHead(statusCode, createResponseHeaders({
-    "Content-Type": "application/json; charset=utf-8"
+    "Content-Type": "application/json; charset=utf-8",
+    ...(payload?.workspaceId ? { "X-MR-Workspace-Id": normalizeWorkspaceId(payload.workspaceId) } : {})
   }));
   response.end(body);
 }
@@ -258,7 +317,8 @@ function createResponseHeaders(extra = {}) {
   return {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, PUT, DELETE, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, Accept, X-MR-Workspace-Id",
+    "Access-Control-Expose-Headers": "X-MR-Workspace-Id",
     "Access-Control-Max-Age": "600",
     "Cache-Control": "no-store",
     ...extra
@@ -273,18 +333,21 @@ function createContract() {
       publish: "PUT /api/share-repository",
       revoke: "DELETE /api/share-repository",
       authorization: "optional Bearer token",
+      workspaceHeader: "X-MR-Workspace-Id",
       cors: "GET, PUT, DELETE, OPTIONS"
     },
     packageKind: PACKAGE_KIND,
     revokeKind: "mr-calligraphy-share-repository-revoke-v1",
-    requiredTopLevelFields: ["kind", "version", "packageId", "exportedAt", "storageKey", "summary", "records", "shares"],
-    receiptFields: ["ok", "message", "packageId", "repositoryDigest", "publicUrl", "remoteVersion", "receipt"]
+    defaultWorkspaceId: DEFAULT_WORKSPACE_ID,
+    requiredTopLevelFields: ["kind", "version", "packageId", "workspaceId", "exportedAt", "storageKey", "summary", "records", "shares"],
+    receiptFields: ["ok", "message", "workspaceId", "packageId", "repositoryDigest", "publicUrl", "remoteVersion", "receipt"]
   };
 }
 
-function validateShareRepositoryPackage(payload) {
+function validateShareRepositoryPackage(payload, options = {}) {
   const errors = [];
   const warnings = [];
+  const workspaceId = normalizeWorkspaceId(options.workspaceId);
   if (!payload || typeof payload !== "object") {
     return {
       ok: false,
@@ -296,6 +359,11 @@ function validateShareRepositoryPackage(payload) {
   if (payload.kind !== PACKAGE_KIND) errors.push(`kind 应为 ${PACKAGE_KIND}`);
   if (Number(payload.version) !== VERSION) warnings.push(`version 为 ${payload.version || "空"}，当前 mock 按 v${VERSION} 验收。`);
   if (!payload.packageId) errors.push("缺少 packageId");
+  if (!payload.workspaceId) {
+    errors.push("缺少 workspaceId");
+  } else if (normalizeWorkspaceId(payload.workspaceId) !== workspaceId) {
+    errors.push(`workspaceId ${payload.workspaceId} 与请求空间 ${workspaceId} 不匹配`);
+  }
   if (!payload.exportedAt) errors.push("缺少 exportedAt");
   if (!payload.storageKey) errors.push("缺少 storageKey");
   if (!payload.summary || typeof payload.summary !== "object") warnings.push("缺少 summary 对象");
@@ -336,9 +404,10 @@ function validateShareRepositoryPackage(payload) {
   };
 }
 
-function validateShareRevokeRequest(payload, currentPackage = null) {
+function validateShareRevokeRequest(payload, currentPackage = null, options = {}) {
   const errors = [];
   const warnings = [];
+  const workspaceId = normalizeWorkspaceId(options.workspaceId);
   if (!payload || typeof payload !== "object") {
     return {
       ok: false,
@@ -352,6 +421,11 @@ function validateShareRevokeRequest(payload, currentPackage = null) {
   }
   if (Number(payload.version) !== VERSION) {
     warnings.push(`version 为 ${payload.version || "空"}，当前 mock 按 v${VERSION} 验收。`);
+  }
+  if (!payload.workspaceId) {
+    errors.push("缺少 workspaceId");
+  } else if (normalizeWorkspaceId(payload.workspaceId) !== workspaceId) {
+    errors.push(`workspaceId ${payload.workspaceId} 与请求空间 ${workspaceId} 不匹配`);
   }
   if (!payload.shareId) errors.push("缺少 shareId");
   if (!payload.packageId) warnings.push("缺少 packageId，mock 将按 shareId 尝试撤销。");
@@ -370,13 +444,15 @@ function validateShareRevokeRequest(payload, currentPackage = null) {
   };
 }
 
-function createReceipt(payload, validation, publicBaseUrl) {
+function createReceipt(payload, validation, publicBaseUrl, workspaceId = DEFAULT_WORKSPACE_ID) {
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId || payload.workspaceId);
   const firstRecord = payload.records[0] || {};
   const firstShare = payload.shares[0] || {};
   const shareId = String(firstRecord.id || firstShare.shareId || "share");
   const repositoryDigest = sha256StableJson({
     kind: payload.kind,
     version: payload.version,
+    workspaceId: normalizedWorkspaceId,
     storageKey: payload.storageKey,
     summary: payload.summary,
     records: payload.records,
@@ -393,8 +469,9 @@ function createReceipt(payload, validation, publicBaseUrl) {
   return {
     receiptKind: RECEIPT_KIND,
     remoteVersion: "mr-calligraphy-share-repository-mock-v1",
-    packageId: `mock-share-repository-${repositoryDigest.slice(0, 12)}`,
+    packageId: `mock-share-repository-${normalizedWorkspaceId}-${repositoryDigest.slice(0, 12)}`,
     sourcePackageId: String(payload.packageId || ""),
+    workspaceId: normalizedWorkspaceId,
     shareId,
     artworkId: String(firstRecord.artworkId || firstShare.artworkId || ""),
     repositoryDigest,
@@ -406,6 +483,7 @@ function createReceipt(payload, validation, publicBaseUrl) {
     warnings: validation.warnings,
     receiptDigest: sha256StableJson({
       sourcePackageId: payload.packageId,
+      workspaceId: normalizedWorkspaceId,
       repositoryDigest,
       publicUrl,
       acceptedAt
@@ -413,7 +491,8 @@ function createReceipt(payload, validation, publicBaseUrl) {
   };
 }
 
-function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl) {
+function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl, workspaceId = DEFAULT_WORKSPACE_ID) {
+  const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId || payload.workspaceId || currentPackage?.workspaceId);
   const shareId = String(payload.shareId || "share");
   const matchedRecord = currentPackage?.records?.find((record) => record.id === shareId) || {};
   const matchedShare = currentPackage?.shares?.find((share) => share.shareId === shareId) || {};
@@ -422,6 +501,7 @@ function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl)
   const repositoryDigest = sha256StableJson({
     kind: "mr-calligraphy-share-repository-revoke-v1",
     version: VERSION,
+    workspaceId: normalizedWorkspaceId,
     shareId,
     artworkId: payload.artworkId || matchedRecord.artworkId || matchedShare.artworkId || "",
     packageId: payload.packageId || currentPackage?.packageId || "",
@@ -432,8 +512,9 @@ function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl)
   return {
     receiptKind: RECEIPT_KIND,
     remoteVersion: "mr-calligraphy-share-repository-mock-v1",
-    packageId: `mock-share-revoke-${repositoryDigest.slice(0, 12)}`,
+    packageId: `mock-share-revoke-${normalizedWorkspaceId}-${repositoryDigest.slice(0, 12)}`,
     sourcePackageId: String(payload.packageId || currentPackage?.packageId || ""),
+    workspaceId: normalizedWorkspaceId,
     shareId,
     artworkId: String(payload.artworkId || matchedRecord.artworkId || matchedShare.artworkId || ""),
     repositoryDigest,
@@ -446,6 +527,7 @@ function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl)
     receiptDigest: sha256StableJson({
       action: "revoke",
       sourcePackageId: payload.packageId || currentPackage?.packageId || "",
+      workspaceId: normalizedWorkspaceId,
       shareId,
       repositoryDigest,
       publicUrl,
@@ -456,6 +538,7 @@ function createRevokeReceipt(payload, validation, currentPackage, publicBaseUrl)
 
 function applyRevokeToPackage(currentPackage, receipt) {
   const nextPackage = clone(currentPackage);
+  nextPackage.workspaceId = receipt.workspaceId || nextPackage.workspaceId || DEFAULT_WORKSPACE_ID;
   nextPackage.records = (nextPackage.records || []).map((record) => (
     record.id === receipt.shareId
       ? { ...record, revokedAt: receipt.acceptedAt, remoteRevokedAt: receipt.acceptedAt }
@@ -463,6 +546,7 @@ function applyRevokeToPackage(currentPackage, receipt) {
   ));
   nextPackage.summary = {
     ...(nextPackage.summary || {}),
+    workspaceId: receipt.workspaceId || nextPackage.workspaceId || DEFAULT_WORKSPACE_ID,
     revokedShareCount: (nextPackage.records || []).filter((record) => record.revokedAt).length,
     lastRevokedShareId: receipt.shareId,
     lastRevokedAt: receipt.acceptedAt

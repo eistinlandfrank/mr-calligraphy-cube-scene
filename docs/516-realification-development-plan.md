@@ -8112,3 +8112,48 @@
 提交：
 
 - 中文 commit message：`新增远端发布空间隔离`
+
+### 2026-06-12：新增作品分享远端空间隔离
+
+功能名：作品分享远端 Workspace 空间隔离第一版。
+
+完成内容：
+
+- 前台“远端分享 API”配置区新增 `Workspace` 输入，和 endpoint/token 一起保存到 `mr-calligraphy-learning-state-v1.shareService`。
+- `MRAppState.configureShareServiceRemote()` 支持 `workspaceId` / `remoteWorkspaceId` / `accountId`，切换 endpoint 或 workspace 时会清空旧空间的远端 publicUrl、回执和 packageId，避免跨空间误读。
+- 分享远端 `GET` / `PUT` / `DELETE` 请求统一携带 `X-MR-Workspace-Id` header。
+- 远端分享包、撤销包、分享记录远端状态、发布回执、撤销回执、回执审计 HTML 和本机状态都保留 `workspaceId`。
+- `scripts/share-repository-mock-server.js` 新增 `workspaces` 状态，以 workspace 维度保存分享包、回执和撤销记录。
+- `scripts/learning-state-check.js` 覆盖真实 mock server 的 Workspace header、包字段、回执持久化、空间切换回读和撤销空间。
+- 前台 E2E 验证 Workspace 输入、GET/PUT/DELETE 请求头、分享包字段、回执持久化和 HTML 审计导出。
+- `docs/share-repository-api-contract.md` 和 `docs/smoke-test.md` 同步 Workspace header、包字段、mock 隔离和验收范围。
+
+真实化说明：
+
+- 数据来源：前台远端分享配置、本机分享链接、作品分享 HTML、远端 API 返回 publicUrl/receipt 和 mock server workspace 分桶。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.shareService.workspaceId`、远端分享包、`ShareRecord.remoteWorkspaceId`、远端回执和回执审计导出。
+- 成功反馈：远端状态显示空间，回执列表显示 workspace，mock server 能在同 endpoint 下分别保存不同空间的分享状态。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON、校验失败或跨空间撤销都不会伪造远端分享成功。
+- 刷新后复现方式：刷新前台后 Workspace 输入恢复，检查、发布和撤销继续携带同一空间。
+
+仍待补：
+
+- 当前是账号化前的远端分享空间隔离 adapter；真正账号登录、班级权限、生产 CDN 托管、公开链接权限、访问统计和不可篡改服务端审计仍未完成。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/share-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享远端空间隔离`

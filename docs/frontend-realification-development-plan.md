@@ -2536,3 +2536,48 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增远端发布空间隔离`
+
+## 73. 2026-06-12 作品分享远端 Workspace 空间隔离
+
+本次把前台作品分享远端 API 从“同 endpoint 共用最近分享包和回执”推进到“同 endpoint 下可按 Workspace 隔离分享包、publicUrl、撤销和回执”。这仍不是生产账号系统，但已经避免班级、项目空间或调试环境复用一个分享服务时互相覆盖公开链接。
+
+完成内容：
+
+- 前台“远端分享 API”新增 `Workspace` 输入，保存 endpoint/token 时一并保存空间 ID。
+- `MRAppState.configureShareServiceRemote()` 支持 `workspaceId` / `remoteWorkspaceId` / `accountId`，切换 endpoint 或 workspace 时清空旧空间的远端 publicUrl、回执和 packageId。
+- 分享远端 GET / PUT / DELETE 请求统一携带 `X-MR-Workspace-Id` header。
+- 远端分享包、撤销包、分享记录远端状态、发布回执、撤销回执、回执列表和回执审计 HTML 都保留 `workspaceId`。
+- `scripts/share-repository-mock-server.js` 改为按 workspace 分桶保存分享包、回执和撤销记录。
+- 数据层脚本验证 `share-alpha` 和 `share-beta` 两个空间互不覆盖，切回原空间能读回原分享包。
+- Playwright 前台用例验证 Workspace 输入、请求头、PUT/DELETE body、回执持久化和 HTML 审计导出。
+- `docs/share-repository-api-contract.md` 与 `docs/smoke-test.md` 同步 Workspace header、包字段、mock 隔离和验收范围。
+
+真实化说明：
+
+- 数据来源：前台用户配置的远端分享 endpoint/token/workspace、本机分享链接、作品分享 HTML 和远端 API 返回。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService.workspaceId`、分享包 `workspaceId`、`ShareRecord.remoteWorkspaceId`、远端回执 `workspaceId` 和 mock server workspace 分桶。
+- 成功反馈：远端状态显示空间，回执列表显示 workspace，mock 服务能分别保存不同空间的分享包与撤销记录。
+- 失败反馈：endpoint 未配置、token 错误、HTTP 错误、非 JSON、PUT 422、DELETE 空间不匹配或网络中断仍走明确失败状态，不伪造远端分享成功。
+- 刷新后复现方式：Workspace 保存在本机分享服务状态，刷新前台后仍会继续用同一空间检查、发布和撤销。
+
+仍待补：
+
+- 当前是账号化前的空间隔离 adapter；真正账号登录、角色权限、生产 CDN 托管、公开链接权限、访问统计和不可篡改审计仍未完成。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/share-repository-mock-server.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享远端空间隔离`

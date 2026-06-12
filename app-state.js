@@ -15,7 +15,8 @@
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
   const SHARE_SERVICE_BOUNDARY = "本机分享链接只在当前浏览器和本机存储内可访问；它不是公网 URL、微信分享、班级作品墙或跨设备发布。";
   const SHARE_REPOSITORY_KIND = "mr-calligraphy-share-repository-v1";
-  const SHARE_REPOSITORY_BOUNDARY = "作品分享远端 API adapter 会把当前分享包真实发送到用户配置的 endpoint，并保存 publicUrl 与回执；它仍不是内置账号系统、微信发布、班级作品墙或生产 CDN。";
+  const SHARE_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
+  const SHARE_REPOSITORY_BOUNDARY = "作品分享远端 API adapter 会把当前分享包真实发送到用户配置的 endpoint，并携带 Workspace 空间 ID 保存 publicUrl 与回执；它仍不是内置账号系统、微信发布、班级作品墙或生产 CDN。";
   const SHARE_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
   const SHARE_REPOSITORY_MAX_RECEIPTS = 12;
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
@@ -695,6 +696,7 @@
   function normalizeShareService(record = {}) {
     const source = record && typeof record === "object" ? record : {};
     const mode = source.mode === "remote-api" ? "remote-api" : "local-link";
+    const workspaceId = normalizeShareRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
     const receipts = normalizeShareRepositoryReceipts(source);
     const lastReceipt = normalizeShareRepositoryReceipt(source.lastReceipt || source.latestReceipt || source.receipt || null)
       || receipts[0]
@@ -710,6 +712,7 @@
       lastRevokedAt: normalizePlanDate(source.lastRevokedAt),
       remoteEndpoint: source.remoteEndpoint ? String(source.remoteEndpoint).trim().slice(0, 420) : "",
       remoteToken: source.remoteToken ? String(source.remoteToken).trim().slice(0, 240) : "",
+      workspaceId,
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
       lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
       lastRemoteDirection: ["check", "push", "revoke"].includes(source.lastRemoteDirection) ? source.lastRemoteDirection : "",
@@ -728,6 +731,8 @@
     const id = String(record.id || "").trim();
     const artworkId = String(record.artworkId || "").trim();
     if (!id || !artworkId) return null;
+    const rawRemoteWorkspace = record.remoteWorkspaceId || record.remoteWorkspace || record.workspaceId || record.accountId;
+    const hasRemoteState = record.remotePublicUrl || record.remotePackageId || record.remotePublishedAt || record.remoteReceiptDigest || record.remoteRevokedAt || record.remoteRevokeReceiptDigest;
     return {
       id,
       artworkId,
@@ -742,6 +747,7 @@
       lastViewedAt: normalizePlanDate(record.lastViewedAt),
       remotePublishedAt: normalizePlanDate(record.remotePublishedAt),
       remoteRevokedAt: normalizePlanDate(record.remoteRevokedAt),
+      remoteWorkspaceId: rawRemoteWorkspace ? normalizeShareRepositoryWorkspaceId(rawRemoteWorkspace) : hasRemoteState ? SHARE_REPOSITORY_DEFAULT_WORKSPACE : "",
       remotePublicUrl: normalizeSharePublicUrl(record.remotePublicUrl),
       remotePackageId: record.remotePackageId ? String(record.remotePackageId).trim().slice(0, 160) : "",
       remoteReceiptDigest: normalizeShareRepositoryHex(record.remoteReceiptDigest),
@@ -761,6 +767,15 @@
     } catch (error) {
       return "";
     }
+  }
+
+  function normalizeShareRepositoryWorkspaceId(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_.:-]/g, "")
+      .slice(0, 64);
+    return normalized || SHARE_REPOSITORY_DEFAULT_WORKSPACE;
   }
 
   function normalizeShareRepositoryReceipts(source = {}) {
@@ -796,6 +811,7 @@
       remoteVersion: String(record.remoteVersion || "").slice(0, 120),
       packageId: String(record.packageId || "").slice(0, 160),
       sourcePackageId: String(record.sourcePackageId || "").slice(0, 160),
+      workspaceId: normalizeShareRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId || record.accountId),
       shareId: String(record.shareId || "").slice(0, 120),
       artworkId: String(record.artworkId || "").slice(0, 120),
       repositoryDigest,
@@ -820,6 +836,7 @@
       ...normalized,
       direction: context.direction || normalized.direction,
       endpoint: context.endpoint || normalized.endpoint,
+      workspaceId: context.workspaceId || normalized.workspaceId,
       receivedAt: context.receivedAt || normalized.receivedAt,
       message: context.message || normalized.message
     };
@@ -7232,8 +7249,10 @@
       };
     }
 
+    const workspaceId = normalizeShareRepositoryWorkspaceId(state.shareService.workspaceId);
     const exportedAt = new Date().toISOString();
     const payloadCore = {
+      workspaceId,
       shareRecord: decorated,
       share: packageResult.share,
       html: packageResult.html
@@ -7244,8 +7263,10 @@
       version: VERSION,
       storageKey: STORAGE_KEY,
       packageId: `share-package-${record.id}-${packageDigest.slice(0, 12)}`,
+      workspaceId,
       exportedAt,
       summary: {
+        workspaceId,
         shareCount: 1,
         shareId: record.id,
         artworkId: record.artworkId,
@@ -7303,6 +7324,7 @@
       mode: state.shareService.mode,
       remoteConfigured: Boolean(state.shareService.remoteEndpoint),
       remoteEndpoint: state.shareService.remoteEndpoint,
+      workspaceId: state.shareService.workspaceId,
       lastRemoteStatus: state.shareService.lastRemoteStatus,
       lastRemoteSyncAt: state.shareService.lastRemoteSyncAt,
       lastRemoteDirection: state.shareService.lastRemoteDirection,
@@ -7325,12 +7347,13 @@
     return {
       ok: true,
       kind: "mr-calligraphy-share-repository-receipt-audit-v1",
+      workspaceId: service.workspaceId,
       total: receipts.length,
       latestReceipt: receipts[0] || null,
       receipts: clone(receipts),
       boundary: SHARE_REPOSITORY_BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条作品分享远端回执，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
+        ? `已保存 ${receipts.length} 条作品分享远端回执，当前空间 ${service.workspaceId}，最近一次：${formatPlanDate(receipts[0].receivedAt || receipts[0].acceptedAt)}。`
         : "暂无作品分享远端回执。"
     };
   }
@@ -7375,6 +7398,7 @@
           <h2>${escapeHtml(receipt.packageId || receipt.sourcePackageId || receipt.shareId || "packageId 未知")}</h2>
           <dl>
             <dt>方向</dt><dd>${escapeHtml(formatShareRepositoryReceiptDirection(receipt.direction))}</dd>
+            <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || audit.workspaceId || SHARE_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
             <dt>分享数量</dt><dd>${escapeHtml(receipt.shareCount || 0)}</dd>
             <dt>Share ID</dt><dd>${escapeHtml(receipt.shareId || "未知")}</dd>
             <dt>Artwork ID</dt><dd>${escapeHtml(receipt.artworkId || "未知")}</dd>
@@ -7413,7 +7437,7 @@
 <body>
   <main>
     <h1>MR 书法作品分享远端回执审计</h1>
-    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 当前空间：${escapeHtml(audit.workspaceId || SHARE_REPOSITORY_DEFAULT_WORKSPACE)} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
     ${rows}
   </main>
 </body>
@@ -7436,6 +7460,7 @@
       remoteEndpoint: service.remoteEndpoint,
       remoteToken: service.remoteToken,
       hasRemoteToken: Boolean(service.remoteToken),
+      workspaceId: service.workspaceId,
       boundary: SHARE_REPOSITORY_BOUNDARY
     };
   }
@@ -7444,10 +7469,12 @@
     const service = normalizeShareService(state.shareService);
     const endpointInput = config.remoteEndpoint ?? config.endpoint ?? "";
     const tokenInput = config.remoteToken ?? config.token;
+    const workspaceInput = config.workspaceId ?? config.remoteWorkspaceId ?? config.accountId ?? service.workspaceId;
     const remoteEndpoint = String(endpointInput || "").trim();
     const remoteToken = tokenInput === undefined
       ? service.remoteToken
       : String(tokenInput || "").trim();
+    const workspaceId = normalizeShareRepositoryWorkspaceId(workspaceInput);
 
     if (!remoteEndpoint) {
       state.shareService = normalizeShareService({
@@ -7455,6 +7482,7 @@
         mode: "local-link",
         remoteEndpoint: "",
         remoteToken: "",
+        workspaceId,
         lastCheckedAt: new Date().toISOString(),
         lastRemoteSyncAt: null,
         lastRemoteDirection: "",
@@ -7466,12 +7494,12 @@
         lastReceipt: null,
         receipts: []
       });
-      addEvent("share-remote", "清除远端分享 API 配置");
+      addEvent("share-remote", `清除远端分享 API 配置，保留空间 ${workspaceId}`);
       saveState();
       return {
         ok: true,
         status: getShareServiceStatus(),
-        message: "已清除远端分享 API 配置，当前仅保留本机分享链接。"
+        message: `已清除远端分享 API 配置，当前仅保留本机分享链接，空间 ${workspaceId}。`
       };
     }
 
@@ -7485,21 +7513,30 @@
       };
     }
 
+    const sameRemoteSpace = validation.endpoint === service.remoteEndpoint && workspaceId === service.workspaceId;
     state.shareService = normalizeShareService({
       ...service,
       mode: "remote-api",
       remoteEndpoint: validation.endpoint,
       remoteToken,
+      workspaceId,
       lastCheckedAt: new Date().toISOString(),
-      lastRemoteStatus: "远端分享 API 配置已保存，尚未检查服务可用性。",
+      lastRemoteSyncAt: sameRemoteSpace ? service.lastRemoteSyncAt : null,
+      lastRemoteDirection: sameRemoteSpace ? service.lastRemoteDirection : "",
+      lastPackageId: sameRemoteSpace ? service.lastPackageId : "",
+      lastRemoteShareId: sameRemoteSpace ? service.lastRemoteShareId : "",
+      lastRemotePublicUrl: sameRemoteSpace ? service.lastRemotePublicUrl : "",
+      lastReceipt: sameRemoteSpace ? service.lastReceipt : null,
+      receipts: sameRemoteSpace ? service.receipts : [],
+      lastRemoteStatus: `远端分享 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
       lastError: ""
     });
-    addEvent("share-remote", `配置远端分享 API：${validation.endpoint}`);
+    addEvent("share-remote", `配置远端分享 API：${validation.endpoint} / ${workspaceId}`);
     saveState();
     return {
       ok: true,
       status: getShareServiceStatus(),
-      message: "已保存远端分享 API 配置。请点击“检查远端”确认服务可用。"
+      message: `已保存远端分享 API 配置，空间 ${workspaceId}。请点击“检查远端”确认服务可用。`
     };
   }
 
@@ -7528,6 +7565,7 @@
     if (service.remoteToken) {
       headers.Authorization = `Bearer ${service.remoteToken}`;
     }
+    headers["X-MR-Workspace-Id"] = normalizeShareRepositoryWorkspaceId(service.workspaceId);
     return {
       method: options.method || "GET",
       headers,
@@ -7604,6 +7642,7 @@
         version: normalizeInteger(payload.version, VERSION, 1, 999),
         storageKey: String(payload.storageKey || STORAGE_KEY).slice(0, 120),
         packageId: String(payload.packageId || "").slice(0, 160),
+        workspaceId: normalizeShareRepositoryWorkspaceId(payload.workspaceId || payload.summary?.workspaceId),
         exportedAt: normalizePlanDate(payload.exportedAt) || new Date().toISOString(),
         acceptedAt: normalizePlanDate(payload.acceptedAt),
         repositoryDigest: normalizeShareRepositoryHex(payload.repositoryDigest),
@@ -7680,6 +7719,7 @@
         ? decorateShareRepositoryReceipt(parsed.receipt, {
           direction: "check",
           endpoint: service.remoteEndpoint,
+          workspaceId: service.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -7693,10 +7733,10 @@
         lastPackageId: parsed.package?.packageId || service.lastPackageId,
         lastReceipt: receipt || service.lastReceipt,
         receipts: appendShareRepositoryReceipt(service, receipt),
-        lastRemoteStatus: parsed.message,
+        lastRemoteStatus: `${parsed.message} 空间：${service.workspaceId}。`,
         lastError: ""
       });
-      addEvent("share-remote-check", "检查远端分享 API");
+      addEvent("share-remote-check", `检查远端分享 API：${service.workspaceId}`);
       saveState();
       return {
         ok: true,
@@ -7704,7 +7744,7 @@
         package: parsed.package || null,
         receipt: receipt ? clone(receipt) : null,
         publicUrl: parsed.publicUrl,
-        message: `${parsed.message} ${SHARE_REPOSITORY_BOUNDARY}`
+        message: `${parsed.message} 空间 ${service.workspaceId}。${SHARE_REPOSITORY_BOUNDARY}`
       };
     } catch (error) {
       const message = formatShareRepositoryNetworkError("检查", error);
@@ -7757,6 +7797,7 @@
         ? decorateShareRepositoryReceipt(parsed.receipt, {
           direction: "push",
           endpoint: service.remoteEndpoint,
+          workspaceId: service.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -7769,17 +7810,19 @@
         record.remoteRevokedAt = "";
         record.remotePublicUrl = publicUrl;
         record.remotePackageId = acceptedPackageId;
+        record.remoteWorkspaceId = service.workspaceId;
         record.remoteReceiptDigest = receipt?.receiptDigest || "";
         record.remoteRevokeReceiptDigest = "";
       }
       const remoteStatus = publicUrl
-        ? `已发布作品分享到远端 API：${publicUrl}`
-        : "已发布作品分享到远端 API，远端未返回 publicUrl。";
+        ? `已发布作品分享到远端 API 空间 ${service.workspaceId}：${publicUrl}`
+        : `已发布作品分享到远端 API 空间 ${service.workspaceId}，远端未返回 publicUrl。`;
       state.shareService = normalizeShareService({
         ...state.shareService,
         mode: "remote-api",
         remoteEndpoint: service.remoteEndpoint,
         remoteToken: service.remoteToken,
+        workspaceId: service.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
         lastRemoteDirection: "push",
@@ -7791,7 +7834,7 @@
         lastRemoteStatus: remoteStatus,
         lastError: ""
       });
-      addEvent("share-remote-push", `发布远端分享：${shareRecord.title || shareRecord.id}`);
+      addEvent("share-remote-push", `发布远端分享：${service.workspaceId} / ${shareRecord.title || shareRecord.id}`);
       saveState();
       return {
         ok: true,
@@ -7823,6 +7866,15 @@
         message: "这条分享还没有远端发布记录，无法撤销远端链接。"
       };
     }
+    const remoteWorkspaceId = record.remoteWorkspaceId || SHARE_REPOSITORY_DEFAULT_WORKSPACE;
+    const currentWorkspaceId = state.shareService.workspaceId || SHARE_REPOSITORY_DEFAULT_WORKSPACE;
+    if (remoteWorkspaceId !== currentWorkspaceId) {
+      return {
+        ok: false,
+        record: decorateShareRecord(record),
+        message: `这条分享属于远端空间 ${remoteWorkspaceId}，当前空间 ${currentWorkspaceId} 不能直接撤销。`
+      };
+    }
     if (record.remoteRevokedAt) {
       return {
         ok: false,
@@ -7838,6 +7890,7 @@
         kind: "mr-calligraphy-share-repository-revoke-v1",
         version: VERSION,
         storageKey: STORAGE_KEY,
+        workspaceId: currentWorkspaceId,
         shareId: record.id,
         artworkId: record.artworkId,
         title: record.title || "",
@@ -7894,6 +7947,7 @@
         ? decorateShareRepositoryReceipt(parsed.receipt, {
           direction: "revoke",
           endpoint: service.remoteEndpoint,
+          workspaceId: service.workspaceId,
           receivedAt: now,
           message: parsed.message
         })
@@ -7901,14 +7955,16 @@
       const record = findShareRecord(shareRecord.id);
       if (record) {
         record.remoteRevokedAt = now;
+        record.remoteWorkspaceId = service.workspaceId;
         record.remoteRevokeReceiptDigest = receipt?.receiptDigest || "";
       }
-      const remoteStatus = `已请求远端撤销作品分享：${shareRecord.title || shareRecord.id}。`;
+      const remoteStatus = `已请求远端撤销作品分享：${shareRecord.title || shareRecord.id}，空间 ${service.workspaceId}。`;
       state.shareService = normalizeShareService({
         ...state.shareService,
         mode: "remote-api",
         remoteEndpoint: service.remoteEndpoint,
         remoteToken: service.remoteToken,
+        workspaceId: service.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
         lastRemoteDirection: "revoke",
@@ -7919,7 +7975,7 @@
         lastRemoteStatus: remoteStatus,
         lastError: ""
       });
-      addEvent("share-remote-revoke", `撤销远端分享：${shareRecord.title || shareRecord.id}`);
+      addEvent("share-remote-revoke", `撤销远端分享：${service.workspaceId} / ${shareRecord.title || shareRecord.id}`);
       saveState();
       return {
         ok: true,
@@ -7940,7 +7996,8 @@
       [
         ["shareId", revokePackage.shareId],
         ["packageId", revokePackage.packageId],
-        ["publicUrl", revokePackage.publicUrl]
+        ["publicUrl", revokePackage.publicUrl],
+        ["workspaceId", revokePackage.workspaceId]
       ].forEach(([key, value]) => {
         if (value) url.searchParams.set(key, value);
       });
