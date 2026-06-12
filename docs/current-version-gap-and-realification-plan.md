@@ -2234,7 +2234,6 @@ node scripts/control-inventory.js
 
 - `node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
 - `git diff --check`
 
 提交：

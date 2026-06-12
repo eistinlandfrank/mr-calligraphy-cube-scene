@@ -2221,7 +2221,6 @@
 - `node --check tests/e2e/real-flows.spec.js`
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
 - `git diff --check`
 
 已知限制：
@@ -7713,6 +7712,7 @@
 - `node scripts/archive-migration-check.js`
 - `node scripts/control-inventory.js --check`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
 - `git diff --check`
 
 提交：
