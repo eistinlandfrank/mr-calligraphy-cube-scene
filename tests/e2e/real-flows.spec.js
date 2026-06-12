@@ -516,6 +516,15 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(pathAfterReport.steps[8].done).toBe(true);
   expect(pathAfterReport.steps[8].title).toContain("学习报告");
 
+  await page.getByRole("button", { name: /切换到步骤 10/ }).click();
+  await page.getByRole("button", { name: "查看详情" }).click();
+  await expect(page.locator("#actionFeedback")).toContainText("已读取本机学习详情");
+  await expect(page.locator("#actionDetail")).toBeVisible();
+  await expect(page.locator("#actionDetail")).toContainText("真实学习详情");
+  await expect(page.locator("#actionDetail")).toContainText("路径");
+  await expect(page.locator("#actionDetail")).toContainText("真实练习");
+  await expect(page.locator("#actionDetail")).toContainText("最近报告");
+
   await page.goto(`/?report=${learningState.reports[0].id}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTitle")).toContainText("学习报告");

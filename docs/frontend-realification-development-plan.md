@@ -2001,3 +2001,38 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化写实导入模型物理清理`
+
+## 60. 2026-06-12 真实化前台学习详情总结
+
+本次把前台最后一步“查看详情”从一行报告预览升级为结构化本机总结面板，点击后会读取真实学习路径、练习、作品、报告和计划状态，显示任务完成度、路径步骤、最近作品、最近报告和下一步建议。
+
+完成内容：
+
+- `script.js` 新增 `buildCompletionDetail()`，复用现有 `actionDetail` 面板渲染真实详情。
+- “查看详情”点击后返回 `detail`，不再只显示 `getReportPreview()` 一行文本。
+- 详情指标展示路径完成步数、任务完成状态、真实练习次数、作品数量、报告数量和平均评分。
+- 详情徽章展示 10 个学习步骤的完成/待完成/锁定状态。
+- 详情列表展示最近作品、最近报告、学习计划和下一步建议，并注明数据来自浏览器本机记录。
+- Playwright 前台完整流程新增断言：完成真实笔迹、保存作品、导出报告后进入第 10 步点击“查看详情”，确认详情面板显示本机学习详情、路径、真实练习和最近报告。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getStats()` 和 `MRAppState.getLearningPathStatus()`。
+- 写入状态：不新增存储字段；该详情由当前本机学习状态实时计算。
+- 成功反馈：`#actionFeedback` 显示“已读取本机学习详情”，`#actionDetail` 展示指标、步骤徽章和后续建议。
+- 失败反馈：如果没有作品、报告或计划，会显示对应空状态，而不是伪造完成数据。
+- 刷新后复现方式：刷新后只要本机学习记录仍在 localStorage，进入第 10 步点击“查看详情”会重新生成同样的总结。
+
+仍待补：
+
+- 当前完成前台本机详情总结；移动端视口覆盖、导入模型贴图替换、服务端资产回收、账号权限和多人协作审计仍待继续补齐。
+
+验收：
+
+- `node --check script.js && node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化前台学习详情总结`

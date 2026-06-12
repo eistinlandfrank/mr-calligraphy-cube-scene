@@ -10483,6 +10483,65 @@ function buildAchievementDetail() {
   };
 }
 
+function buildCompletionDetail() {
+  const stats = window.MRAppState?.getStats?.();
+  const pathStatus = window.MRAppState?.getLearningPathStatus?.();
+  const taskProgress = stats?.taskProgress || pathStatus?.taskProgress || {};
+  const steps = Array.isArray(pathStatus?.steps) ? pathStatus.steps : [];
+  const doneCount = Number(pathStatus?.doneCount || steps.filter((step) => step.done).length || 0);
+  const total = Number(pathStatus?.total || steps.length || 10);
+  const nextStep = steps.find((step) => !step.done && !step.locked) || steps.find((step) => !step.done) || pathStatus?.nextStep || null;
+  const latestArtwork = stats?.latestArtwork || null;
+  const latestReport = stats?.latestReport || null;
+  const latestPlan = stats?.latestPlan || null;
+  const planProgress = latestPlan?.progress || null;
+  const scoreLabel = formatAverageScore(stats);
+  const stepBadges = steps.slice(0, 10).map((step) => ({
+    label: step.shortName || step.title || "学习步骤",
+    done: Boolean(step.done),
+    detail: step.done
+      ? step.doneLabel || "已完成"
+      : step.locked
+        ? step.lockedLabel || "未解锁"
+        : step.activeLabel || step.pendingLabel || "待完成"
+  }));
+  const items = [
+    latestArtwork
+      ? `最近作品：${latestArtwork.title || "未命名作品"}，${latestArtwork.strokeCount || 0} 笔，评分 ${latestArtwork.score || "未评分"}。`
+      : "尚未保存作品，保存真实笔迹后这里会显示最近作品。",
+    latestReport
+      ? `最近报告：${latestReport.title || "学习报告"}，平均 ${latestReport.averageScore || 0} 分，含 ${latestReport.artworkCount || 0} 幅作品。`
+      : "尚未导出报告，完成作品后可生成本机 HTML/PDF 报告。",
+    latestPlan
+      ? `学习计划：${latestPlan.title || "未命名计划"}，进度 ${planProgress?.done || 0}/${planProgress?.total || 0}。`
+      : "尚未制定计划，可根据本机评分生成下一轮练习计划。",
+    nextStep
+      ? `下一步：${nextStep.title || nextStep.shortName}。${nextStep.focus || nextStep.description || "继续补齐当前学习路径。"}`
+      : "当前学习路径已完成，可选择新的日课字或继续巩固薄弱项。",
+    "本详情只读取浏览器本机学习记录，不伪装成云端学情报告。"
+  ];
+
+  return {
+    type: "completion",
+    eyebrow: "学习总结",
+    title: `${stats?.taskTitle || "当前任务"}真实学习详情`,
+    status: `${doneCount}/${total}步`,
+    summary: taskProgress.complete
+      ? `当前任务已满足完成规则：${taskProgress.ruleSummary || "阶段、练习、作品和报告"}。`
+      : `当前任务完成度 ${taskProgress.percent || 0}%，仍需继续完成本机练习、作品、报告或复习计划。`,
+    metrics: [
+      { label: "路径", value: `${doneCount}/${total}` },
+      { label: "任务完成", value: taskProgress.complete ? "是" : "否" },
+      { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
+      { label: "作品", value: `${stats?.artworkCount || 0}幅` },
+      { label: "报告", value: `${stats?.reportCount || 0}份` },
+      { label: "平均评分", value: scoreLabel }
+    ],
+    badges: stepBadges,
+    items
+  };
+}
+
 function getLearningActionHint(sceneIndex) {
   if (!window.MRAppState) {
     return "点击场景热点或下方按钮，可查看该模块的交互反馈。";
@@ -10616,7 +10675,13 @@ function runLearningAction(action) {
         };
       }
     case "查看详情":
-      return { message: appState.getReportPreview() };
+      {
+        const detail = buildCompletionDetail();
+        return {
+          message: `已读取本机学习详情：${detail.status}，${appState.getReportPreview()}`,
+          detail
+        };
+      }
     case "返回首页":
       return { message: "回到 MR 书法教练首页。", target: 0 };
     default:
