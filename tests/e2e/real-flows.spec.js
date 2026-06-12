@@ -1386,6 +1386,405 @@ test("front report repository imports a local JSON package", async ({ page }) =>
   expect(learningState.reportRepository.lastPackageId).toBe("e2e-local-report-package");
 });
 
+test("front share repository shows retryable remote failure recovery", async ({ page }) => {
+  const requests = [];
+  const networkPushPath = "/e2e-share-repository-network-push";
+  const recoveryPushPath = "/e2e-share-repository-recovery-push";
+  const rejectedRevokePath = "/e2e-share-repository-rejected-revoke";
+  const recoveryRevokePath = "/e2e-share-repository-recovery-revoke";
+  let latestPublishReceipt = null;
+  let latestRevokeReceipt = null;
+  const routes = [
+    {
+      path: "/e2e-share-repository-expired-token",
+      status: 401,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "分享 token 已过期，请重新登录。"
+      })
+    },
+    {
+      path: "/e2e-share-repository-invalid-json",
+      status: 200,
+      contentType: "application/json",
+      body: "{not-json"
+    },
+    {
+      path: "/e2e-share-repository-rejected-push",
+      status: 422,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "分享包结构被 E2E 服务端拒绝。"
+      })
+    },
+    {
+      path: rejectedRevokePath,
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: false,
+        message: "分享撤销被 E2E 服务端拒绝。"
+      })
+    }
+  ];
+
+  const parseShareBody = (request) => {
+    const rawBody = request.postData();
+    return rawBody ? JSON.parse(rawBody) : createShareRevokeBodyFromUrl(request.url());
+  };
+
+  for (const routeConfig of routes) {
+    await page.route(`**${routeConfig.path}**`, async (route) => {
+      const request = route.request();
+      const method = request.method();
+      requests.push({
+        path: routeConfig.path,
+        method,
+        authorization: request.headers().authorization || "",
+        workspaceId: request.headers()["x-mr-workspace-id"] || "",
+        body: method === "PUT" || method === "DELETE" ? parseShareBody(request) : null
+      });
+      await route.fulfill({
+        status: routeConfig.status,
+        contentType: routeConfig.contentType,
+        body: routeConfig.body
+      });
+    });
+  }
+
+  await page.route(`**${networkPushPath}`, async (route) => {
+    const request = route.request();
+    requests.push({
+      path: networkPushPath,
+      method: request.method(),
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body: request.method() === "PUT" ? parseShareBody(request) : null
+    });
+    await route.abort("failed");
+  });
+
+  await page.route(`**${recoveryPushPath}**`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "PUT" ? parseShareBody(request) : null;
+    requests.push({
+      path: recoveryPushPath,
+      method,
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body
+    });
+
+    if (method === "PUT") {
+      const shareId = body.records[0].id;
+      const publicUrl = `https://share.example.test/recovered/${shareId}.html`;
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = sha256StableJson(body);
+      const remotePackage = {
+        ...body,
+        packageId: "e2e-share-recovered-package",
+        repositoryDigest,
+        acceptedAt,
+        publicUrl
+      };
+      latestPublishReceipt = {
+        receiptKind: "mr-calligraphy-share-repository-receipt-v1",
+        remoteVersion: "e2e-share-recovery-v1",
+        packageId: remotePackage.packageId,
+        sourcePackageId: body.packageId,
+        workspaceId: body.workspaceId,
+        shareId,
+        artworkId: body.records[0].artworkId,
+        repositoryDigest,
+        acceptedAt,
+        publicUrl,
+        shareCount: body.records.length,
+        htmlBytes: body.shares[0].html.length,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: sha256StableJson({
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          repositoryDigest,
+          publicUrl,
+          acceptedAt
+        })
+      };
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `分享恢复端 E2E 已接收 ${body.records.length} 条分享记录。`,
+          remoteVersion: "e2e-share-recovery-v1",
+          packageId: remotePackage.packageId,
+          publicUrl,
+          package: remotePackage,
+          receipt: latestPublishReceipt
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "分享恢复端 E2E 可访问。"
+      })
+    });
+  });
+
+  await page.route(`**${recoveryRevokePath}**`, async (route) => {
+    const request = route.request();
+    const method = request.method();
+    const body = method === "DELETE" ? parseShareBody(request) : null;
+    requests.push({
+      path: recoveryRevokePath,
+      method,
+      authorization: request.headers().authorization || "",
+      workspaceId: request.headers()["x-mr-workspace-id"] || "",
+      body
+    });
+
+    if (method === "DELETE") {
+      const acceptedAt = new Date().toISOString();
+      const repositoryDigest = sha256StableJson(body);
+      latestRevokeReceipt = {
+        receiptKind: "mr-calligraphy-share-repository-receipt-v1",
+        remoteVersion: "e2e-share-recovery-v1",
+        packageId: "e2e-share-recovered-revoke-package",
+        sourcePackageId: body.packageId,
+        workspaceId: body.workspaceId,
+        shareId: body.shareId,
+        artworkId: body.artworkId,
+        repositoryDigest,
+        acceptedAt,
+        publicUrl: body.publicUrl,
+        shareCount: 1,
+        htmlBytes: 0,
+        warningCount: 0,
+        warnings: [],
+        receiptDigest: sha256StableJson({
+          action: "revoke",
+          sourcePackageId: body.packageId,
+          workspaceId: body.workspaceId,
+          shareId: body.shareId,
+          repositoryDigest,
+          publicUrl: body.publicUrl,
+          acceptedAt
+        })
+      };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          message: `分享恢复端 E2E 已撤销 ${body.shareId}。`,
+          remoteVersion: "e2e-share-recovery-v1",
+          packageId: latestRevokeReceipt.packageId,
+          publicUrl: body.publicUrl,
+          receipt: latestRevokeReceipt
+        })
+      });
+      return;
+    }
+
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        message: "分享撤销恢复端 E2E 可访问。"
+      })
+    });
+  });
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#taskPanel")).toBeVisible();
+  const seed = await page.evaluate(() => {
+    const artwork = window.MRAppState.saveArtwork({
+      strokes: [
+        [
+          { x: 0.26, y: 0.31, t: 0, p: 0.45 },
+          { x: 0.42, y: 0.43, t: 16, p: 0.58 },
+          { x: 0.56, y: 0.55, t: 32, p: 0.62 },
+          { x: 0.72, y: 0.65, t: 48, p: 0.5 }
+        ]
+      ],
+      bounds: { minX: 0.26, minY: 0.31, maxX: 0.72, maxY: 0.65 },
+      metrics: { structure: 87, stroke: 85, technique: 86, fluency: 88, force: 83 },
+      score: 86,
+      feedback: ["E2E 分享远端失败恢复记录"]
+    });
+    const share = window.MRAppState.createArtworkShareLink(artwork.artwork.id);
+    return {
+      artworkOk: artwork.ok,
+      shareOk: share.ok,
+      artworkId: artwork.artwork.id,
+      shareId: share.record.id,
+      status: window.MRAppState.getShareServiceStatus(artwork.artwork.id)
+    };
+  });
+  expect(seed.artworkOk).toBe(true);
+  expect(seed.shareOk).toBe(true);
+  expect(seed.status.activeCount).toBe(1);
+
+  await page.goto(`/?artwork=${seed.artworkId}`, { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#reviewPanel")).toBeVisible();
+  await expect(page.locator("#shareServiceSummary")).toContainText("1 条有效链接");
+  await page.locator(".share-remote-panel summary").click();
+
+  const expiredEndpoint = await getSameOriginEndpoint(page, "/e2e-share-repository-expired-token");
+  await configureShareRemoteInUi(page, expiredEndpoint, "share-expired-token", "share-retry-e2e");
+  await page.locator("#shareRemoteCheckButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 401");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("HTTP 401");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("失败历史");
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.lastError).toContain("HTTP 401");
+  expect(learningState.shareService.remoteFailureHistory[0].action).toBe("check");
+  expect(learningState.shareService.remoteFailureHistory[0].failureKind).toBe("http");
+  expect(requests.some((item) => item.path === "/e2e-share-repository-expired-token" && item.authorization === "Bearer share-expired-token" && item.workspaceId === "share-retry-e2e")).toBe(true);
+
+  const invalidJsonEndpoint = await getSameOriginEndpoint(page, "/e2e-share-repository-invalid-json");
+  await configureShareRemoteInUi(page, invalidJsonEndpoint, "share-invalid-json-token", "share-retry-e2e");
+  await page.locator("#shareRemoteCheckButton").click();
+  await expect(page.locator("#noticeState")).toContainText("不是可解析 JSON");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("不是可解析 JSON");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.remoteFailureHistory[0].action).toBe("check");
+  expect(learningState.shareService.remoteFailureHistory[0].failureKind).toBe("validation");
+
+  const rejectedPushEndpoint = await getSameOriginEndpoint(page, "/e2e-share-repository-rejected-push");
+  await configureShareRemoteInUi(page, rejectedPushEndpoint, "share-rejected-push-token", "share-retry-e2e");
+  await page.locator("#shareRemotePushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 422");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("HTTP 422");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("失败历史");
+  await expect(page.locator("#shareRemotePushButton")).toHaveText("重试发布");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.remoteFailureHistory[0].action).toBe("push");
+  expect(learningState.shareService.remoteFailureHistory[0].failureKind).toBe("http");
+  expect(learningState.shareService.remoteFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  const rejectedPutRequest = requests.find((item) => item.path === "/e2e-share-repository-rejected-push" && item.method === "PUT");
+  expect(rejectedPutRequest.authorization).toBe("Bearer share-rejected-push-token");
+  expect(rejectedPutRequest.workspaceId).toBe("share-retry-e2e");
+  expect(rejectedPutRequest.body.kind).toBe("mr-calligraphy-share-repository-v1");
+  expect(rejectedPutRequest.body.records[0].id).toBe(seed.shareId);
+  expect(learningState.shareService.remoteFailureHistory[0].packageId).toBe(rejectedPutRequest.body.packageId);
+
+  const networkPushEndpoint = await getSameOriginEndpoint(page, networkPushPath);
+  await configureShareRemoteInUi(page, networkPushEndpoint, "share-network-push-token", "share-retry-e2e");
+  await expect(page.locator("#shareRemotePushButton")).toHaveText("重试发布");
+  await page.locator("#shareRemotePushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("网络请求异常");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("网络请求异常");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.remoteFailureHistory[0].action).toBe("push");
+  expect(learningState.shareService.remoteFailureHistory[0].failureKind).toBe("network");
+  expect(learningState.shareService.remoteFailureHistory[0].endpoint).toContain(networkPushPath);
+
+  const timeoutResult = await page.evaluate(async () => {
+    const originalFetch = window.fetch;
+    window.fetch = () => new Promise((resolve) => {
+      window.setTimeout(() => {
+        resolve(new Response(JSON.stringify({
+          ok: true,
+          message: "分享慢响应 E2E 最终可访问。"
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" }
+        }));
+      }, 40);
+    });
+    try {
+      return await window.MRAppState.checkRemoteShareService({ timeoutMs: 1, retryDelayMs: 5 });
+    } finally {
+      window.fetch = originalFetch;
+    }
+  });
+  expect(timeoutResult.ok).toBe(false);
+  expect(timeoutResult.message).toContain("请求超时");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.remoteFailureHistory[0].action).toBe("check");
+  expect(learningState.shareService.remoteFailureHistory[0].failureKind).toBe("timeout");
+  expect(learningState.shareService.remoteRetryAfter).toBeTruthy();
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#reviewPanel")).toBeVisible();
+  await page.locator(".share-remote-panel summary").click();
+  await expect(page.locator("#shareRemoteStatus")).toContainText("请求超时");
+  await expect(page.locator("#shareRemotePushButton")).toHaveText("重试发布");
+
+  const recoveryPushEndpoint = await getSameOriginEndpoint(page, recoveryPushPath);
+  await configureShareRemoteInUi(page, recoveryPushEndpoint, "share-recovery-token", "share-retry-e2e");
+  await expect(page.locator("#shareRemotePushButton")).toHaveText("重试发布");
+  await page.locator("#shareRemotePushButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已发布作品分享到远端 API");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("https://share.example.test/recovered/");
+  await expect(page.locator("#shareRemotePushButton")).toHaveText("发布远端");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.lastError).toBe("");
+  expect(learningState.shareService.remoteRetryAfter || "").toBe("");
+  expect(learningState.shareService.lastRemoteDirection).toBe("push");
+  expect(learningState.shareService.lastRemotePushAt).toBeTruthy();
+  expect(learningState.shareService.remoteFailureHistory.length).toBeGreaterThanOrEqual(4);
+  expect(learningState.shareService.lastReceipt.receiptDigest).toBe(latestPublishReceipt.receiptDigest);
+  expect(learningState.shareService.lastReceipt.verificationStatus).toBe("verified");
+  expect(learningState.shareService.records[0].remotePublicUrl).toContain("https://share.example.test/recovered/");
+  const recoveryStatus = await page.evaluate((artworkId) => window.MRAppState.getShareServiceStatus(artworkId), seed.artworkId);
+  expect(recoveryStatus.sharePushRetryPending).toBe(false);
+  expect(recoveryStatus.remoteFailureCount).toBeGreaterThanOrEqual(4);
+
+  const recoveryPutRequest = requests.find((item) => item.path === recoveryPushPath && item.method === "PUT");
+  expect(recoveryPutRequest.authorization).toBe("Bearer share-recovery-token");
+  expect(recoveryPutRequest.workspaceId).toBe("share-retry-e2e");
+  expect(recoveryPutRequest.body.summary.workspaceId).toBe("share-retry-e2e");
+
+  const rejectedRevokeEndpoint = await getSameOriginEndpoint(page, rejectedRevokePath);
+  await configureShareRemoteInUi(page, rejectedRevokeEndpoint, "share-rejected-revoke-token", "share-retry-e2e");
+  await page.locator("#shareRemoteRevokeButton").click();
+  await expect(page.locator("#noticeState")).toContainText("HTTP 409");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("HTTP 409");
+  await expect(page.locator("#shareRemoteRevokeButton")).toHaveText("重试撤销");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.remoteFailureHistory[0].action).toBe("revoke");
+  expect(learningState.shareService.remoteFailureHistory[0].failureKind).toBe("http");
+  expect(learningState.shareService.remoteFailureHistory[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.shareService.remoteFailureHistory[0].publicUrl).toContain("https://share.example.test/recovered/");
+  const rejectedDeleteRequest = requests.find((item) => item.path === rejectedRevokePath && item.method === "DELETE");
+  expect(rejectedDeleteRequest.authorization).toBe("Bearer share-rejected-revoke-token");
+  expect(rejectedDeleteRequest.body.kind).toBe("mr-calligraphy-share-repository-revoke-v1");
+  expect(rejectedDeleteRequest.body.shareId).toBe(seed.shareId);
+
+  const recoveryRevokeEndpoint = await getSameOriginEndpoint(page, recoveryRevokePath);
+  await configureShareRemoteInUi(page, recoveryRevokeEndpoint, "share-revoke-recovery-token", "share-retry-e2e");
+  await expect(page.locator("#shareRemoteRevokeButton")).toHaveText("重试撤销");
+  await page.locator("#shareRemoteRevokeButton").click();
+  await expect(page.locator("#noticeState")).toContainText("已请求远端撤销作品分享");
+  await expect(page.locator("#shareRemoteStatus")).toContainText("已请求远端撤销");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.shareService.lastError).toBe("");
+  expect(learningState.shareService.remoteRetryAfter || "").toBe("");
+  expect(learningState.shareService.lastRemoteDirection).toBe("revoke");
+  expect(learningState.shareService.lastRemoteRevokeAt).toBeTruthy();
+  expect(learningState.shareService.records[0].remoteRevokedAt).toBeTruthy();
+  expect(learningState.shareService.records[0].remoteRevokeReceiptDigest).toBe(latestRevokeReceipt.receiptDigest);
+  expect(learningState.shareService.lastReceipt.verificationStatus).toBe("verified");
+  expect(learningState.shareService.lastReceipt.verificationAction).toBe("revoke");
+  const revokeRecoveryStatus = await page.evaluate((artworkId) => window.MRAppState.getShareServiceStatus(artworkId), seed.artworkId);
+  expect(revokeRecoveryStatus.shareRevokeRetryPending).toBe(false);
+  const recoveryDeleteRequest = requests.find((item) => item.path === recoveryRevokePath && item.method === "DELETE");
+  expect(recoveryDeleteRequest.authorization).toBe("Bearer share-revoke-recovery-token");
+  expect(recoveryDeleteRequest.body.shareId).toBe(seed.shareId);
+  expect(recoveryDeleteRequest.body.publicUrl).toContain("https://share.example.test/recovered/");
+});
+
 test("front report repository shows retryable remote failure recovery", async ({ page }) => {
   const requests = [];
   const networkPushPath = "/e2e-report-repository-network-push";

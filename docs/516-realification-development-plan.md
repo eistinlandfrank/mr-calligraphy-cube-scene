@@ -9552,3 +9552,49 @@
 提交：
 
 - 中文 commit message：`新增学习阶段动作详情`
+
+### 2026-06-13：新增作品分享远端重试恢复
+
+功能名：前台作品分享远端 API 失败历史与重试恢复。
+
+开发原因：
+
+- 作品分享远端 adapter 已经能检查 endpoint、发布分享包、撤销远端链接和保存回执，但失败后主要只保留最近错误。
+- 用户需要知道分享远端失败到底来自 HTTP 拒收、网络中断、请求超时还是返回结构错误，并且修好 endpoint 后可以明确恢复发布或撤销。
+
+完成内容：
+
+- `app-state.js` 新增作品分享远端请求超时包装，默认 8 秒，覆盖 GET 检查、PUT 发布和 DELETE 撤销。
+- `shareService` 新增 `lastRemotePushAt`、`lastRemoteRevokeAt`、`lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 失败历史记录动作、失败类型、endpoint、workspace、分享 ID、包 ID、包摘要、publicUrl、分享数量、失败时间和建议重试时间。
+- `getShareServiceStatus()` 返回失败历史数量、重试摘要、`sharePushRetryPending` 和 `shareRevokeRetryPending`。
+- 前台远端分享状态会显示失败历史摘要；发布失败后按钮显示“重试发布”，撤销失败后按钮显示“重试撤销”。
+- 恢复发布或恢复撤销成功后清空当前错误和重试时间，保留失败历史、远端回执和回执本机校验结果。
+- Playwright 新增作品分享远端失败恢复用例，覆盖 HTTP 401、非法 JSON、PUT 422、网络中断、页面内慢 fetch 超时、恢复发布、DELETE 409 和恢复撤销。
+
+验收方式：
+
+- 保存一幅真实本机作品并生成本机分享链接，打开“远端分享 API”。
+- 配置会返回 422 的发布 endpoint 并点击“发布远端”，应显示 HTTP 422，按钮变为“重试发布”。
+- 配置网络中断 endpoint 并重试，应追加网络失败历史。
+- 触发慢 fetch 超时，应追加 timeout 失败历史和建议重试时间。
+- 配置可用 endpoint 后点击“重试发布”，应成功写入 publicUrl 和发布回执，按钮恢复“发布远端”。
+- 配置会拒绝 DELETE 的撤销 endpoint，应显示“重试撤销”；配置恢复 endpoint 后撤销成功，按钮不再提示重试。
+
+真实边界：
+
+- 数据来源：当前浏览器本机作品分享包、用户配置 endpoint、真实 fetch 结果和服务端回执。
+- 这不是内置公网作品墙、微信分享、账号权限、生产 CDN、服务端后台重试队列或不可篡改服务端审计。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front share repository shows retryable remote failure recovery"`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享重试恢复`

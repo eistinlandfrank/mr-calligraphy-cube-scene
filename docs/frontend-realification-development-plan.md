@@ -37,10 +37,10 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 40 | 6 | 1 | 0 | 0 | 0 |
+| `index.html` | 73 | 24 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 26 | 2 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
@@ -3963,3 +3963,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习阶段动作详情`
+
+## 108. 2026-06-13 新增作品分享远端重试恢复
+
+本次把前台“远端分享 API”从“失败后只显示最近错误”推进到“失败动作、失败类型、失败历史、建议重试时间和恢复发布/撤销都可追踪”。分享远端检查、发布和撤销现在都有请求超时保护；发布失败后按钮会显示“重试发布”，撤销失败后按钮会显示“重试撤销”。
+
+完成内容：
+
+- `app-state.js` 新增作品分享远端请求超时包装，默认 8 秒。
+- `shareService` 新增 `lastRemotePushAt`、`lastRemoteRevokeAt`、`lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 失败历史记录动作类型、失败类型、endpoint、workspace、分享 ID、包 ID、包摘要、publicUrl、分享数量、失败时间和建议重试时间。
+- 失败类型区分 HTTP 拒收、网络异常、请求超时、结构校验失败和远端响应未完成。
+- 前台远端分享状态会显示失败历史摘要；发布失败未恢复时按钮显示“重试发布”，撤销失败未恢复时按钮显示“重试撤销”。
+- 发布或撤销恢复成功后清空当前错误和重试时间，但保留失败历史用于本机审计。
+- Playwright 新增分享远端失败恢复用例，覆盖 401、非法 JSON、PUT 422、网络中断、页面内超时注入、恢复 endpoint 后成功发布、DELETE 409 和恢复撤销。
+
+真实化说明：
+
+- 数据来源：前台当前本机作品分享包、真实远端 API 响应、浏览器 fetch 错误和本机 `shareService` 状态。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService.remoteFailureHistory`、`remoteRetryAfter`、`lastRemoteFailureAt`、`lastFailureAction`、`lastRemotePushAt` 和 `lastRemoteRevokeAt`。
+- 成功反馈：恢复发布后页面显示远端链接和回执校验，按钮恢复为“发布远端”；恢复撤销后页面显示已请求远端撤销，撤销回执校验通过。
+- 失败反馈：HTTP、网络、超时或结构错误都不会显示远端成功，会写入失败历史和下一次建议重试时间。
+- 刷新后复现方式：失败历史、最近错误和重试状态保存在 localStorage，刷新前台作品页后仍可读取。
+
+仍待补：
+
+- 当前是浏览器本机远端 adapter 的失败恢复，不是内置公网作品墙、微信分享、账号权限、生产 CDN、服务端后台队列或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front share repository shows retryable remote failure recovery"`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享重试恢复`

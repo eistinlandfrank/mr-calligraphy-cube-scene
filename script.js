@@ -5167,8 +5167,11 @@ function renderShareServicePanel(artwork) {
     const publicText = status?.lastRemotePublicUrl
       ? ` 远端链接：${status.lastRemotePublicUrl}`
       : "";
+    const remoteRetryText = status?.lastError && status?.remoteRetrySummary
+      ? ` ${status.remoteRetrySummary}`
+      : "";
     els.shareRemoteStatus.textContent = status?.remoteConfigured
-      ? `${status.lastError || status.lastRemoteStatus || "远端分享 API 已配置，尚未检查。"}${receiptText}${publicText} ${config?.boundary || ""}`
+      ? `${status.lastError || status.lastRemoteStatus || "远端分享 API 已配置，尚未检查。"}${remoteRetryText}${receiptText}${publicText} ${config?.boundary || ""}`
       : `尚未配置远端分享 API，当前空间 ${config?.workspaceId || status?.workspaceId || "local-browser"}。${config?.boundary || ""}`;
     els.shareRemoteStatus.dataset.shareRemoteTone = status?.lastError
       ? "warning"
@@ -5189,10 +5192,12 @@ function renderShareServicePanel(artwork) {
   }
   if (els.shareRemotePushButton) {
     els.shareRemotePushButton.disabled = !status?.remoteConfigured || !activeRecord?.isActive;
+    els.shareRemotePushButton.textContent = status?.sharePushRetryPending ? "重试发布" : "发布远端";
   }
   if (els.shareRemoteRevokeButton) {
     const remoteMatchesWorkspace = !activeRecord?.remoteWorkspaceId || activeRecord.remoteWorkspaceId === status?.workspaceId;
     els.shareRemoteRevokeButton.disabled = !status?.remoteConfigured || !activeRecord?.remotePublicUrl || Boolean(activeRecord?.remoteRevokedAt) || !remoteMatchesWorkspace;
+    els.shareRemoteRevokeButton.textContent = status?.shareRevokeRetryPending ? "重试撤销" : "撤销远端";
   }
   if (els.shareRemoteCopyButton) {
     els.shareRemoteCopyButton.disabled = !status?.lastRemotePublicUrl || Boolean(activeRecord?.remoteRevokedAt);

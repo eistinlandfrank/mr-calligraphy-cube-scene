@@ -21,6 +21,9 @@
   const SHARE_REPOSITORY_BOUNDARY = "作品分享远端 API adapter 会把当前分享包真实发送到用户配置的 endpoint，并携带 Workspace 空间 ID 保存 publicUrl 与回执；它仍不是内置账号系统、微信发布、班级作品墙或生产 CDN。";
   const SHARE_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-share-repository-receipt-v1";
   const SHARE_REPOSITORY_MAX_RECEIPTS = 12;
+  const SHARE_REPOSITORY_MAX_FAILURES = 12;
+  const SHARE_REPOSITORY_REQUEST_TIMEOUT_MS = 8000;
+  const SHARE_REPOSITORY_RETRY_BASE_MS = 15000;
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -794,6 +797,7 @@
     const mode = source.mode === "remote-api" ? "remote-api" : "local-link";
     const workspaceId = normalizeShareRepositoryWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
     const receipts = normalizeShareRepositoryReceipts(source, { expectedWorkspaceId: workspaceId });
+    const lastRemoteDirection = normalizeShareRepositoryFailureAction(source.lastRemoteDirection);
     const lastReceipt = normalizeShareRepositoryReceipt({
       ...(source.lastReceipt || source.latestReceipt || source.receipt || {}),
       expectedWorkspaceId: workspaceId
@@ -814,14 +818,22 @@
       workspaceId,
       lastCheckedAt: normalizePlanDate(source.lastCheckedAt),
       lastRemoteSyncAt: normalizePlanDate(source.lastRemoteSyncAt),
-      lastRemoteDirection: ["check", "push", "revoke"].includes(source.lastRemoteDirection) ? source.lastRemoteDirection : "",
+      lastRemotePushAt: normalizePlanDate(source.lastRemotePushAt || (lastRemoteDirection === "push" ? source.lastRemoteSyncAt : null)),
+      lastRemoteRevokeAt: normalizePlanDate(source.lastRemoteRevokeAt || (lastRemoteDirection === "revoke" ? source.lastRemoteSyncAt : null)),
+      lastRemoteDirection,
       lastRemoteStatus: source.lastRemoteStatus ? String(source.lastRemoteStatus).trim().slice(0, 260) : "",
-      lastError: source.lastError ? String(source.lastError).trim().slice(0, 220) : "",
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).trim().slice(0, 160) : "",
       lastRemoteShareId: source.lastRemoteShareId ? String(source.lastRemoteShareId).trim().slice(0, 120) : "",
       lastRemotePublicUrl: normalizeSharePublicUrl(source.lastRemotePublicUrl),
       lastReceipt,
-      receipts: appendShareRepositoryReceipt({ receipts, workspaceId }, lastReceipt)
+      receipts: appendShareRepositoryReceipt({ receipts, workspaceId }, lastReceipt),
+      lastRemoteFailureAt: normalizePlanDate(source.lastRemoteFailureAt),
+      lastFailureAction: normalizeShareRepositoryFailureAction(source.lastFailureAction),
+      remoteRetryAfter: normalizePlanDate(source.remoteRetryAfter),
+      remoteFailureHistory: Array.isArray(source.remoteFailureHistory)
+        ? source.remoteFailureHistory.map(normalizeShareRepositoryFailure).filter(Boolean).slice(0, SHARE_REPOSITORY_MAX_FAILURES)
+        : [],
+      lastError: source.lastError ? String(source.lastError).trim().slice(0, 220) : ""
     };
   }
 
@@ -1068,6 +1080,97 @@
   function normalizeShareRepositoryHex(value) {
     const hex = String(value || "").trim().toLowerCase();
     return /^[a-f0-9]{64}$/.test(hex) ? hex : "";
+  }
+
+  function normalizeShareRepositoryFailureAction(action) {
+    return ["check", "push", "revoke"].includes(action) ? action : "";
+  }
+
+  function normalizeShareRepositoryFailure(record) {
+    if (!record || typeof record !== "object") return null;
+    const failedAt = normalizePlanDate(record.failedAt) || new Date().toISOString();
+    const message = String(record.message || "").trim().slice(0, 260);
+    if (!message) return null;
+    const action = normalizeShareRepositoryFailureAction(record.action) || "check";
+    return {
+      id: String(record.id || `share-repository-failure-${action}-${failedAt.replace(/[-:.TZ]/g, "").slice(0, 14)}`).slice(0, 120),
+      action,
+      failedAt,
+      retryAfter: normalizePlanDate(record.retryAfter),
+      attemptCount: normalizeInteger(record.attemptCount, 0, 0, 9999),
+      shareCount: normalizeInteger(record.shareCount, 0, 0, 99999),
+      endpoint: String(record.endpoint || "").trim().slice(0, 420),
+      workspaceId: normalizeShareRepositoryWorkspaceId(record.workspaceId),
+      shareId: String(record.shareId || "").trim().slice(0, 120),
+      packageId: String(record.packageId || "").trim().slice(0, 160),
+      packageDigest: normalizeShareRepositoryHex(record.packageDigest),
+      publicUrl: normalizeSharePublicUrl(record.publicUrl),
+      failureKind: ["http", "network", "timeout", "validation", "response", "unknown"].includes(record.failureKind)
+        ? record.failureKind
+        : classifyShareRepositoryFailure(message),
+      message
+    };
+  }
+
+  function classifyShareRepositoryFailure(message = "") {
+    const text = String(message || "");
+    if (/超时|timeout/i.test(text)) return "timeout";
+    if (/HTTP\s+\d+/.test(text)) return "http";
+    if (/网络请求异常|Failed|Network/i.test(text)) return "network";
+    if (/格式|结构|JSON|缺少|不是/.test(text)) return "validation";
+    if (/没有返回|无响应|请求失败/.test(text)) return "response";
+    return "unknown";
+  }
+
+  function getShareRepositoryRetryDelayMs(attemptCount, options = {}) {
+    if (Number.isFinite(Number(options.retryDelayMs))) {
+      return Math.max(0, Math.min(3600000, Math.round(Number(options.retryDelayMs))));
+    }
+    const attempt = normalizeInteger(attemptCount, 1, 1, 10);
+    return Math.min(10 * 60 * 1000, SHARE_REPOSITORY_RETRY_BASE_MS * Math.max(1, 2 ** (attempt - 1)));
+  }
+
+  function getShareRepositoryRetrySummary(service = state.shareService) {
+    const normalized = normalizeShareService(service);
+    if (!normalized.remoteFailureHistory.length || !normalized.remoteRetryAfter) {
+      return "";
+    }
+    const latestFailure = normalized.remoteFailureHistory[0] || null;
+    const actionLabel = {
+      check: "检查",
+      push: "发布",
+      revoke: "撤销"
+    }[latestFailure?.action] || "同步";
+    const reason = latestFailure?.failureKind === "timeout"
+      ? "请求超时"
+      : latestFailure?.failureKind === "http"
+        ? "服务端拒收"
+        : latestFailure?.failureKind === "network"
+          ? "网络异常"
+          : latestFailure?.failureKind === "validation"
+            ? "结构校验失败"
+            : "远端响应未完成";
+    return `失败历史 ${normalized.remoteFailureHistory.length} 次，最近一次${actionLabel}为${reason}；建议 ${formatPlanDate(normalized.remoteRetryAfter)} 后重试。`;
+  }
+
+  function hasShareRepositoryPushRetryPending(service = state.shareService) {
+    const normalized = normalizeShareService(service);
+    const lastPushTime = Date.parse(normalized.lastRemotePushAt || "") || 0;
+    return normalized.remoteFailureHistory.some((failure) => {
+      if (failure.action !== "push") return false;
+      const failedAt = Date.parse(failure.failedAt || "") || 0;
+      return failedAt > lastPushTime;
+    });
+  }
+
+  function hasShareRepositoryRevokeRetryPending(service = state.shareService) {
+    const normalized = normalizeShareService(service);
+    const lastRevokeTime = Date.parse(normalized.lastRemoteRevokeAt || "") || 0;
+    return normalized.remoteFailureHistory.some((failure) => {
+      if (failure.action !== "revoke") return false;
+      const failedAt = Date.parse(failure.failedAt || "") || 0;
+      return failedAt > lastRevokeTime;
+    });
   }
 
   function normalizeIsoDate(value) {
@@ -8641,6 +8744,7 @@
   }
 
   function getShareServiceStatus(artworkId = null) {
+    const service = normalizeShareService(state.shareService);
     const recordId = String(artworkId || "").trim();
     const records = getDecoratedShareRecords();
     const activeRecords = records.filter((record) => record.status === "active");
@@ -8651,6 +8755,7 @@
         || records.find((record) => record.artworkId === recordId)
         || null
       : activeRecords[0] || records[0] || null;
+    const remoteRetrySummary = getShareRepositoryRetrySummary(service);
 
     return {
       ok: true,
@@ -8662,20 +8767,30 @@
       latestRecord: records[0] || null,
       currentRecord,
       records,
-      mode: state.shareService.mode,
-      remoteConfigured: Boolean(state.shareService.remoteEndpoint),
-      remoteEndpoint: state.shareService.remoteEndpoint,
-      workspaceId: state.shareService.workspaceId,
-      lastRemoteStatus: state.shareService.lastRemoteStatus,
-      lastRemoteSyncAt: state.shareService.lastRemoteSyncAt,
-      lastRemoteDirection: state.shareService.lastRemoteDirection,
-      lastRemoteShareId: state.shareService.lastRemoteShareId,
-      lastRemotePublicUrl: state.shareService.lastRemotePublicUrl,
-      lastPackageId: state.shareService.lastPackageId,
-      lastError: state.shareService.lastError,
-      lastReceipt: state.shareService.lastReceipt ? clone(state.shareService.lastReceipt) : null,
-      receiptCount: state.shareService.receipts.length,
-      receipts: clone(state.shareService.receipts),
+      mode: service.mode,
+      remoteConfigured: Boolean(service.remoteEndpoint),
+      remoteEndpoint: service.remoteEndpoint,
+      workspaceId: service.workspaceId,
+      lastRemoteStatus: service.lastRemoteStatus,
+      lastRemoteSyncAt: service.lastRemoteSyncAt,
+      lastRemotePushAt: service.lastRemotePushAt,
+      lastRemoteRevokeAt: service.lastRemoteRevokeAt,
+      lastRemoteDirection: service.lastRemoteDirection,
+      lastRemoteShareId: service.lastRemoteShareId,
+      lastRemotePublicUrl: service.lastRemotePublicUrl,
+      lastPackageId: service.lastPackageId,
+      lastRemoteFailureAt: service.lastRemoteFailureAt,
+      lastFailureAction: service.lastFailureAction,
+      remoteRetryAfter: service.remoteRetryAfter,
+      remoteFailureCount: service.remoteFailureHistory.length,
+      remoteFailureHistory: clone(service.remoteFailureHistory),
+      remoteRetrySummary,
+      sharePushRetryPending: hasShareRepositoryPushRetryPending(service),
+      shareRevokeRetryPending: hasShareRepositoryRevokeRetryPending(service),
+      lastError: service.lastError,
+      lastReceipt: service.lastReceipt ? clone(service.lastReceipt) : null,
+      receiptCount: service.receipts.length,
+      receipts: clone(service.receipts),
       message: records.length
         ? `本机分享服务有 ${activeRecords.length} 条有效链接、${revokedRecords.length} 条已撤销、${expiredRecords.length} 条已过期。`
         : "本机分享服务尚未生成链接。保存作品后可生成当前浏览器内可访问的分享链接。"
@@ -8839,8 +8954,14 @@
         workspaceId,
         lastCheckedAt: new Date().toISOString(),
         lastRemoteSyncAt: null,
+        lastRemotePushAt: null,
+        lastRemoteRevokeAt: null,
         lastRemoteDirection: "",
         lastRemoteStatus: "",
+        lastRemoteFailureAt: null,
+        lastFailureAction: "",
+        remoteRetryAfter: null,
+        remoteFailureHistory: [],
         lastError: "",
         lastPackageId: "",
         lastRemoteShareId: "",
@@ -8883,6 +9004,7 @@
       lastReceipt: sameRemoteSpace ? service.lastReceipt : null,
       receipts: sameRemoteSpace ? service.receipts : [],
       lastRemoteStatus: `远端分享 API 配置已保存，空间 ${workspaceId} 尚未检查服务可用性。`,
+      remoteRetryAfter: null,
       lastError: ""
     });
     addEvent("share-remote", `配置远端分享 API：${validation.endpoint} / ${workspaceId}`);
@@ -8925,6 +9047,26 @@
       headers,
       ...(options.body ? { body: JSON.stringify(options.body) } : {})
     };
+  }
+
+  function requestShareRepository(service, fetchApi, options = {}) {
+    const requestUrl = options.requestUrl || service.remoteEndpoint;
+    const timeoutMs = normalizeInteger(options.timeoutMs, SHARE_REPOSITORY_REQUEST_TIMEOUT_MS, 1, 600000);
+    const request = buildShareRepositoryRequest(service, options);
+    let timer = null;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error(`请求超时 ${timeoutMs}ms`);
+        error.name = "TimeoutError";
+        reject(error);
+      }, timeoutMs);
+    });
+    const requestPromise = Promise.resolve().then(() => fetchApi(requestUrl, request));
+    return Promise.race([requestPromise, timeout]).finally(() => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    });
   }
 
   async function parseRemoteShareRepositoryResponse(response) {
@@ -9009,22 +9151,68 @@
 
   function formatShareRepositoryNetworkError(action, error) {
     const detail = String(error?.message || "").trim();
+    if (error?.name === "TimeoutError" || /超时|timeout/i.test(detail)) {
+      return detail
+        ? `远端分享 API ${action}失败：请求超时（${detail}）。`
+        : `远端分享 API ${action}失败：请求超时。`;
+    }
     return detail
       ? `远端分享 API ${action}失败：网络请求异常（${detail}）。`
       : `远端分享 API ${action}失败：网络请求异常。`;
   }
 
-  function recordShareRepositoryError(message) {
+  function recordShareRepositoryError(message, options = {}) {
+    const current = normalizeShareService(state.shareService);
+    const now = new Date().toISOString();
+    const normalizedMessage = String(message || "作品分享远端同步失败。").trim().slice(0, 260);
+    const action = normalizeShareRepositoryFailureAction(options.action);
+    const trackRemote = Boolean(action || options.trackRemote === true);
+    let remoteRetryAfter = current.remoteRetryAfter;
+    let remoteFailureHistory = current.remoteFailureHistory;
+    let lastRemoteFailureAt = current.lastRemoteFailureAt;
+    let lastFailureAction = current.lastFailureAction;
+
+    if (trackRemote) {
+      const attemptCount = normalizeInteger(options.attemptCount, current.remoteFailureHistory.length + 1, 1, 9999);
+      const retryDelayMs = getShareRepositoryRetryDelayMs(attemptCount, options);
+      const retryAfter = retryDelayMs ? new Date(Date.now() + retryDelayMs).toISOString() : now;
+      const failure = normalizeShareRepositoryFailure({
+        failedAt: now,
+        retryAfter,
+        attemptCount,
+        action: action || "check",
+        endpoint: options.endpoint || current.remoteEndpoint,
+        workspaceId: options.workspaceId || current.workspaceId,
+        shareId: options.shareId || current.lastRemoteShareId || "",
+        packageId: options.packageId || current.lastPackageId || "",
+        packageDigest: options.packageDigest || "",
+        publicUrl: options.publicUrl || current.lastRemotePublicUrl || "",
+        shareCount: options.shareCount ?? current.records.length,
+        failureKind: options.failureKind || classifyShareRepositoryFailure(normalizedMessage),
+        message: normalizedMessage
+      });
+      remoteFailureHistory = [failure, ...current.remoteFailureHistory]
+        .filter(Boolean)
+        .slice(0, SHARE_REPOSITORY_MAX_FAILURES);
+      remoteRetryAfter = retryAfter;
+      lastRemoteFailureAt = now;
+      lastFailureAction = failure?.action || action || current.lastFailureAction;
+    }
+
     state.shareService = normalizeShareService({
-      ...state.shareService,
-      mode: state.shareService.remoteEndpoint ? "remote-api" : "local-link",
-      lastCheckedAt: new Date().toISOString(),
-      lastError: message
+      ...current,
+      mode: current.remoteEndpoint ? "remote-api" : "local-link",
+      lastCheckedAt: now,
+      lastRemoteFailureAt,
+      lastFailureAction,
+      remoteRetryAfter,
+      remoteFailureHistory,
+      lastError: normalizedMessage
     });
     saveState();
   }
 
-  function checkRemoteShareService() {
+  function checkRemoteShareService(options = {}) {
     const service = normalizeShareService(state.shareService);
     const now = new Date().toISOString();
     const remoteConfigured = Boolean(service.remoteEndpoint);
@@ -9037,12 +9225,15 @@
     });
     if (!remoteConfigured || !fetchApi) {
       if (remoteConfigured && !fetchApi) {
-        state.shareService = normalizeShareService({
-          ...state.shareService,
-          lastError: "当前运行环境不支持 fetch，无法检查远端分享 API。"
+        const message = "当前运行环境不支持 fetch，无法检查远端分享 API。";
+        recordShareRepositoryError(message, {
+          action: "check",
+          failureKind: "network",
+          retryDelayMs: options.retryDelayMs
         });
+      } else {
+        saveState();
       }
-      saveState();
       const status = getShareServiceStatus();
       return {
         ok: false,
@@ -9050,22 +9241,20 @@
         message: `${status.lastError || status.message} ${SHARE_REPOSITORY_BOUNDARY}`
       };
     }
-    return checkRemoteShareServiceAsync(service, fetchApi);
+    return checkRemoteShareServiceAsync(service, fetchApi, options);
   }
 
-  async function checkRemoteShareServiceAsync(service, fetchApi) {
+  async function checkRemoteShareServiceAsync(service, fetchApi, options = {}) {
     try {
-      const response = await fetchApi(service.remoteEndpoint, buildShareRepositoryRequest(service));
+      const response = await requestShareRepository(service, fetchApi, options);
       const parsed = await parseRemoteShareRepositoryResponse(response);
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.shareService = normalizeShareService({
-          ...service,
-          mode: "remote-api",
-          lastCheckedAt: now,
-          lastError: parsed.message
+        recordShareRepositoryError(parsed.message, {
+          action: "check",
+          failureKind: classifyShareRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getShareServiceStatus(), message: parsed.message };
       }
 
@@ -9088,6 +9277,7 @@
         lastReceipt: receipt || service.lastReceipt,
         receipts: appendShareRepositoryReceipt(service, receipt),
         lastRemoteStatus: `${parsed.message} 空间：${service.workspaceId}。`,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("share-remote-check", `检查远端分享 API：${service.workspaceId}`);
@@ -9102,48 +9292,58 @@
       };
     } catch (error) {
       const message = formatShareRepositoryNetworkError("检查", error);
-      recordShareRepositoryError(message);
+      recordShareRepositoryError(message, {
+        action: "check",
+        failureKind: classifyShareRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getShareServiceStatus(), message };
     }
   }
 
-  function pushArtworkShareToRemote(shareId = null) {
+  function pushArtworkShareToRemote(shareId = null, options = {}) {
     const service = normalizeShareService(state.shareService);
     const fetchApi = getShareRepositoryFetch();
     if (!service.remoteEndpoint) {
-      return checkRemoteShareService();
+      return checkRemoteShareService(options);
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法发布作品分享到远端 API。";
-      recordShareRepositoryError(message);
+      recordShareRepositoryError(message, {
+        action: "push",
+        failureKind: "network",
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getShareServiceStatus(), message };
     }
     const packageResult = getArtworkShareRemotePackage(shareId);
     if (!packageResult.ok) {
       return packageResult;
     }
-    return pushArtworkShareToRemoteAsync(service, fetchApi, packageResult.package, packageResult.record);
+    return pushArtworkShareToRemoteAsync(service, fetchApi, packageResult.package, packageResult.record, options);
   }
 
-  async function pushArtworkShareToRemoteAsync(service, fetchApi, repositoryPackage, shareRecord) {
+  async function pushArtworkShareToRemoteAsync(service, fetchApi, repositoryPackage, shareRecord, options = {}) {
     try {
-      const response = await fetchApi(
-        service.remoteEndpoint,
-        buildShareRepositoryRequest(service, {
-          method: "PUT",
-          body: repositoryPackage
-        })
-      );
+      const response = await requestShareRepository(service, fetchApi, {
+        method: "PUT",
+        body: repositoryPackage,
+        timeoutMs: options.timeoutMs
+      });
       const parsed = await parseRemoteShareRepositoryResponse(response);
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.shareService = normalizeShareService({
-          ...service,
-          mode: "remote-api",
-          lastCheckedAt: now,
-          lastError: parsed.message
+        const packageDigest = sha256StableJson(repositoryPackage);
+        recordShareRepositoryError(parsed.message, {
+          action: "push",
+          shareId: shareRecord.id,
+          packageId: repositoryPackage.packageId,
+          packageDigest,
+          shareCount: repositoryPackage.records.length,
+          publicUrl: shareRecord.remotePublicUrl || "",
+          failureKind: classifyShareRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getShareServiceStatus(), message: parsed.message };
       }
 
@@ -9179,6 +9379,7 @@
         workspaceId: service.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
+        lastRemotePushAt: now,
         lastRemoteDirection: "push",
         lastPackageId: acceptedPackageId,
         lastRemoteShareId: shareRecord.id,
@@ -9186,6 +9387,7 @@
         lastReceipt: receipt || service.lastReceipt,
         receipts: appendShareRepositoryReceipt(service, receipt),
         lastRemoteStatus: remoteStatus,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("share-remote-push", `发布远端分享：${service.workspaceId} / ${shareRecord.title || shareRecord.id}`);
@@ -9200,7 +9402,17 @@
       };
     } catch (error) {
       const message = formatShareRepositoryNetworkError("发布", error);
-      recordShareRepositoryError(message);
+      const packageDigest = sha256StableJson(repositoryPackage);
+      recordShareRepositoryError(message, {
+        action: "push",
+        shareId: shareRecord.id,
+        packageId: repositoryPackage.packageId,
+        packageDigest,
+        shareCount: repositoryPackage.records.length,
+        publicUrl: shareRecord.remotePublicUrl || "",
+        failureKind: classifyShareRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getShareServiceStatus(), message };
     }
   }
@@ -9257,43 +9469,50 @@
     };
   }
 
-  function revokeArtworkShareRemote(shareId = null) {
+  function revokeArtworkShareRemote(shareId = null, options = {}) {
     const service = normalizeShareService(state.shareService);
     const fetchApi = getShareRepositoryFetch();
     if (!service.remoteEndpoint) {
-      return checkRemoteShareService();
+      return checkRemoteShareService(options);
     }
     if (!fetchApi) {
       const message = "当前运行环境不支持 fetch，无法撤销远端分享链接。";
-      recordShareRepositoryError(message);
+      recordShareRepositoryError(message, {
+        action: "revoke",
+        failureKind: "network",
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getShareServiceStatus(), message };
     }
     const revokeResult = getArtworkShareRemoteRevokePackage(shareId);
     if (!revokeResult.ok) {
       return revokeResult;
     }
-    return revokeArtworkShareRemoteAsync(service, fetchApi, revokeResult.revoke, revokeResult.record);
+    return revokeArtworkShareRemoteAsync(service, fetchApi, revokeResult.revoke, revokeResult.record, options);
   }
 
-  async function revokeArtworkShareRemoteAsync(service, fetchApi, revokePackage, shareRecord) {
+  async function revokeArtworkShareRemoteAsync(service, fetchApi, revokePackage, shareRecord, options = {}) {
     try {
-      const response = await fetchApi(
-        createShareRepositoryRevokeUrl(service.remoteEndpoint, revokePackage),
-        buildShareRepositoryRequest(service, {
-          method: "DELETE",
-          body: revokePackage
-        })
-      );
+      const response = await requestShareRepository(service, fetchApi, {
+        method: "DELETE",
+        body: revokePackage,
+        requestUrl: createShareRepositoryRevokeUrl(service.remoteEndpoint, revokePackage),
+        timeoutMs: options.timeoutMs
+      });
       const parsed = await parseRemoteShareRepositoryResponse(response);
       const now = new Date().toISOString();
       if (!parsed.ok) {
-        state.shareService = normalizeShareService({
-          ...service,
-          mode: "remote-api",
-          lastCheckedAt: now,
-          lastError: parsed.message
+        const packageDigest = sha256StableJson(revokePackage);
+        recordShareRepositoryError(parsed.message, {
+          action: "revoke",
+          shareId: shareRecord.id,
+          packageId: revokePackage.packageId || shareRecord.remotePackageId || "",
+          packageDigest,
+          shareCount: 1,
+          publicUrl: revokePackage.publicUrl || shareRecord.remotePublicUrl || "",
+          failureKind: classifyShareRepositoryFailure(parsed.message),
+          retryDelayMs: options.retryDelayMs
         });
-        saveState();
         return { ok: false, status: getShareServiceStatus(), message: parsed.message };
       }
 
@@ -9321,12 +9540,14 @@
         workspaceId: service.workspaceId,
         lastCheckedAt: now,
         lastRemoteSyncAt: now,
+        lastRemoteRevokeAt: now,
         lastRemoteDirection: "revoke",
         lastRemoteShareId: shareRecord.id,
         lastRemotePublicUrl: "",
         lastReceipt: receipt || service.lastReceipt,
         receipts: appendShareRepositoryReceipt(service, receipt),
         lastRemoteStatus: remoteStatus,
+        remoteRetryAfter: null,
         lastError: ""
       });
       addEvent("share-remote-revoke", `撤销远端分享：${service.workspaceId} / ${shareRecord.title || shareRecord.id}`);
@@ -9339,7 +9560,17 @@
       };
     } catch (error) {
       const message = formatShareRepositoryNetworkError("撤销", error);
-      recordShareRepositoryError(message);
+      const packageDigest = sha256StableJson(revokePackage);
+      recordShareRepositoryError(message, {
+        action: "revoke",
+        shareId: shareRecord.id,
+        packageId: revokePackage.packageId || shareRecord.remotePackageId || "",
+        packageDigest,
+        shareCount: 1,
+        publicUrl: revokePackage.publicUrl || shareRecord.remotePublicUrl || "",
+        failureKind: classifyShareRepositoryFailure(message),
+        retryDelayMs: options.retryDelayMs
+      });
       return { ok: false, status: getShareServiceStatus(), message };
     }
   }

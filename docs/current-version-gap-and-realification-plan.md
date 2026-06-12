@@ -30,10 +30,10 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 72 | 21 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 40 | 6 | 1 | 0 | 0 | 0 |
+| `index.html` | 73 | 24 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 26 | 2 | 1 | 0 | 0 | 0 |
+| `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
 | `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
 
 结论：四个入口 HTML 的静态按钮和导航链接已经没有 `demo-content` 或缺失标记；前台动态场景热点按钮也已纳入清单脚本并改为本机真实交互。下一步要审计的是“标为真实的控件是否足够真实”。
@@ -4434,3 +4434,40 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习阶段动作详情`
+
+### 2026-06-13：新增作品分享远端重试恢复
+
+完成内容：
+
+- 前台作品分享远端 API 检查、发布和撤销新增 8 秒请求超时保护。
+- `shareService` 新增 `lastRemotePushAt`、`lastRemoteRevokeAt`、`lastRemoteFailureAt`、`lastFailureAction`、`remoteRetryAfter` 和 `remoteFailureHistory`。
+- 远端失败会记录动作、失败类型、endpoint、workspace、分享 ID、包 ID、包摘要、publicUrl、分享数量、失败时间和建议重试时间。
+- 失败类型会区分 HTTP 拒收、网络异常、请求超时、结构校验失败和远端响应未完成。
+- 前台远端分享状态会显示失败历史摘要；发布失败后按钮显示“重试发布”，撤销失败后按钮显示“重试撤销”。
+- 恢复发布或撤销成功后清空当前错误和重试时间，保留失败历史、远端回执和回执本机校验结果。
+- Playwright 新增分享远端失败恢复用例，覆盖 401、非法 JSON、PUT 422、网络中断、超时注入、恢复发布、DELETE 409 和恢复撤销。
+
+真实化说明：
+
+- 数据来源：本机作品分享包、真实 fetch 响应、远端错误和前台 `shareService` 状态。
+- 写入状态：`mr-calligraphy-learning-state-v1.shareService.remoteFailureHistory`、`remoteRetryAfter`、`lastRemoteFailureAt`、`lastFailureAction`、`lastRemotePushAt` 和 `lastRemoteRevokeAt`。
+- 成功反馈：恢复发布后页面显示远端 publicUrl，按钮恢复“发布远端”；恢复撤销后页面显示已请求远端撤销，回执本机校验通过。
+- 失败反馈：失败只写真实错误和失败历史，不伪造远端 publicUrl 或撤销成功。
+- 刷新后复现方式：失败历史、最近错误和重试状态随本机学习状态持久化。
+
+仍待补：
+
+- 当前是浏览器本机 adapter 级失败恢复，不是内置公网托管、微信分享、账号权限、生产 CDN、服务端后台重试队列或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front share repository shows retryable remote failure recovery"`
+- `npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品分享重试恢复`
