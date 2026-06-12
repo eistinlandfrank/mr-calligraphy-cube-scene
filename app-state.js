@@ -34,6 +34,7 @@
   const ARTWORK_CLASSROOM_REVIEW_KIND = "mr-calligraphy-classroom-review-v1";
   const ARTWORK_CLASSROOM_REVIEW_NOTES_KIND = "mr-calligraphy-classroom-review-notes-v1";
   const ARTWORK_CLASSROOM_REVIEW_SUMMARY_KIND = "mr-calligraphy-classroom-review-summary-v1";
+  const ARTWORK_CLASSROOM_REVIEW_NOTES_DIGEST_ALGORITHM = "sha256-stable-json";
   const ARTWORK_CLASSROOM_REVIEW_BOUNDARY = "课堂评阅表导出会把当前浏览器里的作品生成可离线打开、填写、打印和导出评阅 JSON 的 HTML；它不是账号化教师端、课堂作品墙、云端批改或生产权限系统。";
   const ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY = "课堂评阅汇总导出会把已导回当前浏览器的作品评阅记录生成可离线打开和打印的 HTML；它不是账号化教师端、班级成绩册、云端批改或服务端不可篡改审计。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
@@ -2106,6 +2107,7 @@
       lastClassroomReviewImportedAt: normalizePlanDate(source.lastClassroomReviewImportedAt),
       lastClassroomReviewImportedCount: normalizeInteger(source.lastClassroomReviewImportedCount, 0, 0, 99999),
       lastClassroomReviewSkippedCount: normalizeInteger(source.lastClassroomReviewSkippedCount, 0, 0, 99999),
+      lastClassroomReviewPackageDigest: normalizeArtworkRepositoryHex(source.lastClassroomReviewPackageDigest || source.classroomReviewPackageDigest || source.reviewPackageDigest),
       lastClassroomReviewSummaryExportedAt: normalizePlanDate(source.lastClassroomReviewSummaryExportedAt),
       lastClassroomReviewSummaryCount: normalizeInteger(source.lastClassroomReviewSummaryCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
@@ -12765,7 +12767,7 @@
       repository.lastClassroomReviewImportedAt
         ? {
             at: repository.lastClassroomReviewImportedAt,
-            message: `最近导入 ${repository.lastClassroomReviewImportedCount} 条课堂评阅，跳过 ${repository.lastClassroomReviewSkippedCount} 条：${formatPlanDate(repository.lastClassroomReviewImportedAt)}。`
+            message: `最近导入 ${repository.lastClassroomReviewImportedCount} 条课堂评阅，跳过 ${repository.lastClassroomReviewSkippedCount} 条：${formatPlanDate(repository.lastClassroomReviewImportedAt)}${repository.lastClassroomReviewPackageDigest ? `，摘要 ${repository.lastClassroomReviewPackageDigest.slice(0, 12)}` : ""}。`
           }
         : null,
       repository.lastClassroomReviewSummaryExportedAt
@@ -12815,6 +12817,7 @@
       lastClassroomReviewImportedAt: repository.lastClassroomReviewImportedAt,
       lastClassroomReviewImportedCount: repository.lastClassroomReviewImportedCount,
       lastClassroomReviewSkippedCount: repository.lastClassroomReviewSkippedCount,
+      lastClassroomReviewPackageDigest: repository.lastClassroomReviewPackageDigest,
       lastClassroomReviewSummaryExportedAt: repository.lastClassroomReviewSummaryExportedAt,
       lastClassroomReviewSummaryCount: repository.lastClassroomReviewSummaryCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
@@ -13353,6 +13356,7 @@
       kind: "mr-calligraphy-classroom-review-notes-v1",
       packageId,
       exportedAt: new Date().toISOString(),
+      digestAlgorithm: "sha256-stable-json",
       records: cards.map((card) => {
         const get = (field) => card.querySelector('[data-review-field="' + field + '"]')?.value || "";
         return {
@@ -13365,6 +13369,25 @@
         };
       })
     };
+  }
+  function stableStringify(value) {
+    if (Array.isArray(value)) return "[" + value.map(stableStringify).join(",") + "]";
+    if (value && typeof value === "object") {
+      return "{" + Object.keys(value).sort().map((key) => JSON.stringify(key) + ":" + stableStringify(value[key])).join(",") + "}";
+    }
+    return JSON.stringify(value);
+  }
+  async function sha256StableJson(value) {
+    if (!window.crypto?.subtle || typeof TextEncoder === "undefined") return "";
+    const encoded = new TextEncoder().encode(stableStringify(value));
+    const digest = await window.crypto.subtle.digest("SHA-256", encoded);
+    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  async function collectForExport() {
+    const data = collect();
+    const packageDigest = await sha256StableJson(data);
+    if (packageDigest) data.packageDigest = packageDigest;
+    return data;
   }
   function updateStatus(data = collect()) {
     const filled = data.records.filter((record) => record.teacherScore || record.level || record.reviewer || record.note).length;
@@ -13395,8 +13418,8 @@
   document.addEventListener("input", (event) => {
     if (event.target.closest("[data-review-card]")) save();
   });
-  document.querySelector("[data-export-review-notes]")?.addEventListener("click", () => {
-    const data = collect();
+  document.querySelector("[data-export-review-notes]")?.addEventListener("click", async () => {
+    const data = await collectForExport();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json;charset=utf-8" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
@@ -13408,6 +13431,7 @@
       link.remove();
     }, 0);
     updateStatus(data);
+    if (status && data.packageDigest) status.textContent = "已导出 " + data.records.length + " 条本机评阅 JSON，摘要 " + data.packageDigest.slice(0, 12) + "。";
   });
   restore();
 })();
@@ -13462,13 +13486,67 @@
     if (!Array.isArray(source.records)) {
       return { ok: false, message: "课堂评阅 JSON 缺少 records 数组。" };
     }
+    const digestVerification = verifyArtworkClassroomReviewNotesPackageDigest(source);
+    if (!digestVerification.ok) {
+      return {
+        ok: false,
+        message: digestVerification.message
+      };
+    }
     return {
       ok: true,
       package: {
         ...source,
         packageId: String(source.packageId || "classroom-review-notes").slice(0, 160),
-        records: source.records
-      }
+        records: source.records,
+        packageDigest: digestVerification.packageDigest || normalizeArtworkRepositoryHex(source.packageDigest),
+        digestAlgorithm: source.digestAlgorithm || (digestVerification.packageDigest ? ARTWORK_CLASSROOM_REVIEW_NOTES_DIGEST_ALGORITHM : "")
+      },
+      digestVerification
+    };
+  }
+
+  function createArtworkClassroomReviewNotesPackageDigest(packageRecord = {}) {
+    const payload = clone(packageRecord || {});
+    delete payload.packageDigest;
+    return sha256StableJson(payload);
+  }
+
+  function verifyArtworkClassroomReviewNotesPackageDigest(packageRecord = {}) {
+    const claimedDigest = normalizeArtworkRepositoryHex(packageRecord.packageDigest);
+    const algorithm = String(packageRecord.digestAlgorithm || "").trim();
+    if (claimedDigest && algorithm && algorithm !== ARTWORK_CLASSROOM_REVIEW_NOTES_DIGEST_ALGORITHM) {
+      return {
+        ok: false,
+        status: "unsupported-algorithm",
+        packageDigest: claimedDigest,
+        message: `课堂评阅 JSON 摘要算法不受支持：${algorithm}。未导入任何评阅。`
+      };
+    }
+    if (!claimedDigest) {
+      return {
+        ok: true,
+        status: "missing",
+        packageDigest: "",
+        message: "课堂评阅 JSON 未声明摘要，按旧版评阅包导入。"
+      };
+    }
+    const actualDigest = createArtworkClassroomReviewNotesPackageDigest(packageRecord);
+    if (actualDigest !== claimedDigest) {
+      return {
+        ok: false,
+        status: "digest-mismatch",
+        packageDigest: claimedDigest,
+        actualDigest,
+        message: `课堂评阅 JSON 摘要校验失败：声明 ${claimedDigest.slice(0, 12)}，实际 ${actualDigest.slice(0, 12)}。未导入任何评阅。`
+      };
+    }
+    return {
+      ok: true,
+      status: "verified",
+      packageDigest: claimedDigest,
+      actualDigest,
+      message: `课堂评阅 JSON 摘要校验通过：${claimedDigest.slice(0, 12)}。`
     };
   }
 
@@ -13519,11 +13597,12 @@
       lastClassroomReviewImportedAt: now,
       lastClassroomReviewImportedCount: importedCount,
       lastClassroomReviewSkippedCount: skippedCount,
+      lastClassroomReviewPackageDigest: parsed.package.packageDigest || "",
       lastCheckedAt: now,
       lastError: importedCount ? "" : "课堂评阅 JSON 没有匹配到可回写的本机作品。"
     });
     if (importedCount) {
-      addEvent("artwork-classroom-review-import", `导入课堂评阅：${importedCount} 条，跳过 ${skippedCount} 条`);
+      addEvent("artwork-classroom-review-import", `导入课堂评阅：${importedCount} 条，跳过 ${skippedCount} 条${parsed.package.packageDigest ? `，摘要 ${parsed.package.packageDigest.slice(0, 12)}` : ""}`);
     }
     saveState();
     return {
@@ -13531,9 +13610,10 @@
       importedCount,
       skippedCount,
       packageId,
+      packageDigest: parsed.package.packageDigest || "",
       status: getArtworkRepositoryStatus(),
       message: importedCount
-        ? `已导入 ${importedCount} 条课堂评阅并回写到本机作品，跳过 ${skippedCount} 条。`
+        ? `已导入 ${importedCount} 条课堂评阅并回写到本机作品，跳过 ${skippedCount} 条。${parsed.package.packageDigest ? `摘要 ${parsed.package.packageDigest.slice(0, 12)}。` : ""}`
         : `课堂评阅 JSON 没有匹配到本机作品，已跳过 ${skippedCount} 条。`
     };
   }

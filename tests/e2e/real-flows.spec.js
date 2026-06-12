@@ -32,11 +32,15 @@ function sha256StableJson(value) {
   return crypto.createHash("sha256").update(stableStringify(value)).digest("hex");
 }
 
-function withArtworkRepositoryPackageDigest(packageRecord) {
+function withPackageDigest(packageRecord) {
   const next = JSON.parse(JSON.stringify(packageRecord));
   delete next.packageDigest;
   next.packageDigest = sha256StableJson(next);
   return next;
+}
+
+function withArtworkRepositoryPackageDigest(packageRecord) {
+  return withPackageDigest(packageRecord);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -1568,14 +1572,17 @@ test("front artwork repository exports and imports local artwork package", async
   expect(reviewHtml).toContain("MR 课堂作品评阅表");
   expect(reviewHtml).toContain("ClassroomReview: yes");
   expect(reviewHtml).toContain("导出评阅 JSON");
+  expect(reviewHtml).toContain('digestAlgorithm: "sha256-stable-json"');
+  expect(reviewHtml).toContain("packageDigest");
   expect(reviewHtml).toContain("data-review-field=\"teacherScore\"");
   expect(reviewHtml).toContain("不是账号化教师端");
   expect(reviewHtml).toContain("E2E 作品仓库冲突版本");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅表");
-  const reviewNotesPackage = {
+  const reviewNotesPackage = withPackageDigest({
     kind: "mr-calligraphy-classroom-review-notes-v1",
     packageId: "e2e-classroom-review-notes",
     exportedAt: new Date().toISOString(),
+    digestAlgorithm: "sha256-stable-json",
     records: [
       {
         artworkId: seed.artworkIds[0],
@@ -1594,7 +1601,20 @@ test("front artwork repository exports and imports local artwork package", async
         note: "这条应被跳过。"
       }
     ]
-  };
+  });
+  expect(reviewNotesPackage.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  const tamperedReviewNotesPackage = JSON.parse(JSON.stringify(reviewNotesPackage));
+  tamperedReviewNotesPackage.records[0].note = "这条课堂评阅被篡改但摘要没有更新。";
+  const tamperedReviewImportFileChooserPromise = page.waitForEvent("filechooser");
+  await page.locator("#artworkClassroomReviewImportButton").click();
+  const tamperedReviewImportFileChooser = await tamperedReviewImportFileChooserPromise;
+  await tamperedReviewImportFileChooser.setFiles({
+    name: "classroom-review-notes-tampered.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(tamperedReviewNotesPackage))
+  });
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅 JSON 摘要校验失败");
+  await expect(page.locator("#artworkGalleryGrid")).not.toContainText("E2E 王老师");
   const reviewImportFileChooserPromise = page.waitForEvent("filechooser");
   await page.locator("#artworkClassroomReviewImportButton").click();
   const reviewImportFileChooser = await reviewImportFileChooserPromise;
@@ -1604,6 +1624,7 @@ test("front artwork repository exports and imports local artwork package", async
     buffer: Buffer.from(JSON.stringify(reviewNotesPackage))
   });
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("最近导入 1 条课堂评阅");
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText(reviewNotesPackage.packageDigest.slice(0, 12));
   await expect(page.locator("#artworkGalleryGrid")).toContainText("E2E 王老师");
   await expect(page.locator("#artworkGalleryGrid")).toContainText("96分");
   await expect(page.locator("#artworkGalleryGrid")).toContainText("课堂评阅回写成功");
@@ -1636,6 +1657,7 @@ test("front artwork repository exports and imports local artwork package", async
   expect(reviewedArtwork.classroomReview.reviewDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(resolvedState.artworkRepository.lastClassroomReviewImportedCount).toBe(1);
   expect(resolvedState.artworkRepository.lastClassroomReviewSkippedCount).toBe(1);
+  expect(resolvedState.artworkRepository.lastClassroomReviewPackageDigest).toBe(reviewNotesPackage.packageDigest);
   expect(resolvedState.artworkRepository.lastClassroomReviewImportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastClassroomReviewSummaryCount).toBe(1);
   expect(resolvedState.artworkRepository.lastClassroomReviewSummaryExportedAt).toBeTruthy();

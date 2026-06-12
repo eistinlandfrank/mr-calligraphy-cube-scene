@@ -4366,3 +4366,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品仓库包摘要验真`
+
+## 118. 2026-06-13 新增课堂评阅包摘要验真
+
+本次把课堂评阅 JSON 回收从“可导入”推进到“可验真”。离线评阅表导出的 JSON 可以携带稳定 SHA-256 摘要，主应用导入前会先校验摘要，避免被改动的评阅结果静默写回作品。
+
+完成内容：
+
+- `mr-calligraphy-classroom-review-notes-v1` 评阅 JSON 支持 `digestAlgorithm: "sha256-stable-json"` 和顶层 `packageDigest`。
+- 离线课堂评阅表的“导出评阅 JSON”脚本新增稳定 JSON 序列化和 Web Crypto SHA-256 摘要计算。
+- 主应用导入课堂评阅 JSON 时会校验摘要；声明摘要与实际内容不一致时拒绝导入。
+- 兼容旧版没有摘要的评阅 JSON，避免历史离线文件失效。
+- 作品仓库状态新增最近课堂评阅包摘要短码，导入成功后可人工核对文件。
+- E2E 覆盖篡改评阅 JSON 失败、原始评阅 JSON 成功导入、作品卡片显示评阅和 localStorage 持久化。
+
+真实化说明：
+
+- 数据来源：教师离线填写并导出的课堂评阅 JSON。
+- 写入状态：只有摘要通过且作品 ID 匹配时，才写回 `ArtworkRecord.classroomReview`。
+- 成功反馈：状态栏显示导入数量、跳过数量和摘要短码。
+- 失败反馈：摘要校验失败会提示声明摘要和实际摘要，并且不会写入任何评阅。
+- 刷新后复现方式：评阅内容和摘要写入前台学习状态，刷新后仍可在作品卡片看到。
+
+仍待补：
+
+- 当前不包含教师账号身份、云端签名、公钥证书、不可篡改审计或班级权限。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅包摘要验真`

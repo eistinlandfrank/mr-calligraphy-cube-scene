@@ -4837,3 +4837,42 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增作品仓库包摘要验真`
+
+## 118. 2026-06-13 新增课堂评阅包摘要验真
+
+本次继续补强前台课堂评阅闭环。此前离线课堂评阅表能导出 JSON，主应用也能导入回写，但评阅 JSON 被手工改动后仍会按内容导入，缺少和作品仓库同级的包摘要验真。
+
+完成内容：
+
+- `mr-calligraphy-classroom-review-notes-v1` 评阅 JSON 支持 `digestAlgorithm: "sha256-stable-json"`。
+- 离线课堂评阅表内置导出脚本新增稳定 JSON 序列化和 SHA-256 摘要计算，导出的评阅 JSON 会尽量写入顶层 `packageDigest`。
+- `parseArtworkClassroomReviewNotes()` 导入时校验 `packageDigest`；摘要不匹配时直接拒绝，不回写任何课堂评阅。
+- 旧版没有 `packageDigest` 的课堂评阅 JSON 仍可导入，避免破坏已导出的离线评阅文件。
+- 作品仓库状态新增 `lastClassroomReviewPackageDigest`，最近课堂评阅导入成功后会显示摘要短码，便于老师和操作者核对文件。
+- Playwright 作品仓库用例新增课堂评阅篡改包场景：先导入被改过但未重算摘要的 JSON，确认状态显示摘要校验失败且作品卡片未出现评阅；再导入原包成功。
+
+真实化说明：
+
+- 数据来源：离线课堂评阅表导出的 `records` 和当前浏览器本机作品 ID。
+- 写入状态：摘要通过后才把教师分数、等级、评阅人和课堂批注写回 `ArtworkRecord.classroomReview`。
+- 成功反馈：状态栏显示导入数量、跳过数量和摘要短码。
+- 失败反馈：摘要不匹配会显示声明摘要和实际摘要短码，并明确“未导入任何评阅”。
+- 刷新后复现方式：成功导入后的评阅和 `lastClassroomReviewPackageDigest` 会持久化在 `mr-calligraphy-learning-state-v1`。
+
+仍待补：
+
+- 当前是本机 SHA-256 包验真，不是教师账号签名、服务端证书链、不可篡改审计、班级权限或云端课堂作品墙。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增课堂评阅包摘要验真`
