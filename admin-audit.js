@@ -11,6 +11,22 @@
     editor: "编辑",
     reviewer: "复核"
   };
+  const PERMISSION_LABELS = {
+    view: "查看后台",
+    operator: "切换本机操作者",
+    export: "导出审计",
+    edit: "编辑草稿",
+    import: "导入资产",
+    delete: "删除/恢复",
+    publish: "本机发布",
+    remote: "远端发布"
+  };
+  const ROLE_PERMISSIONS = {
+    "local-admin": ["view", "operator", "export", "edit", "import", "delete", "publish", "remote"],
+    owner: ["view", "operator", "export", "edit", "import", "delete", "publish", "remote"],
+    editor: ["view", "operator", "export", "edit", "import", "delete", "publish", "remote"],
+    reviewer: ["view", "operator", "export"]
+  };
   const SCOPE_LABELS = {
     mainScene: "主场景后台",
     realisticScene: "写实后台"
@@ -55,6 +71,19 @@
       roleLabel: ROLE_LABELS[role] || ROLE_LABELS[DEFAULT_OPERATOR.role],
       updatedAt: operator.updatedAt || ""
     };
+  }
+
+  function getRolePermissions(role) {
+    const normalizedRole = normalizeRole(role);
+    return ROLE_PERMISSIONS[normalizedRole] || ROLE_PERMISSIONS[DEFAULT_OPERATOR.role];
+  }
+
+  function createPermissionSummary(operator) {
+    const permissions = getRolePermissions(operator.role);
+    if (operator.role === "reviewer") {
+      return "复核角色为只读：可查看与导出审计，不能编辑、导入、删除、发布或推送远端。";
+    }
+    return `当前角色可执行：${permissions.map((permission) => PERMISSION_LABELS[permission] || permission).join("、")}。`;
   }
 
   function normalizeRecord(record, scope) {
@@ -166,11 +195,20 @@
       scope: scopeState.scope,
       scopeLabel: scopeState.scopeLabel,
       operator,
+      permissions: getRolePermissions(operator.role),
+      permissionLabels: { ...PERMISSION_LABELS },
+      permissionSummary: createPermissionSummary(operator),
       records,
       count: records.length,
       latest: records[0] || null,
       roleLabels: { ...ROLE_LABELS }
     };
+  }
+
+  function canPerform(scope, permission) {
+    const status = getStatus(scope);
+    const normalizedPermission = String(permission || "").trim();
+    return status.permissions.includes(normalizedPermission);
   }
 
   function record(scope, recordInput = {}) {
@@ -265,6 +303,7 @@
   }
 
   global.MRAdminAudit = {
+    canPerform,
     configureOperator,
     getStatus,
     record,

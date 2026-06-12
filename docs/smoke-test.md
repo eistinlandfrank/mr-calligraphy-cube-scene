@@ -97,6 +97,7 @@ node scripts/learning-state-check.js
 本轮新增前台服务边界状态验收：前台新增 `serviceBoundaryPanel`，页面静态 smoke 会检查 `serviceBoundaryPanel`、`serviceBoundaryStatus` 和 `serviceBoundaryList`；Playwright 手机视口会确认面板可见，并显示“本机真实 / 远端 Adapter / 生产云端”三层边界。
 本轮新增后台服务边界状态验收：主后台新增 `mainAdminBoundaryPanel`，写实后台新增 `realisticAdminBoundaryPanel`；页面静态 smoke 会检查两个后台的边界状态和列表，Playwright 手机视口会确认显示“本机编辑 / 前台或演示发布 / 远端 Adapter / 生产后台”。
 本轮新增本机后台操作者审计验收：新增 `admin-audit.js`，主后台检查 `mainAdminOperatorPanel`、`mainAdminOperatorName`、`mainAdminOperatorRole`、`mainAdminAuditList` 和 `mainAdminAuditExport`，写实后台检查 `realisticAdminOperatorPanel`、`realisticAdminOperatorName`、`realisticAdminOperatorRole`、`realisticAdminAuditList` 和 `realisticAdminAuditExport`；Playwright 发布用例会读取 `mr-calligraphy-admin-operator-audit-v1`，确认 `snapshot` 与 `publish-local` 记录写入保存后的操作者。
+本轮新增本机后台角色权限验收：静态 smoke 会检查 `mainAdminPermissionStatus` 与 `realisticAdminPermissionStatus`；Playwright 新增 `admin reviewer role blocks local write controls`，确认复核角色会禁用主后台和写实后台的坐标编辑、导入、快照、删除、本机发布和远端发布入口，切回编辑角色后写入控件恢复。
 
 ## 浏览器级验收
 
@@ -114,7 +115,7 @@ npm run test:e2e
 
 Playwright 会启动本地静态服务器，并覆盖以下闭环：
 
-- 前台主房间、主后台和写实后台会采样 WebGL canvas 像素，确认画布不是空白 DOM；手机视口还会检查前台服务边界面板、两个后台服务边界面板和本机操作者审计面板，显示本机真实、本机编辑、本机审计、远端 Adapter、生产云端/生产后台未接入状态。
+- 前台主房间、主后台和写实后台会采样 WebGL canvas 像素，确认画布不是空白 DOM；手机视口还会检查前台服务边界面板、两个后台服务边界面板、本机操作者审计面板和权限摘要，显示本机真实、本机编辑、本机审计、远端 Adapter、生产云端/生产后台未接入状态。
 - 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习；随后导出 WebM 回放视频，确认写入本机视频队列、导出记录、生成 PNG 封面并可下载封面；再模拟浏览器不支持录制触发失败任务，恢复录制能力后点击“重试”并确认再次下载 WebM；生成本机分享链接后配置远端分享 API，确认真实 GET/PUT/DELETE、publicUrl、远端撤销、回执持久化、回执审计列表和 HTML 回执下载。
 - 前台点击“导出报告”，确认下载 HTML 报告、写入报告记录，并能通过 `?report=报告ID` 打开站内报告。
 - 站内报告点击“下载 PDF”会产生 PDF 下载，并读取文件确认包含能力雷达图标记、分数趋势图标记和最近作品截图 Image XObject。
@@ -124,14 +125,14 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 前台学习档案配置远端 endpoint/token/Workspace 后，用浏览器路由模拟学习档案仓库，覆盖检查远端、推送带 `workspaceId` 的档案包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId 持久化、拉取远端包、分页第二页自动追取、冲突审计面板、字段级合并表单和 `historyRepository` 状态更新。
 - 前台生成学习计划后点击“导出日历”，确认下载 `.ics` 文件，并读取内容确认包含 `VCALENDAR`、`VEVENT`、`VALARM` 和计划任务标题。
 - 前台计划仓库配置远端 endpoint/token/Workspace 后，用浏览器路由模拟计划仓库 API，覆盖推送带 `workspaceId` 的计划包、`X-MR-Workspace-Id` header、Bearer token、远端 packageId、回执持久化、回执本机校验、回执审计 HTML 导出和冲突拉取不覆盖本机计划。
-- 主后台新增基础物体前会保存本机操作者，新增后检查发布差异，点击“发布到前台”，确认草稿、发布快照、差异归零、前台读取来源和 `mr-calligraphy-admin-operator-audit-v1.scopes.mainScene` 里的 `snapshot` / `publish-local` 审计都是真实本机状态。
+- 主后台新增基础物体前会保存本机编辑角色操作者，新增后检查发布差异，点击“发布到前台”，确认草稿、发布快照、差异归零、前台读取来源和 `mr-calligraphy-admin-operator-audit-v1.scopes.mainScene` 里的 `snapshot` / `publish-local` 审计都是真实本机状态；另有复核只读用例确认主后台写入控件会被禁用。
 - 主后台项目仓库配置远端 endpoint/token/Workspace 后，用浏览器路由模拟项目仓库 API，覆盖检查远端、推送项目仓库包、拉取远端包进入导入预览、远端版本来源摘要、恢复风险说明、差异报告 HTML 中的 workspace 与 packageDigest、Bearer token、`archive` / `projectSchema` / `repository` / `packageDigest`、回执持久化、回执本机校验和回执审计 HTML 下载。
 - 主后台项目仓库失败反馈用例覆盖 401、非 JSON、无项目包、PUT 422 和网络中断，确认错误写入 `lastError`，并确认本机项目布局不会被失败远端清空。
 - 主后台导入真实 `.glb` 模型后更新主色调、透明度、粗糙度、金属度和 PNG 贴图，确认 `mr-calligraphy-main-scene-layout-v1.importedModels[*].color/opacity/roughness/metalness/texture` 写入草稿，贴图二进制写入 IndexedDB，发布差异显示具体材质与贴图字段，发布后进入 `mr-calligraphy-main-scene-published-v1`，普通前台发布布局读取该外观并通过 WebGL textured mesh 加载。
 - 主后台导入真实 `.glb` 模型后替换为另一个 `.glb`，确认原对象 ID 保持不变，`fileName/sha256/metrics` 更新，发布后进入 `mr-calligraphy-main-scene-published-v1`，普通前台发布布局也读取替换后的资产摘要。
 - 主后台导入真实 `.glb` 模型后删除，确认 `mr-calligraphy-main-import-audit-v1` 写入模型 ID、SHA-256、文件大小、历史快照引用和清理结果，刷新后仍可查看，并可下载 HTML 删除审计。
 - 主后台配置远端发布 endpoint/token 后，用浏览器路由模拟远端 API，覆盖检查远端、提交审核、通过审核、推送发布包、显示回执、本机校验发布/撤销回执、写入 `mr-calligraphy-remote-publish-v1` 和导出回执审计 HTML。
-- 写实后台保存本机操作者后连续发布、修改坐标、检查发布差异并回滚旧版本，确认 `mr-calligraphy-realistic-published-v1` 会记录发布版本列表和回滚动作，`mr-calligraphy-admin-operator-audit-v1.scopes.realisticScene` 会记录 `snapshot` / `publish-local` 操作。
+- 写实后台保存本机编辑角色操作者后连续发布、修改坐标、检查发布差异并回滚旧版本，确认 `mr-calligraphy-realistic-published-v1` 会记录发布版本列表和回滚动作，`mr-calligraphy-admin-operator-audit-v1.scopes.realisticScene` 会记录 `snapshot` / `publish-local` 操作；另有复核只读用例确认写实后台写入控件会被禁用。
 - 写实后台导入真实 `.glb` 模型后更新主色调、透明度、粗糙度、金属度和 PNG 贴图，确认 `mr-calligraphy-realistic-layout-v1.importedModels[*].color/opacity/roughness/metalness/texture` 写入草稿，贴图二进制写入 IndexedDB，发布差异显示具体材质与贴图字段，发布后进入 `mr-calligraphy-realistic-published-v1`，写实演示页发布布局也读取该外观。
 - 写实后台导入真实 `.glb` 模型后替换为另一个 `.glb`，确认原对象 ID 保持不变，`fileName/sha256/metrics` 更新，发布后进入 `mr-calligraphy-realistic-published-v1`，写实演示页发布布局也读取替换后的资产摘要。
 - 写实后台导入真实 `.glb` 模型后软删除并恢复，确认 `mr-calligraphy-realistic-import-audit-v1` 写入模型 ID、SHA-256、文件大小、软删除结果和恢复动作，刷新后仍可查看，并可下载 HTML 删除审计。
@@ -155,5 +156,5 @@ Smoke test 通过：25 个脚本，4 个页面。
 ## 当前边界
 
 - 轻量 smoke test 不会打开真实浏览器；WebGL 非空渲染由 Playwright 像素采样覆盖。
-- Playwright 已覆盖首批真实交互闭环、前台学习详情总结、前台服务边界状态、后台服务边界状态、本机后台操作者审计、核心入口移动端视口验收、远端分享 API adapter、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注角色与本机签名摘要、学习档案远端同步、主后台项目仓库远端版本恢复风险预览、主后台远端发布回执与本机校验、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、主后台导入模型删除审计、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收、不可篡改服务端审计和完整移动设备矩阵。
+- Playwright 已覆盖首批真实交互闭环、前台学习详情总结、前台服务边界状态、后台服务边界状态、本机后台操作者审计、本机后台角色权限门控、核心入口移动端视口验收、远端分享 API adapter、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注角色与本机签名摘要、学习档案远端同步、主后台项目仓库远端版本恢复风险预览、主后台远端发布回执与本机校验、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、主后台导入模型删除审计、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收、不可篡改服务端审计和完整移动设备矩阵。
 - 当前本机已经可以运行定向 Playwright 用例；若换到缺少 npm 依赖的新环境，需要先在具备代理认证的环境执行 `npm install`。

@@ -8605,3 +8605,46 @@
 提交：
 
 - 中文 commit message：`新增本机后台操作者审计`
+
+### 2026-06-12：新增本机后台角色权限门控
+
+功能名：主后台和写实后台本机角色权限门控。
+
+完成内容：
+
+- `admin-audit.js` 新增本机角色权限表、权限摘要和 `canPerform()`。
+- `main-admin.html` 新增主后台权限摘要 `mainAdminPermissionStatus`。
+- `realistic-admin.html` 新增写实后台权限摘要 `realisticAdminPermissionStatus`。
+- `main-admin-scene.js` 将主后台写入类控件按角色禁用，并在关键写入事件入口做权限预检。
+- `realistic-scene.js` 将写实后台写入类控件按角色禁用，并在关键写入事件入口做权限预检。
+- 复核角色为只读角色，可查看和导出审计，但不能编辑、导入、删除、发布或推送远端。
+- 权限拦截会写入 `permission-blocked` 审计记录。
+- `scripts/smoke-test.js` 和 `tests/e2e/real-flows.spec.js` 同步新增验收。
+
+真实化说明：
+
+- 数据来源：本机后台操作者角色。
+- 写入状态：复用 `mr-calligraphy-admin-operator-audit-v1`，权限拦截写入 `records[*]`。
+- 成功反馈：权限摘要显示可执行能力；复核角色下危险按钮和关键输入不可用。
+- 失败反馈：无权限操作会显示无权提示并记录审计。
+- 刷新后复现方式：刷新后台后继续使用本机角色重新应用门控。
+
+仍待补：
+
+- 该能力仍不是生产鉴权；账号登录、服务端角色校验、组织权限、不可篡改审计和审批工作流仍待后续开发。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads|realistic admin keeps local publish releases and rollback history"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台角色权限门控`

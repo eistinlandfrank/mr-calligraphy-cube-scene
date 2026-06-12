@@ -3044,3 +3044,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增本机后台操作者审计`
+
+## 85. 2026-06-12 新增本机后台角色权限门控
+
+本次把后台操作者角色从“只显示标签”推进到真实本机权限门控。主后台和写实后台的复核角色现在是只读角色，会禁用并拦截坐标编辑、快照、导入、删除、本机发布和远端发布；编辑、负责人和本机管理员仍可执行完整本机开发流。
+
+完成内容：
+
+- `admin-audit.js` 新增角色权限表、权限文案、`MRAdminAudit.canPerform()` 和权限摘要。
+- 主后台操作者面板新增 `mainAdminPermissionStatus`，显示当前角色可执行能力或复核只读边界。
+- 写实后台操作者面板新增 `realisticAdminPermissionStatus`，显示当前角色可执行能力或复核只读边界。
+- `main-admin-scene.js` 对主后台坐标/灯光/基础物体/导入模型/快照/发布/远端发布/项目仓库远端入口套本机权限禁用层，并在新增、更新、导入、删除、恢复、复位、快照、发布和远端发布事件入口做权限预检。
+- `realistic-scene.js` 对写实后台坐标/导入模型/快照/删除恢复/本机发布/远端发布套本机权限禁用层，并在导入、清理、删除、恢复、材质更新、快照和发布事件入口做权限预检。
+- 权限拦截会写入 `permission-blocked` 本机审计记录，避免危险动作失败后没有留痕。
+- smoke test 新增两个后台权限摘要 DOM 标记。
+- Playwright 新增 `admin reviewer role blocks local write controls`，验证复核角色会禁用主后台与写实后台的写操作，切回编辑角色后控件恢复。
+- 写实发布回归用例改用 `editor` 角色，验证编辑角色仍可删除、发布、回滚并写入审计。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-admin-operator-audit-v1.scopes[*].operator.role`。
+- 写入状态：角色仍写入既有后台操作者审计；权限拦截写入 `records[*].action = "permission-blocked"`。
+- 成功反馈：权限摘要显示当前角色能力；只读角色会禁用关键写入控件和文件导入。
+- 失败反馈：复核角色触发危险动作时显示无权操作，并写入本机审计。
+- 刷新后复现方式：刷新后台后从本机操作者记录重新读取角色并恢复相同门控。
+
+仍待补：
+
+- 本轮仍是本机浏览器权限门控，无法替代生产账号登录、服务端鉴权、细粒度组织角色、不可篡改审计或多人审批流。
+
+验收：
+
+- `node --check admin-audit.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "admin reviewer role blocks local write controls"`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads|realistic admin keeps local publish releases and rollback history"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机后台角色权限门控`

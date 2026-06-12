@@ -97,6 +97,7 @@ const adminOperatorNameInput = document.getElementById("realisticAdminOperatorNa
 const adminOperatorRoleSelect = document.getElementById("realisticAdminOperatorRole");
 const adminOperatorSaveButton = document.getElementById("realisticAdminOperatorSave");
 const adminAuditExportButton = document.getElementById("realisticAdminAuditExport");
+const adminPermissionStatus = document.getElementById("realisticAdminPermissionStatus");
 const adminAuditList = document.getElementById("realisticAdminAuditList");
 const isDesignMode = Boolean(designObjectSelect && designXInput && designYInput && designZInput);
 const SCENE_LAYOUT_STORAGE_KEY = "mr-calligraphy-realistic-layout-v1";
@@ -122,7 +123,8 @@ const ADMIN_AUDIT_ACTION_LABELS = {
   "confirm-boundary": "确认边界",
   snapshot: "保存快照",
   "publish-local": "本机发布",
-  "operator-save": "保存操作者"
+  "operator-save": "保存操作者",
+  "permission-blocked": "权限拦截"
 };
 const importedModelStore = createModelStore({
   dbName: IMPORT_DB_NAME,
@@ -1181,6 +1183,9 @@ function exportImportAudit() {
 }
 
 async function cleanupDeletedImportedModelFiles() {
+  if (!ensureAdminPermission("delete", "清理已删除导入模型")) {
+    return;
+  }
   const deletedRecords = getDeletedImportedRecords();
   if (!deletedRecords.length) {
     setImportStatus("没有可清理的已删除写实导入模型。");
@@ -1507,6 +1512,9 @@ function deleteLayoutSnapshot(id) {
 }
 
 function publishLayoutToDemo() {
+  if (!ensureAdminPermission("publish", "发布到演示")) {
+    return;
+  }
   if (!isDesignMode) {
     return;
   }
@@ -1626,6 +1634,7 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
     remotePublishUnlockButton.disabled = !adapter || !workflow?.canUnlock;
   }
   renderRemotePublishReceipts(receiptAudit);
+  applyAdminPermissionState();
 }
 
 function renderRemotePublishReceipts(audit) {
@@ -1759,6 +1768,7 @@ function renderAdminOperatorPanel() {
     detail.textContent = "保存操作者、确认边界、保存快照或发布后会写入本机审计。";
     item.append(title, detail);
     adminAuditList.appendChild(item);
+    applyAdminPermissionState(audit);
     return;
   }
 
@@ -1771,6 +1781,94 @@ function renderAdminOperatorPanel() {
     item.append(title, detail);
     adminAuditList.appendChild(item);
   });
+  applyAdminPermissionState(audit);
+}
+
+function getAdminPermissionControls() {
+  return [
+    { element: designXInput, permission: "edit" },
+    { element: designYInput, permission: "edit" },
+    { element: designZInput, permission: "edit" },
+    { element: designRotXInput, permission: "edit" },
+    { element: designRotYInput, permission: "edit" },
+    { element: designRotZInput, permission: "edit" },
+    { element: importModelColorInput, permission: "edit" },
+    { element: importModelOpacityInput, permission: "edit" },
+    { element: importModelRoughnessInput, permission: "edit" },
+    { element: importModelMetalnessInput, permission: "edit" },
+    { element: resetObjectButton, permission: "edit" },
+    { element: deleteObjectButton, permission: "delete" },
+    { element: restoreObjectButton, permission: "delete" },
+    { element: snapshotCreateButton, permission: "edit" },
+    { element: importModelInput, permission: "import" },
+    { element: importModelReplaceInput, permission: "import" },
+    { element: importModelTextureInput, permission: "import" },
+    { element: importModelTextureClearButton, permission: "import" },
+    { element: importModelMaterialUpdateButton, permission: "edit" },
+    { element: importAuditCleanupButton, permission: "delete" },
+    { element: publishLayoutButton, permission: "publish" },
+    { element: remotePublishSaveButton, permission: "remote" },
+    { element: remotePublishCheckButton, permission: "remote" },
+    { element: remotePublishPushButton, permission: "remote" },
+    { element: remotePublishRevokeButton, permission: "remote" },
+    { element: remotePublishRequestReviewButton, permission: "remote" },
+    { element: remotePublishApproveReviewButton, permission: "remote" },
+    { element: remotePublishRejectReviewButton, permission: "remote" },
+    { element: remotePublishUnlockButton, permission: "remote" }
+  ];
+}
+
+function adminCanPerform(permission) {
+  return window.MRAdminAudit?.canPerform?.(ADMIN_AUDIT_SCOPE, permission) !== false;
+}
+
+function applyAdminPermissionState(audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE)) {
+  if (adminPermissionStatus && audit) {
+    adminPermissionStatus.textContent = audit.permissionSummary || "已读取本机角色权限。";
+    adminPermissionStatus.dataset.permissionRole = audit.operator.role;
+  }
+
+  getAdminPermissionControls().forEach(({ element, permission }) => {
+    if (!element) {
+      return;
+    }
+    const allowed = adminCanPerform(permission);
+    element.dataset.adminPermission = permission;
+    element.dataset.adminPermissionState = allowed ? "allowed" : "blocked";
+    if (!allowed) {
+      if (element.dataset.adminRoleBlocked !== "true") {
+        element.dataset.adminRolePreviousDisabled = element.disabled ? "1" : "0";
+        element.dataset.adminRolePreviousTitle = element.title || "";
+      }
+      element.dataset.adminRoleBlocked = "true";
+      element.disabled = true;
+      element.title = `${audit?.operator?.roleLabel || "当前角色"}无权执行${audit?.permissionLabels?.[permission] || permission}。`;
+      return;
+    }
+    if (element.dataset.adminRoleBlocked === "true") {
+      element.disabled = element.dataset.adminRolePreviousDisabled === "1";
+      element.title = element.dataset.adminRolePreviousTitle || "";
+      delete element.dataset.adminRoleBlocked;
+      delete element.dataset.adminRolePreviousDisabled;
+      delete element.dataset.adminRolePreviousTitle;
+    }
+  });
+}
+
+function ensureAdminPermission(permission, actionLabel) {
+  if (adminCanPerform(permission)) {
+    return true;
+  }
+  const audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE);
+  const permissionLabel = audit?.permissionLabels?.[permission] || permission;
+  const roleLabel = audit?.operator?.roleLabel || "当前角色";
+  const message = `${roleLabel}无权执行${actionLabel || permissionLabel}。`;
+  recordAdminOperation("permission-blocked", actionLabel || permissionLabel, message, "blocked", {
+    permission,
+    role: audit?.operator?.role || ""
+  });
+  setImportStatus(message);
+  return false;
 }
 
 function saveAdminOperator() {
@@ -1795,6 +1893,7 @@ function saveAdminOperator() {
     setImportStatus(result.message || "保存本机后台操作者失败。");
   }
   renderAdminOperatorPanel();
+  updateDeletedUi();
   renderAdminBoundaryPanel();
 }
 
@@ -2593,6 +2692,10 @@ async function loadImportedModels() {
 }
 
 async function handleImportModel(event) {
+  if (!ensureAdminPermission("import", "导入模型")) {
+    event.target.value = "";
+    return;
+  }
   const file = event.target.files?.[0];
   if (!file) return;
 
@@ -2852,6 +2955,7 @@ function updateDeletedUi() {
     const record = selectedDesignObject ? getImportedRecordById(selectedDesignObject.id) || selectedDesignObject.object.userData.importRecord : null;
     importModelTextureClearButton.disabled = !canEditImportedEntry(selectedDesignObject) || !normalizeImportTextureRecord(record?.texture);
   }
+  applyAdminPermissionState();
 }
 
 function setObjectDeleted(entry, deleted, recordUndo = true) {
@@ -2884,11 +2988,17 @@ function setObjectDeleted(entry, deleted, recordUndo = true) {
 }
 
 function deleteSelectedObject() {
+  if (!ensureAdminPermission("delete", "删除物体")) {
+    return;
+  }
   if (!isDesignMode || !selectedDesignObject) return;
   setObjectDeleted(selectedDesignObject, true);
 }
 
 function restoreSelectedObject() {
+  if (!ensureAdminPermission("delete", "恢复物体")) {
+    return;
+  }
   if (!isDesignMode || !selectedDesignObject) return;
   setObjectDeleted(selectedDesignObject, false);
 }
@@ -2953,6 +3063,7 @@ function syncImportedMaterialEditorFromSelection() {
     setImportMaterialStatus(selectedDesignObject
       ? "当前选中对象不是写实导入模型；可导入 GLB / OBJ 后再编辑外观。"
       : "选中写实导入模型后，可调整颜色、透明度、粗糙度、金属度和贴图并写入草稿和发布版本。");
+    applyAdminPermissionState();
     return;
   }
 
@@ -2982,9 +3093,13 @@ function syncImportedMaterialEditorFromSelection() {
   setImportMaterialStatus(canEditImportedEntry(entry)
     ? `已载入：${entry.label}。${textureText}可调整材质参数，或选择 GLB / OBJ / 图片替换当前资产。`
     : `已载入：${entry.label}，需恢复显示后才能更新外观。`);
+  applyAdminPermissionState();
 }
 
 function updateSelectedImportedMaterial() {
+  if (!ensureAdminPermission("edit", "更新导入模型外观")) {
+    return;
+  }
   const entry = getSelectedImportedEntry();
   if (!entry) {
     setImportMaterialStatus("请选择一个写实导入模型后再更新外观。");
@@ -3398,6 +3513,9 @@ function focusSelectedObject() {
 }
 
 function resetSelectedObject() {
+  if (!ensureAdminPermission("edit", "复位物体")) {
+    return;
+  }
   if (!isDesignMode || !selectedDesignObject) return;
 
   pushUndoSnapshot(snapshotObject(selectedDesignObject));
@@ -3557,16 +3675,21 @@ function bindUi() {
     previewDraftButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html?realisticPreview=draft"));
     openLiveButton?.addEventListener("click", () => openDemoPreview("realistic-demo.html"));
     publishLayoutButton?.addEventListener("click", publishLayoutToDemo);
-    remotePublishSaveButton?.addEventListener("click", saveRemotePublishConfig);
-    remotePublishCheckButton?.addEventListener("click", checkRemotePublishApi);
-    remotePublishPushButton?.addEventListener("click", pushRemotePublishedLayout);
-    remotePublishRevokeButton?.addEventListener("click", revokeRemotePublishedLayout);
-    remotePublishRequestReviewButton?.addEventListener("click", requestRemotePublishReview);
-    remotePublishApproveReviewButton?.addEventListener("click", approveRemotePublishReview);
-    remotePublishRejectReviewButton?.addEventListener("click", rejectRemotePublishReview);
-    remotePublishUnlockButton?.addEventListener("click", unlockRemotePublish);
+    remotePublishSaveButton?.addEventListener("click", () => ensureAdminPermission("remote", "保存远端发布配置") && saveRemotePublishConfig());
+    remotePublishCheckButton?.addEventListener("click", () => ensureAdminPermission("remote", "检查远端发布") && checkRemotePublishApi());
+    remotePublishPushButton?.addEventListener("click", () => ensureAdminPermission("remote", "推送远端发布") && pushRemotePublishedLayout());
+    remotePublishRevokeButton?.addEventListener("click", () => ensureAdminPermission("remote", "撤销远端发布") && revokeRemotePublishedLayout());
+    remotePublishRequestReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "提交远端审核") && requestRemotePublishReview());
+    remotePublishApproveReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "通过远端审核") && approveRemotePublishReview());
+    remotePublishRejectReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "退回远端审核") && rejectRemotePublishReview());
+    remotePublishUnlockButton?.addEventListener("click", () => ensureAdminPermission("remote", "解除远端发布锁") && unlockRemotePublish());
     remotePublishReceiptExportButton?.addEventListener("click", exportRemotePublishReceipts);
-    snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
+    snapshotCreateButton?.addEventListener("click", () => {
+      if (!ensureAdminPermission("edit", "保存快照")) {
+        return;
+      }
+      createLayoutSnapshot("手动快照");
+    });
     snapshotRefreshButton?.addEventListener("click", () => {
       layoutHistory = loadLayoutHistory();
       renderHistoryPanel();

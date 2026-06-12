@@ -133,6 +133,7 @@ const adminOperatorNameInput = document.getElementById("mainAdminOperatorName");
 const adminOperatorRoleSelect = document.getElementById("mainAdminOperatorRole");
 const adminOperatorSaveButton = document.getElementById("mainAdminOperatorSave");
 const adminAuditExportButton = document.getElementById("mainAdminAuditExport");
+const adminPermissionStatus = document.getElementById("mainAdminPermissionStatus");
 const adminAuditList = document.getElementById("mainAdminAuditList");
 
 const STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
@@ -157,7 +158,8 @@ const ADMIN_AUDIT_ACTION_LABELS = {
   "confirm-boundary": "确认边界",
   snapshot: "保存快照",
   "publish-local": "本机发布",
-  "operator-save": "保存操作者"
+  "operator-save": "保存操作者",
+  "permission-blocked": "权限拦截"
 };
 const DEFAULT_LIGHTING = {
   ambient: 0.55,
@@ -560,6 +562,10 @@ async function loadImportedModels() {
 }
 
 async function handleImportModel(event) {
+  if (!ensureAdminPermission("import", "导入模型")) {
+    event.target.value = "";
+    return;
+  }
   const file = event.target.files?.[0];
   if (!file) {
     return;
@@ -1402,6 +1408,9 @@ function loadPublishedLayoutRecord() {
 }
 
 function publishLayoutToFront() {
+  if (!ensureAdminPermission("publish", "发布到前台")) {
+    return;
+  }
   const currentRecord = loadPublishedLayoutRecord();
   const release = createPublishRelease({
     note: readPublishNote(),
@@ -1507,6 +1516,7 @@ function renderRemotePublishPanel(record = loadPublishedLayoutRecord()) {
     remotePublishUnlockButton.disabled = !adapter || !workflow?.canUnlock;
   }
   renderRemotePublishReceipts(receiptAudit);
+  applyAdminPermissionState();
 }
 
 function renderRemotePublishReceipts(audit) {
@@ -1643,6 +1653,7 @@ function renderAdminOperatorPanel() {
     detail.textContent = "保存操作者、确认边界、保存快照或发布后会写入本机审计。";
     item.append(title, detail);
     adminAuditList.appendChild(item);
+    applyAdminPermissionState(audit);
     return;
   }
 
@@ -1655,6 +1666,123 @@ function renderAdminOperatorPanel() {
     item.append(title, detail);
     adminAuditList.appendChild(item);
   });
+  applyAdminPermissionState(audit);
+}
+
+function getAdminPermissionControls() {
+  return [
+    { element: xInput, permission: "edit" },
+    { element: yInput, permission: "edit" },
+    { element: zInput, permission: "edit" },
+    { element: rotXInput, permission: "edit" },
+    { element: rotYInput, permission: "edit" },
+    { element: rotZInput, permission: "edit" },
+    { element: scaleInput, permission: "edit" },
+    { element: ambientLightInput, permission: "edit" },
+    { element: envLightInput, permission: "edit" },
+    { element: keyLightInput, permission: "edit" },
+    { element: rimLightInput, permission: "edit" },
+    { element: exposureInput, permission: "edit" },
+    { element: newObjectNameInput, permission: "edit" },
+    { element: newObjectTypeSelect, permission: "edit" },
+    { element: newObjectColorInput, permission: "edit" },
+    { element: newObjectWidthInput, permission: "edit" },
+    { element: newObjectHeightInput, permission: "edit" },
+    { element: newObjectDepthInput, permission: "edit" },
+    { element: newObjectRadiusInput, permission: "edit" },
+    { element: importModelNameInput, permission: "import" },
+    { element: importModelColorInput, permission: "edit" },
+    { element: importModelOpacityInput, permission: "edit" },
+    { element: importModelRoughnessInput, permission: "edit" },
+    { element: importModelMetalnessInput, permission: "edit" },
+    { element: saveButton, permission: "edit" },
+    { element: resetButton, permission: "edit" },
+    { element: deleteButton, permission: "delete" },
+    { element: restoreButton, permission: "delete" },
+    { element: resetAllButton, permission: "delete" },
+    { element: snapshotCreateButton, permission: "edit" },
+    { element: newObjectAddButton, permission: "edit" },
+    { element: newObjectUpdateButton, permission: "edit" },
+    { element: importModelInput, permission: "import" },
+    { element: importModelReplaceInput, permission: "import" },
+    { element: importModelTextureInput, permission: "import" },
+    { element: importModelTextureClearButton, permission: "import" },
+    { element: importModelMaterialUpdateButton, permission: "edit" },
+    { element: lightResetButton, permission: "edit" },
+    { element: layerBatchHideButton, permission: "edit" },
+    { element: layerBatchShowButton, permission: "edit" },
+    { element: layerBatchLockButton, permission: "edit" },
+    { element: layerBatchUnlockButton, permission: "edit" },
+    { element: layerBatchClearButton, permission: "delete" },
+    { element: publishLayoutButton, permission: "publish" },
+    { element: remotePublishSaveButton, permission: "remote" },
+    { element: remotePublishCheckButton, permission: "remote" },
+    { element: remotePublishPushButton, permission: "remote" },
+    { element: remotePublishRevokeButton, permission: "remote" },
+    { element: remotePublishRequestReviewButton, permission: "remote" },
+    { element: remotePublishApproveReviewButton, permission: "remote" },
+    { element: remotePublishRejectReviewButton, permission: "remote" },
+    { element: remotePublishUnlockButton, permission: "remote" },
+    { element: document.getElementById("projectImportFile"), permission: "import" },
+    { element: document.getElementById("projectImportConfirm"), permission: "delete" },
+    { element: document.getElementById("projectRepositorySaveRemote"), permission: "remote" },
+    { element: document.getElementById("projectRepositoryCheckRemote"), permission: "remote" },
+    { element: document.getElementById("projectRepositoryPushRemote"), permission: "remote" },
+    { element: document.getElementById("projectRepositoryPullRemote"), permission: "remote" }
+  ];
+}
+
+function adminCanPerform(permission) {
+  return window.MRAdminAudit?.canPerform?.(ADMIN_AUDIT_SCOPE, permission) !== false;
+}
+
+function applyAdminPermissionState(audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE)) {
+  if (adminPermissionStatus && audit) {
+    adminPermissionStatus.textContent = audit.permissionSummary || "已读取本机角色权限。";
+    adminPermissionStatus.dataset.permissionRole = audit.operator.role;
+  }
+
+  getAdminPermissionControls().forEach(({ element, permission }) => {
+    if (!element) {
+      return;
+    }
+    const allowed = adminCanPerform(permission);
+    element.dataset.adminPermission = permission;
+    element.dataset.adminPermissionState = allowed ? "allowed" : "blocked";
+    if (!allowed) {
+      if (element.dataset.adminRoleBlocked !== "true") {
+        element.dataset.adminRolePreviousDisabled = element.disabled ? "1" : "0";
+        element.dataset.adminRolePreviousTitle = element.title || "";
+      }
+      element.dataset.adminRoleBlocked = "true";
+      element.disabled = true;
+      element.title = `${audit?.operator?.roleLabel || "当前角色"}无权执行${audit?.permissionLabels?.[permission] || permission}。`;
+      return;
+    }
+    if (element.dataset.adminRoleBlocked === "true") {
+      element.disabled = element.dataset.adminRolePreviousDisabled === "1";
+      element.title = element.dataset.adminRolePreviousTitle || "";
+      delete element.dataset.adminRoleBlocked;
+      delete element.dataset.adminRolePreviousDisabled;
+      delete element.dataset.adminRolePreviousTitle;
+    }
+  });
+}
+
+function ensureAdminPermission(permission, actionLabel) {
+  if (adminCanPerform(permission)) {
+    return true;
+  }
+  const audit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE);
+  const permissionLabel = audit?.permissionLabels?.[permission] || permission;
+  const roleLabel = audit?.operator?.roleLabel || "当前角色";
+  const message = `${roleLabel}无权执行${actionLabel || permissionLabel}。`;
+  recordAdminOperation("permission-blocked", actionLabel || permissionLabel, message, "blocked", {
+    permission,
+    role: audit?.operator?.role || ""
+  });
+  showNotice(message);
+  return false;
 }
 
 function saveAdminOperator() {
@@ -1679,6 +1807,7 @@ function saveAdminOperator() {
     showNotice(result.message || "保存本机后台操作者失败。");
   }
   renderAdminOperatorPanel();
+  updateUiState();
   renderAdminBoundaryPanel();
 }
 
@@ -3283,6 +3412,7 @@ function updateUiState() {
     const textureRecord = isImported ? normalizeImportTextureRecord(selectedEntry.object.userData.importRecord?.texture) : null;
     importModelTextureClearButton.disabled = !isImported || deleted || hidden || locked || !textureRecord;
   }
+  applyAdminPermissionState();
 }
 
 function snapshot(entry) {
@@ -3515,6 +3645,9 @@ function saveEntry(entry) {
 }
 
 function addCustomObject() {
+  if (!ensureAdminPermission("edit", "新增基础物体")) {
+    return;
+  }
   if (!newObjectTypeSelect) {
     return;
   }
@@ -3545,6 +3678,9 @@ function addCustomObject() {
 }
 
 function updateSelectedCustomObject() {
+  if (!ensureAdminPermission("edit", "更新基础物体")) {
+    return;
+  }
   const entry = getSelectedCustomEntry();
   if (!entry) {
     showCustomStatus("请选择一个新增基础物体后再更新。");
@@ -3701,6 +3837,7 @@ function syncCustomEditorFromSelection() {
     showCustomStatus(selectedEntry
       ? "当前选中对象不是新增基础物体；可继续新增基础物体，或在图层中选择已有新增物体后更新。"
       : "新增后会自动保存到本机布局，并同步到正常主场景。");
+    applyAdminPermissionState();
     return;
   }
 
@@ -3722,6 +3859,7 @@ function syncCustomEditorFromSelection() {
   showCustomStatus(canEditCustomEntry(entry)
     ? `已载入：${entry.label}。可修改名称、类型、颜色和尺寸后更新。`
     : `已载入：${entry.label}，需恢复显示并解锁后才能更新。`);
+  applyAdminPermissionState();
 }
 
 function syncCustomSizeValues(spec = {}) {
@@ -3766,6 +3904,7 @@ function syncImportedMaterialEditorFromSelection() {
     showImportMaterialStatus(selectedEntry
       ? "当前选中对象不是导入模型；可导入 GLB / OBJ 后再编辑外观。"
       : "选中导入模型后，可调整颜色、透明度、粗糙度、金属度和贴图并写入草稿和发布版本。");
+    applyAdminPermissionState();
     return;
   }
 
@@ -3795,6 +3934,7 @@ function syncImportedMaterialEditorFromSelection() {
   showImportMaterialStatus(canEditImportedEntry(entry)
     ? `已载入：${entry.label}。${textureText}可调整材质参数，或选择 GLB / OBJ / 图片替换当前资产。`
     : `已载入：${entry.label}，需恢复显示并解锁后才能更新外观。`);
+  applyAdminPermissionState();
 }
 
 function updateSelectedImportedMaterial() {
@@ -4342,6 +4482,9 @@ function applyInputValues() {
 }
 
 async function deleteSelected() {
+  if (!ensureAdminPermission("delete", "删除物体")) {
+    return;
+  }
   if (!selectedEntry || selectedEntry.object.userData.deleted || isEntryLocked(selectedEntry)) return;
   if (selectedEntry.object.userData.isImported === true) {
     const stored = await readImportedModel(selectedEntry.object.userData.importRecord).catch((error) => {
@@ -4387,6 +4530,9 @@ async function deleteSelected() {
 }
 
 function restoreSelected() {
+  if (!ensureAdminPermission("delete", "恢复物体")) {
+    return;
+  }
   if (!selectedEntry || (!selectedEntry.object.userData.deleted && !selectedEntry.object.userData.hidden)) return;
   pushUndo(snapshot(selectedEntry));
   selectedEntry.object.userData.deleted = false;
@@ -4403,6 +4549,9 @@ function restoreSelected() {
 }
 
 function resetSelected() {
+  if (!ensureAdminPermission("edit", "复位物体")) {
+    return;
+  }
   if (!selectedEntry) return;
   const defaultState = selectedEntry.object.userData.defaultState;
   pushUndo(snapshot(selectedEntry));
@@ -4416,6 +4565,9 @@ function resetSelected() {
 }
 
 function resetAll() {
+  if (!ensureAdminPermission("delete", "恢复全部默认")) {
+    return;
+  }
   createLayoutSnapshot("恢复全部默认前", { notice: false });
   undoStack.length = 0;
   layout.objects = {};
@@ -4539,6 +4691,9 @@ function bindUi() {
   deleteButton.addEventListener("click", deleteSelected);
   restoreButton.addEventListener("click", restoreSelected);
   saveButton.addEventListener("click", () => {
+    if (!ensureAdminPermission("edit", "保存物体")) {
+      return;
+    }
     if (selectedEntry) saveEntry(selectedEntry);
     createLayoutSnapshot(`保存：${selectedEntry?.label || "主场景"}`, { notice: false });
     showNotice("已保存，正常主场景页面会读取这些参数。");
@@ -4548,17 +4703,22 @@ function bindUi() {
   openLiveButton?.addEventListener("click", () => openFrontPreview("index.html"));
   publishLayoutButton?.addEventListener("click", publishLayoutToFront);
   publishHistoryList?.addEventListener("click", handlePublishHistoryClick);
-  remotePublishSaveButton?.addEventListener("click", saveRemotePublishConfig);
-  remotePublishCheckButton?.addEventListener("click", checkRemotePublishApi);
-  remotePublishPushButton?.addEventListener("click", pushRemotePublishedLayout);
-  remotePublishRevokeButton?.addEventListener("click", revokeRemotePublishedLayout);
-  remotePublishRequestReviewButton?.addEventListener("click", requestRemotePublishReview);
-  remotePublishApproveReviewButton?.addEventListener("click", approveRemotePublishReview);
-  remotePublishRejectReviewButton?.addEventListener("click", rejectRemotePublishReview);
-  remotePublishUnlockButton?.addEventListener("click", unlockRemotePublish);
+  remotePublishSaveButton?.addEventListener("click", () => ensureAdminPermission("remote", "保存远端发布配置") && saveRemotePublishConfig());
+  remotePublishCheckButton?.addEventListener("click", () => ensureAdminPermission("remote", "检查远端发布") && checkRemotePublishApi());
+  remotePublishPushButton?.addEventListener("click", () => ensureAdminPermission("remote", "推送远端发布") && pushRemotePublishedLayout());
+  remotePublishRevokeButton?.addEventListener("click", () => ensureAdminPermission("remote", "撤销远端发布") && revokeRemotePublishedLayout());
+  remotePublishRequestReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "提交远端审核") && requestRemotePublishReview());
+  remotePublishApproveReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "通过远端审核") && approveRemotePublishReview());
+  remotePublishRejectReviewButton?.addEventListener("click", () => ensureAdminPermission("remote", "退回远端审核") && rejectRemotePublishReview());
+  remotePublishUnlockButton?.addEventListener("click", () => ensureAdminPermission("remote", "解除远端发布锁") && unlockRemotePublish());
   remotePublishReceiptExportButton?.addEventListener("click", exportRemotePublishReceipts);
   renderPublishPanel();
-  snapshotCreateButton?.addEventListener("click", () => createLayoutSnapshot("手动快照"));
+  snapshotCreateButton?.addEventListener("click", () => {
+    if (!ensureAdminPermission("edit", "保存快照")) {
+      return;
+    }
+    createLayoutSnapshot("手动快照");
+  });
   snapshotRefreshButton?.addEventListener("click", () => {
     layoutHistory = loadLayoutHistory();
     renderHistoryPanel();

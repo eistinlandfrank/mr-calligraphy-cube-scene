@@ -114,6 +114,60 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await expectBoxesDoNotOverlap(page, ".demo-header", ".demo-panel", 12);
 });
 
+test("admin reviewer role blocks local write controls", async ({ page }) => {
+  await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
+
+  await page.locator("#mainAdminOperatorName").fill("E2E 主后台复核");
+  await page.locator("#mainAdminOperatorRole").selectOption("reviewer");
+  await page.locator("#mainAdminOperatorSave").click();
+  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("复核角色为只读");
+  await expect(page.locator("#mainObjectX")).toBeDisabled();
+  await expect(page.locator("#mainNewObjectAdd")).toBeDisabled();
+  await expect(page.locator("#mainImportModel")).toBeDisabled();
+  await expect(page.locator("#mainSnapshotCreate")).toBeDisabled();
+  await expect(page.locator("#mainPublishLayout")).toBeDisabled();
+  await expect(page.locator("#mainObjectDelete")).toBeDisabled();
+  await expect(page.locator("#mainRemotePublishSave")).toBeDisabled();
+
+  await page.locator("#mainAdminOperatorRole").selectOption("editor");
+  await page.locator("#mainAdminOperatorSave").click();
+  await expect(page.locator("#mainAdminPermissionStatus")).toContainText("当前角色可执行");
+  await expect(page.locator("#mainObjectX")).toBeEnabled();
+  await expect(page.locator("#mainNewObjectAdd")).toBeEnabled();
+  await expect(page.locator("#mainSnapshotCreate")).toBeEnabled();
+  await expect(page.locator("#mainPublishLayout")).toBeEnabled();
+
+  await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#designObjectSelect")).toBeVisible();
+  await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
+
+  await page.locator("#realisticAdminOperatorName").fill("E2E 写实复核");
+  await page.locator("#realisticAdminOperatorRole").selectOption("reviewer");
+  await page.locator("#realisticAdminOperatorSave").click();
+  await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("复核角色为只读");
+  await expect(page.locator("#designX")).toBeDisabled();
+  await expect(page.locator("#importModelInput")).toBeDisabled();
+  await expect(page.locator("#realisticSnapshotCreate")).toBeDisabled();
+  await expect(page.locator("#realisticPublishLayout")).toBeDisabled();
+  await expect(page.locator("#deleteObject")).toBeDisabled();
+  await expect(page.locator("#realisticRemotePublishSave")).toBeDisabled();
+
+  await page.locator("#realisticAdminOperatorRole").selectOption("editor");
+  await page.locator("#realisticAdminOperatorSave").click();
+  await expect(page.locator("#realisticAdminPermissionStatus")).toContainText("当前角色可执行");
+  await expect(page.locator("#designX")).toBeEnabled();
+  await expect(page.locator("#realisticSnapshotCreate")).toBeEnabled();
+  await expect(page.locator("#realisticPublishLayout")).toBeEnabled();
+
+  const audit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
+  expect(audit.scopes.mainScene.operator.role).toBe("editor");
+  expect(audit.scopes.realisticScene.operator.role).toBe("editor");
+  expect(audit.scopes.mainScene.records.some((record) => record.action === "operator-save")).toBe(true);
+  expect(audit.scopes.realisticScene.records.some((record) => record.action === "operator-save")).toBe(true);
+});
+
 test("front practice saves real strokes and exports a report", async ({ page }) => {
   const historyEndpointPath = "/e2e-history-repository";
   const reportEndpointPath = "/e2e-report-repository";
@@ -2754,7 +2808,7 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await expect(page.locator("#realisticPublishNote")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
   await page.locator("#realisticAdminOperatorName").fill("E2E 写实后台");
-  await page.locator("#realisticAdminOperatorRole").selectOption("reviewer");
+  await page.locator("#realisticAdminOperatorRole").selectOption("editor");
   await page.locator("#realisticAdminOperatorSave").click();
   await expect(page.locator("#realisticAdminOperatorStatus")).toContainText("E2E 写实后台");
   const selectedDesignObjectId = await page.locator("#designObjectSelect").inputValue();
@@ -2788,7 +2842,7 @@ test("realistic admin keeps local publish releases and rollback history", async 
   await expect(page.locator("#realisticPublishDiffSummary")).toContainText("一致");
   let adminAudit = await readJsonLocalStorage(page, ADMIN_AUDIT_KEY);
   expect(adminAudit.scopes.realisticScene.operator.name).toBe("E2E 写实后台");
-  expect(adminAudit.scopes.realisticScene.operator.role).toBe("reviewer");
+  expect(adminAudit.scopes.realisticScene.operator.role).toBe("editor");
   expect(adminAudit.scopes.realisticScene.records.some((record) => record.action === "publish-local" && record.operator.name === "E2E 写实后台")).toBe(true);
   expect(adminAudit.scopes.realisticScene.records.some((record) => record.action === "snapshot" && record.operator.name === "E2E 写实后台")).toBe(true);
   await expect(page.locator("#realisticAdminAuditList")).toContainText("本机发布");
