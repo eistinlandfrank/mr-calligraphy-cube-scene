@@ -1225,6 +1225,8 @@ function normalizeMainImportedModel(record = {}, index = 0) {
     type,
     color: normalizeMainColor(record.color || "#c8b08a"),
     opacity: normalizeMainOpacity(record.opacity),
+    sha256: normalizeMainSha256(record.sha256),
+    metrics: normalizeMainImportMetrics(record.metrics),
     position: [
       readMainNumber(position[0], 0),
       readMainNumber(position[1], -1.05),
@@ -1249,6 +1251,27 @@ function normalizeMainColor(value, fallback = "#c8b08a") {
 function normalizeMainOpacity(value) {
   const number = Number(value);
   return Number.isFinite(number) ? clamp(number, 0.2, 1) : 1;
+}
+
+function normalizeMainSha256(value) {
+  const hash = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
+}
+
+function normalizeMainImportMetrics(metrics = {}) {
+  const source = metrics && typeof metrics === "object" ? metrics : {};
+  const dimensions = source.dimensions && typeof source.dimensions === "object" ? source.dimensions : {};
+
+  return {
+    fileBytes: Math.max(0, Math.round(readMainNumber(source.fileBytes, 0))),
+    meshCount: Math.max(0, Math.round(readMainNumber(source.meshCount, 0))),
+    vertexCount: Math.max(0, Math.round(readMainNumber(source.vertexCount, 0))),
+    dimensions: {
+      width: readMainNumber(dimensions.width, 0),
+      height: readMainNumber(dimensions.height, 0),
+      depth: readMainNumber(dimensions.depth, 0)
+    }
+  };
 }
 
 function getMainImportFileType(fileName) {

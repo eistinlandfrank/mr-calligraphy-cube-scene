@@ -1843,3 +1843,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化导入模型透明度编辑`
+
+## 56. 2026-06-12 真实化导入模型文件替换
+
+本次把导入模型从“想换文件只能删除后重导”推进到可真实替换资产：主后台和写实后台都能在选中导入模型后选择新的 GLB / OBJ，保留原对象 ID、位置、旋转、缩放和发布引用，同时更新文件名、类型、SHA-256、metrics 和 IndexedDB 二进制。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 的导入模型外观区新增“替换当前模型”文件选择器。
+- 主后台替换时保留 `importedModels[*].id/dbKey/label/color/opacity`，更新 `fileName/type/sha256/metrics/baseScale`，并覆盖 IndexedDB 中同一 `dbKey` 的模型文件。
+- 写实后台替换时保留 `id/dbKey/label/color/opacity`，更新 `fileName/type/sha256/metrics`，并覆盖写实导入模型仓库中的同一文件记录。
+- 替换后后台 Three.js 场景会即时卸载旧 mesh、释放几何体/材质、加载新模型并重新注册可选择 mesh。
+- 替换动作支持撤销：撤销会把旧模型二进制和旧导入记录写回本机。
+- 发布后，替换后的文件信息进入 `mr-calligraphy-main-scene-published-v1` 和 `mr-calligraphy-realistic-published-v1`。
+- 普通前台 `script.js` 现在保留导入模型的 `sha256` 和 `metrics`，前台发布布局可验收替换后的资产摘要。
+- smoke test 主后台和写实后台页面检查新增替换文件控件。
+- Playwright 新增主后台和写实后台真实 `.glb` 导入、替换为另一个 `.glb`、草稿持久化、发布持久化和演示页布局读取测试。
+
+真实化说明：
+
+- 数据来源：真实文件选择器、真实 GLB/OBJ 解析、IndexedDB 模型仓库、草稿布局和发布快照。
+- 写入状态：`importedModels[*].fileName/type/sha256/metrics/baseScale`，以及同一 `dbKey` 下的 IndexedDB 二进制。
+- 成功反馈：状态栏显示替换文件名和模型 metrics，后台画布立即显示新模型。
+- 失败反馈：未选中导入模型、对象隐藏/锁定/删除、文件为空、格式不合法或解析失败时均显示明确错误，不写入替换结果。
+- 刷新后复现方式：刷新后台或打开发布演示页，模型记录和二进制均从本机存储读取替换后的文件。
+
+仍待补：
+
+- 当前完成主色调、透明度和文件替换；贴图替换、PBR 参数、版本差异对比、远端资产签名和多人审计仍待继续补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "replaces imported model file"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型文件替换`

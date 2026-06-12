@@ -111,10 +111,12 @@ Playwright 会启动本地静态服务器，并覆盖以下闭环：
 - 主后台项目仓库配置远端 endpoint/token 后，用浏览器路由模拟项目仓库 API，覆盖检查远端、推送项目仓库包、拉取远端包进入导入预览、Bearer token、`archive` / `projectSchema` / `repository` / `packageDigest`、回执持久化和回执审计 HTML 下载。
 - 主后台项目仓库失败反馈用例覆盖 401、非 JSON、无项目包、PUT 422 和网络中断，确认错误写入 `lastError`，并确认本机项目布局不会被失败远端清空。
 - 主后台导入真实 `.glb` 模型后更新主色调和透明度，确认 `mr-calligraphy-main-scene-layout-v1.importedModels[*].color/opacity` 写入草稿，发布后进入 `mr-calligraphy-main-scene-published-v1`，普通前台发布布局也读取该外观。
+- 主后台导入真实 `.glb` 模型后替换为另一个 `.glb`，确认原对象 ID 保持不变，`fileName/sha256/metrics` 更新，发布后进入 `mr-calligraphy-main-scene-published-v1`，普通前台发布布局也读取替换后的资产摘要。
 - 主后台导入真实 `.glb` 模型后删除，确认 `mr-calligraphy-main-import-audit-v1` 写入模型 ID、SHA-256、文件大小、历史快照引用和清理结果，刷新后仍可查看，并可下载 HTML 删除审计。
 - 主后台配置远端发布 endpoint/token 后，用浏览器路由模拟远端 API，覆盖检查远端、提交审核、通过审核、推送发布包、显示回执、写入 `mr-calligraphy-remote-publish-v1` 和导出回执审计 HTML。
 - 写实后台连续发布、修改坐标、检查发布差异并回滚旧版本，确认 `mr-calligraphy-realistic-published-v1` 会记录发布版本列表和回滚动作。
 - 写实后台导入真实 `.glb` 模型后更新主色调和透明度，确认 `mr-calligraphy-realistic-layout-v1.importedModels[*].color/opacity` 写入草稿，发布后进入 `mr-calligraphy-realistic-published-v1`，写实演示页发布布局也读取该外观。
+- 写实后台导入真实 `.glb` 模型后替换为另一个 `.glb`，确认原对象 ID 保持不变，`fileName/sha256/metrics` 更新，发布后进入 `mr-calligraphy-realistic-published-v1`，写实演示页发布布局也读取替换后的资产摘要。
 - 写实后台导入真实 `.glb` 模型后软删除并恢复，确认 `mr-calligraphy-realistic-import-audit-v1` 写入模型 ID、SHA-256、文件大小、软删除结果和恢复动作，刷新后仍可查看，并可下载 HTML 删除审计。
 
 如果项目已经由本地服务器启动，也可以复用当前地址：
@@ -136,5 +138,5 @@ Smoke test 通过：24 个脚本，4 个页面。
 ## 当前边界
 
 - 轻量 smoke test 不会打开真实浏览器；WebGL 非空渲染由 Playwright 像素采样覆盖。
-- Playwright 已覆盖首批真实交互闭环、远端分享 API adapter、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注持久化、学习档案远端同步、主后台远端发布回执、主后台导入模型主色调和透明度编辑、主后台导入模型删除审计、写实导入模型主色调和透明度编辑、写实导入模型软删除审计和写实发布历史源码；测试仍未覆盖所有下载、导入模型贴图/PBR 编辑、回收站和移动端视口。
+- Playwright 已覆盖首批真实交互闭环、远端分享 API adapter、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注持久化、学习档案远端同步、主后台远端发布回执、主后台导入模型主色调/透明度/文件替换、主后台导入模型删除审计、写实导入模型主色调/透明度/文件替换、写实导入模型软删除审计和写实发布历史源码；测试仍未覆盖所有下载、导入模型贴图/PBR 编辑、回收站和移动端视口。
 - 当前本机已经可以运行定向 Playwright 用例；若换到缺少 npm 依赖的新环境，需要先在具备代理认证的环境执行 `npm install`。

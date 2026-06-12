@@ -7406,3 +7406,43 @@
 提交：
 
 - 中文 commit message：`真实化导入模型透明度编辑`
+
+### 2026-06-12：真实化导入模型文件替换
+
+功能名：导入模型文件替换。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 在导入模型外观区域新增“替换当前模型”文件选择器。
+- 主后台替换模型时保留原对象 ID、dbKey、名称、颜色、透明度和布局变换，更新文件名、类型、SHA-256、metrics 和自适应缩放。
+- 写实后台替换模型时保留原对象 ID、dbKey、名称、颜色、透明度和位置旋转，更新文件名、类型、SHA-256 和 metrics。
+- 替换会覆盖 IndexedDB 中同一 `dbKey` 的真实模型二进制，刷新后仍读取新文件。
+- 后台画布会即时卸载旧 mesh、释放旧几何体/材质，并加载替换后的模型。
+- 替换动作支持撤回，撤回会恢复旧导入记录和旧模型二进制。
+- 发布后替换记录进入主前台和写实演示页各自 published layout。
+- `script.js` 前台主场景保留导入模型的 `sha256` 和 `metrics`，用于发布页验收。
+- smoke test 和 Playwright 均覆盖新增替换控件与真实替换流程。
+
+真实化说明：
+
+- 数据来源：真实文件选择器、GLB/OBJ 解析、IndexedDB 模型仓库、草稿布局和发布快照。
+- 写入状态：`importedModels[*].fileName/type/sha256/metrics/baseScale` 和 IndexedDB 模型二进制。
+- 成功反馈：状态栏显示新文件名与模型 metrics，后台画布立即显示替换后的模型。
+- 失败反馈：未选中导入模型、隐藏、锁定、删除、文件为空、格式错误或解析失败时均明确失败。
+- 刷新后复现方式：刷新后台或打开演示页，替换后的模型仍从本机存储读取。
+
+仍待补：
+
+- 当前完成主色调、透明度和文件替换；贴图替换、PBR 参数、版本差异、服务端资产签名和多人审计还未完成。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "replaces imported model file"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型文件替换`

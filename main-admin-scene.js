@@ -57,6 +57,7 @@ const importStatus = document.getElementById("mainImportStatus");
 const importModelColorInput = document.getElementById("mainImportModelColor");
 const importModelOpacityInput = document.getElementById("mainImportModelOpacity");
 const importModelOpacityValue = document.getElementById("mainImportModelOpacityValue");
+const importModelReplaceInput = document.getElementById("mainImportModelReplace");
 const importModelMaterialUpdateButton = document.getElementById("mainImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
 const importAuditStatus = document.getElementById("mainImportAuditStatus");
@@ -585,17 +586,9 @@ async function handleImportModel(event) {
 }
 
 async function createImportedModel(record, arrayBuffer, options = {}) {
-  const normalized = normalizeImportedModel(record);
-  const model = await parseImportedModel(normalized, arrayBuffer, { gltfLoader: loader, objLoader });
-  const metrics = measureImportedModel(model);
-
-  validateImportedModelMetrics(metrics);
-  normalized.metrics = createImportMetrics(metrics, arrayBuffer.byteLength);
-  normalizeImportedModelPivot(model, normalized);
-  prepareImportedModel(model);
-  applyImportedModelMaterial(model, normalized);
-
+  const { normalized, model } = await createImportedModelContent(record, arrayBuffer);
   const group = new THREE.Group();
+
   scene.add(group);
   group.add(model);
   group.userData.scaleFactor = normalized.baseScale || 1;
@@ -616,6 +609,20 @@ async function createImportedModel(record, arrayBuffer, options = {}) {
   }
 
   return objects.get(normalized.id);
+}
+
+async function createImportedModelContent(record, arrayBuffer) {
+  const normalized = normalizeImportedModel(record);
+  const model = await parseImportedModel(normalized, arrayBuffer, { gltfLoader: loader, objLoader });
+  const metrics = measureImportedModel(model);
+
+  validateImportedModelMetrics(metrics);
+  normalized.metrics = createImportMetrics(metrics, arrayBuffer.byteLength);
+  normalizeImportedModelPivot(model, normalized);
+  prepareImportedModel(model);
+  applyImportedModelMaterial(model, normalized);
+
+  return { normalized, model };
 }
 
 function normalizeImportedModelPivot(model, record) {
@@ -2729,6 +2736,9 @@ function updateUiState() {
   if (importModelMaterialUpdateButton) {
     importModelMaterialUpdateButton.disabled = !isImported || deleted || hidden || locked;
   }
+  if (importModelReplaceInput) {
+    importModelReplaceInput.disabled = !isImported || deleted || hidden || locked;
+  }
 }
 
 function snapshot(entry) {
@@ -2872,6 +2882,28 @@ async function undo() {
       createLayoutSnapshot(`撤回外观：${entry.label}`, { notice: false });
       showImportMaterialStatus(`已撤回导入模型外观：${entry.label}`);
       showNotice(`已撤回外观：${entry.label}`);
+    }
+    return;
+  }
+
+  if (item.kind === "import-file-replace") {
+    const entry = objects.get(item.id);
+    if (!entry || !item.arrayBuffer) {
+      showImportStatus("无法撤回模型替换：缺少原始模型文件。");
+      return;
+    }
+    try {
+      await storeImportedModel(item.record, item.arrayBuffer);
+      const { normalized, model } = await createImportedModelContent(item.record, item.arrayBuffer);
+      replaceImportedEntryModel(entry, normalized, model, item.snapshot);
+      saveEntry(entry);
+      selectObject(entry.id);
+      createLayoutSnapshot(`撤回替换：${entry.label}`, { notice: false });
+      showImportStatus(`已撤回模型文件替换：${entry.label}`);
+      showNotice(`已撤回模型替换：${entry.label}`);
+    } catch (error) {
+      console.error(error);
+      showImportStatus(`撤回模型替换失败：${error.message || item.record?.fileName || "模型文件"}`);
     }
     return;
   }
@@ -3168,6 +3200,10 @@ function syncImportedMaterialEditorFromSelection() {
       importModelColorInput.value = "#c8b08a";
     }
     setImportOpacityControl(1);
+    if (importModelReplaceInput) {
+      importModelReplaceInput.disabled = true;
+      importModelReplaceInput.value = "";
+    }
     showImportMaterialStatus(selectedEntry
       ? "当前选中对象不是导入模型；可导入 GLB / OBJ 后再编辑外观。"
       : "选中导入模型后，可调整颜色和透明度并写入草稿和发布版本。");
@@ -3182,8 +3218,12 @@ function syncImportedMaterialEditorFromSelection() {
   if (importModelMaterialUpdateButton) {
     importModelMaterialUpdateButton.disabled = !canEditImportedEntry(entry);
   }
+  if (importModelReplaceInput) {
+    importModelReplaceInput.disabled = !canEditImportedEntry(entry);
+    importModelReplaceInput.value = "";
+  }
   showImportMaterialStatus(canEditImportedEntry(entry)
-    ? `已载入：${entry.label}。调整主色调和透明度后点击“更新导入外观”。`
+    ? `已载入：${entry.label}。可调整外观，或选择 GLB / OBJ 替换当前模型文件。`
     : `已载入：${entry.label}，需恢复显示并解锁后才能更新外观。`);
 }
 
@@ -3240,6 +3280,73 @@ function updateImportOpacityOutput() {
   setImportOpacityControl(importModelOpacityInput?.value);
 }
 
+async function replaceSelectedImportedModelFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  const entry = getSelectedImportedEntry();
+  try {
+    if (!entry) {
+      throw new Error("请选择一个导入模型后再替换文件。");
+    }
+    if (!canEditImportedEntry(entry)) {
+      throw new Error("当前导入模型已隐藏、锁定或删除，需恢复并解锁后才能替换文件。");
+    }
+
+    const type = getImportFileType(file.name);
+    validateImportFile(file, {
+      type,
+      label: entry.label,
+      existingRecords: layout.importedModels.filter((record) => record.id !== entry.id),
+      duplicateMessage: (duplicate) => `已存在导入模型“${duplicate.label}”，请先删除旧模型或选择其他文件。`
+    });
+
+    const beforeRecord = clonePlain(entry.object.userData.importRecord);
+    const beforeSnapshot = snapshot(entry);
+    const previousStored = await readImportedModel(beforeRecord).catch((error) => {
+      console.warn("Imported model file could not be prepared for replace undo.", error);
+      return null;
+    });
+
+    showImportStatus(`正在校验替换文件 ${file.name}...`);
+    const arrayBuffer = await file.arrayBuffer();
+    validateImportBuffer(type, arrayBuffer, file.name);
+    const nextRecord = normalizeImportedModel({
+      ...beforeRecord,
+      fileName: file.name,
+      type,
+      baseScale: undefined,
+      sha256: await createArrayBufferSha256(arrayBuffer)
+    });
+    showImportStatus(`正在解析替换文件 ${file.name}...`);
+    const { normalized, model } = await createImportedModelContent(nextRecord, arrayBuffer);
+
+    await storeImportedModel(normalized, arrayBuffer);
+    pushUndo({
+      kind: "import-file-replace",
+      id: entry.id,
+      record: beforeRecord,
+      snapshot: beforeSnapshot,
+      arrayBuffer: previousStored?.arrayBuffer ? previousStored.arrayBuffer.slice(0) : null
+    });
+    replaceImportedEntryModel(entry, normalized, model, beforeSnapshot);
+    saveEntry(entry);
+    selectObject(entry.id);
+    createLayoutSnapshot(`替换模型：${entry.label}`, { notice: false });
+    showImportStatus(`已替换模型文件：${entry.label} · ${normalized.fileName} · ${formatImportMetrics(normalized.metrics)}`);
+    showImportMaterialStatus(`已替换：${entry.label}。新文件已写入草稿和后续发布版本。`);
+    showNotice(`已替换导入模型文件：${entry.label}`);
+  } catch (error) {
+    console.error(error);
+    showImportStatus(`替换模型失败：${error.message || file.name}`);
+    showImportMaterialStatus(`替换失败：${error.message || file.name}`);
+  } finally {
+    event.target.value = "";
+  }
+}
+
 function applyImportedRecordToEntry(entry, record) {
   if (!entry || entry.object.userData.isImported !== true) {
     return;
@@ -3255,6 +3362,62 @@ function applyImportedRecordToEntry(entry, record) {
   saveLayout();
   updateObjectOption(entry);
   renderLayerPanel();
+}
+
+function replaceImportedEntryModel(entry, record, model, state = null) {
+  if (!entry || entry.object.userData.isImported !== true || !model) {
+    return;
+  }
+
+  const normalized = normalizeImportedModel(record);
+  transformControls.detach();
+  disposeImportedEntryModelChildren(entry.object);
+  entry.object.add(model);
+  entry.object.userData.scaleFactor = normalized.baseScale || 1;
+  entry.object.userData.label = normalized.label;
+  entry.object.userData.defaultState = makeDefaultState(normalized);
+  entry.object.userData.importRecord = normalized;
+  entry.label = normalized.label;
+  registerImportedEntryMeshes(entry.object);
+  applyState(entry.object, state || snapshot(entry));
+  applyEnvironmentIntensityToScene(entry.object);
+  upsertImportedModelRecord(normalized);
+  saveLayout();
+  updateObjectOption(entry);
+  renderLayerPanel();
+}
+
+function disposeImportedEntryModelChildren(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) {
+      return;
+    }
+    const index = selectableMeshes.indexOf(child);
+    if (index >= 0) {
+      selectableMeshes.splice(index, 1);
+    }
+    child.geometry?.dispose?.();
+    if (Array.isArray(child.material)) {
+      child.material.forEach((material) => material.dispose?.());
+    } else {
+      child.material?.dispose?.();
+    }
+  });
+  [...root.children].forEach((child) => root.remove(child));
+}
+
+function registerImportedEntryMeshes(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) {
+      return;
+    }
+    child.castShadow = true;
+    child.receiveShadow = true;
+    child.userData.designRoot = root;
+    if (!selectableMeshes.includes(child)) {
+      selectableMeshes.push(child);
+    }
+  });
 }
 
 function getSelectedCustomEntry() {
@@ -3684,6 +3847,7 @@ function bindUi() {
   syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
   importModelOpacityInput?.addEventListener("input", updateImportOpacityOutput);
+  importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
   importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
   importAuditExportButton?.addEventListener("click", exportImportAudit);
   renderImportAuditPanel();

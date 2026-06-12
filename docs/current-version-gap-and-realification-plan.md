@@ -2455,3 +2455,41 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`真实化导入模型透明度编辑`
+
+### 2026-06-12：真实化导入模型文件替换
+
+完成内容：
+
+- 主后台和写实后台导入模型外观区新增“替换当前模型”文件选择器。
+- 主后台替换会保留原导入对象 `id/dbKey/label/color/opacity`，更新 `fileName/type/sha256/metrics/baseScale`，并覆盖 IndexedDB 中同一 `dbKey` 的二进制。
+- 写实后台替换会保留原导入对象 `id/dbKey/label/color/opacity`，更新 `fileName/type/sha256/metrics`，并覆盖写实模型仓库。
+- 替换后后台 Three.js 画布会释放旧 mesh 的几何体/材质，加载新模型并重新注册可选中 mesh。
+- 替换动作可撤销，撤销会恢复旧导入记录和旧模型二进制。
+- 发布后，替换后的文件记录进入主前台和写实演示页各自 published layout。
+- 普通前台 `script.js` 保留导入模型 `sha256` 和 `metrics`，便于验收发布页读取的替换资产。
+- smoke test 主后台和写实后台标记新增替换文件控件。
+- Playwright 新增主后台和写实后台真实 `.glb` 导入、替换为另一个 `.glb`、草稿、发布和演示页布局读取测试。
+
+真实化说明：
+
+- 数据来源：真实文件选择器、GLB/OBJ 解析、IndexedDB 模型仓库、草稿布局和发布快照。
+- 写入状态：`importedModels[*].fileName/type/sha256/metrics/baseScale` 和同一 `dbKey` 的 IndexedDB 二进制。
+- 成功反馈：状态栏显示替换文件名和模型 metrics，后台画布立即显示替换后的模型。
+- 失败反馈：未选中导入模型、隐藏、锁定、删除、文件为空、格式错误或解析失败时均显示明确错误。
+- 刷新后复现方式：刷新后台或打开演示页，替换后的文件记录和模型二进制仍从本机存储读取。
+
+仍待补：
+
+- 当前完成主色调、透明度和文件替换；贴图替换、PBR 参数、版本差异对比、服务端资产签名和多人审计仍待补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "replaces imported model file"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型文件替换`

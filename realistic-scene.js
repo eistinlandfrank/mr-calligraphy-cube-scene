@@ -42,6 +42,7 @@ const importStatus = document.getElementById("importStatus");
 const importModelColorInput = document.getElementById("realisticImportModelColor");
 const importModelOpacityInput = document.getElementById("realisticImportModelOpacity");
 const importModelOpacityValue = document.getElementById("realisticImportModelOpacityValue");
+const importModelReplaceInput = document.getElementById("realisticImportModelReplace");
 const importModelMaterialUpdateButton = document.getElementById("realisticImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("realisticImportMaterialStatus");
 const importAuditStatus = document.getElementById("realisticImportAuditStatus");
@@ -2052,7 +2053,7 @@ function applySnapshot(snapshot) {
   syncDesignInputs();
 }
 
-function undoLastChange() {
+async function undoLastChange() {
   if (!isDesignMode || !undoStack.length) return;
   const snapshot = undoStack.pop();
   if (snapshot?.kind === "import-material-update") {
@@ -2062,6 +2063,29 @@ function undoLastChange() {
       selectDesignObject(entry.id);
       createLayoutSnapshot(`撤回外观：${entry.label}`, { status: false });
       setImportMaterialStatus(`已撤回写实导入模型外观：${entry.label}`);
+    }
+    return;
+  }
+  if (snapshot?.kind === "import-file-replace") {
+    const entry = designObjects.get(snapshot.id);
+    if (!entry || !snapshot.arrayBuffer) {
+      setImportStatus("无法撤回写实模型替换：缺少原始模型文件。");
+      return;
+    }
+    try {
+      await storeImportedModel(snapshot.record, snapshot.arrayBuffer);
+      const importPack = await createImportedModelObject(snapshot.record, snapshot.arrayBuffer);
+      const restoredRecord = normalizeImportedRecord({
+        ...snapshot.record,
+        metrics: importPack.metrics
+      });
+      replaceImportedEntryModel(entry, restoredRecord, importPack.root, snapshot.snapshot);
+      selectDesignObject(entry.id);
+      createLayoutSnapshot(`撤回替换：${entry.label}`, { status: false });
+      setImportStatus(`已撤回写实导入模型替换：${entry.label}`);
+    } catch (error) {
+      console.error(error);
+      setImportStatus(`撤回写实模型替换失败：${error.message || snapshot.record?.fileName || "模型文件"}`);
     }
     return;
   }
@@ -2166,6 +2190,9 @@ function updateDeletedUi() {
   if (importModelMaterialUpdateButton) {
     importModelMaterialUpdateButton.disabled = !canEditImportedEntry(selectedDesignObject);
   }
+  if (importModelReplaceInput) {
+    importModelReplaceInput.disabled = !canEditImportedEntry(selectedDesignObject);
+  }
 }
 
 function setObjectDeleted(entry, deleted, recordUndo = true) {
@@ -2251,6 +2278,10 @@ function syncImportedMaterialEditorFromSelection() {
       importModelColorInput.value = "#c8b08a";
     }
     setImportOpacityControl(1);
+    if (importModelReplaceInput) {
+      importModelReplaceInput.disabled = true;
+      importModelReplaceInput.value = "";
+    }
     setImportMaterialStatus(selectedDesignObject
       ? "当前选中对象不是写实导入模型；可导入 GLB / OBJ 后再编辑外观。"
       : "选中写实导入模型后，可调整颜色和透明度并写入草稿和发布版本。");
@@ -2265,8 +2296,12 @@ function syncImportedMaterialEditorFromSelection() {
   if (importModelMaterialUpdateButton) {
     importModelMaterialUpdateButton.disabled = !canEditImportedEntry(entry);
   }
+  if (importModelReplaceInput) {
+    importModelReplaceInput.disabled = !canEditImportedEntry(entry);
+    importModelReplaceInput.value = "";
+  }
   setImportMaterialStatus(canEditImportedEntry(entry)
-    ? `已载入：${entry.label}。调整主色调和透明度后点击“更新外观”。`
+    ? `已载入：${entry.label}。可调整外观，或选择 GLB / OBJ 替换当前模型文件。`
     : `已载入：${entry.label}，需恢复显示后才能更新外观。`);
 }
 
@@ -2319,6 +2354,73 @@ function updateImportOpacityOutput() {
   setImportOpacityControl(importModelOpacityInput?.value);
 }
 
+async function replaceSelectedImportedModelFile(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  const entry = getSelectedImportedEntry();
+  try {
+    if (!entry) {
+      throw new Error("请选择一个写实导入模型后再替换文件。");
+    }
+    if (!canEditImportedEntry(entry)) {
+      throw new Error("当前写实导入模型已删除，需恢复显示后才能替换文件。");
+    }
+
+    const type = getImportFileType(file.name);
+    validateImportFile(file, {
+      type,
+      label: entry.label,
+      existingRecords: getImportedModelRecords().filter((record) => record.id !== entry.id)
+    });
+
+    const beforeRecord = clonePlain(getImportedRecordById(entry.id) || entry.object.userData.importRecord || {});
+    const beforeSnapshot = snapshotObject(entry);
+    const previousStored = await readImportedModel(beforeRecord).catch((error) => {
+      console.warn("Realistic imported model file could not be prepared for replace undo.", error);
+      return null;
+    });
+
+    setImportStatus(`正在校验替换文件 ${file.name}...`);
+    const arrayBuffer = await file.arrayBuffer();
+    validateImportBuffer(type, arrayBuffer, file.name);
+    const nextRecord = normalizeImportedRecord({
+      ...beforeRecord,
+      type,
+      fileName: file.name,
+      sha256: await createArrayBufferSha256(arrayBuffer)
+    });
+    setImportStatus(`正在解析替换文件 ${file.name}...`);
+    const importPack = await createImportedModelObject(nextRecord, arrayBuffer);
+    const normalized = normalizeImportedRecord({
+      ...nextRecord,
+      metrics: importPack.metrics
+    });
+
+    await storeImportedModel(normalized, arrayBuffer);
+    pushUndoSnapshot({
+      kind: "import-file-replace",
+      id: entry.id,
+      record: beforeRecord,
+      snapshot: beforeSnapshot,
+      arrayBuffer: previousStored?.arrayBuffer ? previousStored.arrayBuffer.slice(0) : null
+    });
+    replaceImportedEntryModel(entry, normalized, importPack.root, beforeSnapshot);
+    selectDesignObject(entry.id);
+    createLayoutSnapshot(`替换模型：${entry.label}`, { status: false });
+    setImportStatus(`已替换写实导入模型：${entry.label} · ${normalized.fileName} · ${formatImportMetrics(normalized.metrics)}。`);
+    setImportMaterialStatus(`已替换：${entry.label}。新文件已写入写实草稿和后续发布版本。`);
+  } catch (error) {
+    console.error(error);
+    setImportStatus(`替换写实模型失败：${error.message || file.name}`);
+    setImportMaterialStatus(`替换失败：${error.message || file.name}`);
+  } finally {
+    event.target.value = "";
+  }
+}
+
 function applyImportedRecordToEntry(entry, record) {
   if (!entry || !isImportedDesignObject(entry)) {
     return;
@@ -2332,6 +2434,66 @@ function applyImportedRecordToEntry(entry, record) {
   updateObjectOption(entry);
   saveSceneLayout();
   renderPublishDiff();
+}
+
+function replaceImportedEntryModel(entry, record, nextRoot, snapshot = null) {
+  if (!entry || !isImportedDesignObject(entry) || !nextRoot) {
+    return;
+  }
+
+  const normalized = upsertImportedRecord(record);
+  transformControls?.detach();
+  disposeImportedEntryModelChildren(entry.object);
+  entry.object.scale.copy(nextRoot.scale);
+  [...nextRoot.children].forEach((child) => entry.object.add(child));
+  entry.object.userData.importRecord = normalized;
+  entry.object.userData.designLabel = normalized.label;
+  entry.label = normalized.label;
+  registerImportedEntryMeshes(entry.object);
+  if (snapshot) {
+    entry.object.position.set(snapshot.position.x, snapshot.position.y, snapshot.position.z);
+    entry.object.rotation.set(snapshot.rotation.x, snapshot.rotation.y, snapshot.rotation.z);
+    entry.object.userData.deleted = snapshot.deleted === true;
+    entry.object.visible = entry.object.userData.deleted !== true;
+  }
+  updateObjectOption(entry);
+  saveObjectTransform(entry);
+  saveSceneLayout();
+  renderPublishDiff();
+}
+
+function disposeImportedEntryModelChildren(root) {
+  root.traverse((child) => {
+    if (!child.isMesh) {
+      return;
+    }
+    const index = selectableMeshes.indexOf(child);
+    if (index >= 0) {
+      selectableMeshes.splice(index, 1);
+    }
+    child.geometry?.dispose?.();
+    if (Array.isArray(child.material)) {
+      child.material.forEach((material) => material.dispose?.());
+    } else {
+      child.material?.dispose?.();
+    }
+  });
+  [...root.children].forEach((child) => root.remove(child));
+}
+
+function registerImportedEntryMeshes(root) {
+  if (!isDesignMode) {
+    return;
+  }
+  root.traverse((child) => {
+    if (!child.isMesh) {
+      return;
+    }
+    child.userData.designRoot = root;
+    if (!selectableMeshes.includes(child)) {
+      selectableMeshes.push(child);
+    }
+  });
 }
 
 function getSelectedImportedEntry() {
@@ -2555,6 +2717,7 @@ function bindUi() {
     restoreObjectButton?.addEventListener("click", restoreSelectedObject);
     importModelInput?.addEventListener("change", handleImportModel);
     importModelOpacityInput?.addEventListener("input", updateImportOpacityOutput);
+    importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
     importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
     importAuditExportButton?.addEventListener("click", exportImportAudit);
     renderImportAuditPanel();

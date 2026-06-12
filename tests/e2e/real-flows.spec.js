@@ -1936,6 +1936,59 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(frontImportedRecord.opacity).toBeCloseTo(0.55, 2);
 });
 
+test("main admin replaces imported model file and publishes it", async ({ page }) => {
+  test.setTimeout(60_000);
+  const importLabel = `E2E 导入替换 ${Date.now()}`;
+  const initialModelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+  const replacementModelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/chair.glb");
+
+  await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expect(page.locator("#mainImportModelReplace")).toBeDisabled();
+
+  await page.locator("#mainImportModelName").fill(importLabel);
+  await page.locator("#mainImportModel").setInputFiles(initialModelPath);
+  await expect(page.locator("#mainImportStatus")).toContainText(`已导入：${importLabel}`, { timeout: 30_000 });
+  await expect(page.locator("#mainImportModelReplace")).toBeEnabled();
+
+  const importedObjectId = await page.locator("#mainObjectSelect").inputValue();
+  let layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
+  const beforeRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(beforeRecord).toBeTruthy();
+  expect(beforeRecord.fileName).toBe("books.glb");
+  expect(beforeRecord.sha256).toMatch(/^[a-f0-9]{64}$/);
+
+  await page.locator("#mainImportModelReplace").setInputFiles(replacementModelPath);
+  await expect(page.locator("#mainImportStatus")).toContainText("已替换模型文件", { timeout: 30_000 });
+  await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已替换：${importLabel}`);
+
+  layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
+  const replacedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(replacedRecord).toBeTruthy();
+  expect(replacedRecord.label).toBe(importLabel);
+  expect(replacedRecord.fileName).toBe("chair.glb");
+  expect(replacedRecord.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(replacedRecord.sha256).not.toBe(beforeRecord.sha256);
+  expect(replacedRecord.metrics.fileBytes).toBeGreaterThan(0);
+
+  await page.locator("#mainPublishLayout").click();
+  await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
+  const published = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
+  const publishedRecord = published.layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(publishedRecord).toBeTruthy();
+  expect(publishedRecord.fileName).toBe("chair.glb");
+  expect(publishedRecord.sha256).toBe(replacedRecord.sha256);
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
+  await page.waitForFunction(() => window.MRRoomAPI?.getMainSceneLayout);
+  const frontLayout = await page.evaluate(() => window.MRRoomAPI.getMainSceneLayout());
+  const frontRecord = frontLayout.importedModels.find((item) => item.id === importedObjectId);
+  expect(frontRecord).toBeTruthy();
+  expect(frontRecord.fileName).toBe("chair.glb");
+  expect(frontRecord.sha256).toBe(replacedRecord.sha256);
+});
+
 test("main admin records imported model deletion audit", async ({ page }) => {
   test.setTimeout(60_000);
   const importLabel = `E2E 导入删除审计 ${Date.now()}`;
@@ -2241,6 +2294,57 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(demoImportedRecord).toBeTruthy();
   expect(demoImportedRecord.color).toBe("#2255aa");
   expect(demoImportedRecord.opacity).toBeCloseTo(0.6, 2);
+});
+
+test("realistic admin replaces imported model file and publishes it", async ({ page }) => {
+  test.setTimeout(60_000);
+  const initialModelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+  const replacementModelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/chair.glb");
+
+  await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#designObjectSelect")).toBeVisible();
+  await expect(page.locator("#realisticImportModelReplace")).toBeDisabled();
+
+  await page.locator("#importModelInput").setInputFiles(initialModelPath);
+  await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
+  await expect(page.locator("#realisticImportModelReplace")).toBeEnabled();
+
+  const importedObjectId = await page.locator("#designObjectSelect").inputValue();
+  let layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  const beforeRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(beforeRecord).toBeTruthy();
+  expect(beforeRecord.fileName).toBe("books.glb");
+  expect(beforeRecord.sha256).toMatch(/^[a-f0-9]{64}$/);
+
+  await page.locator("#realisticImportModelReplace").setInputFiles(replacementModelPath);
+  await expect(page.locator("#importStatus")).toContainText("已替换写实导入模型", { timeout: 30_000 });
+  await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已替换：books");
+
+  layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
+  const replacedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(replacedRecord).toBeTruthy();
+  expect(replacedRecord.label).toBe("books");
+  expect(replacedRecord.fileName).toBe("chair.glb");
+  expect(replacedRecord.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(replacedRecord.sha256).not.toBe(beforeRecord.sha256);
+  expect(replacedRecord.metrics.fileBytes).toBeGreaterThan(0);
+
+  await page.locator("#realisticPublishLayout").click();
+  await expect(page.locator("#realisticPublishStatus")).toContainText("已发布到演示");
+  const published = await readJsonLocalStorage(page, REALISTIC_PUBLISHED_KEY);
+  const publishedRecord = published.layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(publishedRecord).toBeTruthy();
+  expect(publishedRecord.fileName).toBe("chair.glb");
+  expect(publishedRecord.sha256).toBe(replacedRecord.sha256);
+
+  await page.goto("/realistic-demo.html", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.MR_REALISTIC_SCENE_SOURCE === "published");
+  await page.waitForFunction(() => window.MRRealisticScene?.getLayout);
+  layout = await page.evaluate(() => window.MRRealisticScene.getLayout());
+  const demoRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(demoRecord).toBeTruthy();
+  expect(demoRecord.fileName).toBe("chair.glb");
+  expect(demoRecord.sha256).toBe(replacedRecord.sha256);
 });
 
 test("realistic admin records imported model deletion audit", async ({ page }) => {
