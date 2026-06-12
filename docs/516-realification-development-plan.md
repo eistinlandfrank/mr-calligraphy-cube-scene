@@ -8024,3 +8024,46 @@
 提交：
 
 - 中文 commit message：`新增报告仓库空间隔离`
+
+### 2026-06-12：新增项目仓库空间隔离
+
+功能名：主后台项目仓库 Workspace 空间隔离第一版。
+
+完成内容：
+
+- 主后台“远端项目仓库 API”配置区新增 `Workspace` 输入，和 endpoint/token 一起保存到 `mr-calligraphy-project-repository-remote-v1`。
+- 项目仓库远端状态会显示当前空间，版本选择、回执列表和回执 HTML 审计新增 workspace 字段。
+- `MRProjectArchive.createProjectRepositoryPackage()` 输出顶层 `workspaceId`。
+- 项目仓库远端 GET / PUT 请求统一携带 `X-MR-Workspace-Id` header。
+- 切换 endpoint 或 workspace 时会清空当前本机远端版本和回执视图，避免把其他空间版本当作当前空间证据。
+- `scripts/project-repository-mock-server.js` 新增 `workspaces` 状态，以 workspace 维度保存最近 package、receipts 和 versions。
+- 浏览器级主后台项目仓库用例验证 Workspace 输入、请求头、推送包字段、回执持久化、版本历史和本机状态持久化。
+- `docs/project-repository-api-contract.md` 和 `docs/smoke-test.md` 同步 Workspace header、包字段、mock 隔离和验收范围。
+
+真实化说明：
+
+- 数据来源：主后台远端项目仓库配置、本机项目档案、项目 schema、统一项目仓库状态和远端 API 返回 package/receipt。
+- 写入状态：写入 `mr-calligraphy-project-repository-remote-v1.workspaceId`、项目仓库包、远端回执、版本历史和 mock server workspace 分桶。
+- 成功反馈：远端配置状态显示 workspace，回执审计显示 workspace，mock server GET 当前空间返回对应 package 和 versions。
+- 失败反馈：错误 token、HTTP 错误、非法响应和推送失败不会清空本机项目档案，也不会伪造其他空间数据。
+- 刷新后复现方式：刷新主后台后 Workspace 输入恢复，检查/推送/拉取继续携带相同 header。
+
+仍待补：
+
+- 当前完成的是账号化前置空间隔离；真正账号登录、班级权限、多人冲突合并、服务端资产签名、长期归档、服务端合并审计和不可篡改回执仍待补齐。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/project-repository-mock-server.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/project-schema-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库空间隔离`

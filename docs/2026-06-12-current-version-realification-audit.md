@@ -75,7 +75,7 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.7 后台还不是可协作的项目后台
 
-主后台和写实后台都能编辑本机场景，也能导出项目档案、做本机发布、回滚、远端发布包预检、服务端锁预检和回执审计。本轮新增本机 `ProjectRepository` 状态视图：`projectSchema.repository` 会把主场景和写实样张归一为 `project-scene-repository-v1`，统一统计草稿对象、快照、发布版本、导入资产、缺文件/缺哈希风险和下一步动作；主后台项目档案区会直接显示这份仓库状态。随后又补了远端项目仓库 API adapter，主后台可配置 endpoint/token，用真实 GET 检查服务、PUT 当前项目仓库包、读取远端版本历史，并用 `GET ?packageId=` 拉取指定历史包进入恢复预览，同时保存服务端回执。
+主后台和写实后台都能编辑本机场景，也能导出项目档案、做本机发布、回滚、远端发布包预检、服务端锁预检和回执审计。本轮新增本机 `ProjectRepository` 状态视图：`projectSchema.repository` 会把主场景和写实样张归一为 `project-scene-repository-v1`，统一统计草稿对象、快照、发布版本、导入资产、缺文件/缺哈希风险和下一步动作；主后台项目档案区会直接显示这份仓库状态。随后又补了远端项目仓库 API adapter，主后台可配置 endpoint/token/workspace，用真实 GET 检查服务、PUT 当前项目仓库包、读取当前 workspace 的远端版本历史，并用 `GET ?packageId=` 拉取指定历史包进入恢复预览，同时保存服务端回执。
 
 它们仍不是账号后台，任何能打开页面的人都能改当前浏览器里的数据，`ProjectRepository` 远端 adapter 只是可替换服务端接口的第一版，不是多人协作 CMS。
 
@@ -88,7 +88,7 @@ HTML 报告、原生 PDF、PDF 能力条形图、PDF 能力雷达图、PDF 分�
 
 ### 2.8 远端 API adapter 有了，但服务端产品没有
 
-计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化；计划仓库和学习档案仓库已补 Workspace 空间 ID，请求头、同步包和 mock server 都能按空间隔离，计划仓库还能保存回执审计；报告仓库和项目仓库都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
+计划仓库、学习档案仓库、报告仓库、项目仓库和后台远端发布都已有 API 合同或 mock server、endpoint/token 配置、GET/PUT/POST 检查和本机状态持久化；计划仓库、学习档案仓库、报告仓库和项目仓库已补 Workspace 空间 ID，请求头、同步包和 mock server 都能按空间隔离，计划仓库还能保存回执审计；报告仓库和项目仓库都能保存远端回执并导出本机 HTML 审计页；学习计划也能导出标准 `.ics` 日历提醒文件，便于导入系统日历或手机日历。这个方向是对的，但它目前证明的是“前端能对接 API / 本机能导出标准文件 / 本机能留存回执证据”，不是“项目已有生产后端”。
 
 真实化方向：
 
@@ -201,9 +201,9 @@ npm run test:e2e
 
 交付：
 
-- `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现；`PlanRepository`、`HistoryRepository` 和 `ReportRepository` 已有 Workspace 空间隔离第一版，`ProjectRepository` 远端 API adapter 第一版已完成，仍需真实账号空间、权限和服务端合并。
+- `PlanRepository`、`HistoryRepository`、`ReportRepository`、`ProjectRepository` 服务端草案和最小实现；`PlanRepository`、`HistoryRepository`、`ReportRepository` 和 `ProjectRepository` 已有 Workspace 空间隔离第一版，仍需真实账号空间、权限和服务端合并。
 - 登录态、用户 ID、角色、token 刷新和服务端分页。
-- 计划仓库冲突解决已从计划级扩展到前端字段级第一版，远端 receipt 也已能写入本机审计列表并导出 HTML，计划仓库/学习档案仓库/报告仓库 Workspace 空间隔离第一版已完成；后续仍需服务端合并审计、真实账号权限和更复杂的计划项增删合并。
+- 计划仓库冲突解决已从计划级扩展到前端字段级第一版，远端 receipt 也已能写入本机审计列表并导出 HTML，计划仓库/学习档案仓库/报告仓库/项目仓库 Workspace 空间隔离第一版已完成；后续仍需服务端合并审计、真实账号权限和更复杂的计划项增删合并。
 
 验收：
 
@@ -306,6 +306,7 @@ npm run test:e2e
 - 追加计划仓库 Workspace 空间隔离记录：前台远端计划 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，同步包和回执写入 `workspaceId`，mock server 按 workspace 分桶保存 package/receipt；数据层和 E2E 已验证 header、包字段、回执持久化、alpha/beta 空间互不覆盖和切回原空间读取。
 - 追加学习档案仓库 Workspace 空间隔离记录：前台远端学习档案 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，同步包写入顶层 `workspaceId` 和 `source.workspaceId`，mock server 按 workspace 分桶保存档案 package/receipt；数据层和 E2E 已验证 header、包字段、本机状态持久化、history-alpha/history-beta 空间互不覆盖、切回原空间读取、分页追取和冲突审计继续可用。
 - 追加报告仓库 Workspace 空间隔离记录：前台远端报告 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，报告包写入顶层 `workspaceId` 和 `source.workspaceId`，签名回执和审计 HTML 写入 workspace，mock server 按 workspace 分桶保存报告 package/receipt；数据层和 E2E 已验证 header、包字段、签名回执持久化、report-alpha/report-beta 空间互不覆盖、切回原空间读取和报告冲突审计继续可用。
+- 追加项目仓库 Workspace 空间隔离记录：主后台远端项目仓库 API 新增 Workspace 输入，请求携带 `X-MR-Workspace-Id`，项目仓库包写入顶层 `workspaceId`，回执、版本列表和审计 HTML 写入 workspace，mock server 按 workspace 分桶保存项目仓库 package/receipt/versions；E2E 已验证 header、包字段、本机状态持久化、版本历史、回执导出和指定版本拉取预览继续可用。
 
 已知限制：
 

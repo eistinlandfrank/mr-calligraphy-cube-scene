@@ -1618,7 +1618,16 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const remoteRequests = [];
   const projectRepositoryRequests = [];
   const remoteProjectRepositoryVersions = [];
+  const remoteProjectRepositoryVersionsByWorkspace = new Map([["project-e2e", remoteProjectRepositoryVersions]]);
   let latestRemotePublishReceipt = null;
+
+  const getRemoteProjectRepositoryVersions = (workspaceId) => {
+    const key = workspaceId || "local-browser";
+    if (!remoteProjectRepositoryVersionsByWorkspace.has(key)) {
+      remoteProjectRepositoryVersionsByWorkspace.set(key, []);
+    }
+    return remoteProjectRepositoryVersionsByWorkspace.get(key);
+  };
 
   await page.route(`**${remoteEndpointPath}`, async (route) => {
     const request = route.request();
@@ -1741,23 +1750,27 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
     const method = request.method();
     const requestUrl = new URL(request.url());
     const requestedPackageId = requestUrl.searchParams.get("packageId") || "";
+    const workspaceId = request.headers()["x-mr-workspace-id"] || "local-browser";
+    const workspaceVersions = getRemoteProjectRepositoryVersions(workspaceId);
     const body = method === "PUT" ? request.postDataJSON() : null;
     projectRepositoryRequests.push({
       method,
       url: request.url(),
       packageId: requestedPackageId,
       authorization: request.headers().authorization || "",
+      workspaceId,
       body
     });
     if (method === "PUT") {
-      const validation = validateProjectRepositoryPackage(body);
+      const validation = validateProjectRepositoryPackage(body, { workspaceId });
       expect(validation.ok, validation.message).toBe(true);
-      const packageIndex = remoteProjectRepositoryVersions.length + 1;
+      const packageIndex = workspaceVersions.length + 1;
       const packageId = `e2e-project-repository-${packageIndex}`;
       const remoteVersion = {
         id: packageId,
         packageId,
         sourcePackageId: body.packageId,
+        workspaceId,
         packageDigest: body.packageDigest,
         repositoryDigest: body.packageDigest,
         remoteVersion: "e2e-project-repository-v1",
@@ -1767,7 +1780,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         summary: body.summary,
         package: JSON.parse(JSON.stringify(body))
       };
-      remoteProjectRepositoryVersions.unshift(remoteVersion);
+      workspaceVersions.unshift(remoteVersion);
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -1775,16 +1788,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
           ok: true,
           message: "项目仓库远端 E2E 已接收。",
           packageId,
+          workspaceId,
           packageDigest: body.packageDigest,
           repositoryDigest: body.packageDigest,
           remoteVersion: "e2e-project-repository-v1",
           selectedVersion: toProjectRepositoryVersionSummary(remoteVersion),
-          versionCount: remoteProjectRepositoryVersions.length,
-          versions: remoteProjectRepositoryVersions.map(toProjectRepositoryVersionSummary),
+          versionCount: workspaceVersions.length,
+          versions: workspaceVersions.map(toProjectRepositoryVersionSummary),
           receipt: {
             receiptKind: "mr-calligraphy-project-repository-receipt-v1",
             packageId,
             sourcePackageId: body.packageId,
+            workspaceId,
             packageDigest: body.packageDigest,
             repositoryDigest: body.packageDigest,
             remoteVersion: "e2e-project-repository-v1",
@@ -1798,7 +1813,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       return;
     }
     const selectedVersion = requestedPackageId
-      ? remoteProjectRepositoryVersions.find((version) => [
+      ? workspaceVersions.find((version) => [
           version.packageId,
           version.sourcePackageId,
           version.packageDigest,
@@ -1811,9 +1826,10 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         contentType: "application/json",
         body: JSON.stringify({
           ok: false,
-          message: `项目仓库远端 E2E 未找到版本：${requestedPackageId}。`,
+          message: `项目仓库远端 E2E 在空间 ${workspaceId} 未找到版本：${requestedPackageId}。`,
           remoteVersion: "e2e-project-check-v1",
-          versions: remoteProjectRepositoryVersions.map(toProjectRepositoryVersionSummary)
+          workspaceId,
+          versions: workspaceVersions.map(toProjectRepositoryVersionSummary)
         })
       });
       return;
@@ -1823,14 +1839,15 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       contentType: "application/json",
       body: JSON.stringify({
         ok: true,
-        message: selectedVersion ? `项目仓库远端 E2E 可拉取版本 ${selectedVersion.packageId}。` : "项目仓库远端 E2E 可访问。",
+        message: selectedVersion ? `项目仓库远端 E2E 可拉取空间 ${workspaceId} 的版本 ${selectedVersion.packageId}。` : `项目仓库远端 E2E 可访问，空间 ${workspaceId}。`,
         remoteVersion: "e2e-project-check-v1",
+        workspaceId,
         packageId: selectedVersion?.packageId || "",
         repositoryDigest: selectedVersion?.repositoryDigest || "",
         package: selectedVersion?.package || null,
         selectedVersion: selectedVersion ? toProjectRepositoryVersionSummary(selectedVersion) : null,
-        versionCount: remoteProjectRepositoryVersions.length,
-        versions: remoteProjectRepositoryVersions.map(toProjectRepositoryVersionSummary)
+        versionCount: workspaceVersions.length,
+        versions: workspaceVersions.map(toProjectRepositoryVersionSummary)
       })
     });
   });
@@ -1893,13 +1910,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#projectRepositoryEndpoint")).toBeVisible();
   await page.locator("#projectRepositoryEndpoint").fill(projectRepositoryEndpoint);
   await page.locator("#projectRepositoryToken").fill("project-e2e-token");
+  await page.locator("#projectRepositoryWorkspace").fill("project-e2e");
   await page.locator("#projectRepositorySaveRemote").click();
   await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("远端项目仓库 API 配置已保存");
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("project-e2e");
 
   await page.locator("#projectRepositoryCheckRemote").click();
   await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("项目仓库远端 E2E 可访问");
+  await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("project-e2e");
   const checkedProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(checkedProjectRepositoryState.lastRemoteVersion).toBe("e2e-project-check-v1");
+  expect(checkedProjectRepositoryState.workspaceId).toBe("project-e2e");
 
   await page.locator("#projectRepositoryPushRemote").click();
   await expect(page.locator("#projectRepositoryRemoteStatus")).toContainText("项目仓库远端 E2E 已接收");
@@ -1907,9 +1928,12 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#projectRepositoryReceiptList")).toContainText("e2e-project-repository-1");
 
   expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.authorization === "Bearer project-e2e-token")).toBe(true);
+  expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.workspaceId === "project-e2e")).toBe(true);
   const firstProjectRepositoryPut = projectRepositoryRequests.find((item) => item.method === "PUT");
   expect(firstProjectRepositoryPut.authorization).toBe("Bearer project-e2e-token");
+  expect(firstProjectRepositoryPut.workspaceId).toBe("project-e2e");
   expect(firstProjectRepositoryPut.body.kind).toBe("mr-calligraphy-project-repository-package-v1");
+  expect(firstProjectRepositoryPut.body.workspaceId).toBe("project-e2e");
   expect(firstProjectRepositoryPut.body.repository.kind).toBe("mr-calligraphy-project-repository-v1");
   expect(firstProjectRepositoryPut.body.projectSchema.kind).toBe("mr-calligraphy-project-schema");
   expect(firstProjectRepositoryPut.body.archive.kind).toBe("mr-calligraphy-project-archive");
@@ -1922,16 +1946,20 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const projectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(projectRepositoryState.lastPackageId).toBe("e2e-project-repository-1");
   expect(projectRepositoryState.lastRemoteVersion).toBe("e2e-project-repository-v1");
+  expect(projectRepositoryState.workspaceId).toBe("project-e2e");
   expect(projectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
   expect(projectRepositoryState.receipts[0].sourcePackageId).toBe(firstProjectRepositoryPut.body.packageId);
+  expect(projectRepositoryState.receipts[0].workspaceId).toBe("project-e2e");
   expect(projectRepositoryState.receipts[0].direction).toBe("push");
   expect(projectRepositoryState.receipts[0].receiptDigest).toBe("1".repeat(64));
   expect(projectRepositoryState.versions[0].packageId).toBe("e2e-project-repository-1");
+  expect(projectRepositoryState.versions[0].workspaceId).toBe("project-e2e");
 
   const projectRepositoryReceiptAudit = await page.evaluate(() => window.MRProjectArchive.getProjectRepositoryReceiptAuditExport());
   expect(projectRepositoryReceiptAudit.ok).toBe(true);
   expect(projectRepositoryReceiptAudit.html).toContain("MR 书法项目仓库回执审计");
   expect(projectRepositoryReceiptAudit.html).toContain("e2e-project-repository-1");
+  expect(projectRepositoryReceiptAudit.html).toContain("project-e2e");
   expect(projectRepositoryReceiptAudit.html).toContain("1".repeat(64));
 
   const projectRepositoryReceiptDownloadPromise = page.waitForEvent("download");
@@ -1942,6 +1970,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const projectRepositoryReceiptHtml = fs.readFileSync(projectRepositoryReceiptPath, "utf8");
   expect(projectRepositoryReceiptHtml).toContain("MR 书法项目仓库回执审计");
   expect(projectRepositoryReceiptHtml).toContain("e2e-project-repository-1");
+  expect(projectRepositoryReceiptHtml).toContain("project-e2e");
   expect(projectRepositoryReceiptHtml).toContain("1".repeat(64));
 
   const secondObjectLabel = `${objectLabel} 版本二`;
@@ -1961,24 +1990,29 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const projectRepositoryPuts = projectRepositoryRequests.filter((item) => item.method === "PUT");
   expect(projectRepositoryPuts).toHaveLength(2);
   const secondProjectRepositoryPut = projectRepositoryPuts[1];
+  expect(secondProjectRepositoryPut.workspaceId).toBe("project-e2e");
+  expect(secondProjectRepositoryPut.body.workspaceId).toBe("project-e2e");
   expect(secondProjectRepositoryPut.body.packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(secondProjectRepositoryPut.body.packageDigest).not.toBe(firstProjectRepositoryPut.body.packageDigest);
   const latestProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(latestProjectRepositoryState.lastPackageId).toBe("e2e-project-repository-2");
+  expect(latestProjectRepositoryState.workspaceId).toBe("project-e2e");
   expect(latestProjectRepositoryState.versions.map((version) => version.packageId)).toEqual([
     "e2e-project-repository-2",
     "e2e-project-repository-1"
   ]);
+  expect(latestProjectRepositoryState.versions.every((version) => version.workspaceId === "project-e2e")).toBe(true);
 
   await page.locator("#projectRepositoryVersionSelect").selectOption(firstRemoteProjectVersion.packageId);
   await page.locator("#projectRepositoryPullRemote").click();
-  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库远端 E2E 可拉取版本 e2e-project-repository-1");
+  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库远端 E2E 可拉取空间 project-e2e 的版本 e2e-project-repository-1");
   await expect(page.locator("#projectImportPreview")).toBeVisible();
   await expect(page.locator("#projectImportPreviewList")).toContainText("主场景布局");
   const pulledProjectRepositoryState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_REMOTE_KEY);
   expect(pulledProjectRepositoryState.lastPackageId).toBe(firstRemoteProjectVersion.packageId);
+  expect(pulledProjectRepositoryState.workspaceId).toBe("project-e2e");
   expect(pulledProjectRepositoryState.lastPackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
-  expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.packageId === firstRemoteProjectVersion.packageId)).toBe(true);
+  expect(projectRepositoryRequests.some((item) => item.method === "GET" && item.packageId === firstRemoteProjectVersion.packageId && item.workspaceId === "project-e2e")).toBe(true);
 
   const restoredNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
   await page.locator("#projectImportConfirm").click();
@@ -3069,6 +3103,7 @@ function toProjectRepositoryVersionSummary(version) {
     id: version.id,
     packageId: version.packageId,
     sourcePackageId: version.sourcePackageId,
+    workspaceId: version.workspaceId,
     packageDigest: version.packageDigest,
     repositoryDigest: version.repositoryDigest,
     remoteVersion: version.remoteVersion,
