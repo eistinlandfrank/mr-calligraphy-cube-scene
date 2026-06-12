@@ -1622,12 +1622,23 @@ function renderRemotePublishReceipts(audit) {
     const uploadMeta = uploadCount ? ` · CDN ${uploadCount}` : "";
     const purgeCount = Number(receipt.cdnPurgeSummary?.purgedUrlCount || 0);
     const purgeMeta = purgeCount ? ` · purge ${purgeCount}` : "";
-    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · 空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${signatureMeta}${uploadMeta}${purgeMeta}`;
+    const verificationMeta = ` · ${formatRemotePublishReceiptVerificationStatus(receipt.verificationStatus)}`;
+    meta.textContent = `${receipt.direction === "revoke" ? "撤销" : "发布"} · 空间 ${receipt.workspaceId || audit?.workspaceId || "local-browser"} · ${formatDateTime(receipt.acceptedAt || receipt.pushedAt || receipt.revokedAt)} · ${digest ? digest.slice(0, 12) : "摘要未知"}${verificationMeta}${signatureMeta}${uploadMeta}${purgeMeta}`;
     const message = document.createElement("small");
     message.textContent = receipt.message || receipt.remoteVersion || "远端已接收。";
     item.append(title, meta, message);
     remotePublishReceiptList.appendChild(item);
   });
+}
+
+function formatRemotePublishReceiptVerificationStatus(status) {
+  const labels = {
+    verified: "本机校验通过",
+    "workspace-mismatch": "空间不匹配",
+    "scene-mismatch": "场景不匹配",
+    "digest-mismatch": "摘要不匹配"
+  };
+  return labels[status] || "未校验";
 }
 
 function createRemotePublishContext(record = loadPublishedLayoutRecord()) {

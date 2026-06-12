@@ -26,18 +26,20 @@
     return {
       version: VERSION,
       scenes: {
-        mainScene: normalizeSceneState(source.scenes?.mainScene),
-        realisticScene: normalizeSceneState(source.scenes?.realisticScene)
+        mainScene: normalizeSceneState(source.scenes?.mainScene, { sceneId: "mainScene" }),
+        realisticScene: normalizeSceneState(source.scenes?.realisticScene, { sceneId: "realisticScene" })
       }
     };
   }
 
-  function normalizeSceneState(scene = {}) {
+  function normalizeSceneState(scene = {}, context = {}) {
     const source = scene && typeof scene === "object" ? scene : {};
+    const sceneId = context.sceneId ? normalizeSceneId(context.sceneId) : source.sceneId ? normalizeSceneId(source.sceneId) : "";
+    const workspaceId = normalizeWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId);
     return {
       endpoint: typeof source.endpoint === "string" ? source.endpoint.trim() : "",
       token: typeof source.token === "string" ? source.token.trim() : "",
-      workspaceId: normalizeWorkspaceId(source.workspaceId || source.remoteWorkspaceId || source.accountId),
+      workspaceId,
       lastCheckedAt: normalizeDate(source.lastCheckedAt),
       lastPushedAt: normalizeDate(source.lastPushedAt),
       lastRevokedAt: normalizeDate(source.lastRevokedAt),
@@ -51,12 +53,12 @@
       review: normalizeReviewState(source.review),
       lock: normalizeLockState(source.lock),
       receipts: Array.isArray(source.receipts)
-        ? source.receipts.map((receipt) => normalizeRemoteReceipt(receipt)).filter(Boolean).slice(0, MAX_RECEIPTS)
+        ? source.receipts.map((receipt) => normalizeRemoteReceipt(receipt, { workspaceId, sceneId })).filter(Boolean).slice(0, MAX_RECEIPTS)
         : []
     };
   }
 
-  function normalizeRemoteReceipt(record = {}) {
+  function normalizeRemoteReceipt(record = {}, context = {}) {
     const source = record && typeof record === "object" ? record : {};
     const receipt = source.receipt && typeof source.receipt === "object" ? clone(source.receipt) : {};
     const sceneId = normalizeSceneId(source.sceneId || receipt.sceneId);
@@ -73,8 +75,41 @@
     const cdnPurgeSummary = normalizeCdnPurgeSummary(source.cdnPurgeSummary || receipt.cdnPurgeSummary || receipt.cdnPurge);
     const assetSignatures = normalizeAssetSignatures(source.assetSignatures || receipt.assetSignatures);
     const assetSignatureSummary = normalizeAssetSignatureSummary(source.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
-    const receiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({ sceneId, workspaceId, packageId, releaseId, packageDigest, acceptedAt, pushedAt, revokedAt, direction, sourcePackageId, assetSignatureSummary, cdnUploadSummary, cdnPurgeSummary });
+    const remoteReceiptDigest = normalizeSha256(source.receiptDigest || receipt.receiptDigest);
+    const localReceiptDigest = createRemoteReceiptExpectedDigest({
+      sceneId,
+      workspaceId,
+      packageId,
+      sourcePackageId,
+      releaseId,
+      packageDigest,
+      acceptedAt,
+      pushedAt,
+      revokedAt,
+      direction,
+      assetSignatureSummary,
+      cdnUploadSummary,
+      cdnPurgeSummary
+    });
+    const receiptDigest = remoteReceiptDigest || localReceiptDigest;
+    const verification = verifyRemoteReceipt({
+      sceneId,
+      workspaceId,
+      packageId,
+      sourcePackageId,
+      releaseId,
+      packageDigest,
+      acceptedAt,
+      revokedAt,
+      direction,
+      receiptDigest: remoteReceiptDigest,
+      assetSignatureSummary,
+      cdnUploadSummary,
+      cdnPurgeSummary
+    }, {
+      sceneId: context.sceneId || sceneId,
+      workspaceId: context.workspaceId || workspaceId
+    });
     const warnings = normalizeWarningList(source.warnings || receipt.warnings);
     return {
       id: String(source.id || `receipt-${sceneId}-${receiptDigest.slice(0, 16)}`).slice(0, 180),
@@ -93,6 +128,12 @@
       revokedAt,
       direction,
       message: String(source.message || "").slice(0, 180),
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationDigest: verification.digest,
+      verificationExpectedDigest: verification.expectedDigest,
+      verificationWorkspaceStatus: verification.workspaceStatus,
+      verificationSceneStatus: verification.sceneStatus,
       warningCount: normalizeCount(source.warningCount ?? receipt.warningCount ?? warnings.length),
       warnings,
       cdnUploadSummary,
@@ -119,6 +160,81 @@
       approvedBy: source.approvedBy ? String(source.approvedBy).slice(0, 80) : "",
       note: source.note ? String(source.note).slice(0, 160) : "",
       rejectionReason: source.rejectionReason ? String(source.rejectionReason).slice(0, 160) : ""
+    };
+  }
+
+  function createRemoteReceiptExpectedDigest(receipt = {}) {
+    const direction = normalizeReceiptDirection(receipt.direction);
+    const sceneId = normalizeSceneId(receipt.sceneId);
+    const workspaceId = normalizeWorkspaceId(receipt.workspaceId);
+    const releaseId = String(receipt.releaseId || "").slice(0, 160);
+    const packageDigest = normalizeSha256(receipt.packageDigest);
+    const acceptedAt = normalizeDate(receipt.acceptedAt);
+    if (!sceneId || !workspaceId || !releaseId || !packageDigest || !acceptedAt) {
+      return "";
+    }
+    if (direction === "revoke") {
+      const packageId = String(receipt.packageId || "").slice(0, 160);
+      const sourcePackageId = String(receipt.sourcePackageId || "").slice(0, 160);
+      const revokedAt = normalizeDate(receipt.revokedAt);
+      if (!packageId || !sourcePackageId || !revokedAt) {
+        return "";
+      }
+      return sha256StableJson({
+        direction: "revoke",
+        workspaceId,
+        sceneId,
+        packageId,
+        sourcePackageId,
+        releaseId,
+        packageDigest,
+        acceptedAt,
+        revokedAt,
+        cdnPurgeSummary: normalizeCdnPurgeSummary(receipt.cdnPurgeSummary)
+      });
+    }
+    return sha256StableJson({
+      sceneId,
+      workspaceId,
+      releaseId,
+      packageDigest,
+      acceptedAt,
+      assetSignatureSummary: normalizeAssetSignatureSummary(receipt.assetSignatureSummary),
+      cdnUploadSummary: normalizeCdnUploadSummary(receipt.cdnUploadSummary)
+    });
+  }
+
+  function verifyRemoteReceipt(receipt = {}, context = {}) {
+    const direction = normalizeReceiptDirection(receipt.direction);
+    const sceneId = normalizeSceneId(receipt.sceneId);
+    const expectedSceneId = normalizeSceneId(context.sceneId || sceneId);
+    const workspaceId = normalizeWorkspaceId(receipt.workspaceId);
+    const expectedWorkspaceId = normalizeWorkspaceId(context.workspaceId || workspaceId);
+    const receiptDigest = normalizeSha256(receipt.receiptDigest);
+    const expectedDigest = createRemoteReceiptExpectedDigest(receipt);
+    const digestMatches = Boolean(expectedDigest && receiptDigest && expectedDigest === receiptDigest);
+    const workspaceMatches = workspaceId === expectedWorkspaceId;
+    const sceneMatches = sceneId === expectedSceneId;
+    const status = digestMatches && workspaceMatches && sceneMatches
+      ? "verified"
+      : digestMatches && !sceneMatches
+        ? "scene-mismatch"
+        : digestMatches && !workspaceMatches
+          ? "workspace-mismatch"
+          : "digest-mismatch";
+    const messages = {
+      verified: `本机一致性校验通过：${direction === "revoke" ? "撤销" : "发布"}回执 receiptDigest 可按声明字段重算匹配。`,
+      "scene-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执场景 ${sceneId} 与当前场景 ${expectedSceneId} 不一致。`,
+      "workspace-mismatch": `本机一致性校验警告：receiptDigest 一致，但回执空间 ${workspaceId} 与当前空间 ${expectedWorkspaceId} 不一致。`,
+      "digest-mismatch": `本机一致性校验失败：${direction === "revoke" ? "撤销" : "发布"}回执 receiptDigest 无法按声明字段重算匹配。`
+    };
+    return {
+      status,
+      message: messages[status],
+      digest: receiptDigest,
+      expectedDigest,
+      workspaceStatus: workspaceMatches ? "matched" : "mismatched",
+      sceneStatus: sceneMatches ? "matched" : "mismatched"
     };
   }
 
@@ -318,17 +434,19 @@
     const normalizedId = normalizeSceneId(sceneId);
     const scene = readState().scenes[normalizedId];
     const receipts = Array.isArray(scene.receipts) ? scene.receipts : [];
+    const verifiedCount = receipts.filter((receipt) => receipt.verificationStatus === "verified").length;
     return {
       ok: true,
       sceneId: normalizedId,
       sceneLabel: sceneLabelFromId(normalizedId),
       workspaceId: scene.workspaceId,
       total: receipts.length,
+      verifiedCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: BOUNDARY,
       message: receipts.length
-        ? `已保存 ${receipts.length} 条远端发布回执，当前空间 ${scene.workspaceId}，最近一次：${formatDateTime(receipts[0].acceptedAt || receipts[0].pushedAt)}。`
+        ? `已保存 ${receipts.length} 条远端发布回执，本机校验通过 ${verifiedCount} 条，当前空间 ${scene.workspaceId}，最近一次：${formatDateTime(receipts[0].acceptedAt || receipts[0].pushedAt)}。`
         : "暂无远端发布回执。"
     };
   }
@@ -1364,15 +1482,12 @@
     const assetSignatureSummary = normalizeAssetSignatureSummary(parsed.assetSignatureSummary || receipt.assetSignatureSummary, assetSignatures);
     const cdnUploadSummary = normalizeCdnUploadSummary(parsed.cdnUploadSummary || receipt.cdnUploadSummary || parsed.cdnUpload || receipt.cdnUpload);
     const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({
+      || createRemoteReceiptExpectedDigest({
         sceneId: normalizedId,
         workspaceId,
-        packageId,
         releaseId,
         packageDigest,
-        remoteVersion: parsed.remoteVersion || receipt.remoteVersion || "",
         acceptedAt,
-        pushedAt,
         assetSignatureSummary,
         cdnUploadSummary
       });
@@ -1399,7 +1514,7 @@
       assetSignatures,
       receiptKind: receipt.receiptKind || "",
       receipt
-    });
+    }, { sceneId: normalizedId, workspaceId });
   }
 
   function createRemoteRevokePackage(sceneId, latestReceipt, options = {}) {
@@ -1434,7 +1549,7 @@
     const acceptedAt = normalizeDate(receipt.acceptedAt) || revokedAt;
     const cdnPurgeSummary = normalizeCdnPurgeSummary(parsed.cdnPurgeSummary || receipt.cdnPurgeSummary || parsed.cdnPurge || receipt.cdnPurge);
     const receiptDigest = normalizeSha256(parsed.receiptDigest || receipt.receiptDigest)
-      || sha256StableJson({
+      || createRemoteReceiptExpectedDigest({
         sceneId: normalizedId,
         workspaceId,
         packageId,
@@ -1469,7 +1584,7 @@
       cdnPurgeSummary,
       receiptKind: receipt.receiptKind || "mr-calligraphy-remote-publish-revoke-receipt-v1",
       receipt
-    });
+    }, { sceneId: normalizedId, workspaceId });
   }
 
   function getLatestRevocableReceipt(scene = {}) {
@@ -1665,6 +1780,24 @@
     const source = value && typeof value === "object" ? value : {};
     const uploadedAssetCount = normalizeCount(source.uploadedAssetCount ?? source.assetCount);
     const uploadedUrlCount = normalizeCount(source.uploadedUrlCount ?? source.urlCount);
+    const assetUrls = Array.isArray(source.assetUrls)
+      ? source.assetUrls.map((item, index) => {
+        const record = item && typeof item === "object" ? item : {};
+        const assetId = String(record.assetId || record.id || record.dbKey || `asset-${index + 1}`).slice(0, 160);
+        const url = String(record.url || record.href || "").slice(0, 320);
+        if (!assetId && !url) {
+          return null;
+        }
+        return {
+          assetId,
+          dbKey: String(record.dbKey || record.key || "").slice(0, 180),
+          modelId: String(record.modelId || "").slice(0, 160),
+          assetKind: record.assetKind === "texture" ? "texture" : "model",
+          sha256: normalizeSha256(record.sha256),
+          url
+        };
+      }).filter(Boolean).slice(0, 80)
+      : [];
     return {
       kind: String(source.kind || "mr-calligraphy-remote-publish-cdn-upload-summary-v1").slice(0, 120),
       status: String(source.status || source.uploadStatus || "").slice(0, 80),
@@ -1675,7 +1808,8 @@
       baseUrl: String(source.baseUrl || source.cdnBaseUrl || "").slice(0, 240),
       assetDigest: normalizeSha256(source.assetDigest),
       uploadedAt: normalizeDate(source.uploadedAt || source.completedAt),
-      completedAt: normalizeDate(source.completedAt || source.uploadedAt)
+      completedAt: normalizeDate(source.completedAt || source.uploadedAt),
+      assetUrls
     };
   }
 
@@ -1750,6 +1884,9 @@
             <dt>Source Package</dt><dd>${escapeHtml(receipt.sourcePackageId || "无")}</dd>
             <dt>Package Digest</dt><dd>${escapeHtml(receipt.packageDigest || "未知")}</dd>
             <dt>Receipt Digest</dt><dd>${escapeHtml(receipt.receiptDigest || "未知")}</dd>
+            <dt>本机校验</dt><dd>${escapeHtml(formatReceiptVerificationStatus(receipt.verificationStatus))}</dd>
+            <dt>校验说明</dt><dd>${escapeHtml(receipt.verificationMessage || "未生成本机校验说明")}</dd>
+            <dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "未知")}</dd>
             <dt>Remote Version</dt><dd>${escapeHtml(receipt.remoteVersion || "未知")}</dd>
             <dt>Endpoint</dt><dd>${escapeHtml(receipt.endpoint || "未知")}</dd>
             <dt>Accepted At</dt><dd>${escapeHtml(receipt.acceptedAt || "未知")}</dd>
@@ -1785,7 +1922,7 @@
 <body>
   <main>
     <h1>MR 书法远端发布回执审计</h1>
-    <p class="meta">场景：${escapeHtml(audit.sceneLabel)} · Workspace：${escapeHtml(audit.workspaceId || DEFAULT_WORKSPACE_ID)} · 导出时间：${escapeHtml(generatedAt)} · 回执数量：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    <p class="meta">场景：${escapeHtml(audit.sceneLabel)} · Workspace：${escapeHtml(audit.workspaceId || DEFAULT_WORKSPACE_ID)} · 导出时间：${escapeHtml(generatedAt)} · 回执数量：${audit.total} · 本机校验通过：${normalizeCount(audit.verifiedCount)}<br>${escapeHtml(audit.boundary)}</p>
     ${rows}
   </main>
 </body>
@@ -1831,6 +1968,16 @@
 
   function formatReceiptDirection(direction) {
     return direction === "revoke" ? "撤销" : "发布";
+  }
+
+  function formatReceiptVerificationStatus(status) {
+    const labels = {
+      verified: "本机校验通过",
+      "workspace-mismatch": "空间不匹配",
+      "scene-mismatch": "场景不匹配",
+      "digest-mismatch": "摘要不匹配"
+    };
+    return labels[status] || "未校验";
   }
 
   function escapeHtml(value) {

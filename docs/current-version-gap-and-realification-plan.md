@@ -3423,3 +3423,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增项目仓库回执本机校验`
+
+### 2026-06-12：新增远端发布回执本机校验
+
+完成内容：
+
+- 主后台和写实后台远端发布回执新增本机一致性校验字段。
+- 发布回执会按 `sceneId`、`workspaceId`、`releaseId`、`packageDigest`、`acceptedAt`、`assetSignatureSummary` 和 `cdnUploadSummary` 重算 `receiptDigest`。
+- 撤销回执会按 `direction: revoke`、`workspaceId`、`sceneId`、`packageId`、`sourcePackageId`、`releaseId`、`packageDigest`、`acceptedAt`、`revokedAt` 和 `cdnPurgeSummary` 重算 `receiptDigest`。
+- 回执会检查 workspace 和 scene 是否匹配当前后台场景，区分“本机校验通过 / 空间不匹配 / 场景不匹配 / 摘要不匹配”。
+- 主后台和写实后台远端发布回执列表显示本机校验结果。
+- 远端发布回执审计 HTML 新增本机校验、校验说明和重算摘要字段。
+- `scripts/remote-publish-check.js` 改为生成真实可重算的发布和撤销回执，并验证 fake API 与 mock server 回执都能本机校验通过。
+- Playwright 主后台远端发布用例改为生成真实可重算 receipt，并验证页面、localStorage 和 HTML 审计导出显示本机校验通过。
+- `docs/remote-publish-api-contract.md` 同步本机一致性校验公式、状态字段和生产边界。
+
+真实化说明：
+
+- 数据来源：远端发布 API 返回的 `receipt/latestReceipt`、当前配置的 Workspace 和当前后台场景 ID。
+- 写入状态：写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].receipts[*]` 的校验字段。
+- 成功反馈：远端发布回执摘要、回执列表和导出的审计 HTML 都显示“本机校验通过”。
+- 失败反馈：摘要被篡改或公式不匹配会显示“摘要不匹配”；空间不一致显示“空间不匹配”；场景不一致显示“场景不匹配”。
+- 刷新后复现方式：校验字段随远端发布状态持久化，刷新后台后重新读取仍会规范化保留校验结果。
+
+仍待补：
+
+- 当前校验只能证明远端发布回执声明字段一致、空间匹配和场景匹配，不能替代生产私钥验签、公钥证书链、账号审批、真实 CDN 上传证明、服务端资产回收审计或不可篡改日志。
+
+验收：
+
+- `node --check project-remote-publish.js`
+- `node --check scripts/remote-publish-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/remote-publish-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增远端发布回执本机校验`

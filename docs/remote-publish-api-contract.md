@@ -181,7 +181,7 @@ X-MR-Workspace-Id: <workspaceId>
 
 前端 adapter 会读取 `message`、`workspaceId`、`packageId`、`releaseId`、`packageDigest`、`remoteVersion` 和 `receipt`，并把本机 `workspaceId`、`releaseId`、`packageDigest`、发布锁、最近远端状态、资产签名摘要、CDN 上传摘要和最近回执审计写回 `mr-calligraphy-remote-publish-v1`。
 
-主后台和写实后台会显示最近回执、资产签名数量和 CDN URL 数量，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。当前 mock 服务的资产签名是 HMAC-SHA256 开发验收回执，CDN 上传摘要是 mock URL 证据，不是生产证书签名、不可抵赖签章或生产 CDN 上传保证。
+主后台和写实后台会显示最近回执、本机校验状态、资产签名数量和 CDN URL 数量，并可导出 `MR 书法远端发布回执审计` HTML。该审计是本机浏览器记录，用于开发和验收；生产服务端仍应保存不可篡改审计日志。当前 mock 服务的资产签名是 HMAC-SHA256 开发验收回执，CDN 上传摘要是 mock URL 证据，不是生产证书签名、不可抵赖签章或生产 CDN 上传保证。
 
 ## 6. 撤销发布与 CDN purge 回执
 
@@ -251,7 +251,50 @@ X-MR-Workspace-Id: <workspaceId>
 
 生产服务端应把 CDN purge 的实际请求 ID、状态、URL 数量和完成时间写入回执；当前本机 mock 服务只生成开发验收用的 `mock-cdn` 摘要，不代表生产 CDN 已经失效。
 
-## 7. 失败响应
+## 7. 本机一致性校验
+
+前端 adapter 会对服务端返回的 `receipt.receiptDigest` 做本机重算校验，并把结果写入 `mr-calligraphy-remote-publish-v1.scenes[sceneId].receipts[*]`：
+
+- `verificationStatus`：`verified`、`workspace-mismatch`、`scene-mismatch` 或 `digest-mismatch`。
+- `verificationMessage`：中文校验说明。
+- `verificationDigest`：服务端声明的 `receiptDigest`。
+- `verificationExpectedDigest`：前端按合同字段重算出的摘要。
+- `verificationWorkspaceStatus` / `verificationSceneStatus`：空间和场景匹配状态。
+
+发布回执的 `receiptDigest` 推荐按以下稳定 JSON 计算：
+
+```js
+sha256StableJson({
+  sceneId,
+  workspaceId,
+  releaseId,
+  packageDigest,
+  acceptedAt,
+  assetSignatureSummary,
+  cdnUploadSummary
+})
+```
+
+撤销回执的 `receiptDigest` 推荐按以下稳定 JSON 计算：
+
+```js
+sha256StableJson({
+  direction: "revoke",
+  workspaceId,
+  sceneId,
+  packageId,
+  sourcePackageId,
+  releaseId,
+  packageDigest,
+  acceptedAt,
+  revokedAt,
+  cdnPurgeSummary
+})
+```
+
+如果服务端未返回 `receiptDigest`，前端仍会保存回执并生成本机重算摘要，但不会标记为 `verified`。如果摘要一致但 `workspaceId` 或 `sceneId` 不等于当前配置，页面会显示空间或场景不匹配。
+
+## 8. 失败响应
 
 失败响应建议返回：
 
@@ -275,7 +318,7 @@ X-MR-Workspace-Id: <workspaceId>
 
 如果 `POST` 返回 `409` 且响应中带有 `packageDigest` 或 `releaseId`，前端会把它当作服务端发布锁冲突处理；普通 `422` 或网络异常会释放本机“正在推送”临时锁，避免失败后误锁住当前发布包。
 
-## 8. 本机 mock 服务
+## 9. 本机 mock 服务
 
 启动 mock server：
 
@@ -306,12 +349,12 @@ mock 服务会：
 - 按 workspace 分桶保存回执和重复 `packageDigest` 锁，拒绝同空间重复发布，但不会误拦截其他空间。
 - 对每个带 SHA-256 的模型 / 贴图资产返回 `assetSignatures[*]` HMAC 开发签名；缺哈希资产只返回 warning，不伪造签名。
 - 对每个已签名资产返回 `cdnUploadSummary.assetUrls[*]` mock CDN URL，并统计 `uploadedAssetCount` / `uploadedUrlCount`。
-- 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执、资产签名摘要和 CDN 上传摘要写入本机审计列表。
+- 返回 `mr-calligraphy-remote-publish-receipt-v1` 回执；前端会把该回执、资产签名摘要、CDN 上传摘要和本机一致性校验结果写入本机审计列表。
 - `DELETE` 校验 `mr-calligraphy-remote-publish-revoke-v1` 和 `workspaceId`，只在当前空间按 `sourcePackageId` / `releaseId` / `packageDigest` 匹配可撤销发布回执。
 - `DELETE` 成功后删除 mock 内存中的重复 `packageDigest` 锁，返回 `mr-calligraphy-remote-publish-revoke-receipt-v1` 和 `cdnPurgeSummary`。
 - 撤销后 `GET` 的最近回执仍可见，但不再返回发布锁；相同发布包可重新 POST。
 
-## 9. 验收
+## 10. 验收
 
 脚本验收：
 
@@ -320,4 +363,4 @@ node scripts/remote-publish-check.js
 node scripts/smoke-test.js --base-url=http://localhost:41496/
 ```
 
-`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` / `DELETE` 验证 endpoint、Bearer token、Workspace header、发布包和撤销包 `workspaceId`、模型/贴图资产清单、远端资产签名回执、CDN upload 摘要、发布包回执、撤销回执、CDN purge 摘要、回执审计导出、服务端锁预检、同空间重复摘要拒绝、撤销后重新发布、远端拒收释放临时锁和远端发布状态持久化。
+`remote-publish-check.js` 会启动临时 mock server，用真实 HTTP `GET` / `POST` / `DELETE` 验证 endpoint、Bearer token、Workspace header、发布包和撤销包 `workspaceId`、模型/贴图资产清单、远端资产签名回执、CDN upload 摘要、发布包回执、撤销回执、CDN purge 摘要、回执本机一致性校验、回执审计导出、服务端锁预检、同空间重复摘要拒绝、撤销后重新发布、远端拒收释放临时锁和远端发布状态持久化。

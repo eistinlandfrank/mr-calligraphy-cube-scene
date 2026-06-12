@@ -1785,6 +1785,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       body
     });
     if (method === "POST") {
+      const acceptedAt = new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString();
+      const assetSignatureSummary = {
+        kind: "mr-calligraphy-remote-publish-asset-signature-summary-v1",
+        signedAssetCount: 0,
+        unsignedAssetCount: 0,
+        missingHashCount: 0,
+        signatureAlgorithm: "",
+        signingKeyId: "",
+        assetDigest: body.manifest.assetDigest,
+        signedAt: acceptedAt
+      };
       const cdnUploadSummary = {
         kind: "mr-calligraphy-remote-publish-cdn-upload-summary-v1",
         status: "uploaded",
@@ -1794,8 +1805,9 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         uploadedUrlCount: Math.max(1, body.assetManifest.assets.length),
         baseUrl: `https://e2e-cdn.invalid/${body.sceneId}/`,
         assetDigest: body.manifest.assetDigest,
-        uploadedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString(),
-        completedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString()
+        uploadedAt: acceptedAt,
+        completedAt: acceptedAt,
+        assetUrls: []
       };
       latestRemotePublishReceipt = {
         receiptKind: "mr-calligraphy-remote-publish-receipt-v1",
@@ -1805,11 +1817,21 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         releaseId: body.release.id,
         sceneId: body.sceneId,
         packageDigest: body.manifest.packageDigest,
-        acceptedAt: new Date(Date.UTC(2026, 5, 12, 8, 20, 0)).toISOString(),
+        acceptedAt,
         remoteVersion: "e2e-remote-v1",
+        assetSignatureSummary,
         cdnUploadSummary,
         message: "主场景远端 E2E 回执。"
       };
+      latestRemotePublishReceipt.receiptDigest = sha256StableJson({
+        sceneId: latestRemotePublishReceipt.sceneId,
+        workspaceId: latestRemotePublishReceipt.workspaceId,
+        releaseId: latestRemotePublishReceipt.releaseId,
+        packageDigest: latestRemotePublishReceipt.packageDigest,
+        acceptedAt,
+        assetSignatureSummary,
+        cdnUploadSummary
+      });
       await route.fulfill({
         status: 201,
         contentType: "application/json",
@@ -1828,6 +1850,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
       return;
     }
     if (method === "DELETE") {
+      const acceptedAt = new Date(Date.UTC(2026, 5, 12, 8, 25, 0)).toISOString();
       const cdnPurgeSummary = {
         kind: "mr-calligraphy-remote-publish-cdn-purge-summary-v1",
         status: "accepted",
@@ -1836,7 +1859,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         purgedAssetCount: 1,
         purgedUrlCount: 1,
         requestedAt: body.requestedAt,
-        completedAt: new Date(Date.UTC(2026, 5, 12, 8, 25, 0)).toISOString()
+        completedAt: acceptedAt
       };
       latestRemotePublishReceipt = {
         receiptKind: "mr-calligraphy-remote-publish-revoke-receipt-v1",
@@ -1847,13 +1870,24 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
         releaseId: body.releaseId,
         sceneId: body.sceneId,
         packageDigest: body.packageDigest,
-        acceptedAt: cdnPurgeSummary.completedAt,
-        revokedAt: cdnPurgeSummary.completedAt,
+        acceptedAt,
+        revokedAt: acceptedAt,
         remoteVersion: "e2e-remote-v1",
         cdnPurgeSummary,
-        receiptDigest: "f".repeat(64),
         message: "主场景远端 E2E 已撤销。"
       };
+      latestRemotePublishReceipt.receiptDigest = sha256StableJson({
+        direction: "revoke",
+        workspaceId: latestRemotePublishReceipt.workspaceId,
+        sceneId: latestRemotePublishReceipt.sceneId,
+        packageId: latestRemotePublishReceipt.packageId,
+        sourcePackageId: latestRemotePublishReceipt.sourcePackageId,
+        releaseId: latestRemotePublishReceipt.releaseId,
+        packageDigest: latestRemotePublishReceipt.packageDigest,
+        acceptedAt,
+        revokedAt: acceptedAt,
+        cdnPurgeSummary
+      });
       await route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -2249,7 +2283,9 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.locator("#mainRemotePublishPush").click();
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 已接收");
   await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("1 条");
+  await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("本机校验通过 1 条");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("e2e-mainScene");
+  await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("本机校验通过");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("CDN 1");
 
   expect(remoteRequests.some((item) => item.method === "GET" && item.authorization === "Bearer e2e-token" && item.workspaceId === "main-remote-e2e")).toBe(true);
@@ -2268,6 +2304,9 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(remoteState.scenes.mainScene.lastRemoteVersion).toBe("e2e-remote-v1");
   expect(remoteState.scenes.mainScene.receipts[0].packageId).toBe("e2e-mainScene");
   expect(remoteState.scenes.mainScene.receipts[0].workspaceId).toBe("main-remote-e2e");
+  expect(remoteState.scenes.mainScene.receipts[0].receiptDigest).toBe(latestRemotePublishReceipt.receiptDigest);
+  expect(remoteState.scenes.mainScene.receipts[0].verificationStatus).toBe("verified");
+  expect(remoteState.scenes.mainScene.receipts[0].verificationExpectedDigest).toBe(latestRemotePublishReceipt.receiptDigest);
   expect(remoteState.scenes.mainScene.receipts[0].cdnUploadSummary.uploadedUrlCount).toBe(1);
   expect(remoteState.scenes.mainScene.receipts[0].cdnUploadSummary.cdnProvider).toBe("e2e-cdn");
 
@@ -2275,7 +2314,9 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.locator("#mainRemotePublishRevoke").click();
   await expect(page.locator("#mainRemotePublishStatus")).toContainText("主场景远端 E2E 已撤销");
   await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("2 条");
+  await expect(page.locator("#mainRemotePublishReceiptStatus")).toContainText("本机校验通过 2 条");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("撤销");
+  await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("本机校验通过");
   await expect(page.locator("#mainRemotePublishReceiptList")).toContainText("purge 1");
   const deleteRequest = remoteRequests.find((item) => item.method === "DELETE");
   expect(deleteRequest.authorization).toBe("Bearer e2e-token");
@@ -2287,14 +2328,23 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(revokedRemoteState.scenes.mainScene.lastRemoteDirection).toBe("revoke");
   expect(revokedRemoteState.scenes.mainScene.receipts[0].direction).toBe("revoke");
   expect(revokedRemoteState.scenes.mainScene.receipts[0].workspaceId).toBe("main-remote-e2e");
+  expect(revokedRemoteState.scenes.mainScene.receipts[0].verificationStatus).toBe("verified");
+  expect(revokedRemoteState.scenes.mainScene.receipts[0].verificationExpectedDigest).toBe(latestRemotePublishReceipt.receiptDigest);
   expect(revokedRemoteState.scenes.mainScene.receipts[0].cdnPurgeSummary.purgedUrlCount).toBe(1);
   expect(revokedRemoteState.scenes.mainScene.receipts[1].packageId).toBe("e2e-mainScene");
+  expect(revokedRemoteState.scenes.mainScene.receipts[1].verificationStatus).toBe("verified");
   await expect(page.locator("#mainRemotePublishRevoke")).toBeDisabled();
 
   const receiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#mainRemotePublishReceiptExport").click();
   const receiptDownload = await receiptDownloadPromise;
   expect(receiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-mainScene-remote-receipts-/);
+  const receiptDownloadPath = await receiptDownload.path();
+  const receiptHtml = fs.readFileSync(receiptDownloadPath, "utf8");
+  expect(receiptHtml).toContain("MR 书法远端发布回执审计");
+  expect(receiptHtml).toContain("本机校验通过");
+  expect(receiptHtml).toContain("重算摘要");
+  expect(receiptHtml).toContain(latestRemotePublishReceipt.receiptDigest);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
