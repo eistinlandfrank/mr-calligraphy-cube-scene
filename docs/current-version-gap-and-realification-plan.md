@@ -4548,3 +4548,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增作品仓库冲突审计`
+
+## 111. 2026-06-13 新增作品集 HTML 导出
+
+本次把前台作品集从“可保存、搜索、迁移 JSON 包”推进到“可一键导出离线可读作品集”。用户可以把当前浏览器里的多幅作品下载为 HTML，直接打开、打印或手动分享给老师和同学。
+
+完成内容：
+
+- 新增 `mr-calligraphy-artwork-collection-v1` 导出格式和 `ARTWORK_COLLECTION_BOUNDARY` 边界说明。
+- 新增 `MRAppState.getArtworkCollectionExport()`，从本机作品、关联练习、评分证据和标签生成作品集数据与 HTML。
+- 新增 `MRAppState.downloadArtworkCollectionPage()`，真实触发 HTML 下载，并写入最近作品集导出时间和作品数。
+- 前台作品仓库工具区新增 `artworkCollectionExportButton`，按钮文案为“导出作品集”。
+- `getArtworkRepositoryStatus()` 会按时间显示最近导入、JSON 仓库导出或 HTML 作品集导出，避免旧状态遮住新操作。
+- E2E 用例会点击“导出作品集”，读取下载 HTML，验证 `MR 书法作品集`、`ArtworkCollection: yes`、边界说明、冲突副本反馈和“导入副本”内容。
+- smoke test 新增作品集导出按钮静态标记。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.artworks`、关联 `sessions`、作品截图、标签、反馈和评分证据。
+- 写入状态：`artworkRepository.lastCollectionExportedAt` 与 `lastCollectionArtworkCount`。
+- 成功反馈：页面 notice 显示已生成并下载的文件名，作品仓库状态显示最近导出离线 HTML 作品集。
+- 失败反馈：没有作品时返回明确失败并不触发假下载。
+- 刷新后复现方式：最近导出状态保存在 localStorage；导出的 HTML 文件本身可离线打开。
+
+仍待补：
+
+- 当前是本机静态 HTML 作品集，不是账号化公开作品集、课堂作品墙、跨设备作品库、生产 CDN、社交平台发布或云端权限系统。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品集 HTML 导出`

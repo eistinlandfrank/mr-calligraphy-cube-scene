@@ -941,6 +941,7 @@ const els = {
   artworkGalleryStatus: document.getElementById("artworkGalleryStatus"),
   artworkSearch: document.getElementById("artworkSearch"),
   artworkRepositoryStatus: document.getElementById("artworkRepositoryStatus"),
+  artworkCollectionExportButton: document.getElementById("artworkCollectionExportButton"),
   artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
   artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
   artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
@@ -4189,6 +4190,7 @@ function bindHistoryControls() {
     activeArtworkSearch = els.artworkSearch.value;
     renderHistoryArtworkGallery();
   });
+  els.artworkCollectionExportButton?.addEventListener("click", exportArtworkCollectionPage);
   els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
   els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
   els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
@@ -8824,6 +8826,9 @@ function renderArtworkRepositoryStatus() {
   if (els.artworkRepositoryExportButton) {
     els.artworkRepositoryExportButton.disabled = !status.artworkCount;
   }
+  if (els.artworkCollectionExportButton) {
+    els.artworkCollectionExportButton.disabled = !status.artworkCount;
+  }
   renderArtworkRepositoryConflictPanel(status);
 }
 
@@ -9899,6 +9904,12 @@ function exportArtworkRepository() {
   const result = window.MRAppState?.downloadArtworkRepository?.();
   renderHistoryArtworkGallery();
   showNotice(result?.message || "当前没有可导出的作品仓库包。");
+}
+
+function exportArtworkCollectionPage() {
+  const result = window.MRAppState?.downloadArtworkCollectionPage?.();
+  renderHistoryArtworkGallery();
+  showNotice(result?.message || "当前没有可导出的离线作品集。");
 }
 
 function openArtworkRepositoryImport() {

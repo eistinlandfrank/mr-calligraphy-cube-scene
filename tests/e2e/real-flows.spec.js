@@ -1516,9 +1516,23 @@ test("front artwork repository exports and imports local artwork package", async
   await page.locator("#artworkRepositoryConflictList [data-artwork-conflict-action='copy-incoming']").click();
   await expect(page.locator("#artworkRepositoryConflictPanel")).toBeHidden();
   await expect(page.locator("#artworkGalleryStatus")).toContainText("3/3 幅作品");
+  await expect(page.locator("#artworkCollectionExportButton")).toBeEnabled();
+  const collectionDownloadPromise = page.waitForEvent("download");
+  await page.locator("#artworkCollectionExportButton").click();
+  const collectionDownload = await collectionDownloadPromise;
+  expect(collectionDownload.suggestedFilename()).toMatch(/^mr-calligraphy-artwork-collection-.*\.html$/);
+  const collectionHtml = fs.readFileSync(await collectionDownload.path(), "utf8");
+  expect(collectionHtml).toContain("MR 书法作品集");
+  expect(collectionHtml).toContain("ArtworkCollection: yes");
+  expect(collectionHtml).toContain("不是云端公开链接");
+  expect(collectionHtml).toContain("E2E 作品仓库冲突版本");
+  expect(collectionHtml).toContain("导入副本");
+  await expect(page.locator("#artworkRepositoryStatus")).toContainText("离线 HTML 作品集");
   const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(resolvedState.artworks).toHaveLength(3);
   expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
+  expect(resolvedState.artworkRepository.lastCollectionArtworkCount).toBe(3);
+  expect(resolvedState.artworkRepository.lastCollectionExportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastConflictRecords).toHaveLength(0);
 });
 

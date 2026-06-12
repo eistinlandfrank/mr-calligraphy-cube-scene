@@ -9685,3 +9685,49 @@
 提交：
 
 - 中文 commit message：`新增作品仓库冲突审计`
+
+### 2026-06-13：新增作品集 HTML 导出
+
+功能名：前台离线作品集导出。
+
+开发原因：
+
+- 作品仓库 JSON 已经能迁移作品数据，但普通用户打开后只看到数据包，不适合课堂展示、打印或手动分享。
+- 作品分享页主要面向单幅作品，用户仍缺少“一次导出当前浏览器多幅作品”的可阅读作品集。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-artwork-collection-v1` 离线作品集导出格式和边界说明。
+- 新增 `MRAppState.getArtworkCollectionExport()` 和 `downloadArtworkCollectionPage()`，可把当前浏览器里的多幅 `ArtworkRecord` 渲染为独立 HTML。
+- HTML 作品集包含作品截图或字样占位、标题、字、风格、标签、评分、笔画数、采样数、五维评分条、反馈和评分证据摘要。
+- 导出后写入 `artworkRepository.lastCollectionExportedAt` 和 `lastCollectionArtworkCount`，状态栏按最近动作显示“离线 HTML 作品集”结果。
+- 前台作品集新增“导出作品集”真实按钮；无作品时禁用，有作品时触发浏览器下载 `mr-calligraphy-artwork-collection-*.html`。
+- Playwright 作品仓库用例扩展为点击“导出作品集”，读取下载 HTML 并验证作品标题、冲突副本反馈、边界说明和 `ArtworkCollection: yes` 标记。
+- smoke test 新增 `artworkCollectionExportButton` 页面标记。
+
+验收方式：
+
+- 保存或导入至少一幅作品后进入学习档案作品集。
+- 点击“导出作品集”应下载 `mr-calligraphy-artwork-collection-*.html`。
+- 用浏览器打开下载文件，应看到“MR 书法作品集”、作品卡片、标签、分数和“打印 / 保存 PDF”按钮。
+- 若刚处理过作品仓库冲突副本，导出的 HTML 里应包含该副本作品和导入反馈。
+
+真实边界：
+
+- 数据来源：当前浏览器本机 `ArtworkRecord`、关联练习、评分证据、截图、标签和反馈。
+- 这是可离线打开、打印或手动分享的静态 HTML 文件，不是云端公开链接、账号权限、课堂作品墙、生产 CDN 或跨设备作品库。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品集 HTML 导出`

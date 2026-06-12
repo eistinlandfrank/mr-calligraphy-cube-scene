@@ -28,6 +28,8 @@
   const ARTWORK_REPOSITORY_KIND = "mr-calligraphy-artwork-repository-v1";
   const ARTWORK_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const ARTWORK_REPOSITORY_BOUNDARY = "作品仓库导出当前浏览器中的 ArtworkRecord、关联练习摘要和评分证据，便于本机备份、迁移或课堂收集后手动导入；它不是账号化公开作品集、课堂作品墙或云端存储。";
+  const ARTWORK_COLLECTION_KIND = "mr-calligraphy-artwork-collection-v1";
+  const ARTWORK_COLLECTION_BOUNDARY = "作品集 HTML 导出会把当前浏览器里的多幅 ArtworkRecord 渲染成可离线打开、打印或手动分享的静态作品集；它不是云端公开链接、课堂作品墙、账号权限或生产 CDN。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -2034,6 +2036,8 @@
       lastExportedSessionCount: normalizeInteger(source.lastExportedSessionCount, 0, 0, 99999),
       lastImportedArtworkCount: normalizeInteger(source.lastImportedArtworkCount, 0, 0, 99999),
       lastImportedSessionCount: normalizeInteger(source.lastImportedSessionCount, 0, 0, 99999),
+      lastCollectionExportedAt: normalizePlanDate(source.lastCollectionExportedAt),
+      lastCollectionArtworkCount: normalizeInteger(source.lastCollectionArtworkCount, 0, 0, 99999),
       lastSkippedConflictCount: normalizeInteger(source.lastSkippedConflictCount, 0, 0, 99999),
       lastConflictRecords,
       lastPackageId: source.lastPackageId ? String(source.lastPackageId).slice(0, 160) : null,
@@ -12656,12 +12660,31 @@
       ? `本机作品仓库有 ${artworkCount} 幅作品，关联 ${linkedSessionCount} 条练习，可导出 JSON 仓库包。`
       : "还没有可导出的作品；保存作品后可生成本机作品仓库包。";
 
-    if (repository.lastImportedAt) {
+    const lastRepositoryEvents = [
+      repository.lastImportedAt
+        ? {
+            at: repository.lastImportedAt,
+            message: `最近导入 ${repository.lastImportedArtworkCount} 幅作品、${repository.lastImportedSessionCount} 条关联练习：${formatPlanDate(repository.lastImportedAt)}。`
+          }
+        : null,
+      repository.lastExportedAt
+        ? {
+            at: repository.lastExportedAt,
+            message: `最近导出 ${repository.lastExportedArtworkCount} 幅作品、${repository.lastExportedSessionCount} 条关联练习：${formatPlanDate(repository.lastExportedAt)}。`
+          }
+        : null,
+      repository.lastCollectionExportedAt
+        ? {
+            at: repository.lastCollectionExportedAt,
+            message: `最近导出 ${repository.lastCollectionArtworkCount} 幅作品的离线 HTML 作品集：${formatPlanDate(repository.lastCollectionExportedAt)}。`
+          }
+        : null
+    ]
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.at || 0) - Date.parse(a.at || 0));
+    if (lastRepositoryEvents.length) {
       tone = "ready";
-      message = `最近导入 ${repository.lastImportedArtworkCount} 幅作品、${repository.lastImportedSessionCount} 条关联练习：${formatPlanDate(repository.lastImportedAt)}。`;
-    } else if (repository.lastExportedAt) {
-      tone = "ready";
-      message = `最近导出 ${repository.lastExportedArtworkCount} 幅作品、${repository.lastExportedSessionCount} 条关联练习：${formatPlanDate(repository.lastExportedAt)}。`;
+      message = lastRepositoryEvents[0].message;
     }
     if (repository.lastSkippedConflictCount > 0) {
       tone = "warning";
@@ -12689,6 +12712,8 @@
       lastExportedSessionCount: repository.lastExportedSessionCount,
       lastImportedArtworkCount: repository.lastImportedArtworkCount,
       lastImportedSessionCount: repository.lastImportedSessionCount,
+      lastCollectionExportedAt: repository.lastCollectionExportedAt,
+      lastCollectionArtworkCount: repository.lastCollectionArtworkCount,
       lastSkippedConflictCount: repository.lastSkippedConflictCount,
       lastConflictRecords: clone(repository.lastConflictRecords),
       lastPackageId: repository.lastPackageId,
@@ -12786,6 +12811,239 @@
       status: getArtworkRepositoryStatus(),
       message: `已下载作品仓库 JSON 包：${result.filename}。${ARTWORK_REPOSITORY_BOUNDARY}`
     };
+  }
+
+  function getArtworkCollectionExport(options = {}) {
+    const selectedIds = Array.isArray(options.ids)
+      ? new Set(options.ids.map(String).filter(Boolean))
+      : null;
+    const artworks = state.artworks
+      .filter((artwork) => !selectedIds || selectedIds.has(artwork.id))
+      .map(normalizeArtwork)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0));
+    if (!artworks.length) {
+      return {
+        ok: false,
+        message: "还没有可导出的作品集。请先保存作品。"
+      };
+    }
+
+    const linkedSessions = getArtworkRepositoryLinkedSessions(artworks);
+    const exportedAt = new Date().toISOString();
+    const collection = {
+      kind: ARTWORK_COLLECTION_KIND,
+      version: VERSION,
+      exportedAt,
+      storageKey: STORAGE_KEY,
+      boundary: ARTWORK_COLLECTION_BOUNDARY,
+      summary: getArtworkRepositorySummary(artworks, linkedSessions),
+      artworks: artworks.map(decorateArtworkCollectionItem),
+      linkedSessions: clone(linkedSessions)
+    };
+    return {
+      ok: true,
+      collection: clone(collection),
+      html: createArtworkCollectionHtml(collection),
+      filename: `mr-calligraphy-artwork-collection-${Date.now()}.html`,
+      message: `已生成 ${artworks.length} 幅作品的离线 HTML 作品集。${ARTWORK_COLLECTION_BOUNDARY}`
+    };
+  }
+
+  function downloadArtworkCollectionPage(options = {}) {
+    const result = getArtworkCollectionExport(options);
+    if (!result.ok) {
+      recordArtworkRepositoryError(result.message);
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    const now = new Date().toISOString();
+    state.artworkRepository = normalizeArtworkRepository({
+      ...state.artworkRepository,
+      lastCollectionExportedAt: now,
+      lastCollectionArtworkCount: result.collection.artworks.length,
+      lastCheckedAt: now,
+      lastError: ""
+    });
+    addEvent("artwork-collection-export", `导出离线作品集：${result.collection.artworks.length} 幅作品`);
+    saveState();
+    return {
+      ok: true,
+      filename: result.filename,
+      exportedArtworkCount: result.collection.artworks.length,
+      status: getArtworkRepositoryStatus(),
+      message: `${result.message} 已下载：${result.filename}。`
+    };
+  }
+
+  function decorateArtworkCollectionItem(artwork) {
+    const galleryItem = decorateArtworkGalleryItem(artwork);
+    const session = findArtworkSession(artwork);
+    const metrics = pickRealMetrics(session?.metrics) || {};
+    const feedback = galleryItem.feedback?.length
+      ? galleryItem.feedback
+      : session?.feedback?.length
+        ? clone(session.feedback)
+        : [];
+    const scoreEvidence = hasUsableScoreEvidence(artwork.scoreEvidence)
+      ? normalizeScoreEvidence(artwork.scoreEvidence, artwork)
+      : hasUsableScoreEvidence(session?.scoreEvidence)
+        ? normalizeScoreEvidence(session.scoreEvidence, session)
+        : null;
+    return {
+      ...galleryItem,
+      metrics,
+      feedback,
+      scoreEvidenceSummary: scoreEvidence
+        ? {
+            algorithmVersion: scoreEvidence.algorithmVersion || DEFAULT_SCORE_ALGORITHM_VERSION,
+            pathFitPercent: normalizeInteger(scoreEvidence.evidence?.pathFitPercent, 0, 0, 100),
+            pressurePointCount: normalizeInteger(scoreEvidence.evidence?.pressurePointCount, 0, 0, 99999),
+            heatmapCount: normalizePathErrorHotspots(scoreEvidence.evidence?.pathErrorHotspots).length,
+            strokeMatchCount: normalizeStrokeMatchList(scoreEvidence.evidence?.strokeMatches).length
+          }
+        : null,
+      session: session
+        ? {
+            id: session.id,
+            title: session.title || `${session.glyph}字练习`,
+            copybook: session.copybook,
+            trainingMode: session.trainingMode,
+            createdAt: session.endedAt || session.snapshotAt || session.startedAt
+          }
+        : null
+    };
+  }
+
+  function createArtworkCollectionHtml(collection) {
+    const summary = collection.summary || {};
+    const artworks = Array.isArray(collection.artworks) ? collection.artworks : [];
+    const tagCounts = new Map();
+    artworks.forEach((artwork) => {
+      (artwork.tags || []).forEach((tag) => tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1));
+    });
+    const tags = [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "zh-Hans-CN"))
+      .slice(0, 18);
+    const tagCloud = tags.length
+      ? tags.map(([tag, count]) => `<span>${escapeHtml(tag)} ${count}</span>`).join("")
+      : `<span>未标记</span>`;
+    const cards = artworks.map((artwork) => createArtworkCollectionCardHtml(artwork)).join("");
+    const watermarkText = `MR 书法作品集 · ${formatDateTime(collection.exportedAt)} · ${artworks.length} 幅作品`;
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法作品集 · ${escapeHtml(artworks.length)} 幅作品</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#66766f; --line:#dce5df; --paper:#fbf7ee; --card:#ffffff; --wash:#eef7f2; --jade:#257861; --gold:#b98238; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { position: relative; z-index: 1; width: min(1120px, calc(100% - 28px)); margin: 0 auto; padding: 28px 0 44px; }
+    .watermark { position: fixed; inset: 0; z-index: 0; display: grid; place-items: center; pointer-events: none; color: rgba(37, 120, 97, 0.08); font-size: clamp(28px, 7vw, 68px); font-weight: 900; text-align: center; transform: rotate(-24deg); }
+    .toolbar { position: sticky; top: 0; z-index: 2; display: flex; justify-content: flex-end; margin-bottom: 14px; padding: 9px 0; background: var(--paper); }
+    button { min-height: 38px; padding: 0 16px; border: 1px solid var(--ink); border-radius: 8px; color: #fff; background: var(--ink); font: inherit; cursor: pointer; }
+    header { display: grid; gap: 12px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, h3, p, figure { margin: 0; }
+    h1 { font-size: clamp(34px, 7vw, 64px); line-height: 1.05; letter-spacing: 0; }
+    h2 { font-size: 20px; }
+    h3 { font-size: 17px; line-height: 1.25; }
+    .meta, .muted { color: var(--muted); }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+    .stat, .card, .box { border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+    .stat { padding: 14px; }
+    .stat span { display: block; color: var(--muted); font-size: 12px; }
+    .stat strong { display: block; margin-top: 4px; font-size: 28px; line-height: 1.1; }
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tags span { min-height: 26px; padding: 3px 9px; border-radius: 99px; color: var(--ink); background: #edf5ef; font-size: 12px; font-weight: 800; }
+    .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+    .card { display: grid; grid-template-rows: 230px minmax(0, 1fr); overflow: hidden; break-inside: avoid; page-break-inside: avoid; }
+    .artwork-media { display: grid; min-height: 230px; place-items: center; background: #f1e5ce; }
+    .artwork-media img { width: 100%; height: 100%; object-fit: contain; }
+    .artwork-media span { color: rgba(48, 34, 20, 0.74); font-size: 64px; font-weight: 900; }
+    .card-body { display: grid; gap: 10px; padding: 14px; }
+    .card-meta { color: var(--muted); font-size: 12px; font-weight: 760; }
+    .card-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+    .card-stats span { min-height: 54px; padding: 8px; border-radius: 7px; background: var(--wash); color: var(--muted); font-size: 12px; }
+    .card-stats strong { display: block; color: var(--ink); font-size: 18px; }
+    .metrics, .feedback { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+    .metrics li { display: grid; grid-template-columns: 48px 1fr 34px; gap: 7px; align-items: center; font-size: 12px; }
+    .metrics b { height: 9px; overflow: hidden; border-radius: 99px; background: var(--line); }
+    .metrics i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--jade), var(--gold)); }
+    .feedback li { padding-left: 8px; border-left: 3px solid rgba(37, 120, 97, 0.28); color: var(--muted); font-size: 12px; }
+    .box { display: grid; gap: 8px; padding: 14px; margin-top: 18px; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media print { @page { size: A4; margin: 12mm; } body { background: #fff; font-size: 12px; } main { width: 100%; padding: 0; } .toolbar { display: none; } .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } .card { grid-template-rows: 180px minmax(0, 1fr); } .artwork-media { min-height: 180px; } }
+    @media (max-width: 900px) { .grid, .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 620px) { main { width: min(100% - 20px, 1120px); padding-top: 18px; } .grid, .stats { grid-template-columns: 1fr; } .card { grid-template-rows: 210px minmax(0, 1fr); } .artwork-media { min-height: 210px; } }
+  </style>
+</head>
+<body>
+  <div class="watermark" aria-hidden="true">${escapeHtml(watermarkText)}</div>
+  <main>
+    <div class="toolbar"><button type="button" onclick="window.print()">打印 / 保存 PDF</button></div>
+    <header>
+      <p class="meta">MR Calligraphy Artwork Collection · ${escapeHtml(formatDateTime(collection.exportedAt))}</p>
+      <h1>MR 书法作品集</h1>
+      <p class="muted">这是一份本机离线 HTML 作品集，数据来自当前浏览器保存的真实作品记录；可打印或手动分享，不是云端公开链接。</p>
+      <div class="tags">${tagCloud}</div>
+    </header>
+    <section class="stats" aria-label="作品集摘要">
+      <div class="stat"><span>作品</span><strong>${summary.total || artworks.length}</strong></div>
+      <div class="stat"><span>平均分</span><strong>${summary.averageScore || 0}</strong></div>
+      <div class="stat"><span>有截图</span><strong>${summary.imageCount || 0}</strong></div>
+      <div class="stat"><span>关联练习</span><strong>${summary.linkedSessionCount || 0}</strong></div>
+    </section>
+    <section class="grid" aria-label="作品卡片">
+      ${cards}
+    </section>
+    <section class="box">
+      <h2>导出边界</h2>
+      <p class="muted">${escapeHtml(collection.boundary || ARTWORK_COLLECTION_BOUNDARY)}</p>
+      <p class="muted">ArtworkCollection: yes · StorageKey: ${escapeHtml(collection.storageKey || STORAGE_KEY)} · ExportedAt: ${escapeHtml(collection.exportedAt)}</p>
+    </section>
+    <footer>作品集包含 ${escapeHtml(artworks.length)} 幅作品。若需要可迁移数据，请同时导出作品仓库 JSON 包。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function createArtworkCollectionCardHtml(artwork) {
+    const metrics = artwork.metrics || {};
+    const image = artwork.imageData
+      ? `<img src="${escapeAttr(artwork.imageData)}" alt="${escapeAttr(artwork.title)}">`
+      : `<span>${escapeHtml(artwork.glyph || "作品")}</span>`;
+    const tags = (artwork.tags?.length ? artwork.tags : [artwork.glyph, artwork.style].filter(Boolean))
+      .slice(0, 6)
+      .map((tag) => `<span>${escapeHtml(tag)}</span>`)
+      .join("");
+    const metricRows = SCORE_METRICS.map((metric) => {
+      const value = normalizeScore(metrics[metric.key], 0);
+      return `<li><span>${escapeHtml(metric.label)}</span><b><i style="width:${value}%"></i></b><strong>${value || "-"}</strong></li>`;
+    }).join("");
+    const feedback = artwork.feedback?.length
+      ? artwork.feedback.slice(0, 3).map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+      : `<li>暂无自动反馈；这张卡片只展示已有记录。</li>`;
+    const evidence = artwork.scoreEvidenceSummary
+      ? `证据 ${artwork.scoreEvidenceSummary.pathFitPercent || 0}% / 热力 ${artwork.scoreEvidenceSummary.heatmapCount || 0}`
+      : "无评分证据";
+    return `<article class="card">
+      <div class="artwork-media">${image}</div>
+      <div class="card-body">
+        <h3>${escapeHtml(artwork.title)}</h3>
+        <p class="card-meta">${escapeHtml(formatDateTime(artwork.createdAt))} / ${escapeHtml(artwork.glyph || "-")} / ${escapeHtml(artwork.style || "-")}</p>
+        <div class="tags">${tags}</div>
+        <div class="card-stats">
+          <span>评分<strong>${artwork.score || 0}</strong></span>
+          <span>笔画<strong>${artwork.strokeCount || 0}</strong></span>
+          <span>采样<strong>${artwork.pointCount || 0}</strong></span>
+        </div>
+        <ul class="metrics">${metricRows}</ul>
+        <ul class="feedback">${feedback}</ul>
+        <p class="card-meta">${escapeHtml(evidence)}${artwork.session ? ` / ${escapeHtml(artwork.session.copybook || "")}` : ""}</p>
+      </div>
+    </article>`;
   }
 
   function getArtworkRepositorySummary(artworks = [], linkedSessions = []) {
@@ -15679,6 +15937,8 @@
     downloadReportTeacherReviewAudit,
     downloadPracticeVideoExportAudit,
     downloadArtworkRepository,
+    getArtworkCollectionExport,
+    downloadArtworkCollectionPage,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

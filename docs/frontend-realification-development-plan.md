@@ -4078,3 +4078,44 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品仓库冲突审计`
+
+## 111. 2026-06-13 新增作品集 HTML 导出
+
+本次把作品集新增为真实可下载的离线展示页。它和“导出仓库”分工不同：仓库 JSON 用于迁移数据，作品集 HTML 用于阅读、打印和手动分享。
+
+完成内容：
+
+- 作品集工具区新增 `artworkCollectionExportButton`，文案为“导出作品集”。
+- 点击后调用 `MRAppState.downloadArtworkCollectionPage()`，浏览器会下载 `mr-calligraphy-artwork-collection-*.html`。
+- HTML 页面内置样式、作品卡片、标签云、四项摘要、五维评分条、反馈列表、评分证据摘要和“打印 / 保存 PDF”按钮。
+- 空作品状态下“导出作品集”和“导出仓库”一起禁用，避免假按钮。
+- 导出成功后刷新作品仓库状态，显示最近导出离线 HTML 作品集的作品数量和时间。
+- Playwright 用例读取下载 HTML 文件，确认它包含真实作品内容和离线作品集边界说明。
+- smoke test 新增 `artworkCollectionExportButton` 标记。
+
+真实化说明：
+
+- 数据来源：前台本机作品集、关联练习、评分证据、截图、标签和反馈。
+- 写入状态：`mr-calligraphy-learning-state-v1.artworkRepository.lastCollectionExportedAt` 和 `lastCollectionArtworkCount`。
+- 成功反馈：notice 显示文件名，状态栏显示“离线 HTML 作品集”。
+- 失败反馈：没有作品时返回“还没有可导出的作品集”，不创建空壳下载。
+- 刷新后复现方式：最近导出状态从 localStorage 恢复；下载的 HTML 可离线打开。
+
+仍待补：
+
+- 当前只是本机静态 HTML 文件，不提供公网 URL、账号权限、班级作品墙、CDN 托管、跨设备同步或社交平台 API。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品集 HTML 导出`

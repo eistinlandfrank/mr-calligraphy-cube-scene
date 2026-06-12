@@ -7519,7 +7519,7 @@ body.is-model-view .notice-panel {
 
 .artwork-repository-actions {
   display: grid;
-  grid-template-columns: repeat(2, minmax(76px, 1fr));
+  grid-template-columns: repeat(3, minmax(76px, 1fr));
   gap: 6px;
 }
 
@@ -9315,7 +9315,7 @@ body.is-model-view .notice-panel {
   }
 
   .artwork-repository-actions {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
   }
 
   .artwork-gallery-card {
