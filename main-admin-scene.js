@@ -67,6 +67,7 @@ const importModelMetalnessInput = document.getElementById("mainImportModelMetaln
 const importModelMetalnessValue = document.getElementById("mainImportModelMetalnessValue");
 const importModelReplaceInput = document.getElementById("mainImportModelReplace");
 const importModelTextureInput = document.getElementById("mainImportModelTexture");
+const importModelTextureClearButton = document.getElementById("mainImportModelTextureClear");
 const importModelMaterialUpdateButton = document.getElementById("mainImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
 const importAuditStatus = document.getElementById("mainImportAuditStatus");
@@ -3022,6 +3023,10 @@ function updateUiState() {
   if (importModelTextureInput) {
     importModelTextureInput.disabled = !isImported || deleted || hidden || locked;
   }
+  if (importModelTextureClearButton) {
+    const textureRecord = isImported ? normalizeImportTextureRecord(selectedEntry.object.userData.importRecord?.texture) : null;
+    importModelTextureClearButton.disabled = !isImported || deleted || hidden || locked || !textureRecord;
+  }
 }
 
 function snapshot(entry) {
@@ -3499,6 +3504,9 @@ function syncImportedMaterialEditorFromSelection() {
       importModelTextureInput.disabled = true;
       importModelTextureInput.value = "";
     }
+    if (importModelTextureClearButton) {
+      importModelTextureClearButton.disabled = true;
+    }
     showImportMaterialStatus(selectedEntry
       ? "当前选中对象不是导入模型；可导入 GLB / OBJ 后再编辑外观。"
       : "选中导入模型后，可调整颜色、透明度、粗糙度、金属度和贴图并写入草稿和发布版本。");
@@ -3524,6 +3532,9 @@ function syncImportedMaterialEditorFromSelection() {
     importModelTextureInput.value = "";
   }
   const textureRecord = normalizeImportTextureRecord(record.texture);
+  if (importModelTextureClearButton) {
+    importModelTextureClearButton.disabled = !canEditImportedEntry(entry) || !textureRecord;
+  }
   const textureText = textureRecord ? `当前贴图：${textureRecord.fileName}。` : "当前未设置自定义贴图。";
   showImportMaterialStatus(canEditImportedEntry(entry)
     ? `已载入：${entry.label}。${textureText}可调整材质参数，或选择 GLB / OBJ / 图片替换当前资产。`
@@ -3733,6 +3744,50 @@ async function replaceSelectedImportedModelTexture(event) {
     showImportStatus(`替换贴图失败：${error.message || file.name}`);
   } finally {
     event.target.value = "";
+  }
+}
+
+function clearSelectedImportedModelTexture() {
+  const entry = getSelectedImportedEntry();
+  try {
+    if (!entry) {
+      throw new Error("请选择一个导入模型后再移除贴图。");
+    }
+    if (!canEditImportedEntry(entry)) {
+      throw new Error("当前导入模型已隐藏、锁定或删除，需恢复并解锁后才能移除贴图。");
+    }
+
+    const beforeRecord = clonePlain(entry.object.userData.importRecord);
+    const previousTexture = normalizeImportTextureRecord(beforeRecord.texture);
+    if (!previousTexture) {
+      showImportMaterialStatus("当前导入模型没有自定义贴图。");
+      return;
+    }
+
+    const beforeSnapshot = snapshot(entry);
+    const nextRecord = normalizeImportedModel({
+      ...beforeRecord,
+      texture: null
+    });
+    pushUndo({
+      kind: "import-material-update",
+      id: entry.id,
+      record: beforeRecord,
+      snapshot: beforeSnapshot
+    });
+    entry.object.userData.importTexture = null;
+    entry.object.userData.importTextureRecord = null;
+    applyImportedRecordToEntry(entry, nextRecord);
+    saveEntry(entry);
+    selectObject(entry.id);
+    createLayoutSnapshot(`移除贴图：${entry.label}`, { notice: false });
+    showImportMaterialStatus(`已移除贴图：${entry.label} · ${previousTexture.fileName}。当前模型已恢复为颜色/PBR 材质。`);
+    showImportStatus(`已移除导入模型贴图引用：${entry.label}。原贴图文件仍保留给历史快照或已发布版本读取。`);
+    showNotice(`已移除导入贴图：${entry.label}`);
+  } catch (error) {
+    console.error(error);
+    showImportMaterialStatus(`移除贴图失败：${error.message || "未知错误"}`);
+    showImportStatus(`移除贴图失败：${error.message || "未知错误"}`);
   }
 }
 
@@ -4259,6 +4314,7 @@ function bindUi() {
   importModelMetalnessInput?.addEventListener("input", updateImportMetalnessOutput);
   importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
   importModelTextureInput?.addEventListener("change", replaceSelectedImportedModelTexture);
+  importModelTextureClearButton?.addEventListener("click", clearSelectedImportedModelTexture);
   importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
   importAuditExportButton?.addEventListener("click", exportImportAudit);
   renderImportAuditPanel();

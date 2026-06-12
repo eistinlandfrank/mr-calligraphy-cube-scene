@@ -2099,7 +2099,7 @@ git diff --check
 
 仍待补：
 
-- 当前完成本机贴图替换和发布读取；贴图随项目档案导出导入的完整资产打包已在第 63 节完成；贴图删除/恢复成原材质按钮、服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
+- 当前完成本机贴图替换和发布读取；贴图随项目档案导出导入的完整资产打包已在第 63 节完成，贴图移除/恢复原材质已在第 64 节完成；服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
 
 验收：
 
@@ -2138,7 +2138,7 @@ git diff --check
 
 仍待补：
 
-- 当前完成项目档案本机贴图资产打包、校验和选择恢复；贴图删除/恢复成原材质按钮、服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
+- 当前完成项目档案本机贴图资产打包、校验和选择恢复；贴图移除/恢复原材质已在第 64 节完成；服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
 
 验收：
 
@@ -2154,3 +2154,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化项目档案贴图资产恢复`
+
+## 64. 2026-06-12 真实化导入模型贴图移除
+
+本次把“替换当前贴图”补成完整可逆的外观控制：主后台和写实后台都新增“移除当前贴图”，点击后会移除当前草稿模型的 `texture` 引用、恢复颜色/PBR 材质、进入撤销栈，并在发布差异中显示贴图从文件名变为空。
+
+完成内容：
+
+- `main-admin.html` 新增 `mainImportModelTextureClear`，`realistic-admin.html` 新增 `realisticImportModelTextureClear`。
+- 两个按钮均标记为 `data-feature-state="real-local"`，控件清单会纳入真实本机功能统计。
+- `main-admin-scene.js` 和 `realistic-scene.js` 新增移除贴图处理，复用 `import-material-update` 撤销记录。
+- 移除时只清除当前布局记录的 `texture` 引用，不物理删除 IndexedDB 贴图文件，避免历史快照或已发布版本引用失效。
+- 移除后重新调用 `applyImportedRecordToEntry()`，后台画布立即恢复颜色/PBR 材质。
+- 按钮在未选中导入模型、对象不可编辑或当前无贴图时禁用，上传贴图后启用，移除后再次禁用。
+- 发布差异会显示 `贴图 文件名 → 空`；重新上传后仍可继续发布给前台或写实演示页读取。
+- Playwright 主后台和写实后台材质用例扩展为：上传贴图、移除贴图、确认草稿为空、确认原贴图资产仍保留、重新上传并发布读取。
+
+真实化说明：
+
+- 数据来源：当前选中导入模型的本机布局记录、IndexedDB 贴图资产和发布差异比较。
+- 写入状态：写入 `importedModels[*].texture = null` 并保存草稿；不删除 IndexedDB 二进制。
+- 成功反馈：后台状态显示“已移除贴图”，按钮禁用，发布差异显示贴图移除。
+- 失败反馈：未选中导入模型、对象隐藏/锁定/删除或没有贴图时不会伪造成功。
+- 刷新后复现方式：移除贴图后刷新后台，模型仍保持无自定义贴图；历史/已发布版本仍可读取原贴图资产。
+
+仍待补：
+
+- 当前完成本机贴图移除和恢复原材质；服务端资产签名、远端资产垃圾回收、CDN purge、账号权限和多人协作审计仍待继续补齐。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型贴图移除`

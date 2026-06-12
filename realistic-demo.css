@@ -450,6 +450,11 @@ body.admin-page .design-panel {
   grid-template-columns: 1fr;
 }
 
+.realistic-import-texture-actions {
+  grid-template-columns: 1fr;
+  margin-top: 10px;
+}
+
 .realistic-import-material-row {
   display: grid;
   grid-template-columns: 88px minmax(0, 1fr);
