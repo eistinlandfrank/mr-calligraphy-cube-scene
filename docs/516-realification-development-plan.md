@@ -6776,3 +6776,59 @@
 提交：
 
 - 中文 commit message：`新增项目仓库远端失败反馈`
+
+### 2026-06-12：新增报告教师批注审计导出
+
+功能名：前台报告教师批注本机审计链。
+
+涉及文件：
+
+- `app-state.js`
+- `script.js`
+- `index.html`
+- `style.css`
+- `scripts/learning-state-check.js`
+- `scripts/smoke-test.js`
+- `tests/e2e/real-flows.spec.js`
+- `docs/current-version-gap-and-realification-plan.md`
+- `docs/frontend-realification-development-plan.md`
+- `docs/516-realification-development-plan.md`
+- `docs/smoke-test.md`
+- `docs/2026-06-12-current-version-realification-audit.md`
+
+已完成：
+
+- 保存教师批注时新增 `save` 审计记录，包含报告 ID、批注人、后一 SHA-256 摘要和批注预览。
+- 清除教师批注时新增 `clear` 审计记录，包含前一摘要和清除时间。
+- 前台报告详情增加“批注审计”列表和“导出审计”按钮。
+- 新增 `MRAppState.getReportTeacherReviewAudit()`、`getReportTeacherReviewAuditExport()` 和 `downloadReportTeacherReviewAudit()`。
+- E2E 已覆盖保存、导出 HTML、清除和本机持久化记录。
+
+真实化说明：
+
+- 数据来源：当前浏览器中的教师批注保存/清除动作。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportTeacherReviewAudits`。
+- 成功反馈：报告详情显示最近审计记录，导出文件可离线查看。
+- 失败反馈：没有报告或没有审计记录时不会伪造下载。
+- 刷新后复现方式：打开同一报告可继续看到本机审计链。
+
+已知限制：
+
+- 当前是本机审计链，不是云端教师账号、电子签章、不可篡改审计或班级批改后台。
+
+验收方式：
+
+- 浏览器验收：`npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`。
+- 脚本验收：`node scripts/learning-state-check.js`。
+
+当前验证结果：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+
+提交：
+
+- 中文 commit message：`新增报告教师批注审计`

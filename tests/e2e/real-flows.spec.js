@@ -263,10 +263,28 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.locator("#reportTeacherReviewSave").click();
   await expect(page.locator("#reportTeacherReviewStatus")).toContainText("王老师");
   await expect(page.locator("#reportTeacherReviewView")).toContainText("竖钩");
+  await expect(page.locator("#reportTeacherReviewAuditStatus")).toContainText("1 条教师批注审计记录");
+  await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("保存批注");
+  await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("王老师");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports[0].teacherReview.reviewer).toBe("王老师");
   expect(learningState.reports[0].teacherReview.note).toContain("竖钩");
+  expect(learningState.reportTeacherReviewAudits).toHaveLength(1);
+  expect(learningState.reportTeacherReviewAudits[0].action).toBe("save");
+  expect(learningState.reportTeacherReviewAudits[0].reportId).toBe(learningState.reports[0].id);
+  expect(learningState.reportTeacherReviewAudits[0].nextDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportTeacherReviewAudits[0].nextPreview).toContain("竖钩");
+
+  const teacherReviewAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportTeacherReviewAuditExport").click();
+  const teacherReviewAuditDownload = await teacherReviewAuditDownloadPromise;
+  expect(teacherReviewAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-teacher-review-audit-.*\.html$/);
+  const teacherReviewAuditPath = await teacherReviewAuditDownload.path();
+  const teacherReviewAuditHtml = fs.readFileSync(teacherReviewAuditPath, "utf8");
+  expect(teacherReviewAuditHtml).toContain("MR 书法教师批注审计");
+  expect(teacherReviewAuditHtml).toContain("王老师");
+  expect(teacherReviewAuditHtml).toContain("竖钩");
 
   await expect(page.locator("#reportVerification")).toContainText("本机验真摘要");
   const reportPdfDownloadPromise = page.waitForEvent("download");
@@ -368,8 +386,14 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.locator("#reportTeacherReviewClear").click();
   await expect(page.locator("#reportTeacherReviewStatus")).toContainText("暂无本机教师批注");
+  await expect(page.locator("#reportTeacherReviewAuditStatus")).toContainText("2 条教师批注审计记录");
+  await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("清除批注");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports[0].teacherReview).toBeNull();
+  expect(learningState.reportTeacherReviewAudits).toHaveLength(2);
+  expect(learningState.reportTeacherReviewAudits.map((record) => record.action)).toEqual(["clear", "save"]);
+  expect(learningState.reportTeacherReviewAudits[0].previousDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportTeacherReviewAudits[0].nextDigest).toBe("");
 
   await expect(page.locator("#historyPanel")).toBeVisible();
   await page.locator(".history-repository-remote summary").click();

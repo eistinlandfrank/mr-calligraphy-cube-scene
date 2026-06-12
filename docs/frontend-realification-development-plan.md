@@ -1323,3 +1323,39 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增项目仓库远端失败反馈`
+
+## 42. 2026-06-12 新增报告教师批注审计导出
+
+本次把前台报告教师批注从“当前报告字段”推进为“可追溯的本机审计链”。
+
+完成内容：
+
+- `mr-calligraphy-learning-state-v1.reportTeacherReviewAudits` 新增最近 30 条本机教师批注审计记录。
+- 保存批注会记录 `save` 动作、报告 ID、批注人、后一 SHA-256 摘要和批注预览。
+- 清除批注会记录 `clear` 动作、前一 SHA-256 摘要、清除时间和本机说明。
+- 前台报告详情新增“批注审计”状态区、最近审计列表和“导出审计”按钮。
+- `MRAppState.getReportTeacherReviewAuditExport()` 可生成离线 HTML 审计页。
+- Playwright 会真实点击保存、导出审计、清除批注，并读取 localStorage 确认 `save/clear` 两条记录。
+
+真实化说明：
+
+- 数据来源：用户在当前浏览器保存或清除教师批注的真实操作。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportTeacherReviewAudits`。
+- 成功反馈：页面展示最近审计记录，导出文件包含报告 ID、动作、批注人、摘要和预览。
+- 失败反馈：暂无报告或暂无审计记录时导出按钮禁用。
+- 刷新后复现方式：审计记录随学习状态持久化，重新打开同一报告仍可查看。
+
+仍待补：
+
+- 当前不是账号化教师端、跨设备班级批改、服务端不可篡改日志或生产电子签章。
+
+验收：
+
+- `node scripts/learning-state-check.js`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告教师批注审计`

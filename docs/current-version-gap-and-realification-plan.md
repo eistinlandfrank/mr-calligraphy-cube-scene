@@ -1957,3 +1957,38 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增项目仓库远端失败反馈`
+
+### 2026-06-12：新增报告教师批注审计导出
+
+完成内容：
+
+- `MRAppState.updateReportTeacherReview()` 保存批注时会追加 `reportTeacherReviewAudits` 审计记录。
+- `MRAppState.clearReportTeacherReview()` 清除批注时会记录清除动作、前一摘要和清除时间。
+- 新增 `getReportTeacherReviewAudit()`、`getReportTeacherReviewAuditExport()` 和 `downloadReportTeacherReviewAudit()`。
+- 前台报告详情“教师批注”区新增批注审计状态、最近记录列表和“导出审计”按钮。
+- 导出的 `mr-calligraphy-teacher-review-audit-*.html` 包含报告 ID、批注人、动作、前后 SHA-256 摘要、批注预览和原始审计 JSON。
+- 数据层脚本和 E2E 覆盖保存审计、下载审计 HTML、清除审计和 localStorage 持久化。
+
+真实化说明：
+
+- 数据来源：当前浏览器里的 `ReportRecord.teacherReview` 保存/清除动作。
+- 写入状态：`mr-calligraphy-learning-state-v1.reportTeacherReviewAudits`。
+- 成功反馈：前台显示最近审计记录，并可下载 HTML 审计页。
+- 失败反馈：暂无报告或暂无审计时导出按钮禁用，直接调用导出 API 会返回明确失败。
+- 刷新后复现方式：审计记录保存在本机学习状态中，刷新后仍按报告 ID 可查。
+
+仍待补：
+
+- 当前是本机浏览器审计链，不是账号化教师端、电子签章、服务端不可篡改日志或跨设备教师工作台。
+
+验收：
+
+- `node --check app-state.js && node --check script.js && node --check scripts/learning-state-check.js && node --check scripts/smoke-test.js && node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告教师批注审计`

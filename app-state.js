@@ -26,6 +26,9 @@
   const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
   const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
+  const REPORT_TEACHER_REVIEW_AUDIT_KIND = "mr-calligraphy-report-teacher-review-audit-v1";
+  const REPORT_TEACHER_REVIEW_MAX_AUDITS = 30;
+  const REPORT_TEACHER_REVIEW_AUDIT_BOUNDARY = "教师批注审计保存在当前浏览器 localStorage 中，记录本机保存/清除动作、摘要和时间；它不是云端教师账号、电子签章或不可篡改审计链。";
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
     title: "标题",
@@ -366,6 +369,7 @@
       sessions,
       artworks,
       reports,
+      reportTeacherReviewAudits: normalizeReportTeacherReviewAudits(source?.reportTeacherReviewAudits),
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
@@ -475,6 +479,111 @@
       reviewedAt: normalizeIsoDate(source.reviewedAt || source.updatedAt || source.createdAt),
       source: String(source.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review"
     };
+  }
+
+  function normalizeReportTeacherReviewAudits(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeReportTeacherReviewAudit)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))
+      .filter((record) => {
+        if (seen.has(record.id)) return false;
+        seen.add(record.id);
+        return true;
+      })
+      .slice(0, REPORT_TEACHER_REVIEW_MAX_AUDITS);
+  }
+
+  function normalizeReportTeacherReviewAudit(record) {
+    if (!record || typeof record !== "object") return null;
+    const reportId = String(record.reportId || "").trim();
+    const action = ["save", "clear"].includes(record.action) ? record.action : "";
+    const createdAt = normalizePlanDate(record.createdAt || record.reviewedAt);
+    if (!reportId || !action || !createdAt) return null;
+    const previousDigest = normalizeReportTeacherReviewDigest(record.previousDigest);
+    const nextDigest = normalizeReportTeacherReviewDigest(record.nextDigest);
+    const id = String(record.id || `teacher-review-audit-${sha256StableJson({
+      reportId,
+      action,
+      createdAt,
+      previousDigest,
+      nextDigest
+    }).slice(0, 18)}`).trim();
+    return {
+      kind: REPORT_TEACHER_REVIEW_AUDIT_KIND,
+      id: id.slice(0, 120),
+      reportId,
+      reportTitle: String(record.reportTitle || reportId).trim().slice(0, 140) || reportId,
+      action,
+      reviewer: String(record.reviewer || "本机教师").trim().slice(0, 80) || "本机教师",
+      role: String(record.role || "local-teacher").trim().slice(0, 60) || "local-teacher",
+      source: String(record.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review",
+      previousDigest,
+      nextDigest,
+      previousPreview: normalizeReportTeacherReviewPreview(record.previousPreview),
+      nextPreview: normalizeReportTeacherReviewPreview(record.nextPreview),
+      reviewedAt: normalizePlanDate(record.reviewedAt) || createdAt,
+      createdAt,
+      message: String(record.message || "").trim().slice(0, 220)
+    };
+  }
+
+  function normalizeReportTeacherReviewDigest(value) {
+    const digest = String(value || "").trim().toLowerCase();
+    return /^[a-f0-9]{64}$/.test(digest) ? digest : "";
+  }
+
+  function normalizeReportTeacherReviewPreview(value) {
+    return String(value || "").trim().replace(/\s+/g, " ").slice(0, 180);
+  }
+
+  function createReportTeacherReviewDigest(review) {
+    const normalized = normalizeReportTeacherReview(review);
+    return normalized ? sha256StableJson(normalized) : "";
+  }
+
+  function createReportTeacherReviewPreview(review) {
+    const normalized = normalizeReportTeacherReview(review);
+    return normalized ? normalizeReportTeacherReviewPreview(normalized.note) : "";
+  }
+
+  function createReportTeacherReviewAuditRecord(report, action, previousReview, nextReview) {
+    const createdAt = new Date().toISOString();
+    const reviewer = nextReview?.reviewer || previousReview?.reviewer || "本机教师";
+    const previousDigest = createReportTeacherReviewDigest(previousReview);
+    const nextDigest = createReportTeacherReviewDigest(nextReview);
+    const reportId = String(report?.id || "").trim();
+    const payload = {
+      kind: REPORT_TEACHER_REVIEW_AUDIT_KIND,
+      reportId,
+      reportTitle: String(report?.title || reportId || "学习报告").slice(0, 140),
+      action,
+      reviewer,
+      role: "local-teacher",
+      source: "local-teacher-review",
+      previousDigest,
+      nextDigest,
+      previousPreview: createReportTeacherReviewPreview(previousReview),
+      nextPreview: createReportTeacherReviewPreview(nextReview),
+      reviewedAt: nextReview?.reviewedAt || previousReview?.reviewedAt || createdAt,
+      createdAt
+    };
+    payload.id = `teacher-review-audit-${createdAt.replace(/[-:.TZ]/g, "").slice(0, 14)}-${sha256StableJson(payload).slice(0, 10)}`;
+    payload.message = action === "clear"
+      ? `${reviewer} 清除了报告“${payload.reportTitle}”的本机教师批注。`
+      : `${reviewer} 保存了报告“${payload.reportTitle}”的本机教师批注。`;
+    return normalizeReportTeacherReviewAudit(payload);
+  }
+
+  function appendReportTeacherReviewAudit(record) {
+    const normalized = normalizeReportTeacherReviewAudit(record);
+    if (!normalized) return null;
+    const existing = normalizeReportTeacherReviewAudits(state.reportTeacherReviewAudits);
+    state.reportTeacherReviewAudits = [normalized, ...existing.filter((item) => item.id !== normalized.id)]
+      .slice(0, REPORT_TEACHER_REVIEW_MAX_AUDITS);
+    return normalized;
   }
 
   function normalizeShareService(record = {}) {
@@ -4530,13 +4639,17 @@
       return { ok: false, message: "教师批注内容不能为空。" };
     }
 
+    const previousReview = report.teacherReview ? clone(report.teacherReview) : null;
     report.teacherReview = teacherReview;
+    const auditRecord = appendReportTeacherReviewAudit(createReportTeacherReviewAuditRecord(report, "save", previousReview, teacherReview));
     addEvent("report-review", `教师批注：${report.id}`);
     saveState();
     return {
       ok: true,
       report: getReportDetail(report.id),
       teacherReview: clone(teacherReview),
+      auditRecord: auditRecord ? clone(auditRecord) : null,
+      auditCount: state.reportTeacherReviewAudits.length,
       message: `已保存 ${teacherReview.reviewer} 对报告“${report.title || report.id}”的本机教师批注。`
     };
   }
@@ -4555,13 +4668,17 @@
       };
     }
 
+    const previousReview = clone(report.teacherReview);
     report.teacherReview = null;
+    const auditRecord = appendReportTeacherReviewAudit(createReportTeacherReviewAuditRecord(report, "clear", previousReview, null));
     addEvent("report-review-clear", `清除教师批注：${report.id}`);
     saveState();
     return {
       ok: true,
       report: getReportDetail(report.id),
       teacherReview: null,
+      auditRecord: auditRecord ? clone(auditRecord) : null,
+      auditCount: state.reportTeacherReviewAudits.length,
       message: `已清除报告“${report.title || report.id}”的本机教师批注。`
     };
   }
@@ -4572,6 +4689,114 @@
       return state.reports.find((item) => item.id === recordId) || null;
     }
     return state.reports[state.reports.length - 1] || null;
+  }
+
+  function getReportTeacherReviewAudit(reportId = null) {
+    const targetReportId = String(reportId || "").trim();
+    const records = normalizeReportTeacherReviewAudits(state.reportTeacherReviewAudits);
+    const filtered = targetReportId
+      ? records.filter((record) => record.reportId === targetReportId)
+      : records;
+    const latestAudit = filtered[0] || null;
+    return {
+      ok: true,
+      kind: "mr-calligraphy-report-teacher-review-audit-log-v1",
+      reportId: targetReportId,
+      total: filtered.length,
+      allTotal: records.length,
+      latestAudit: latestAudit ? clone(latestAudit) : null,
+      records: clone(filtered),
+      boundary: REPORT_TEACHER_REVIEW_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已保存 ${filtered.length} 条教师批注审计记录，最近一次：${formatPlanDate(latestAudit.createdAt)}。`
+        : targetReportId
+          ? "当前报告暂无教师批注审计记录。"
+          : "暂无教师批注审计记录。"
+    };
+  }
+
+  function getReportTeacherReviewAuditExport(reportId = null) {
+    const audit = getReportTeacherReviewAudit(reportId);
+    if (!audit.total) {
+      return {
+        ok: false,
+        message: audit.message || "暂无可导出的教师批注审计记录。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    const reportSlug = audit.reportId ? makeDownloadSlug(audit.reportId) : "all";
+    return {
+      ok: true,
+      filename: `mr-calligraphy-teacher-review-audit-${reportSlug}-${exportedAt.slice(0, 10)}.html`,
+      html: renderReportTeacherReviewAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.total} 条教师批注审计导出。`
+    };
+  }
+
+  function downloadReportTeacherReviewAudit(reportId = null) {
+    const result = getReportTeacherReviewAuditExport(reportId);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      auditCount: result.audit.total,
+      message: result.message
+    };
+  }
+
+  function renderReportTeacherReviewAuditHtml(audit, exportedAt) {
+    const rows = audit.records.map((record) => `
+      <section class="audit">
+        <h2>${escapeHtml(formatReportTeacherReviewAuditAction(record.action))} · ${escapeHtml(record.reportTitle || record.reportId)}</h2>
+        <dl>
+          <dt>报告 ID</dt><dd>${escapeHtml(record.reportId)}</dd>
+          <dt>批注人</dt><dd>${escapeHtml(record.reviewer || "本机教师")}</dd>
+          <dt>角色</dt><dd>${escapeHtml(record.role || "local-teacher")}</dd>
+          <dt>动作</dt><dd>${escapeHtml(formatReportTeacherReviewAuditAction(record.action))}</dd>
+          <dt>前一摘要</dt><dd>${escapeHtml(record.previousDigest || "无")}</dd>
+          <dt>后一摘要</dt><dd>${escapeHtml(record.nextDigest || "无")}</dd>
+          <dt>前一预览</dt><dd>${escapeHtml(record.previousPreview || "无")}</dd>
+          <dt>后一预览</dt><dd>${escapeHtml(record.nextPreview || "无")}</dd>
+          <dt>批注时间</dt><dd>${escapeHtml(record.reviewedAt || "未知")}</dd>
+          <dt>审计时间</dt><dd>${escapeHtml(record.createdAt || "未知")}</dd>
+          <dt>说明</dt><dd>${escapeHtml(record.message || "无")}</dd>
+        </dl>
+        <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法教师批注审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .audit { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 12px; font-size: 17px; overflow-wrap: anywhere; }
+    dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { margin: 14px 0 0; padding: 12px; overflow: auto; border-radius: 6px; background: #1f2937; color: #f8fafc; font-size: 12px; line-height: 1.5; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法教师批注审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 审计记录：${audit.total}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatReportTeacherReviewAuditAction(action) {
+    return action === "clear" ? "清除批注" : "保存批注";
   }
 
   function downloadJson(record, filename) {
@@ -10620,6 +10845,8 @@
     getReportVerification,
     getReportHtmlExport,
     getReportPdfExport,
+    getReportTeacherReviewAudit,
+    getReportTeacherReviewAuditExport,
     getReportComparison,
     getReportComparisonExport,
     getReportSeries,
@@ -10643,6 +10870,7 @@
     downloadPlanRepositoryReceiptAudit,
     downloadReportRepository,
     downloadReportRepositoryReceiptAudit,
+    downloadReportTeacherReviewAudit,
     configurePlanRepositoryRemote,
     configureHistoryRepositoryRemote,
     configureReportRepositoryRemote,

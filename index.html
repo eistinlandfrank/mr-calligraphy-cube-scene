@@ -223,6 +223,14 @@
               <button data-feature-state="real-local" id="reportTeacherReviewSave" type="button">保存批注</button>
               <button data-feature-state="real-local" id="reportTeacherReviewClear" type="button">清除批注</button>
             </div>
+            <div id="reportTeacherReviewAudit" class="report-teacher-review-audit" aria-label="教师批注审计记录">
+              <div class="report-teacher-review-audit-head">
+                <strong>批注审计</strong>
+                <button data-feature-state="real-export" id="reportTeacherReviewAuditExport" type="button">导出审计</button>
+              </div>
+              <p id="reportTeacherReviewAuditStatus">暂无教师批注审计记录。</p>
+              <ul id="reportTeacherReviewAuditList" class="report-teacher-review-audit-list"></ul>
+            </div>
           </div>
           <div id="reportRepositorySummary" class="report-repository-summary" data-report-repository-summary="reportRepositorySummary">报告仓库尚未检查</div>
           <div class="report-repository-actions" aria-label="本机报告仓库同步包">

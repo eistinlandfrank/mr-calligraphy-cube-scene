@@ -854,6 +854,9 @@ const els = {
   reportTeacherReviewInput: document.getElementById("reportTeacherReviewInput"),
   reportTeacherReviewSave: document.getElementById("reportTeacherReviewSave"),
   reportTeacherReviewClear: document.getElementById("reportTeacherReviewClear"),
+  reportTeacherReviewAuditStatus: document.getElementById("reportTeacherReviewAuditStatus"),
+  reportTeacherReviewAuditList: document.getElementById("reportTeacherReviewAuditList"),
+  reportTeacherReviewAuditExport: document.getElementById("reportTeacherReviewAuditExport"),
   reportRepositorySummary: document.getElementById("reportRepositorySummary"),
   reportRepositoryExportButton: document.getElementById("reportRepositoryExportButton"),
   reportRepositoryImportButton: document.getElementById("reportRepositoryImportButton"),
@@ -3680,6 +3683,7 @@ function bindReportControls() {
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
   els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
   els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
+  els.reportTeacherReviewAuditExport?.addEventListener("click", exportReportTeacherReviewAudit);
   els.reportRepositoryExportButton?.addEventListener("click", downloadReportRepositoryPackage);
   els.reportRepositoryImportButton?.addEventListener("click", chooseReportRepositoryImport);
   els.reportRepositoryImportInput?.addEventListener("change", importReportRepositoryFile);
@@ -5520,6 +5524,42 @@ function renderReportTeacherReview(detail) {
   if (els.reportTeacherReviewInput) els.reportTeacherReviewInput.disabled = !hasDetail;
   if (els.reportTeacherReviewSave) els.reportTeacherReviewSave.disabled = !hasDetail;
   if (els.reportTeacherReviewClear) els.reportTeacherReviewClear.disabled = !hasDetail || !review;
+  renderReportTeacherReviewAudit(detail);
+}
+
+function renderReportTeacherReviewAudit(detail) {
+  const audit = detail
+    ? window.MRAppState?.getReportTeacherReviewAudit?.(detail.id)
+    : null;
+  const records = Array.isArray(audit?.records) ? audit.records : [];
+  if (els.reportTeacherReviewAuditStatus) {
+    els.reportTeacherReviewAuditStatus.textContent = detail
+      ? audit?.message || "当前报告暂无教师批注审计记录。"
+      : "请选择一份报告后查看教师批注审计记录。";
+    els.reportTeacherReviewAuditStatus.dataset.auditTone = records.length ? "ready" : "idle";
+  }
+  if (els.reportTeacherReviewAuditExport) {
+    els.reportTeacherReviewAuditExport.disabled = !detail || !records.length;
+  }
+  if (!els.reportTeacherReviewAuditList) return;
+  els.reportTeacherReviewAuditList.replaceChildren();
+  records.slice(0, 5).forEach((record) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatReportTeacherReviewAuditAction(record.action)} · ${record.reviewer || "本机教师"}`;
+    const meta = document.createElement("span");
+    const previousDigest = record.previousDigest ? record.previousDigest.slice(0, 10) : "无";
+    const nextDigest = record.nextDigest ? record.nextDigest.slice(0, 10) : "无";
+    meta.textContent = `${formatHistoryTime(record.createdAt)} · ${previousDigest} → ${nextDigest}`;
+    const detailText = document.createElement("small");
+    detailText.textContent = record.nextPreview || record.previousPreview || record.message || "本机教师批注动作";
+    item.append(title, meta, detailText);
+    els.reportTeacherReviewAuditList.appendChild(item);
+  });
+}
+
+function formatReportTeacherReviewAuditAction(action) {
+  return action === "clear" ? "清除批注" : "保存批注";
 }
 
 function renderReportRepositoryStatus(detail) {
@@ -5731,6 +5771,22 @@ function clearReportTeacherReview() {
     renderReportPanel(currentIndex);
   }
   showNotice(result?.message || "教师批注清除失败。");
+}
+
+function exportReportTeacherReviewAudit() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("请选择一份报告后导出教师批注审计。");
+    renderReportTeacherReview(null);
+    return;
+  }
+  const result = window.MRAppState?.downloadReportTeacherReviewAudit?.(detail.id);
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的教师批注审计记录。");
+  }
+  renderReportPanel(currentIndex);
 }
 
 function downloadReportRepositoryPackage() {
