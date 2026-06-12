@@ -868,6 +868,7 @@ const els = {
   reportTeacherReviewStatus: document.getElementById("reportTeacherReviewStatus"),
   reportTeacherReviewView: document.getElementById("reportTeacherReviewView"),
   reportTeacherReviewerInput: document.getElementById("reportTeacherReviewerInput"),
+  reportTeacherReviewRoleInput: document.getElementById("reportTeacherReviewRoleInput"),
   reportTeacherReviewInput: document.getElementById("reportTeacherReviewInput"),
   reportTeacherReviewSave: document.getElementById("reportTeacherReviewSave"),
   reportTeacherReviewClear: document.getElementById("reportTeacherReviewClear"),
@@ -6116,8 +6117,9 @@ function renderReportRecommendations(items) {
 function renderReportTeacherReview(detail) {
   const review = detail?.teacherReview || null;
   if (els.reportTeacherReviewStatus) {
+    const signature = review?.localSignatureDigest ? ` · 签名 ${review.localSignatureDigest.slice(0, 10)}` : "";
     els.reportTeacherReviewStatus.textContent = review
-      ? `${review.reviewer || "本机教师"} · ${formatHistoryTime(review.reviewedAt)}`
+      ? `${review.reviewer || "本机教师"} · ${formatReportTeacherReviewRoleLabel(review.role)} · ${formatHistoryTime(review.reviewedAt)}${signature}`
       : "暂无本机教师批注。";
   }
   if (els.reportTeacherReviewView) {
@@ -6126,11 +6128,15 @@ function renderReportTeacherReview(detail) {
   if (els.reportTeacherReviewerInput && document.activeElement !== els.reportTeacherReviewerInput) {
     els.reportTeacherReviewerInput.value = review?.reviewer || "";
   }
+  if (els.reportTeacherReviewRoleInput && document.activeElement !== els.reportTeacherReviewRoleInput) {
+    els.reportTeacherReviewRoleInput.value = normalizeReportTeacherReviewRoleValue(review?.role);
+  }
   if (els.reportTeacherReviewInput && document.activeElement !== els.reportTeacherReviewInput) {
     els.reportTeacherReviewInput.value = review?.note || "";
   }
   const hasDetail = Boolean(detail);
   if (els.reportTeacherReviewerInput) els.reportTeacherReviewerInput.disabled = !hasDetail;
+  if (els.reportTeacherReviewRoleInput) els.reportTeacherReviewRoleInput.disabled = !hasDetail;
   if (els.reportTeacherReviewInput) els.reportTeacherReviewInput.disabled = !hasDetail;
   if (els.reportTeacherReviewSave) els.reportTeacherReviewSave.disabled = !hasDetail;
   if (els.reportTeacherReviewClear) els.reportTeacherReviewClear.disabled = !hasDetail || !review;
@@ -6156,13 +6162,18 @@ function renderReportTeacherReviewAudit(detail) {
   records.slice(0, 5).forEach((record) => {
     const item = document.createElement("li");
     const title = document.createElement("strong");
-    title.textContent = `${formatReportTeacherReviewAuditAction(record.action)} · ${record.reviewer || "本机教师"}`;
+    title.textContent = `${formatReportTeacherReviewAuditAction(record.action)} · ${record.reviewer || "本机教师"} · ${formatReportTeacherReviewRoleLabel(record.role)}`;
     const meta = document.createElement("span");
-    const previousDigest = record.previousDigest ? record.previousDigest.slice(0, 10) : "无";
-    const nextDigest = record.nextDigest ? record.nextDigest.slice(0, 10) : "无";
-    meta.textContent = `${formatHistoryTime(record.createdAt)} · ${previousDigest} → ${nextDigest}`;
+    const previousDigest = record.previousSignatureDigest || record.previousDigest;
+    const nextDigest = record.nextSignatureDigest || record.nextDigest;
+    const previousLabel = previousDigest ? previousDigest.slice(0, 10) : "无";
+    const nextLabel = nextDigest ? nextDigest.slice(0, 10) : "无";
+    meta.textContent = `${formatHistoryTime(record.createdAt)} · 签名 ${previousLabel} → ${nextLabel}`;
     const detailText = document.createElement("small");
-    detailText.textContent = record.nextPreview || record.previousPreview || record.message || "本机教师批注动作";
+    const detailSignature = record.nextSignatureDigest || record.previousSignatureDigest || "";
+    detailText.textContent = record.nextPreview || record.previousPreview
+      ? `${record.nextPreview || record.previousPreview} · ${detailSignature ? `本机签名 ${detailSignature.slice(0, 12)}` : "本机签名已记录"}`
+      : record.message || "本机教师批注动作";
     item.append(title, meta, detailText);
     els.reportTeacherReviewAuditList.appendChild(item);
   });
@@ -6170,6 +6181,19 @@ function renderReportTeacherReviewAudit(detail) {
 
 function formatReportTeacherReviewAuditAction(action) {
   return action === "clear" ? "清除批注" : "保存批注";
+}
+
+function normalizeReportTeacherReviewRoleValue(role) {
+  const value = String(role || "").trim();
+  return ["local-teacher", "local-assistant", "local-reviewer"].includes(value) ? value : "local-teacher";
+}
+
+function formatReportTeacherReviewRoleLabel(role) {
+  return {
+    "local-teacher": "授课教师",
+    "local-assistant": "助教",
+    "local-reviewer": "教研审核"
+  }[normalizeReportTeacherReviewRoleValue(role)] || "授课教师";
 }
 
 function renderReportRepositoryStatus(detail) {
@@ -6362,6 +6386,7 @@ function saveReportTeacherReview() {
   }
   const result = window.MRAppState?.updateReportTeacherReview?.(detail.id, {
     reviewer: els.reportTeacherReviewerInput?.value || "",
+    role: els.reportTeacherReviewRoleInput?.value || "local-teacher",
     note: els.reportTeacherReviewInput?.value || ""
   });
   if (result?.ok) {

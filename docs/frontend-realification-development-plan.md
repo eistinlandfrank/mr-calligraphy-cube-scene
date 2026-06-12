@@ -2621,3 +2621,47 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增项目仓库远端恢复风险预览`
+
+## 75. 2026-06-12 报告教师批注本机签名摘要
+
+本次把站内报告的“教师批注”从普通本机备注推进为可审计的本机批注签名摘要。教师保存批注时可以选择角色，状态层会为批注内容生成稳定摘要和本机签名摘要，页面、审计导出、HTML 报告和 PDF 注释都会保留这份证据。
+
+完成内容：
+
+- 报告详情新增 `reportTeacherReviewRoleInput` 角色选择，支持授课教师、助教和教研审核。
+- `normalizeReportTeacherReview()` 新增 `role`、`reviewDigest`、`signatureKind`、`signatureAlgorithm`、`signedFields` 和 `localSignatureDigest`。
+- 教师批注审计记录新增批注摘要、签名摘要、签名类型、算法和签名字段。
+- 报告面板状态文案显示批注人、角色、时间和签名短码；审计列表显示角色与本机签名变化。
+- 教师批注审计 HTML 导出显示角色、签名算法、签名字段、前后批注摘要和前后本机签名。
+- HTML 学习报告显示教师角色和签名短码；原生 PDF 内容和 PDF 注释新增 `TeacherReviewSignatureDigest`。
+- smoke test 新增 `reportTeacherReviewerInput` 和 `reportTeacherReviewRoleInput` 页面标记。
+- `scripts/learning-state-check.js` 和 Playwright 前台报告用例验证角色、摘要、签名、本机持久化、审计导出和 PDF 注释。
+
+真实化说明：
+
+- 数据来源：当前浏览器中的 `ReportRecord.teacherReview`、用户填写的批注人/角色/批注内容、报告 ID 和报告创建时间。
+- 写入状态：写入 `mr-calligraphy-learning-state-v1.reports[*].teacherReview` 和 `reportTeacherReviewAudits`，并随报告仓库同步包保存。
+- 成功反馈：报告面板显示角色和签名短码；审计 HTML、HTML 报告和 PDF 注释都能看到同一个本机签名摘要。
+- 失败反馈：批注内容为空时不写入报告；清除批注会生成清除审计，后一签名为空，前一签名仍保留。
+- 刷新后复现方式：角色、批注摘要和本机签名摘要保存在报告记录中，刷新并打开同一报告仍能显示。
+
+仍待补：
+
+- 当前是本机稳定摘要和本机审计，不是云端教师账号、生产电子签章、证书链、服务端时间戳或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告教师批注本机签名摘要`

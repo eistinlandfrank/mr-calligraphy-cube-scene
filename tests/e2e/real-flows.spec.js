@@ -597,21 +597,32 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportStats")).toContainText("作品1幅");
 
   await page.locator("#reportTeacherReviewerInput").fill("王老师");
+  await page.locator("#reportTeacherReviewRoleInput").selectOption("local-reviewer");
   await page.locator("#reportTeacherReviewInput").fill("结构更稳，下一次重点放慢竖钩收笔。");
   await page.locator("#reportTeacherReviewSave").click();
   await expect(page.locator("#reportTeacherReviewStatus")).toContainText("王老师");
+  await expect(page.locator("#reportTeacherReviewStatus")).toContainText("教研审核");
+  await expect(page.locator("#reportTeacherReviewStatus")).toContainText("签名");
   await expect(page.locator("#reportTeacherReviewView")).toContainText("竖钩");
   await expect(page.locator("#reportTeacherReviewAuditStatus")).toContainText("1 条教师批注审计记录");
   await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("保存批注");
   await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("王老师");
+  await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("教研审核");
+  await expect(page.locator("#reportTeacherReviewAuditList")).toContainText("本机签名");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reports[0].teacherReview.reviewer).toBe("王老师");
+  expect(learningState.reports[0].teacherReview.role).toBe("local-reviewer");
   expect(learningState.reports[0].teacherReview.note).toContain("竖钩");
+  expect(learningState.reports[0].teacherReview.reviewDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reports[0].teacherReview.localSignatureDigest).toMatch(/^[a-f0-9]{64}$/);
+  const teacherReviewSignatureDigest = learningState.reports[0].teacherReview.localSignatureDigest;
   expect(learningState.reportTeacherReviewAudits).toHaveLength(1);
   expect(learningState.reportTeacherReviewAudits[0].action).toBe("save");
   expect(learningState.reportTeacherReviewAudits[0].reportId).toBe(learningState.reports[0].id);
   expect(learningState.reportTeacherReviewAudits[0].nextDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportTeacherReviewAudits[0].nextReviewDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportTeacherReviewAudits[0].nextSignatureDigest).toBe(teacherReviewSignatureDigest);
   expect(learningState.reportTeacherReviewAudits[0].nextPreview).toContain("竖钩");
 
   const teacherReviewAuditDownloadPromise = page.waitForEvent("download");
@@ -623,6 +634,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(teacherReviewAuditHtml).toContain("MR 书法教师批注审计");
   expect(teacherReviewAuditHtml).toContain("王老师");
   expect(teacherReviewAuditHtml).toContain("竖钩");
+  expect(teacherReviewAuditHtml).toContain("教研审核");
+  expect(teacherReviewAuditHtml).toContain(teacherReviewSignatureDigest);
 
   await expect(page.locator("#reportVerification")).toContainText("本机验真摘要");
   const reportPdfDownloadPromise = page.waitForEvent("download");
@@ -635,6 +648,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportPdfText).toContain("RadarChart:");
   expect(reportPdfText).toContain("TrendBars:");
   expect(reportPdfText).toContain("ArtworkImageEmbedded: yes");
+  expect(reportPdfText).toContain(`TeacherReviewSignatureDigest: ${teacherReviewSignatureDigest}`);
   expect(reportPdfText).toContain("/Subtype /Image");
   expect(reportPdfText).toContain("/DCTDecode");
 
@@ -729,6 +743,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTeacherReviewStatus")).toContainText("王老师");
+  await expect(page.locator("#reportTeacherReviewStatus")).toContainText("教研审核");
   await expect(page.locator("#reportTeacherReviewView")).toContainText("竖钩");
 
   await page.locator("#reportTeacherReviewClear").click();
@@ -740,6 +755,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reportTeacherReviewAudits).toHaveLength(2);
   expect(learningState.reportTeacherReviewAudits.map((record) => record.action)).toEqual(["clear", "save"]);
   expect(learningState.reportTeacherReviewAudits[0].previousDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportTeacherReviewAudits[0].previousSignatureDigest).toBe(teacherReviewSignatureDigest);
   expect(learningState.reportTeacherReviewAudits[0].nextDigest).toBe("");
 
   await expect(page.locator("#historyPanel")).toBeVisible();

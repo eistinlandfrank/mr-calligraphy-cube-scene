@@ -38,8 +38,11 @@
   const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
   const REPORT_TEACHER_REVIEW_AUDIT_KIND = "mr-calligraphy-report-teacher-review-audit-v1";
+  const REPORT_TEACHER_REVIEW_SIGNATURE_KIND = "mr-calligraphy-report-teacher-review-local-signature-v1";
+  const REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM = "sha256-stable-json";
+  const REPORT_TEACHER_REVIEW_SIGNED_FIELDS = ["reportId", "reportCreatedAt", "reviewer", "role", "note", "reviewedAt", "source", "reviewDigest"];
   const REPORT_TEACHER_REVIEW_MAX_AUDITS = 30;
-  const REPORT_TEACHER_REVIEW_AUDIT_BOUNDARY = "教师批注审计保存在当前浏览器 localStorage 中，记录本机保存/清除动作、摘要和时间；它不是云端教师账号、电子签章或不可篡改审计链。";
+  const REPORT_TEACHER_REVIEW_AUDIT_BOUNDARY = "教师批注审计保存在当前浏览器 localStorage 中，记录本机保存/清除动作、角色、批注摘要、本机签名摘要和时间；它不是云端教师账号、生产电子签章或不可篡改审计链。";
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
     title: "标题",
@@ -476,20 +479,54 @@
       scoreBreakdown: normalizeMetrics(record.scoreBreakdown),
       trend: Array.isArray(record.trend) ? record.trend.map(normalizeReportTrendPoint).filter(Boolean).slice(-8) : [],
       recommendations: Array.isArray(record.recommendations) ? record.recommendations.map(String) : [],
-      teacherReview: normalizeReportTeacherReview(record.teacherReview)
+      teacherReview: normalizeReportTeacherReview(record.teacherReview, {
+        reportId: String(record.id || ""),
+        reportCreatedAt: String(record.createdAt || "")
+      })
     };
   }
 
-  function normalizeReportTeacherReview(review) {
+  function normalizeReportTeacherReview(review, context = {}) {
     const source = review && typeof review === "object" ? review : {};
     const note = String(source.note || source.comment || "").trim().replace(/\s+/g, " ").slice(0, 800);
     if (!note) return null;
     const reviewer = String(source.reviewer || source.teacher || "本机教师").trim().slice(0, 80) || "本机教师";
+    const role = normalizeReportTeacherReviewRole(source.role || source.reviewerRole || source.teacherRole);
+    const reviewedAt = normalizeIsoDate(source.reviewedAt || source.updatedAt || source.createdAt);
+    const reviewSource = String(source.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review";
+    const reportId = String(context.reportId || source.reportId || "").trim().slice(0, 120);
+    const reportCreatedAt = normalizeIsoDate(context.reportCreatedAt || source.reportCreatedAt || "");
+    const core = {
+      kind: "mr-calligraphy-report-teacher-review-core-v1",
+      reviewer,
+      role,
+      note,
+      reviewedAt,
+      source: reviewSource
+    };
+    const reviewDigest = normalizeReportTeacherReviewDigest(source.reviewDigest) || sha256StableJson(core);
+    const signaturePayload = {
+      kind: REPORT_TEACHER_REVIEW_SIGNATURE_KIND,
+      version: 1,
+      algorithm: REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM,
+      signedFields: REPORT_TEACHER_REVIEW_SIGNED_FIELDS,
+      reportId,
+      reportCreatedAt,
+      review: core,
+      reviewDigest
+    };
+    const localSignatureDigest = normalizeReportTeacherReviewDigest(source.localSignatureDigest || source.signatureDigest || source.signature) || sha256StableJson(signaturePayload);
     return {
       reviewer,
+      role,
       note,
-      reviewedAt: normalizeIsoDate(source.reviewedAt || source.updatedAt || source.createdAt),
-      source: String(source.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review"
+      reviewedAt,
+      source: reviewSource,
+      reviewDigest,
+      signatureKind: REPORT_TEACHER_REVIEW_SIGNATURE_KIND,
+      signatureAlgorithm: REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM,
+      signedFields: [...REPORT_TEACHER_REVIEW_SIGNED_FIELDS],
+      localSignatureDigest
     };
   }
 
@@ -516,6 +553,13 @@
     if (!reportId || !action || !createdAt) return null;
     const previousDigest = normalizeReportTeacherReviewDigest(record.previousDigest);
     const nextDigest = normalizeReportTeacherReviewDigest(record.nextDigest);
+    const previousReviewDigest = normalizeReportTeacherReviewDigest(record.previousReviewDigest);
+    const nextReviewDigest = normalizeReportTeacherReviewDigest(record.nextReviewDigest);
+    const previousSignatureDigest = normalizeReportTeacherReviewDigest(record.previousSignatureDigest || record.previousLocalSignatureDigest || previousDigest);
+    const nextSignatureDigest = normalizeReportTeacherReviewDigest(record.nextSignatureDigest || record.nextLocalSignatureDigest || nextDigest);
+    const signedFields = Array.isArray(record.signedFields)
+      ? record.signedFields.map((field) => String(field || "").trim()).filter(Boolean).slice(0, 16)
+      : [...REPORT_TEACHER_REVIEW_SIGNED_FIELDS];
     const id = String(record.id || `teacher-review-audit-${sha256StableJson({
       reportId,
       action,
@@ -530,16 +574,32 @@
       reportTitle: String(record.reportTitle || reportId).trim().slice(0, 140) || reportId,
       action,
       reviewer: String(record.reviewer || "本机教师").trim().slice(0, 80) || "本机教师",
-      role: String(record.role || "local-teacher").trim().slice(0, 60) || "local-teacher",
+      role: normalizeReportTeacherReviewRole(record.role || record.reviewerRole || record.teacherRole),
       source: String(record.source || "local-teacher-review").trim().slice(0, 80) || "local-teacher-review",
       previousDigest,
       nextDigest,
+      previousReviewDigest,
+      nextReviewDigest,
+      previousSignatureDigest,
+      nextSignatureDigest,
+      signatureKind: String(record.signatureKind || REPORT_TEACHER_REVIEW_SIGNATURE_KIND).trim().slice(0, 100) || REPORT_TEACHER_REVIEW_SIGNATURE_KIND,
+      signatureAlgorithm: String(record.signatureAlgorithm || REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM).trim().slice(0, 60) || REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM,
+      signedFields,
       previousPreview: normalizeReportTeacherReviewPreview(record.previousPreview),
       nextPreview: normalizeReportTeacherReviewPreview(record.nextPreview),
       reviewedAt: normalizePlanDate(record.reviewedAt) || createdAt,
       createdAt,
       message: String(record.message || "").trim().slice(0, 220)
     };
+  }
+
+  function normalizeReportTeacherReviewRole(value) {
+    const normalized = String(value || "")
+      .trim()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-zA-Z0-9_.:-]/g, "")
+      .slice(0, 60);
+    return normalized || "local-teacher";
   }
 
   function normalizeReportTeacherReviewDigest(value) {
@@ -551,9 +611,12 @@
     return String(value || "").trim().replace(/\s+/g, " ").slice(0, 180);
   }
 
-  function createReportTeacherReviewDigest(review) {
-    const normalized = normalizeReportTeacherReview(review);
-    return normalized ? sha256StableJson(normalized) : "";
+  function createReportTeacherReviewDigest(review, report = null) {
+    const normalized = normalizeReportTeacherReview(review, {
+      reportId: report?.id || "",
+      reportCreatedAt: report?.createdAt || ""
+    });
+    return normalized ? normalized.localSignatureDigest || normalized.reviewDigest || sha256StableJson(normalized) : "";
   }
 
   function createReportTeacherReviewPreview(review) {
@@ -564,8 +627,11 @@
   function createReportTeacherReviewAuditRecord(report, action, previousReview, nextReview) {
     const createdAt = new Date().toISOString();
     const reviewer = nextReview?.reviewer || previousReview?.reviewer || "本机教师";
-    const previousDigest = createReportTeacherReviewDigest(previousReview);
-    const nextDigest = createReportTeacherReviewDigest(nextReview);
+    const role = nextReview?.role || previousReview?.role || "local-teacher";
+    const previousNormalized = normalizeReportTeacherReview(previousReview, { reportId: report?.id || "", reportCreatedAt: report?.createdAt || "" });
+    const nextNormalized = normalizeReportTeacherReview(nextReview, { reportId: report?.id || "", reportCreatedAt: report?.createdAt || "" });
+    const previousDigest = createReportTeacherReviewDigest(previousReview, report);
+    const nextDigest = createReportTeacherReviewDigest(nextReview, report);
     const reportId = String(report?.id || "").trim();
     const payload = {
       kind: REPORT_TEACHER_REVIEW_AUDIT_KIND,
@@ -573,10 +639,17 @@
       reportTitle: String(report?.title || reportId || "学习报告").slice(0, 140),
       action,
       reviewer,
-      role: "local-teacher",
+      role,
       source: "local-teacher-review",
       previousDigest,
       nextDigest,
+      previousReviewDigest: previousNormalized?.reviewDigest || "",
+      nextReviewDigest: nextNormalized?.reviewDigest || "",
+      previousSignatureDigest: previousNormalized?.localSignatureDigest || "",
+      nextSignatureDigest: nextNormalized?.localSignatureDigest || "",
+      signatureKind: REPORT_TEACHER_REVIEW_SIGNATURE_KIND,
+      signatureAlgorithm: REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM,
+      signedFields: [...REPORT_TEACHER_REVIEW_SIGNED_FIELDS],
       previousPreview: createReportTeacherReviewPreview(previousReview),
       nextPreview: createReportTeacherReviewPreview(nextReview),
       reviewedAt: nextReview?.reviewedAt || previousReview?.reviewedAt || createdAt,
@@ -4912,9 +4985,13 @@
     }
     const teacherReview = normalizeReportTeacherReview({
       reviewer: review.reviewer || review.teacher,
+      role: review.role || review.reviewerRole || review.teacherRole,
       note: review.note || review.comment,
       reviewedAt: new Date().toISOString(),
       source: "local-teacher-review"
+    }, {
+      reportId: report.id,
+      reportCreatedAt: report.createdAt
     });
     if (!teacherReview) {
       return { ok: false, message: "教师批注内容不能为空。" };
@@ -4931,7 +5008,7 @@
       teacherReview: clone(teacherReview),
       auditRecord: auditRecord ? clone(auditRecord) : null,
       auditCount: state.reportTeacherReviewAudits.length,
-      message: `已保存 ${teacherReview.reviewer} 对报告“${report.title || report.id}”的本机教师批注。`
+      message: `已保存 ${teacherReview.reviewer}（${formatReportTeacherReviewRole(teacherReview.role)}）对报告“${report.title || report.id}”的本机教师批注，签名 ${teacherReview.localSignatureDigest.slice(0, 12)}。`
     };
   }
 
@@ -5036,10 +5113,15 @@
         <dl>
           <dt>报告 ID</dt><dd>${escapeHtml(record.reportId)}</dd>
           <dt>批注人</dt><dd>${escapeHtml(record.reviewer || "本机教师")}</dd>
-          <dt>角色</dt><dd>${escapeHtml(record.role || "local-teacher")}</dd>
+          <dt>角色</dt><dd>${escapeHtml(formatReportTeacherReviewRole(record.role))}</dd>
           <dt>动作</dt><dd>${escapeHtml(formatReportTeacherReviewAuditAction(record.action))}</dd>
-          <dt>前一摘要</dt><dd>${escapeHtml(record.previousDigest || "无")}</dd>
-          <dt>后一摘要</dt><dd>${escapeHtml(record.nextDigest || "无")}</dd>
+          <dt>签名类型</dt><dd>${escapeHtml(record.signatureKind || REPORT_TEACHER_REVIEW_SIGNATURE_KIND)}</dd>
+          <dt>签名算法</dt><dd>${escapeHtml(record.signatureAlgorithm || REPORT_TEACHER_REVIEW_SIGNATURE_ALGORITHM)}</dd>
+          <dt>签名字段</dt><dd>${escapeHtml((record.signedFields || []).join("、") || REPORT_TEACHER_REVIEW_SIGNED_FIELDS.join("、"))}</dd>
+          <dt>前一批注摘要</dt><dd>${escapeHtml(record.previousReviewDigest || "无")}</dd>
+          <dt>后一批注摘要</dt><dd>${escapeHtml(record.nextReviewDigest || "无")}</dd>
+          <dt>前一本机签名</dt><dd>${escapeHtml(record.previousSignatureDigest || record.previousDigest || "无")}</dd>
+          <dt>后一本机签名</dt><dd>${escapeHtml(record.nextSignatureDigest || record.nextDigest || "无")}</dd>
           <dt>前一预览</dt><dd>${escapeHtml(record.previousPreview || "无")}</dd>
           <dt>后一预览</dt><dd>${escapeHtml(record.nextPreview || "无")}</dd>
           <dt>批注时间</dt><dd>${escapeHtml(record.reviewedAt || "未知")}</dd>
@@ -5078,6 +5160,16 @@
 
   function formatReportTeacherReviewAuditAction(action) {
     return action === "clear" ? "清除批注" : "保存批注";
+  }
+
+  function formatReportTeacherReviewRole(role) {
+    const normalized = normalizeReportTeacherReviewRole(role);
+    const labels = {
+      "local-teacher": "授课教师",
+      "local-assistant": "助教",
+      "local-reviewer": "教研审核"
+    };
+    return labels[normalized] || normalized || "授课教师";
   }
 
   function downloadJson(record, filename) {
@@ -6366,8 +6458,9 @@
         return `<li><span class="bar" style="height:${height}%"></span><strong>${item.score}</strong><small>${escapeHtml(item.label)}</small></li>`;
       }).join("")
       : `<li class="trend-empty"><small>暂无分数趋势</small></li>`;
+    const teacherReviewSignature = normalizedReport.teacherReview?.localSignatureDigest || "";
     const teacherReviewBlock = normalizedReport.teacherReview
-      ? `<section class="teacher-review"><h2>教师批注</h2><p>${escapeHtml(normalizedReport.teacherReview.note)}</p><small>${escapeHtml(normalizedReport.teacherReview.reviewer)} · ${escapeHtml(formatDateTime(normalizedReport.teacherReview.reviewedAt))} · 本机批注记录</small></section>`
+      ? `<section class="teacher-review"><h2>教师批注</h2><p>${escapeHtml(normalizedReport.teacherReview.note)}</p><small>${escapeHtml(normalizedReport.teacherReview.reviewer)} · ${escapeHtml(formatReportTeacherReviewRole(normalizedReport.teacherReview.role))} · ${escapeHtml(formatDateTime(normalizedReport.teacherReview.reviewedAt))} · 本机签名 ${escapeHtml(teacherReviewSignature ? teacherReviewSignature.slice(0, 16) : "未生成")}</small></section>`
       : `<section class="teacher-review is-empty"><h2>教师批注</h2><p>暂无本机教师批注。</p><small>批注会保存在当前浏览器报告记录中，不代表云端教师端。</small></section>`;
     const verificationBlock = verificationInfo
       ? `<section class="report-verification" aria-label="报告本机验真摘要"><h2>本机验真摘要</h2><dl><div><dt>算法</dt><dd>${escapeHtml(verificationInfo.algorithm)}</dd></div><div><dt>摘要</dt><dd><code>${escapeHtml(verificationInfo.digest)}</code></dd></div><div><dt>来源</dt><dd>${escapeHtml(verificationInfo.storageKey)} · ${escapeHtml(verificationInfo.kind)}</dd></div></dl><p class="muted">${escapeHtml(verificationInfo.boundary)}</p></section>`
@@ -6550,6 +6643,7 @@
         artworkImageMime: pdfFeatures.artworkImageMime || "",
         artworkImageDigest: pdfFeatures.artworkImageDigest || "",
         teacherReview: Boolean(normalizedReport.teacherReview),
+        teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
         verification: Boolean(verification),
         verificationDigest: verification?.digest || ""
       },
@@ -6577,6 +6671,7 @@
       html: createReportHtml(normalizedReport, verification),
       features: {
         teacherReview: Boolean(normalizedReport.teacherReview),
+        teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
         verification: Boolean(verification),
         verificationDigest: verification?.digest || ""
       },
@@ -6639,13 +6734,13 @@
       { text: "教师批注", size: 16 },
       {
         text: normalizedReport.teacherReview
-          ? `${normalizedReport.teacherReview.reviewer}：${normalizedReport.teacherReview.note}`
+          ? `${normalizedReport.teacherReview.reviewer}（${formatReportTeacherReviewRole(normalizedReport.teacherReview.role)}）：${normalizedReport.teacherReview.note}`
           : "暂无本机教师批注。",
         size: 12
       },
       {
         text: normalizedReport.teacherReview
-          ? `批注时间：${formatDateTime(normalizedReport.teacherReview.reviewedAt)}。来源：本机教师批注记录。`
+          ? `批注时间：${formatDateTime(normalizedReport.teacherReview.reviewedAt)}。来源：本机教师批注记录。本机签名：${normalizedReport.teacherReview.localSignatureDigest || "无"}。`
           : "教师批注功能只保存到当前浏览器报告记录，不代表云端教师端。",
         size: 10
       },
@@ -6676,6 +6771,7 @@
       artworkImageMime: artworkPdfImage?.mimeType || "",
       artworkImageDigest: artworkPdfImage?.digest || "",
       teacherReview: Boolean(normalizedReport.teacherReview),
+      teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || "",
       verificationKind: verificationInfo.kind,
       verificationAlgorithm: verificationInfo.algorithm,
       verificationDigest: verificationInfo.digest
@@ -6689,7 +6785,8 @@
         trendCount: trendItems.length,
         artworkImageEmbedded: Boolean(artworkPdfImage),
         artworkImageMime: artworkPdfImage?.mimeType || "",
-        artworkImageDigest: artworkPdfImage?.digest || ""
+        artworkImageDigest: artworkPdfImage?.digest || "",
+        teacherReviewSignatureDigest: normalizedReport.teacherReview?.localSignatureDigest || ""
       }
     };
   }
@@ -7004,6 +7101,7 @@
     const verificationDigest = sanitizePdfComment(metadata.verificationDigest || "");
     const artworkImageMime = sanitizePdfComment(metadata.artworkImageMime || "");
     const artworkImageDigest = sanitizePdfComment(metadata.artworkImageDigest || "");
+    const teacherReviewSignatureDigest = sanitizePdfComment(metadata.teacherReviewSignatureDigest || "");
     const pdfComments = [
       `% Source: ${source}`,
       `% MetricBars: ${Number(metadata.metricCount) || 0}`,
@@ -7016,6 +7114,7 @@
       `% ArtworkImageMime: ${artworkImageMime}`,
       `% ArtworkImageDigest: ${artworkImageDigest}`,
       `% TeacherReview: ${metadata.teacherReview ? "yes" : "no"}`,
+      `% TeacherReviewSignatureDigest: ${teacherReviewSignatureDigest}`,
       `% ReportVerification: ${verificationDigest ? "yes" : "no"}`,
       `% ReportVerificationKind: ${verificationKind}`,
       `% ReportVerificationAlgorithm: ${verificationAlgorithm}`,

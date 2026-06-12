@@ -3188,3 +3188,42 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增项目仓库远端恢复风险预览`
+
+### 2026-06-12：新增报告教师批注本机签名摘要
+
+完成内容：
+
+- 报告教师批注新增角色选择，保存时把授课教师、助教或教研审核写入报告记录。
+- 教师批注新增稳定批注摘要和本机签名摘要，签名载荷包含报告 ID、报告创建时间、批注人、角色、内容、时间、来源和批注摘要。
+- 教师批注审计新增前后批注摘要、前后本机签名、签名类型、算法和签名字段。
+- 报告面板、审计列表、审计 HTML、HTML 报告和 PDF 注释都显示或保留本机签名证据。
+- smoke test、状态层脚本和 Playwright 用例覆盖角色控件、签名摘要、导出和刷新复现。
+
+真实化说明：
+
+- 数据来源：本机报告记录、用户填写的批注人/角色/内容和报告自身上下文。
+- 写入状态：写入 `ReportRecord.teacherReview` 和 `reportTeacherReviewAudits`，并进入报告仓库同步包。
+- 成功反馈：页面显示角色和签名短码，导出文件保留完整签名摘要。
+- 失败反馈：空批注不写入；清除批注生成清除审计并保留前一签名证据。
+- 刷新后复现方式：刷新页面后打开同一报告仍能看到角色、批注和签名短码。
+
+仍待补：
+
+- 当前是本机摘要证据，不是账号化教师身份、生产电子签章、证书链、服务端时间戳或不可篡改审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `npm run test:e2e -- --grep "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告教师批注本机签名摘要`

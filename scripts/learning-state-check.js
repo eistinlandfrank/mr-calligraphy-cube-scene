@@ -412,39 +412,52 @@ assert(!emptyTeacherReview.ok, "教师批注为空时不应写入报告。");
 
 const teacherReview = window.MRAppState.updateReportTeacherReview("report-2", {
   reviewer: "王老师",
+  role: "local-reviewer",
   note: "结构更稳，下一次重点放慢竖钩收笔。"
 });
 assert(teacherReview.ok, "报告教师批注应可写入本机状态。");
 assert(teacherReview.teacherReview.reviewer === "王老师", "教师批注应保留批注人。");
+assert(teacherReview.teacherReview.role === "local-reviewer", "教师批注应保留批注角色。");
 assert(teacherReview.teacherReview.note.includes("竖钩"), "教师批注应保留批注内容。");
+assert(/^[a-f0-9]{64}$/.test(teacherReview.teacherReview.reviewDigest), "教师批注应生成内容摘要。");
+assert(/^[a-f0-9]{64}$/.test(teacherReview.teacherReview.localSignatureDigest), "教师批注应生成本机签名摘要。");
 assert(teacherReview.auditRecord?.action === "save", "教师批注保存应生成审计记录。");
 assert(/^[a-f0-9]{64}$/.test(teacherReview.auditRecord.nextDigest), "教师批注保存审计应包含后一摘要。");
+assert(/^[a-f0-9]{64}$/.test(teacherReview.auditRecord.nextReviewDigest), "教师批注保存审计应包含后一批注摘要。");
+assert(/^[a-f0-9]{64}$/.test(teacherReview.auditRecord.nextSignatureDigest), "教师批注保存审计应包含后一本机签名摘要。");
 
 const teacherReviewAudit = window.MRAppState.getReportTeacherReviewAudit("report-2");
 assert(teacherReviewAudit.ok && teacherReviewAudit.total === 1, "教师批注审计应可按报告查询。");
 assert(teacherReviewAudit.records[0].reviewer === "王老师", "教师批注审计应保留批注人。");
+assert(teacherReviewAudit.records[0].role === "local-reviewer", "教师批注审计应保留角色。");
 assert(teacherReviewAudit.records[0].nextPreview.includes("竖钩"), "教师批注审计应保留批注预览。");
 const teacherReviewAuditExport = window.MRAppState.getReportTeacherReviewAuditExport("report-2");
 assert(teacherReviewAuditExport.ok, "教师批注审计应可导出 HTML。");
 assert(teacherReviewAuditExport.html.includes("MR 书法教师批注审计"), "教师批注审计导出应包含标题。");
 assert(teacherReviewAuditExport.html.includes("王老师") && teacherReviewAuditExport.html.includes("竖钩"), "教师批注审计导出应包含批注人和预览。");
+assert(teacherReviewAuditExport.html.includes("教研审核") && teacherReviewAuditExport.html.includes("本机签名"), "教师批注审计导出应包含角色和本机签名。");
 
 const reviewedDetail = window.MRAppState.getReportDetail("report-2");
 assert(reviewedDetail.teacherReview.note.includes("结构更稳"), "报告详情应返回教师批注。");
+assert(reviewedDetail.teacherReview.localSignatureDigest === teacherReview.teacherReview.localSignatureDigest, "报告详情应返回同一份本机签名摘要。");
 
 const reviewedHtml = window.MRAppState.getReportHtmlExport("report-2");
 assert(reviewedHtml.ok, "报告 HTML 应可通过无副作用 API 生成。");
 assert(reviewedHtml.features.teacherReview, "HTML 报告导出应声明包含教师批注。");
+assert(reviewedHtml.features.teacherReviewSignatureDigest === teacherReview.teacherReview.localSignatureDigest, "HTML 报告导出应声明教师批注本机签名摘要。");
 assert(reviewedHtml.features.verification, "HTML 报告导出应声明包含本机验真摘要。");
 assert(reviewedHtml.html.includes("教师批注") && reviewedHtml.html.includes("结构更稳"), "HTML 报告应包含教师批注内容。");
+assert(reviewedHtml.html.includes("教研审核") && reviewedHtml.html.includes(teacherReview.teacherReview.localSignatureDigest.slice(0, 16)), "HTML 报告应包含教师角色和签名短码。");
 assert(reviewedHtml.html.includes("本机验真摘要"), "HTML 报告应显示本机验真摘要。");
 assert(reviewedHtml.html.includes(reviewedHtml.verification.digest), "HTML 报告应包含验真摘要文本。");
 assert(reviewedHtml.verification.digest !== reportPdfExport.verification.digest, "教师批注变更后报告摘要应随内容变化。");
 
 const reviewedPdf = window.MRAppState.getReportPdfExport("report-2");
 assert(reviewedPdf.features.teacherReview, "PDF 报告应声明包含教师批注。");
+assert(reviewedPdf.features.teacherReviewSignatureDigest === teacherReview.teacherReview.localSignatureDigest, "PDF 报告应声明教师批注本机签名摘要。");
 assert(reviewedPdf.features.verification, "批注后的 PDF 报告应继续包含本机验真摘要。");
 assert(reviewedPdf.pdf.includes("TeacherReview: yes"), "PDF 内容应包含教师批注标记。");
+assert(reviewedPdf.pdf.includes(`TeacherReviewSignatureDigest: ${teacherReview.teacherReview.localSignatureDigest}`), "PDF 内容应包含教师批注本机签名摘要。");
 assert(reviewedPdf.pdf.includes(`ReportDigest: ${reviewedHtml.verification.digest}`), "批注后的 PDF 摘要应与 HTML 导出一致。");
 
 const reportRepositoryStatus = window.MRAppState.getReportRepositoryStatus();
