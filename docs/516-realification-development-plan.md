@@ -7588,7 +7588,7 @@
 
 仍待补：
 
-- 当前完成前台详情总结真实化；移动端视口、导入模型贴图替换、服务端资产回收、账号权限和多人协作审计还未完成。
+- 当前完成前台详情总结真实化；移动端视口已在后续记录完成，导入模型贴图替换已在后续记录完成；服务端资产回收、账号权限和多人协作审计还未完成。
 
 验收：
 
@@ -7624,7 +7624,7 @@
 
 仍待补：
 
-- 当前完成 390×844 手机视口核心验收；导入模型贴图替换、服务端资产回收、账号权限、多用户协作审计、更多移动设备矩阵仍未完成。
+- 当前完成 390×844 手机视口核心验收；导入模型贴图替换已在后续记录完成；服务端资产回收、账号权限、多用户协作审计、更多移动设备矩阵仍未完成。
 
 验收：
 
@@ -7635,3 +7635,44 @@
 提交：
 
 - 中文 commit message：`真实化移动端视口验收`
+
+### 2026-06-12：真实化导入模型贴图替换
+
+功能名：导入模型贴图替换。
+
+完成内容：
+
+- `main-admin.html` 和 `realistic-admin.html` 在导入模型外观区域新增“替换当前贴图”。
+- `model-import-utils.js` 新增贴图类型识别、MIME 归一化、8MB 大小限制和贴图记录规范化。
+- 主后台贴图资产写入 `mr-calligraphy-main-model-store`，写实后台贴图资产写入 `mr-calligraphy-model-store`。
+- 导入模型布局记录新增 `texture`，记录 dbKey、fileName、type、mimeType、sha256、fileBytes 和 updatedAt。
+- 主后台和写实后台加载导入模型时会读取 IndexedDB 贴图并挂到 Three.js 材质 `map`。
+- 替换贴图后后台画布即时更新，并写入草稿、历史快照和发布差异。
+- 外观撤销会重新读取旧贴图或清空贴图，避免连续替换后材质对象和记录不一致。
+- 主后台前台 WebGL 读取发布布局中的贴图记录，从 IndexedDB 读取贴图二进制，为带贴图模型创建独立 textured mesh。
+- 前台 GLB 解析读取 `TEXCOORD_0`，OBJ 解析读取 `vt`；无 UV 时使用默认三角形 UV 兜底。
+- E2E 扩展主后台和写实后台导入模型外观用例，验证真实图片上传、IndexedDB 持久化、草稿、发布、发布差异和演示页读取。
+
+真实化说明：
+
+- 数据来源：真实上传图片文件、ArrayBuffer、SHA-256、IndexedDB 和本机发布 layout。
+- 写入状态：导入模型贴图作为独立本机资产保存，布局只保存可核验摘要和 dbKey。
+- 成功反馈：外观状态显示“已替换贴图”，发布差异显示贴图文件名和摘要。
+- 失败反馈：未选中导入模型、隐藏/锁定/删除、空文件、格式错误或文件超限会失败。
+- 刷新后复现方式：刷新后台、发布页或写实演示页后，贴图仍从 IndexedDB 读取并恢复。
+
+仍待补：
+
+- 当前完成本机贴图替换闭环；贴图删除按钮、项目档案完整贴图打包恢复、远端资产签名、云端垃圾回收、CDN purge、账号权限和多人协作审计仍待补齐。
+
+验收：
+
+- `node --check script.js && node --check tests/e2e/real-flows.spec.js`
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型贴图替换`

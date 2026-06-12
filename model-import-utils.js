@@ -1,6 +1,7 @@
 import * as THREE from "three";
 
 export const MAX_IMPORT_MODEL_BYTES = 50 * 1024 * 1024;
+export const MAX_IMPORT_TEXTURE_BYTES = 8 * 1024 * 1024;
 
 const dbCache = new Map();
 
@@ -8,6 +9,17 @@ export function getImportFileType(fileName) {
   const match = String(fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
   const extension = match?.[1];
   return extension === "glb" || extension === "obj" ? extension : "";
+}
+
+export function getImportTextureType(fileName, mimeType = "") {
+  const match = String(fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  const extension = match?.[1];
+  const mime = String(mimeType || "").toLowerCase();
+
+  if (extension === "png" || mime === "image/png") return "png";
+  if (extension === "jpg" || extension === "jpeg" || mime === "image/jpeg") return "jpg";
+  if (extension === "webp" || mime === "image/webp") return "webp";
+  return "";
 }
 
 export function stripModelExtension(fileName) {
@@ -35,6 +47,31 @@ export function normalizeImportMetrics(metrics = {}) {
       height: readFiniteNumber(dimensions.height, 0),
       depth: readFiniteNumber(dimensions.depth, 0)
     }
+  };
+}
+
+export function normalizeImportTextureRecord(record = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const fileName = String(record.fileName || "").trim().slice(0, 160);
+  const type = getImportTextureType(fileName, record.mimeType || record.type);
+  const dbKey = String(record.dbKey || "").trim();
+  const sha256 = normalizeSha256(record.sha256);
+
+  if (!fileName || !type || !dbKey) {
+    return null;
+  }
+
+  return {
+    dbKey,
+    fileName,
+    type,
+    mimeType: getImportTextureMimeType(type),
+    sha256,
+    fileBytes: Math.max(0, Math.round(readFiniteNumber(record.fileBytes, 0))),
+    updatedAt: Number.isFinite(Date.parse(record.updatedAt)) ? record.updatedAt : new Date().toISOString()
   };
 }
 
@@ -67,6 +104,21 @@ export function validateImportFile(file, options = {}) {
   }
 }
 
+export function validateImportTextureFile(file, options = {}) {
+  const type = options.type || getImportTextureType(file?.name, file?.type);
+  const maxBytes = Number(options.maxBytes || MAX_IMPORT_TEXTURE_BYTES);
+
+  if (!["png", "jpg", "webp"].includes(type)) {
+    throw new Error("只支持 PNG、JPG 或 WebP 贴图。");
+  }
+  if (!file?.size) {
+    throw new Error("贴图文件为空。");
+  }
+  if (file.size > maxBytes) {
+    throw new Error(`贴图文件不能超过 ${formatBytes(maxBytes)}。`);
+  }
+}
+
 export function validateImportBuffer(type, arrayBuffer, fileName = "模型文件") {
   if (!arrayBuffer?.byteLength) {
     throw new Error("模型文件没有可读取内容。");
@@ -92,6 +144,13 @@ export function validateImportBuffer(type, arrayBuffer, fileName = "模型文件
   }
 
   throw new Error("只支持 .glb 和 .obj 文件。");
+}
+
+export function getImportTextureMimeType(type) {
+  if (type === "png") return "image/png";
+  if (type === "jpg") return "image/jpeg";
+  if (type === "webp") return "image/webp";
+  return "application/octet-stream";
 }
 
 export function parseImportedModel(record, arrayBuffer, options = {}) {
@@ -203,6 +262,11 @@ export async function createArrayBufferSha256(arrayBuffer) {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function normalizeSha256(value) {
+  const hash = String(value || "").trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
 }
 
 export function formatImportMetrics(metrics = {}) {

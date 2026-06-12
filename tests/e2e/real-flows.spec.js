@@ -1941,16 +1941,19 @@ test("main admin updates imported model material and publishes it", async ({ pag
   test.setTimeout(60_000);
   const importLabel = `E2E 导入外观 ${Date.now()}`;
   const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+  const texturePath = path.resolve(__dirname, "../../assets/cube/floor.png");
 
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expect(page.locator("#mainImportModelMaterialUpdate")).toBeDisabled();
+  await expect(page.locator("#mainImportModelTexture")).toBeDisabled();
 
   await page.locator("#mainImportModelName").fill(importLabel);
   await page.locator("#mainImportModel").setInputFiles(modelPath);
   await expect(page.locator("#mainImportStatus")).toContainText(`已导入：${importLabel}`, { timeout: 30_000 });
   await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已载入：${importLabel}`);
   await expect(page.locator("#mainImportModelMaterialUpdate")).toBeEnabled();
+  await expect(page.locator("#mainImportModelTexture")).toBeEnabled();
 
   const importedObjectId = await page.locator("#mainObjectSelect").inputValue();
   await page.locator("#mainImportModelColor").fill("#2255aa");
@@ -1964,6 +1967,11 @@ test("main admin updates imported model material and publishes it", async ({ pag
   await expect(page.locator("#mainPublishDiffList")).toContainText("粗糙度 0.35");
   await expect(page.locator("#mainPublishDiffList")).toContainText("金属度 0.70");
 
+  await page.locator("#mainImportModelTexture").setInputFiles(texturePath);
+  await expect(page.locator("#mainImportMaterialStatus")).toContainText("已替换贴图", { timeout: 30_000 });
+  await expect(page.locator("#mainPublishDiffList")).toContainText("贴图");
+  await expect(page.locator("#mainPublishDiffList")).toContainText("floor.png");
+
   const layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
   const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
   expect(importedRecord).toBeTruthy();
@@ -1972,6 +1980,10 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(importedRecord.opacity).toBeCloseTo(0.55, 2);
   expect(importedRecord.roughness).toBeCloseTo(0.35, 2);
   expect(importedRecord.metalness).toBeCloseTo(0.7, 2);
+  expect(importedRecord.texture.fileName).toBe("floor.png");
+  expect(importedRecord.texture.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(importedRecord.texture.fileBytes).toBeGreaterThan(0);
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-main-model-store", "models", importedRecord.texture.dbKey)).toBe(true);
 
   await page.locator("#mainPublishLayout").click();
   await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
@@ -1982,6 +1994,8 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(publishedImportedRecord.opacity).toBeCloseTo(0.55, 2);
   expect(publishedImportedRecord.roughness).toBeCloseTo(0.35, 2);
   expect(publishedImportedRecord.metalness).toBeCloseTo(0.7, 2);
+  expect(publishedImportedRecord.texture.fileName).toBe("floor.png");
+  expect(publishedImportedRecord.texture.sha256).toBe(importedRecord.texture.sha256);
   expect(published.stats.importedCount).toBeGreaterThan(0);
 
   await setRangeValue(page, "#mainImportModelRoughness", "0.82");
@@ -1991,6 +2005,10 @@ test("main admin updates imported model material and publishes it", async ({ pag
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
   await page.waitForFunction(() => window.MRRoomAPI?.getMainSceneLayout);
+  await expect.poll(
+    () => page.evaluate(() => window.MR_LOADED_TEXTURED_MODEL_COUNT || 0),
+    { timeout: 30_000 }
+  ).toBeGreaterThan(0);
   const frontLayout = await page.evaluate(() => window.MRRoomAPI.getMainSceneLayout());
   const frontImportedRecord = frontLayout.importedModels.find((item) => item.id === importedObjectId);
   expect(frontImportedRecord).toBeTruthy();
@@ -1998,6 +2016,8 @@ test("main admin updates imported model material and publishes it", async ({ pag
   expect(frontImportedRecord.opacity).toBeCloseTo(0.55, 2);
   expect(frontImportedRecord.roughness).toBeCloseTo(0.35, 2);
   expect(frontImportedRecord.metalness).toBeCloseTo(0.7, 2);
+  expect(frontImportedRecord.texture.fileName).toBe("floor.png");
+  expect(frontImportedRecord.texture.sha256).toBe(importedRecord.texture.sha256);
 });
 
 test("main admin replaces imported model file and publishes it", async ({ page }) => {
@@ -2317,15 +2337,18 @@ test("realistic admin keeps local publish releases and rollback history", async 
 test("realistic admin updates imported model material and publishes it", async ({ page }) => {
   test.setTimeout(60_000);
   const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+  const texturePath = path.resolve(__dirname, "../../assets/cube/wall-wood-front.png");
 
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expect(page.locator("#realisticImportModelMaterialUpdate")).toBeDisabled();
+  await expect(page.locator("#realisticImportModelTexture")).toBeDisabled();
 
   await page.locator("#importModelInput").setInputFiles(modelPath);
   await expect(page.locator("#importStatus")).toContainText("已导入 books.glb", { timeout: 30_000 });
   await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已载入：books");
   await expect(page.locator("#realisticImportModelMaterialUpdate")).toBeEnabled();
+  await expect(page.locator("#realisticImportModelTexture")).toBeEnabled();
 
   const importedObjectId = await page.locator("#designObjectSelect").inputValue();
   await page.locator("#realisticImportModelColor").fill("#2255aa");
@@ -2339,6 +2362,11 @@ test("realistic admin updates imported model material and publishes it", async (
   await expect(page.locator("#realisticPublishDiffList")).toContainText("粗糙度 0.40");
   await expect(page.locator("#realisticPublishDiffList")).toContainText("金属度 0.65");
 
+  await page.locator("#realisticImportModelTexture").setInputFiles(texturePath);
+  await expect(page.locator("#realisticImportMaterialStatus")).toContainText("已替换贴图", { timeout: 30_000 });
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("贴图");
+  await expect(page.locator("#realisticPublishDiffList")).toContainText("wall-wood-front.png");
+
   let layout = await readJsonLocalStorage(page, REALISTIC_LAYOUT_KEY);
   const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
   expect(importedRecord).toBeTruthy();
@@ -2347,6 +2375,10 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(importedRecord.opacity).toBeCloseTo(0.6, 2);
   expect(importedRecord.roughness).toBeCloseTo(0.4, 2);
   expect(importedRecord.metalness).toBeCloseTo(0.65, 2);
+  expect(importedRecord.texture.fileName).toBe("wall-wood-front.png");
+  expect(importedRecord.texture.sha256).toMatch(/^[a-f0-9]{64}$/);
+  expect(importedRecord.texture.fileBytes).toBeGreaterThan(0);
+  expect(await hasStoredImportedAsset(page, "mr-calligraphy-model-store", "models", importedRecord.texture.dbKey)).toBe(true);
 
   await page.locator("#realisticPublishLayout").click();
   await expect(page.locator("#realisticPublishStatus")).toContainText("已发布到演示");
@@ -2357,6 +2389,8 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(publishedImportedRecord.opacity).toBeCloseTo(0.6, 2);
   expect(publishedImportedRecord.roughness).toBeCloseTo(0.4, 2);
   expect(publishedImportedRecord.metalness).toBeCloseTo(0.65, 2);
+  expect(publishedImportedRecord.texture.fileName).toBe("wall-wood-front.png");
+  expect(publishedImportedRecord.texture.sha256).toBe(importedRecord.texture.sha256);
   expect(published.stats.importedCount).toBeGreaterThan(0);
 
   await setRangeValue(page, "#realisticImportModelMetalness", "0.25");
@@ -2373,6 +2407,8 @@ test("realistic admin updates imported model material and publishes it", async (
   expect(demoImportedRecord.opacity).toBeCloseTo(0.6, 2);
   expect(demoImportedRecord.roughness).toBeCloseTo(0.4, 2);
   expect(demoImportedRecord.metalness).toBeCloseTo(0.65, 2);
+  expect(demoImportedRecord.texture.fileName).toBe("wall-wood-front.png");
+  expect(demoImportedRecord.texture.sha256).toBe(importedRecord.texture.sha256);
 });
 
 test("realistic admin replaces imported model file and publishes it", async ({ page }) => {
@@ -2568,6 +2604,28 @@ async function hasStoredImportedModel(page, dbKey) {
       };
     });
   }, dbKey);
+}
+
+async function hasStoredImportedAsset(page, dbName, storeName, dbKey) {
+  return page.evaluate(({ name, store, key }) => {
+    return new Promise((resolve, reject) => {
+      const openRequest = window.indexedDB.open(name, 1);
+      openRequest.onerror = () => reject(openRequest.error);
+      openRequest.onsuccess = () => {
+        const db = openRequest.result;
+        if (!db.objectStoreNames.contains(store)) {
+          db.close();
+          resolve(false);
+          return;
+        }
+        const transaction = db.transaction(store, "readonly");
+        const request = transaction.objectStore(store).get(key);
+        request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(Boolean(request.result?.arrayBuffer?.byteLength));
+        transaction.oncomplete = () => db.close();
+      };
+    });
+  }, { name: dbName, store: storeName, key: dbKey });
 }
 
 async function getSameOriginEndpoint(page, path) {

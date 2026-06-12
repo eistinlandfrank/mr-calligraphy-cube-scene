@@ -1229,6 +1229,7 @@ function normalizeMainImportedModel(record = {}, index = 0) {
     metalness: normalizeMainMetalness(record.metalness),
     sha256: normalizeMainSha256(record.sha256),
     metrics: normalizeMainImportMetrics(record.metrics),
+    texture: normalizeMainTextureRecord(record.texture),
     position: [
       readMainNumber(position[0], 0),
       readMainNumber(position[1], -1.05),
@@ -1270,6 +1271,31 @@ function normalizeMainSha256(value) {
   return /^[a-f0-9]{64}$/.test(hash) ? hash : "";
 }
 
+function normalizeMainTextureRecord(record = {}) {
+  if (!record || typeof record !== "object") {
+    return null;
+  }
+
+  const fileName = String(record.fileName || "").trim().slice(0, 160);
+  const type = getMainImportTextureType(fileName, record.mimeType || record.type);
+  const dbKey = String(record.dbKey || "").trim();
+  const sha256 = normalizeMainSha256(record.sha256);
+
+  if (!fileName || !type || !dbKey) {
+    return null;
+  }
+
+  return {
+    dbKey,
+    fileName,
+    type,
+    mimeType: getMainImportTextureMimeType(type),
+    sha256,
+    fileBytes: Math.max(0, Math.round(readMainNumber(record.fileBytes, 0))),
+    updatedAt: Number.isFinite(Date.parse(record.updatedAt)) ? record.updatedAt : ""
+  };
+}
+
 function normalizeMainImportMetrics(metrics = {}) {
   const source = metrics && typeof metrics === "object" ? metrics : {};
   const dimensions = source.dimensions && typeof source.dimensions === "object" ? source.dimensions : {};
@@ -1291,6 +1317,24 @@ function getMainImportFileType(fileName) {
   const extension = match?.[1];
 
   return extension === "glb" || extension === "obj" ? extension : "";
+}
+
+function getMainImportTextureType(fileName, mimeType = "") {
+  const match = String(fileName || "").toLowerCase().match(/\.([a-z0-9]+)$/);
+  const extension = match?.[1];
+  const mime = String(mimeType || "").toLowerCase();
+
+  if (extension === "png" || mime === "image/png") return "png";
+  if (extension === "jpg" || extension === "jpeg" || mime === "image/jpeg") return "jpg";
+  if (extension === "webp" || mime === "image/webp") return "webp";
+  return "";
+}
+
+function getMainImportTextureMimeType(type) {
+  if (type === "png") return "image/png";
+  if (type === "jpg") return "image/jpeg";
+  if (type === "webp") return "image/webp";
+  return "application/octet-stream";
 }
 
 function stripMainModelExtension(fileName) {
@@ -1431,7 +1475,8 @@ function getRenderableImportedModelSpecs() {
       color: normalizeMainColor(record.color || "#c8b08a"),
       opacity: normalizeMainOpacity(record.opacity),
       roughness: normalizeMainRoughness(record.roughness),
-      metalness: normalizeMainMetalness(record.metalness)
+      metalness: normalizeMainMetalness(record.metalness),
+      texture: normalizeMainTextureRecord(record.texture)
     };
   }).filter(Boolean);
 }
@@ -2438,6 +2483,7 @@ function createRoomRenderer(canvas) {
   };
   const roomMeshes = createRoomTextureMeshes(gl);
   let modelVertices = [];
+  let texturedModelMeshes = [];
   let hasRenderableModels = true;
   let furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, true);
   const fallbackTexture = createSolidTexture(gl, [255, 255, 255, 255]);
@@ -2452,7 +2498,11 @@ function createRoomRenderer(canvas) {
     hasRenderableModels = modelSpecs.length > 0;
     if (!hasRenderableModels) {
       modelVertices = [];
+      texturedModelMeshes = [];
       furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, false);
+      window.MR_LOADED_MODEL_COUNT = 0;
+      window.MR_LOADED_MODEL_VERTICES = 0;
+      window.MR_LOADED_TEXTURED_MODEL_COUNT = 0;
       updateCubeTransform();
       return Promise.resolve();
     }
@@ -2464,14 +2514,24 @@ function createRoomRenderer(canvas) {
     return loadRoomModels(modelSpecs)
       .then((result) => {
         modelVertices = result.vertices;
-        furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, hasRenderableModels);
+        texturedModelMeshes = result.textured.map((chunk) => ({
+          id: chunk.id,
+          mesh: createMesh(gl, chunk.vertices, null),
+          texture: loadRoomTextureFromArrayBuffer(gl, chunk.textureAsset, () => {
+            updateCubeTransform();
+          })
+        }));
+        furnitureMesh = createFurnitureMesh(gl, roomConfig.roles, modelVertices, result.loaded === 0 && hasRenderableModels);
         window.MR_LOADED_MODEL_COUNT = result.loaded;
-        window.MR_LOADED_MODEL_VERTICES = modelVertices.length / ROOM_VERTEX_STRIDE;
+        window.MR_LOADED_MODEL_VERTICES = result.vertexCount;
+        window.MR_LOADED_TEXTURED_MODEL_COUNT = texturedModelMeshes.length;
         showNotice(`已加载 ${result.loaded} 个 3D 模型。`);
         updateCubeTransform();
       })
       .catch((error) => {
         console.error(error);
+        texturedModelMeshes = [];
+        window.MR_LOADED_TEXTURED_MODEL_COUNT = 0;
         showNotice("开源 3D 模型加载失败，已保留基础几何家具。");
       });
   }
@@ -2539,6 +2599,9 @@ function createRoomRenderer(canvas) {
     });
 
     drawRoomMesh(gl, locations, furnitureMesh, fallbackTexture, false);
+    texturedModelMeshes.forEach((item) => {
+      drawRoomMesh(gl, locations, item.mesh, item.texture, true);
+    });
   }
 
   return { render, setTextures, setRoles, setMainSceneLayout };
@@ -2646,6 +2709,34 @@ function loadRoomTexture(gl, src, onLoad) {
   return texture;
 }
 
+function loadRoomTextureFromArrayBuffer(gl, textureAsset, onLoad) {
+  const texture = createSolidTexture(gl, [255, 255, 255, 255]);
+  const textureRecord = normalizeMainTextureRecord(textureAsset);
+
+  if (!textureRecord || !textureAsset?.arrayBuffer) {
+    return texture;
+  }
+
+  const blob = new Blob([textureAsset.arrayBuffer.slice(0)], { type: getMainImportTextureMimeType(textureRecord.type) });
+  const url = URL.createObjectURL(blob);
+  const image = new Image();
+
+  image.onload = () => {
+    URL.revokeObjectURL(url);
+    gl.bindTexture(gl.TEXTURE_2D, texture);
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    onLoad();
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(url);
+    showNotice(`无法加载导入模型贴图：${textureRecord.fileName}`);
+  };
+  image.src = url;
+
+  return texture;
+}
+
 function createSolidTexture(gl, rgba) {
   const texture = gl.createTexture();
 
@@ -2729,6 +2820,7 @@ function createRoomTextureMeshes(gl) {
 }
 
 const roomModelBufferCache = new Map();
+const roomModelTextureBufferCache = new Map();
 
 async function fetchRoomModelBuffer(src) {
   if (roomModelBufferCache.has(src)) {
@@ -2773,15 +2865,24 @@ function openMainImportDb() {
 }
 
 async function readMainImportedModel(record) {
+  return readMainImportedAssetByKey(record?.dbKey);
+}
+
+async function readMainImportedAssetByKey(dbKey) {
   const db = await openMainImportDb();
+  const key = String(dbKey || "").trim();
+
+  if (!key) {
+    return null;
+  }
 
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(MAIN_IMPORT_DB_STORE, "readonly");
     const store = transaction.objectStore(MAIN_IMPORT_DB_STORE);
-    const request = store.get(record.dbKey);
+    const request = store.get(key);
 
     request.onsuccess = () => resolve(request.result || null);
-    request.onerror = () => reject(request.error || new Error("Could not read imported model."));
+    request.onerror = () => reject(request.error || new Error("Could not read imported asset."));
   });
 }
 
@@ -2804,10 +2905,38 @@ async function getRoomModelBuffer(spec) {
   return stored.arrayBuffer.slice(0);
 }
 
+async function getRoomModelTextureAsset(spec) {
+  const textureRecord = normalizeMainTextureRecord(spec.texture);
+  if (!textureRecord) {
+    return null;
+  }
+
+  const cacheKey = `texture:${textureRecord.dbKey}`;
+  if (roomModelTextureBufferCache.has(cacheKey)) {
+    return {
+      ...textureRecord,
+      arrayBuffer: roomModelTextureBufferCache.get(cacheKey).slice(0)
+    };
+  }
+
+  const stored = await readMainImportedAssetByKey(textureRecord.dbKey);
+  if (!stored?.arrayBuffer) {
+    throw new Error(`Imported model texture missing: ${textureRecord.fileName}`);
+  }
+
+  roomModelTextureBufferCache.set(cacheKey, stored.arrayBuffer.slice(0));
+  return {
+    ...textureRecord,
+    arrayBuffer: stored.arrayBuffer.slice(0)
+  };
+}
+
 async function loadRoomModels(modelSpecs) {
   if (!modelSpecs.length) {
     return {
       vertices: [],
+      textured: [],
+      vertexCount: 0,
       loaded: 0
     };
   }
@@ -2815,11 +2944,20 @@ async function loadRoomModels(modelSpecs) {
   const chunks = await Promise.all(modelSpecs.map(async (spec) => {
     try {
       const buffer = await getRoomModelBuffer(spec);
+      const vertices = spec.type === "obj"
+        ? parseObjModel(buffer, spec)
+        : parseGlbModel(buffer, spec);
+      const textureAsset = spec.texture
+        ? await getRoomModelTextureAsset(spec).catch((error) => {
+            console.warn(error);
+            return null;
+          })
+        : null;
+
       return {
         id: spec.id,
-        vertices: spec.type === "obj"
-          ? parseObjModel(buffer, spec)
-          : parseGlbModel(buffer, spec)
+        vertices,
+        textureAsset
       };
     } catch (error) {
       console.warn(error);
@@ -2831,14 +2969,19 @@ async function loadRoomModels(modelSpecs) {
     }
   }));
   const loadedChunks = chunks.filter((chunk) => chunk.vertices.length > 0);
-  const vertices = loadedChunks.flatMap((chunk) => chunk.vertices);
+  const solidChunks = loadedChunks.filter((chunk) => !chunk.textureAsset);
+  const textured = loadedChunks.filter((chunk) => chunk.textureAsset);
+  const vertices = solidChunks.flatMap((chunk) => chunk.vertices);
+  const vertexCount = loadedChunks.reduce((count, chunk) => count + chunk.vertices.length / ROOM_VERTEX_STRIDE, 0);
 
-  if (!vertices.length) {
+  if (!vertexCount) {
     throw new Error("No 3D models could be loaded.");
   }
 
   return {
     vertices,
+    textured,
+    vertexCount,
     loaded: loadedChunks.length
   };
 }
@@ -2892,6 +3035,9 @@ function parseGlbModel(arrayBuffer, spec) {
       const normals = primitive.attributes.NORMAL !== undefined
         ? readGlbAccessor(gltf, binaryChunk, primitive.attributes.NORMAL)
         : null;
+      const texCoords = primitive.attributes.TEXCOORD_0 !== undefined
+        ? readGlbAccessor(gltf, binaryChunk, primitive.attributes.TEXCOORD_0)
+        : null;
       const indices = primitive.indices !== undefined
         ? readGlbAccessor(gltf, binaryChunk, primitive.indices)
         : positions.map((_, index) => index);
@@ -2899,9 +3045,9 @@ function parseGlbModel(arrayBuffer, spec) {
       const material = getGlbMaterialParams(gltf, primitive.material, spec);
 
       for (let i = 0; i < indices.length; i += 3) {
-        pushGlbModelVertex(vertices, positions[indices[i]], normals && normals[indices[i]], color, bounds, spec, material);
-        pushGlbModelVertex(vertices, positions[indices[i + 1]], normals && normals[indices[i + 1]], color, bounds, spec, material);
-        pushGlbModelVertex(vertices, positions[indices[i + 2]], normals && normals[indices[i + 2]], color, bounds, spec, material);
+        pushGlbModelVertex(vertices, positions[indices[i]], normals && normals[indices[i]], texCoords && texCoords[indices[i]], color, bounds, spec, material);
+        pushGlbModelVertex(vertices, positions[indices[i + 1]], normals && normals[indices[i + 1]], texCoords && texCoords[indices[i + 1]], color, bounds, spec, material);
+        pushGlbModelVertex(vertices, positions[indices[i + 2]], normals && normals[indices[i + 2]], texCoords && texCoords[indices[i + 2]], color, bounds, spec, material);
       }
     });
   });
@@ -2912,6 +3058,7 @@ function parseGlbModel(arrayBuffer, spec) {
 function parseObjModel(arrayBuffer, spec) {
   const text = new TextDecoder("utf-8").decode(arrayBuffer);
   const positions = [];
+  const texCoords = [];
   const faces = [];
 
   text.split(/\r?\n/).forEach((rawLine) => {
@@ -2932,13 +3079,21 @@ function parseObjModel(arrayBuffer, spec) {
       return;
     }
 
-    if (command === "f" && parts.length >= 3) {
-      const indices = parts
-        .map((part) => parseObjFaceIndex(part, positions.length))
-        .filter((index) => index >= 0 && index < positions.length);
+    if (command === "vt" && parts.length >= 2) {
+      texCoords.push([
+        Number(parts[0]),
+        Number(parts[1])
+      ]);
+      return;
+    }
 
-      for (let i = 1; i < indices.length - 1; i += 1) {
-        faces.push([indices[0], indices[i], indices[i + 1]]);
+    if (command === "f" && parts.length >= 3) {
+      const faceVertices = parts
+        .map((part) => parseObjFaceVertex(part, positions.length, texCoords.length))
+        .filter((item) => item.positionIndex >= 0 && item.positionIndex < positions.length);
+
+      for (let i = 1; i < faceVertices.length - 1; i += 1) {
+        faces.push([faceVertices[0], faceVertices[i], faceVertices[i + 1]]);
       }
     }
   });
@@ -2956,18 +3111,41 @@ function parseObjModel(arrayBuffer, spec) {
   const vertices = [];
 
   faces.forEach((face) => {
-    const triangle = face.map((index) => transformObjPosition(positions[index], bounds, spec, rx, ry, rz));
+    const triangle = face.map((item) => transformObjPosition(positions[item.positionIndex], bounds, spec, rx, ry, rz));
     const normal = normalizeVector(crossVector(
       subtractVector(triangle[1], triangle[0]),
       subtractVector(triangle[2], triangle[0])
     ));
+    const uvs = face.map((item, index) => {
+      const uv = texCoords[item.texCoordIndex];
+      return Array.isArray(uv) ? uv : [[0, 0], [1, 0], [0, 1]][index];
+    });
 
-    pushVertex(vertices, triangle[0], [0, 0], color, normal, material);
-    pushVertex(vertices, triangle[1], [1, 0], color, normal, material);
-    pushVertex(vertices, triangle[2], [0, 1], color, normal, material);
+    pushVertex(vertices, triangle[0], uvs[0], color, normal, material);
+    pushVertex(vertices, triangle[1], uvs[1], color, normal, material);
+    pushVertex(vertices, triangle[2], uvs[2], color, normal, material);
   });
 
   return vertices;
+}
+
+function parseObjFaceVertex(token, vertexCount, texCoordCount) {
+  const parts = String(token).split("/");
+
+  return {
+    positionIndex: parseObjRelativeIndex(parts[0], vertexCount),
+    texCoordIndex: parseObjRelativeIndex(parts[1], texCoordCount)
+  };
+}
+
+function parseObjRelativeIndex(value, count) {
+  const index = Number.parseInt(String(value || ""), 10);
+
+  if (!Number.isFinite(index) || index === 0) {
+    return -1;
+  }
+
+  return index > 0 ? index - 1 : count + index;
 }
 
 function parseObjFaceIndex(token, vertexCount) {
@@ -3161,7 +3339,7 @@ function getModelMaterialParams(spec = {}) {
   ];
 }
 
-function pushGlbModelVertex(vertices, position, normal, color, bounds, spec, material) {
+function pushGlbModelVertex(vertices, position, normal, uv, color, bounds, spec, material) {
   if (!position) {
     return;
   }
@@ -3189,7 +3367,7 @@ function pushGlbModelVertex(vertices, position, normal, color, bounds, spec, mat
     degToRad(spec.rotationZ || 0)
   ));
 
-  pushVertex(vertices, finalPosition, [0, 0], color, finalNormal, material);
+  pushVertex(vertices, finalPosition, Array.isArray(uv) ? uv : [0, 0], color, finalNormal, material);
 }
 
 function createFurnitureMesh(gl, roles = [], modelVertices = [], showFallbackFurniture = true) {

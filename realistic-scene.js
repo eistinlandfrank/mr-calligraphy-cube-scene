@@ -11,12 +11,16 @@ import {
   formatBytes,
   formatImportMetrics,
   getImportFileType,
+  getImportTextureMimeType,
+  getImportTextureType,
   measureImportedModel,
   normalizeImportLabel,
   normalizeImportMetrics,
+  normalizeImportTextureRecord,
   parseImportedModel,
   validateImportBuffer,
   validateImportFile,
+  validateImportTextureFile,
   validateImportedModelMetrics
 } from "./model-import-utils.js";
 
@@ -47,6 +51,7 @@ const importModelRoughnessValue = document.getElementById("realisticImportModelR
 const importModelMetalnessInput = document.getElementById("realisticImportModelMetalness");
 const importModelMetalnessValue = document.getElementById("realisticImportModelMetalnessValue");
 const importModelReplaceInput = document.getElementById("realisticImportModelReplace");
+const importModelTextureInput = document.getElementById("realisticImportModelTexture");
 const importModelMaterialUpdateButton = document.getElementById("realisticImportModelMaterialUpdate");
 const importMaterialStatus = document.getElementById("realisticImportMaterialStatus");
 const importAuditStatus = document.getElementById("realisticImportAuditStatus");
@@ -108,6 +113,7 @@ const importedModelStore = createModelStore({
 });
 const importedGltfLoader = new GLTFLoader();
 const importedObjLoader = new OBJLoader();
+const importedTextureLoader = new THREE.TextureLoader();
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x15120f);
@@ -854,7 +860,8 @@ function normalizeImportedRecord(record = {}, index = 0) {
     roughness: normalizeImportRoughness(record.roughness),
     metalness: normalizeImportMetalness(record.metalness),
     sha256: normalizeSha256(record.sha256),
-    metrics: normalizeImportMetrics(record.metrics)
+    metrics: normalizeImportMetrics(record.metrics),
+    texture: normalizeImportTextureRecord(record.texture)
   };
 }
 
@@ -907,6 +914,82 @@ async function readImportedModel(record) {
 
 async function deleteImportedModelData(record) {
   return importedModelStore.delete(record);
+}
+
+async function storeImportedTextureAsset(textureRecord, arrayBuffer) {
+  const normalized = normalizeImportTextureRecord(textureRecord);
+  if (!normalized) {
+    throw new Error("贴图记录不完整，无法保存。");
+  }
+  return importedModelStore.store({
+    id: normalized.dbKey,
+    dbKey: normalized.dbKey,
+    label: normalized.fileName,
+    fileName: normalized.fileName,
+    type: normalized.type,
+    sha256: normalized.sha256,
+    metrics: { fileBytes: normalized.fileBytes }
+  }, arrayBuffer);
+}
+
+async function readImportedTextureAsset(textureRecord) {
+  const normalized = normalizeImportTextureRecord(textureRecord);
+  if (!normalized) {
+    return null;
+  }
+  return importedModelStore.read({ id: normalized.dbKey, dbKey: normalized.dbKey });
+}
+
+async function readImportedModelTexture(record) {
+  const textureRecord = normalizeImportTextureRecord(record?.texture);
+  if (!textureRecord) {
+    return null;
+  }
+  const stored = await readImportedTextureAsset(textureRecord);
+  if (!stored?.arrayBuffer) {
+    throw new Error(`贴图文件缺失：${textureRecord.fileName}`);
+  }
+  return createThreeTextureFromArrayBuffer(stored.arrayBuffer, textureRecord);
+}
+
+function createThreeTextureFromArrayBuffer(arrayBuffer, textureRecord) {
+  const normalized = normalizeImportTextureRecord(textureRecord);
+  if (!normalized) {
+    return Promise.resolve(null);
+  }
+
+  const blob = new Blob([arrayBuffer.slice(0)], { type: getImportTextureMimeType(normalized.type) });
+  const url = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    importedTextureLoader.load(url, (texture) => {
+      URL.revokeObjectURL(url);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      texture.flipY = false;
+      texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+      texture.wrapS = THREE.RepeatWrapping;
+      texture.wrapT = THREE.RepeatWrapping;
+      texture.needsUpdate = true;
+      resolve(texture);
+    }, undefined, (error) => {
+      URL.revokeObjectURL(url);
+      reject(error || new Error(`贴图无法读取：${normalized.fileName}`));
+    });
+  });
+}
+
+function createImportTextureRecord(file, ownerRecord, sha256) {
+  const type = getImportTextureType(file.name, file.type);
+  const ownerKey = ownerRecord?.dbKey || ownerRecord?.id || "realistic-imported-model";
+  return normalizeImportTextureRecord({
+    dbKey: `${ownerKey}:texture-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    fileName: file.name,
+    type,
+    mimeType: getImportTextureMimeType(type),
+    sha256,
+    fileBytes: file.size,
+    updatedAt: new Date().toISOString()
+  });
 }
 
 function loadImportAuditLog() {
@@ -1781,6 +1864,7 @@ function describeImportedModelSnapshot(value, isRemoved = false) {
   const parts = [
     record.fileName ? `文件 ${record.fileName}` : "",
     record.sha256 ? `SHA ${shortDiffHash(record.sha256)}` : "",
+    formatImportedTextureSnapshot(record.texture),
     record.color ? `颜色 ${record.color}` : "",
     `透明度 ${formatDiffNumber(normalizeImportOpacity(record.opacity), 2)}`,
     `粗糙度 ${formatDiffNumber(normalizeImportRoughness(record.roughness), 2)}`,
@@ -1791,7 +1875,7 @@ function describeImportedModelSnapshot(value, isRemoved = false) {
   if (isRemoved) {
     parts.unshift("将从发布版本移除");
   }
-  return parts.slice(0, 7).join("；");
+  return parts.slice(0, 8).join("；");
 }
 
 function describeImportedModelChange(previousValue, nextValue) {
@@ -1806,13 +1890,38 @@ function describeImportedModelChange(previousValue, nextValue) {
   if (normalizeSha256(previous.sha256) !== normalizeSha256(next.sha256)) {
     changes.push(`SHA ${shortDiffHash(previous.sha256)} → ${shortDiffHash(next.sha256)}`);
   }
+  appendImportedTextureDiff(changes, previous.texture, next.texture);
   appendTextDiff(changes, "颜色", previous.color, next.color);
   appendNumberDiff(changes, "透明度", normalizeImportOpacity(previous.opacity), normalizeImportOpacity(next.opacity), 2);
   appendNumberDiff(changes, "粗糙度", normalizeImportRoughness(previous.roughness), normalizeImportRoughness(next.roughness), 2);
   appendNumberDiff(changes, "金属度", normalizeImportMetalness(previous.metalness), normalizeImportMetalness(next.metalness), 2);
   appendStateDiffs(changes, previousState, nextState);
 
-  return changes.slice(0, 7).join("；");
+  return changes.slice(0, 8).join("；");
+}
+
+function formatImportedTextureSnapshot(texture) {
+  const normalized = normalizeImportTextureRecord(texture);
+  if (!normalized) {
+    return "";
+  }
+  const hash = normalized.sha256 ? ` · SHA ${shortDiffHash(normalized.sha256)}` : "";
+  return `贴图 ${normalized.fileName}${hash}`;
+}
+
+function appendImportedTextureDiff(changes, previousTexture, nextTexture) {
+  const previous = normalizeImportTextureRecord(previousTexture);
+  const next = normalizeImportTextureRecord(nextTexture);
+  const beforeName = previous?.fileName || "";
+  const afterName = next?.fileName || "";
+
+  if (beforeName !== afterName) {
+    changes.push(`贴图 ${beforeName || "空"} → ${afterName || "空"}`);
+    return;
+  }
+  if ((previous?.sha256 || "") !== (next?.sha256 || "")) {
+    changes.push(`贴图SHA ${shortDiffHash(previous?.sha256)} → ${shortDiffHash(next?.sha256)}`);
+  }
 }
 
 function appendTextDiff(changes, label, previous, next) {
@@ -2105,10 +2214,15 @@ function prepareImportedObject(root) {
 }
 
 async function createImportedModelObject(record, arrayBuffer) {
+  const normalized = normalizeImportedRecord(record);
   const importedObject = await parseImportedModel(record, arrayBuffer, {
     gltfLoader: importedGltfLoader,
     objLoader: importedObjLoader,
     objMaterial: new THREE.MeshStandardMaterial({ color: 0xc8b08a, roughness: 0.62, metalness: 0.04 })
+  });
+  const texture = await readImportedModelTexture(normalized).catch((error) => {
+    console.warn("Realistic imported model texture could not be loaded.", error);
+    return null;
   });
   const root = new THREE.Group();
   root.add(importedObject);
@@ -2117,7 +2231,9 @@ async function createImportedModelObject(record, arrayBuffer) {
   validateImportedModelMetrics(metrics);
   normalizeImportedObject(root);
   prepareImportedObject(root);
-  applyImportedModelMaterial(root, record);
+  root.userData.importTexture = texture;
+  root.userData.importTextureRecord = normalized.texture;
+  applyImportedModelMaterial(root, normalized, { texture });
   return {
     root,
     metrics: createImportMetrics(metrics, arrayBuffer.byteLength)
@@ -2129,6 +2245,7 @@ function applyImportedModelMaterial(root, record, options = {}) {
   const opacity = normalizeImportOpacity(record.opacity);
   const roughness = normalizeImportRoughness(record.roughness);
   const metalness = normalizeImportMetalness(record.metalness);
+  const texture = options.texture || root.userData.importTexture || null;
 
   root.traverse((child) => {
     if (!child.isMesh) {
@@ -2138,9 +2255,10 @@ function applyImportedModelMaterial(root, record, options = {}) {
     const previous = child.material;
     const sourceMaterials = Array.isArray(previous) ? previous : [previous].filter(Boolean);
     const nextMaterials = sourceMaterials.length
-      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color, opacity, roughness, metalness))
+      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color, opacity, roughness, metalness, texture))
       : [new THREE.MeshStandardMaterial({
           color,
+          map: texture,
           opacity,
           transparent: opacity < 0.999,
           depthWrite: opacity >= 0.999,
@@ -2156,7 +2274,7 @@ function applyImportedModelMaterial(root, record, options = {}) {
   });
 }
 
-function cloneImportedMaterial(material, color, opacity, roughness, metalness) {
+function cloneImportedMaterial(material, color, opacity, roughness, metalness, texture = null) {
   const next = material?.clone
     ? material.clone()
     : new THREE.MeshStandardMaterial({
@@ -2172,6 +2290,9 @@ function cloneImportedMaterial(material, color, opacity, roughness, metalness) {
   next.depthWrite = opacity >= 0.999;
   next.roughness = roughness;
   next.metalness = metalness;
+  if (texture) {
+    next.map = texture;
+  }
   next.needsUpdate = true;
   return next;
 }
@@ -2187,6 +2308,8 @@ function disposeMaterials(material) {
 function addPreparedImportedModelToScene(record, root, selectAfterLoad = false) {
   const normalized = normalizeImportedRecord(record);
   root.userData.importRecord = normalized;
+  root.userData.importTexture = root.userData.importTexture || null;
+  root.userData.importTextureRecord = normalized.texture || null;
   scene.add(root);
   registerDesignObject(normalized.id, normalized.label, root);
 
@@ -2332,10 +2455,16 @@ async function undoLastChange() {
   if (snapshot?.kind === "import-material-update") {
     const entry = designObjects.get(snapshot.id);
     if (entry) {
-      applyImportedRecordToEntry(entry, snapshot.record);
-      selectDesignObject(entry.id);
-      createLayoutSnapshot(`撤回外观：${entry.label}`, { status: false });
-      setImportMaterialStatus(`已撤回写实导入模型外观：${entry.label}`);
+      try {
+        await refreshImportedEntryTexture(entry, snapshot.record);
+        applyImportedRecordToEntry(entry, snapshot.record);
+        selectDesignObject(entry.id);
+        createLayoutSnapshot(`撤回外观：${entry.label}`, { status: false });
+        setImportMaterialStatus(`已撤回写实导入模型外观：${entry.label}`);
+      } catch (error) {
+        console.error(error);
+        setImportMaterialStatus(`撤回写实导入模型外观失败：${error.message || entry.label}`);
+      }
     }
     return;
   }
@@ -2466,6 +2595,9 @@ function updateDeletedUi() {
   if (importModelReplaceInput) {
     importModelReplaceInput.disabled = !canEditImportedEntry(selectedDesignObject);
   }
+  if (importModelTextureInput) {
+    importModelTextureInput.disabled = !canEditImportedEntry(selectedDesignObject);
+  }
 }
 
 function setObjectDeleted(entry, deleted, recordUndo = true) {
@@ -2557,9 +2689,13 @@ function syncImportedMaterialEditorFromSelection() {
       importModelReplaceInput.disabled = true;
       importModelReplaceInput.value = "";
     }
+    if (importModelTextureInput) {
+      importModelTextureInput.disabled = true;
+      importModelTextureInput.value = "";
+    }
     setImportMaterialStatus(selectedDesignObject
       ? "当前选中对象不是写实导入模型；可导入 GLB / OBJ 后再编辑外观。"
-      : "选中写实导入模型后，可调整颜色、透明度、粗糙度和金属度并写入草稿和发布版本。");
+      : "选中写实导入模型后，可调整颜色、透明度、粗糙度、金属度和贴图并写入草稿和发布版本。");
     return;
   }
 
@@ -2577,8 +2713,14 @@ function syncImportedMaterialEditorFromSelection() {
     importModelReplaceInput.disabled = !canEditImportedEntry(entry);
     importModelReplaceInput.value = "";
   }
+  if (importModelTextureInput) {
+    importModelTextureInput.disabled = !canEditImportedEntry(entry);
+    importModelTextureInput.value = "";
+  }
+  const textureRecord = normalizeImportTextureRecord(record.texture);
+  const textureText = textureRecord ? `当前贴图：${textureRecord.fileName}。` : "当前未设置自定义贴图。";
   setImportMaterialStatus(canEditImportedEntry(entry)
-    ? `已载入：${entry.label}。可调整材质参数，或选择 GLB / OBJ 替换当前模型文件。`
+    ? `已载入：${entry.label}。${textureText}可调整材质参数，或选择 GLB / OBJ / 图片替换当前资产。`
     : `已载入：${entry.label}，需恢复显示后才能更新外观。`);
 }
 
@@ -2730,6 +2872,69 @@ async function replaceSelectedImportedModelFile(event) {
   }
 }
 
+async function refreshImportedEntryTexture(entry, record) {
+  const textureRecord = normalizeImportTextureRecord(record?.texture);
+  if (!textureRecord) {
+    entry.object.userData.importTexture = null;
+    entry.object.userData.importTextureRecord = null;
+    return null;
+  }
+  const texture = await readImportedModelTexture({ texture: textureRecord });
+  entry.object.userData.importTexture = texture;
+  entry.object.userData.importTextureRecord = textureRecord;
+  return texture;
+}
+
+async function replaceSelectedImportedModelTexture(event) {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  const entry = getSelectedImportedEntry();
+  try {
+    if (!entry) {
+      throw new Error("请选择一个写实导入模型后再替换贴图。");
+    }
+    if (!canEditImportedEntry(entry)) {
+      throw new Error("当前写实导入模型已删除，需恢复显示后才能替换贴图。");
+    }
+
+    const type = getImportTextureType(file.name, file.type);
+    validateImportTextureFile(file, { type });
+
+    const beforeRecord = clonePlain(getImportedRecordById(entry.id) || entry.object.userData.importRecord || {});
+    setImportMaterialStatus(`正在读取贴图 ${file.name}...`);
+    const arrayBuffer = await file.arrayBuffer();
+    const textureRecord = createImportTextureRecord(file, beforeRecord, await createArrayBufferSha256(arrayBuffer));
+    const texture = await createThreeTextureFromArrayBuffer(arrayBuffer, textureRecord);
+    const nextRecord = normalizeImportedRecord({
+      ...beforeRecord,
+      texture: textureRecord
+    });
+
+    await storeImportedTextureAsset(textureRecord, arrayBuffer);
+    pushUndoSnapshot({
+      kind: "import-material-update",
+      id: entry.id,
+      record: beforeRecord
+    });
+    entry.object.userData.importTexture = texture;
+    entry.object.userData.importTextureRecord = textureRecord;
+    applyImportedRecordToEntry(entry, nextRecord);
+    selectDesignObject(entry.id);
+    createLayoutSnapshot(`贴图：${entry.label}`, { status: false });
+    setImportMaterialStatus(`已替换贴图：${entry.label} · ${textureRecord.fileName} · SHA ${textureRecord.sha256.slice(0, 12)}。`);
+    setImportStatus(`已替换写实导入模型贴图：${entry.label}。贴图文件保存在本机 IndexedDB，并会随发布版本引用。`);
+  } catch (error) {
+    console.error(error);
+    setImportMaterialStatus(`替换贴图失败：${error.message || file.name}`);
+    setImportStatus(`替换写实贴图失败：${error.message || file.name}`);
+  } finally {
+    event.target.value = "";
+  }
+}
+
 function applyImportedRecordToEntry(entry, record) {
   if (!entry || !isImportedDesignObject(entry)) {
     return;
@@ -2737,9 +2942,13 @@ function applyImportedRecordToEntry(entry, record) {
 
   const normalized = upsertImportedRecord(record);
   entry.object.userData.importRecord = normalized;
+  entry.object.userData.importTextureRecord = normalized.texture || null;
   entry.object.userData.designLabel = normalized.label;
   entry.label = normalized.label;
-  applyImportedModelMaterial(entry.object, normalized, { disposePrevious: true });
+  applyImportedModelMaterial(entry.object, normalized, {
+    disposePrevious: true,
+    texture: entry.object.userData.importTexture
+  });
   updateObjectOption(entry);
   saveSceneLayout();
   renderPublishDiff();
@@ -2756,6 +2965,8 @@ function replaceImportedEntryModel(entry, record, nextRoot, snapshot = null) {
   entry.object.scale.copy(nextRoot.scale);
   [...nextRoot.children].forEach((child) => entry.object.add(child));
   entry.object.userData.importRecord = normalized;
+  entry.object.userData.importTexture = nextRoot.userData.importTexture || entry.object.userData.importTexture || null;
+  entry.object.userData.importTextureRecord = normalized.texture || null;
   entry.object.userData.designLabel = normalized.label;
   entry.label = normalized.label;
   registerImportedEntryMeshes(entry.object);
@@ -3029,6 +3240,7 @@ function bindUi() {
     importModelRoughnessInput?.addEventListener("input", updateImportRoughnessOutput);
     importModelMetalnessInput?.addEventListener("input", updateImportMetalnessOutput);
     importModelReplaceInput?.addEventListener("change", replaceSelectedImportedModelFile);
+    importModelTextureInput?.addEventListener("change", replaceSelectedImportedModelTexture);
     importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
     importAuditCleanupButton?.addEventListener("click", cleanupDeletedImportedModelFiles);
     importAuditExportButton?.addEventListener("click", exportImportAudit);

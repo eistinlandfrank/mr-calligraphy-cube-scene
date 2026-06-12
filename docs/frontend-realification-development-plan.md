@@ -2025,7 +2025,7 @@ git diff --check
 
 仍待补：
 
-- 当前完成前台本机详情总结；移动端视口覆盖、导入模型贴图替换、服务端资产回收、账号权限和多人协作审计仍待继续补齐。
+- 当前完成前台本机详情总结；移动端视口覆盖已在后续第 61 节完成，导入模型贴图替换已在后续第 62 节完成；服务端资产回收、账号权限和多人协作审计仍待继续补齐。
 
 验收：
 
@@ -2061,7 +2061,7 @@ git diff --check
 
 仍待补：
 
-- 当前完成 390×844 手机视口核心入口验收；导入模型贴图替换、服务端资产回收、账号权限、多用户协作审计、更多设备矩阵和所有下载触屏路径仍待继续补齐。
+- 当前完成 390×844 手机视口核心入口验收；导入模型贴图替换已在后续第 62 节完成；服务端资产回收、账号权限、多用户协作审计、更多设备矩阵和所有下载触屏路径仍待继续补齐。
 
 验收：
 
@@ -2072,3 +2072,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`真实化移动端视口验收`
+
+## 62. 2026-06-12 真实化导入模型贴图替换
+
+本次把主后台和写实后台的导入模型外观从“颜色/PBR 参数”推进到真实贴图替换：选中已导入 GLB / OBJ 后，可以上传 PNG、JPG 或 WebP 作为当前模型贴图，贴图二进制写入 IndexedDB，布局记录保存贴图摘要，发布差异显示贴图变化，发布后前台/写实演示页能读取同一份贴图记录。
+
+完成内容：
+
+- `model-import-utils.js` 新增导入贴图类型识别、大小校验、MIME 归一化和贴图记录规范化。
+- `main-admin.html` 和 `realistic-admin.html` 在导入模型外观区新增“替换当前贴图”文件选择器。
+- `main-admin-scene.js` 与 `realistic-scene.js` 支持读取贴图 ArrayBuffer、计算 SHA-256、存入 IndexedDB，并把 `texture` 记录写入导入模型草稿。
+- 两个后台加载导入模型时会从 IndexedDB 读取贴图并挂到 Three.js `MeshStandardMaterial.map`，换贴图后后台画布立即刷新。
+- 换贴图进入撤销栈；撤销时会重新读取旧贴图或清空贴图，避免连续换贴图后材质对象和记录不一致。
+- 发布差异明细新增贴图名称和贴图 SHA 摘要，新增/修改导入模型时能看见贴图变更。
+- `script.js` 前台主场景读取发布布局中的贴图记录，从 IndexedDB 取回贴图二进制，并为带贴图的导入模型创建独立 WebGL mesh 绘制。
+- 前台 GLB 解析新增 `TEXCOORD_0` 读取，OBJ 解析新增 `vt` 读取；没有 UV 的 OBJ 会使用三角形默认 UV 兜底。
+- Playwright 扩展主后台和写实后台材质用例，覆盖上传真实 PNG 贴图、IndexedDB 资产存在、草稿持久化、发布持久化、发布差异和前台/演示页读取。
+
+真实化说明：
+
+- 数据来源：用户上传的真实图片文件、浏览器 `File.arrayBuffer()`、SHA-256 摘要、IndexedDB 模型资产仓库和本机发布布局。
+- 写入状态：主后台写入 `mr-calligraphy-main-model-store` 与 `mr-calligraphy-main-scene-layout-v1.importedModels[*].texture`；写实后台写入 `mr-calligraphy-model-store` 与 `mr-calligraphy-realistic-layout-v1.importedModels[*].texture`。
+- 成功反馈：后台状态显示“已替换贴图”，发布差异显示贴图名称，前台暴露 `MR_LOADED_TEXTURED_MODEL_COUNT` 便于确认 WebGL 已加载贴图模型。
+- 失败反馈：未选中导入模型、对象不可编辑、贴图为空、格式不是 PNG/JPG/WebP 或超过 8MB 时均明确失败。
+- 刷新后复现方式：刷新后台或打开发布页后，贴图记录仍从布局读取，贴图二进制仍从 IndexedDB 读取。
+
+仍待补：
+
+- 当前完成本机贴图替换和发布读取；贴图删除/恢复成原材质按钮、贴图随项目档案导出导入的完整资产打包、服务端资产签名、CDN purge、账号权限和多人协作审计仍待继续补齐。
+
+验收：
+
+- `node --input-type=module --check < main-admin-scene.js`
+- `node --input-type=module --check < realistic-scene.js`
+- `node --check script.js && node --check tests/e2e/real-flows.spec.js`
+- `npm run test:e2e -- --grep "admin updates imported model material"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化导入模型贴图替换`
