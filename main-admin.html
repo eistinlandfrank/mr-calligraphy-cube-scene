@@ -119,6 +119,15 @@
             <input id="mainImportModel" type="file" accept=".glb,.obj,model/gltf-binary,text/plain">
           </label>
           <p id="mainImportStatus" class="main-import-status">导入后会自动保存到本机，并同步到正常主场景。</p>
+          <div class="main-add-subtitle">导入模型外观</div>
+          <div class="main-custom-row main-import-material-row">
+            <label>
+              <span>主色调</span>
+              <input id="mainImportModelColor" type="color" value="#c8b08a">
+            </label>
+            <button data-feature-state="real-local" id="mainImportModelMaterialUpdate" type="button">更新导入外观</button>
+          </div>
+          <p id="mainImportMaterialStatus" class="main-import-status">选中导入模型后，可调整颜色并写入草稿和发布版本。</p>
           <div class="main-project-audit" aria-label="导入模型删除审计">
             <div class="main-project-audit-head">
               <strong>导入模型删除审计</strong>

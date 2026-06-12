@@ -54,6 +54,9 @@ const customStatus = document.getElementById("mainCustomStatus");
 const importModelNameInput = document.getElementById("mainImportModelName");
 const importModelInput = document.getElementById("mainImportModel");
 const importStatus = document.getElementById("mainImportStatus");
+const importModelColorInput = document.getElementById("mainImportModelColor");
+const importModelMaterialUpdateButton = document.getElementById("mainImportModelMaterialUpdate");
+const importMaterialStatus = document.getElementById("mainImportMaterialStatus");
 const importAuditStatus = document.getElementById("mainImportAuditStatus");
 const importAuditList = document.getElementById("mainImportAuditList");
 const importAuditExportButton = document.getElementById("mainImportAuditExport");
@@ -545,6 +548,7 @@ async function handleImportModel(event) {
       label,
       fileName: file.name,
       type,
+      color: importModelColorInput?.value || "#c8b08a",
       position: [0, -1.05, -3.2],
       rotation: [0, 0, 0],
       scale: 1
@@ -586,6 +590,7 @@ async function createImportedModel(record, arrayBuffer, options = {}) {
   normalized.metrics = createImportMetrics(metrics, arrayBuffer.byteLength);
   normalizeImportedModelPivot(model, normalized);
   prepareImportedModel(model);
+  applyImportedModelMaterial(model, normalized);
 
   const group = new THREE.Group();
   scene.add(group);
@@ -645,6 +650,55 @@ function prepareImportedModel(model) {
       child.material = fallbackMaterial;
     }
   });
+}
+
+function applyImportedModelMaterial(root, record, options = {}) {
+  const color = new THREE.Color(normalizeImportColor(record.color || "#c8b08a"));
+
+  root.traverse((child) => {
+    if (!child.isMesh) {
+      return;
+    }
+
+    const previous = child.material;
+    const sourceMaterials = Array.isArray(previous) ? previous : [previous].filter(Boolean);
+    const nextMaterials = sourceMaterials.length
+      ? sourceMaterials.map((material) => cloneImportedMaterial(material, color))
+      : [new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.64,
+          metalness: 0.02
+        })];
+
+    child.material = Array.isArray(previous) ? nextMaterials : nextMaterials[0];
+
+    if (options.disposePrevious) {
+      disposeMaterials(previous);
+    }
+  });
+}
+
+function cloneImportedMaterial(material, color) {
+  const next = material?.clone
+    ? material.clone()
+    : new THREE.MeshStandardMaterial({
+        roughness: 0.64,
+        metalness: 0.02
+      });
+
+  if (next.color?.set) {
+    next.color.set(color);
+  }
+  next.needsUpdate = true;
+  return next;
+}
+
+function disposeMaterials(material) {
+  if (Array.isArray(material)) {
+    material.forEach((item) => item?.dispose?.());
+    return;
+  }
+  material?.dispose?.();
 }
 
 function getVisualScaleFactor(spec) {
@@ -823,6 +877,7 @@ function normalizeImportedModel(record = {}, index = 0) {
     label: String(record.label || stripModelExtension(fileName) || `Imported model ${index + 1}`),
     fileName,
     type,
+    color: normalizeImportColor(record.color || "#c8b08a"),
     position: [
       readNumber(position[0], 0),
       readNumber(position[1], -1.05),
@@ -857,6 +912,12 @@ function normalizeColor(value) {
   const string = String(value || "").trim();
 
   return /^#[0-9a-f]{6}$/i.test(string) ? string : "#8b5a2b";
+}
+
+function normalizeImportColor(value) {
+  const string = String(value || "").trim();
+
+  return /^#[0-9a-f]{6}$/i.test(string) ? string : "#c8b08a";
 }
 
 function normalizeSha256(value) {
@@ -2602,6 +2663,7 @@ function selectObject(id) {
   updateUiState();
   renderLayerPanel();
   syncCustomEditorFromSelection();
+  syncImportedMaterialEditorFromSelection();
 }
 
 function syncInputs() {
@@ -2648,6 +2710,9 @@ function updateUiState() {
   restoreButton.disabled = (!deleted && !hidden) || (deleted && (isCustom || isImported));
   if (newObjectUpdateButton) {
     newObjectUpdateButton.disabled = !isCustom || deleted || hidden || locked;
+  }
+  if (importModelMaterialUpdateButton) {
+    importModelMaterialUpdateButton.disabled = !isImported || deleted || hidden || locked;
   }
 }
 
@@ -2779,6 +2844,19 @@ async function undo() {
       selectObject(entry.id);
       createLayoutSnapshot(`撤回编辑：${entry.label}`, { notice: false });
       showNotice(`已撤回编辑：${entry.label}`);
+    }
+    return;
+  }
+
+  if (item.kind === "import-material-update") {
+    const entry = objects.get(item.id);
+    if (entry) {
+      applyImportedRecordToEntry(entry, item.record);
+      applySnapshot(item.snapshot);
+      selectObject(entry.id);
+      createLayoutSnapshot(`撤回外观：${entry.label}`, { notice: false });
+      showImportMaterialStatus(`已撤回导入模型外观：${entry.label}`);
+      showNotice(`已撤回外观：${entry.label}`);
     }
     return;
   }
@@ -3065,6 +3143,87 @@ function syncCustomSizeValues(spec = {}) {
   setInputNumber(newObjectDepthInput, size.depth);
 }
 
+function syncImportedMaterialEditorFromSelection() {
+  const entry = getSelectedImportedEntry();
+  if (!entry) {
+    if (importModelMaterialUpdateButton) {
+      importModelMaterialUpdateButton.disabled = true;
+    }
+    if (importModelColorInput) {
+      importModelColorInput.value = "#c8b08a";
+    }
+    showImportMaterialStatus(selectedEntry
+      ? "当前选中对象不是导入模型；可导入 GLB / OBJ 后再编辑外观。"
+      : "选中导入模型后，可调整颜色并写入草稿和发布版本。");
+    return;
+  }
+
+  const record = entry.object.userData.importRecord || {};
+  if (importModelColorInput) {
+    importModelColorInput.value = normalizeImportColor(record.color || "#c8b08a");
+  }
+  if (importModelMaterialUpdateButton) {
+    importModelMaterialUpdateButton.disabled = !canEditImportedEntry(entry);
+  }
+  showImportMaterialStatus(canEditImportedEntry(entry)
+    ? `已载入：${entry.label}。调整主色调后点击“更新导入外观”。`
+    : `已载入：${entry.label}，需恢复显示并解锁后才能更新外观。`);
+}
+
+function updateSelectedImportedMaterial() {
+  const entry = getSelectedImportedEntry();
+  if (!entry) {
+    showImportMaterialStatus("请选择一个导入模型后再更新外观。");
+    return;
+  }
+  if (!canEditImportedEntry(entry)) {
+    showImportMaterialStatus("当前导入模型已隐藏、锁定或删除，需恢复并解锁后才能更新外观。");
+    return;
+  }
+
+  const beforeRecord = clonePlain(entry.object.userData.importRecord);
+  const beforeSnapshot = snapshot(entry);
+  const nextRecord = normalizeImportedModel({
+    ...beforeRecord,
+    color: importModelColorInput?.value || beforeRecord.color
+  });
+
+  if (beforeRecord.color === nextRecord.color) {
+    showImportMaterialStatus("当前导入模型外观没有变化。");
+    return;
+  }
+
+  pushUndo({
+    kind: "import-material-update",
+    id: entry.id,
+    record: beforeRecord,
+    snapshot: beforeSnapshot
+  });
+  applyImportedRecordToEntry(entry, nextRecord);
+  saveEntry(entry);
+  selectObject(entry.id);
+  createLayoutSnapshot(`外观：${entry.label}`, { notice: false });
+  showImportMaterialStatus(`已更新：${entry.label}。主色调已写入本机布局和后续发布版本。`);
+  showNotice(`已更新导入外观：${entry.label}`);
+}
+
+function applyImportedRecordToEntry(entry, record) {
+  if (!entry || entry.object.userData.isImported !== true) {
+    return;
+  }
+
+  const normalized = normalizeImportedModel(record);
+  entry.object.userData.label = normalized.label;
+  entry.object.userData.defaultState = makeDefaultState(normalized);
+  entry.object.userData.importRecord = normalized;
+  entry.label = normalized.label;
+  applyImportedModelMaterial(entry.object, normalized, { disposePrevious: true });
+  upsertImportedModelRecord(normalized);
+  saveLayout();
+  updateObjectOption(entry);
+  renderLayerPanel();
+}
+
 function getSelectedCustomEntry() {
   return selectedEntry?.object.userData.isCustom === true ? selectedEntry : null;
 }
@@ -3072,6 +3231,18 @@ function getSelectedCustomEntry() {
 function canEditCustomEntry(entry) {
   return Boolean(entry)
     && entry.object.userData.isCustom === true
+    && entry.object.userData.deleted !== true
+    && entry.object.userData.hidden !== true
+    && entry.object.userData.locked !== true;
+}
+
+function getSelectedImportedEntry() {
+  return selectedEntry?.object.userData.isImported === true ? selectedEntry : null;
+}
+
+function canEditImportedEntry(entry) {
+  return Boolean(entry)
+    && entry.object.userData.isImported === true
     && entry.object.userData.deleted !== true
     && entry.object.userData.hidden !== true
     && entry.object.userData.locked !== true;
@@ -3093,6 +3264,12 @@ function setInputNumber(input, value) {
 function showCustomStatus(message) {
   if (customStatus) {
     customStatus.textContent = message;
+  }
+}
+
+function showImportMaterialStatus(message) {
+  if (importMaterialStatus) {
+    importMaterialStatus.textContent = message;
   }
 }
 
@@ -3473,6 +3650,7 @@ function bindUi() {
   newObjectTypeSelect?.addEventListener("change", () => syncCustomSizeInputs(true));
   syncCustomSizeInputs(false);
   importModelInput?.addEventListener("change", handleImportModel);
+  importModelMaterialUpdateButton?.addEventListener("click", updateSelectedImportedMaterial);
   importAuditExportButton?.addEventListener("click", exportImportAudit);
   renderImportAuditPanel();
   [ambientLightInput, envLightInput, keyLightInput, rimLightInput, exposureInput].forEach((input) => {

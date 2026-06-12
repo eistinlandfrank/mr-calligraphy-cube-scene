@@ -628,6 +628,11 @@ button {
   align-items: end;
 }
 
+.main-import-material-row {
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: end;
+}
+
 .main-custom-size-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

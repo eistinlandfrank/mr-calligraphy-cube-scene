@@ -2345,3 +2345,39 @@ node scripts/control-inventory.js
 提交：
 
 - 中文 commit message：`新增写实导入删除审计`
+
+### 2026-06-12：真实化主后台导入外观编辑
+
+完成内容：
+
+- 主后台导入模型区新增“导入模型外观”控件，包含主色调选择和更新按钮。
+- `main-admin-scene.js` 为导入模型记录新增 `color` 字段，并在导入、选中、更新和撤销流程中保持同步。
+- 更新外观时会克隆并替换导入模型 mesh 材质，后台 Three.js 画布即时显示新颜色。
+- 颜色写入 `mr-calligraphy-main-scene-layout-v1.importedModels[*].color`，发布后同步进入 `mr-calligraphy-main-scene-published-v1.layout.importedModels[*].color`。
+- 前台 `script.js` 读取导入模型 `color`，GLB 和 OBJ 都会按该主色调生成渲染顶点。
+- smoke test 主后台标记新增 `mainImportModelColor`、`mainImportModelMaterialUpdate` 和 `mainImportMaterialStatus`。
+- Playwright 新增真实 `.glb` 导入、更新主色调、草稿持久化、发布持久化和前台发布布局读取测试。
+
+真实化说明：
+
+- 数据来源：主后台真实导入模型记录、IndexedDB 模型文件、主场景草稿布局和本机发布快照。
+- 写入状态：`mr-calligraphy-main-scene-layout-v1.importedModels[*].color` 和 `mr-calligraphy-main-scene-published-v1.layout.importedModels[*].color`。
+- 成功反馈：选中导入模型后载入当前颜色，点击更新后状态显示已更新并立即刷新后台材质。
+- 失败反馈：未选中导入模型、隐藏、锁定或删除时更新按钮禁用，状态文本说明原因。
+- 刷新后复现方式：刷新主后台或打开前台发布页，颜色仍由本机布局读取。
+
+仍待补：
+
+- 当前完成主色调覆盖；贴图替换、透明度、PBR 参数、导入文件替换、版本差异对比、写实后台导入模型外观编辑和多人审计仍待补齐。
+
+验收：
+
+- `node --check tests/e2e/real-flows.spec.js && node --check scripts/smoke-test.js`
+- `node scripts/control-inventory.js --check`
+- `npm run test:e2e -- --grep "main admin updates imported model material"`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`真实化主后台导入外观编辑`

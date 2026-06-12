@@ -1888,6 +1888,50 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   }).toBe(true);
 });
 
+test("main admin updates imported model material and publishes it", async ({ page }) => {
+  test.setTimeout(60_000);
+  const importLabel = `E2E 导入外观 ${Date.now()}`;
+  const modelPath = path.resolve(__dirname, "../../assets/models/kenney-furniture-kit/books.glb");
+
+  await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
+  await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expect(page.locator("#mainImportModelMaterialUpdate")).toBeDisabled();
+
+  await page.locator("#mainImportModelName").fill(importLabel);
+  await page.locator("#mainImportModel").setInputFiles(modelPath);
+  await expect(page.locator("#mainImportStatus")).toContainText(`已导入：${importLabel}`, { timeout: 30_000 });
+  await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已载入：${importLabel}`);
+  await expect(page.locator("#mainImportModelMaterialUpdate")).toBeEnabled();
+
+  const importedObjectId = await page.locator("#mainObjectSelect").inputValue();
+  await page.locator("#mainImportModelColor").fill("#2255aa");
+  await page.locator("#mainImportModelMaterialUpdate").click();
+  await expect(page.locator("#mainImportMaterialStatus")).toContainText(`已更新：${importLabel}`);
+  await expect(page.locator("#mainPublishDiffList")).toContainText(importLabel);
+
+  const layout = await readJsonLocalStorage(page, MAIN_LAYOUT_KEY);
+  const importedRecord = layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(importedRecord).toBeTruthy();
+  expect(importedRecord.label).toBe(importLabel);
+  expect(importedRecord.color).toBe("#2255aa");
+
+  await page.locator("#mainPublishLayout").click();
+  await expect(page.locator("#mainPublishStatus")).toContainText("已发布");
+  const published = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
+  const publishedImportedRecord = published.layout.importedModels.find((item) => item.id === importedObjectId);
+  expect(publishedImportedRecord).toBeTruthy();
+  expect(publishedImportedRecord.color).toBe("#2255aa");
+  expect(published.stats.importedCount).toBeGreaterThan(0);
+
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
+  await page.waitForFunction(() => window.MRRoomAPI?.getMainSceneLayout);
+  const frontLayout = await page.evaluate(() => window.MRRoomAPI.getMainSceneLayout());
+  const frontImportedRecord = frontLayout.importedModels.find((item) => item.id === importedObjectId);
+  expect(frontImportedRecord).toBeTruthy();
+  expect(frontImportedRecord.color).toBe("#2255aa");
+});
+
 test("main admin records imported model deletion audit", async ({ page }) => {
   test.setTimeout(60_000);
   const importLabel = `E2E 导入删除审计 ${Date.now()}`;

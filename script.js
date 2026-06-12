@@ -1223,6 +1223,7 @@ function normalizeMainImportedModel(record = {}, index = 0) {
     label: String(record.label || stripMainModelExtension(fileName) || `Imported model ${index + 1}`),
     fileName,
     type,
+    color: normalizeMainColor(record.color || "#c8b08a"),
     position: [
       readMainNumber(position[0], 0),
       readMainNumber(position[1], -1.05),
@@ -1236,6 +1237,12 @@ function normalizeMainImportedModel(record = {}, index = 0) {
     scale: readMainNumber(record.scale, 1),
     baseScale: Number.isFinite(baseScale) && baseScale > 0 ? baseScale : 1
   };
+}
+
+function normalizeMainColor(value, fallback = "#c8b08a") {
+  const string = String(value || "").trim();
+
+  return /^#[0-9a-f]{6}$/i.test(string) ? string : fallback;
 }
 
 function getMainImportFileType(fileName) {
@@ -1380,8 +1387,7 @@ function getRenderableImportedModelSpecs() {
       rotationY: state.ry,
       rotationZ: state.rz,
       scale: state.scale * readMainNumber(record.baseScale, 1),
-      tint: [1, 1, 1],
-      color: record.color || "#c8b08a"
+      color: normalizeMainColor(record.color || "#c8b08a")
     };
   }).filter(Boolean);
 }
@@ -3052,6 +3058,10 @@ function normalizeGlbComponent(value, componentType) {
 }
 
 function getGlbMaterialColor(gltf, materialIndex, spec) {
+  if (spec.color) {
+    return hexToRgb(spec.color).map((channel) => clamp(channel, 0.04, 1));
+  }
+
   const material = (gltf.materials || [])[materialIndex] || {};
   const pbr = material.pbrMetallicRoughness || {};
   const base = pbr.baseColorFactor || [0.72, 0.5, 0.32, 1];
