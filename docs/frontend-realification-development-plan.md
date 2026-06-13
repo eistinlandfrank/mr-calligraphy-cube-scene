@@ -5772,3 +5772,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增项目档案导出回执校验`
+
+## 151. 2026-06-13 新增项目仓库包导出回执本机校验
+
+本次把主后台“仓库包导出回执”从只展示摘要推进为会主动重算摘要的本机验真。用户如果手动修改 localStorage 里的回执字段，后台和导出的审计 HTML 都会显示摘要不匹配。
+
+完成内容：
+
+- `getProjectRepositoryExportAudit()` 会为项目仓库包导出回执附加本机校验结果。
+- 校验结果包含 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 审计摘要新增 `verifiedCount`、`failedCount` 和 `legacyCount`。
+- 主后台“仓库包导出回执”列表显示“本机校验通过 / 摘要不匹配 / 旧记录未校验”。
+- 项目仓库包导出回执审计 HTML 保留同一校验状态和重算摘要。
+- Playwright 主后台用例验证正常导出回执可通过本机校验，并篡改字段确认失败状态。
+
+真实化说明：
+
+- 数据来源：当前浏览器保存的 `mr-calligraphy-project-repository-export-audit-v1`。
+- 执行动作：读取时重算 `receiptDigest`，不修改原始回执记录。
+- 成功反馈：页面状态统计本机校验通过数量，列表显示校验通过。
+- 失败反馈：摘要不一致时返回 `digest-mismatch`，HTML 审计也保留失败说明和重算摘要。
+
+仍待补：
+
+- 这是本机一致性校验，不是云端同步完成证明、账号化项目空间、服务端签名、生产证书链或不可篡改日志。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增仓库包导出回执校验`

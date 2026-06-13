@@ -3905,26 +3905,33 @@
   function getProjectRepositoryExportAudit(options = {}) {
     const limit = Math.max(1, Math.min(PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS, Number(options.limit) || PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS));
     const auditState = readProjectRepositoryExportAuditState();
-    const records = auditState.records.slice(0, limit).map(cloneJsonValue);
-    const workspaceCounts = auditState.records.reduce((counts, record) => {
+    const verifiedRecords = auditState.records.map(addProjectRepositoryExportVerification).filter(Boolean);
+    const records = verifiedRecords.slice(0, limit).map(cloneJsonValue);
+    const workspaceCounts = verifiedRecords.reduce((counts, record) => {
       const workspaceId = record.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE;
       counts[workspaceId] = (counts[workspaceId] || 0) + 1;
       return counts;
     }, {});
+    const verifiedCount = verifiedRecords.filter((record) => record.verificationStatus === "verified").length;
+    const failedCount = verifiedRecords.filter((record) => record.verificationStatus === "digest-mismatch").length;
+    const legacyCount = verifiedRecords.filter((record) => record.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: PROJECT_REPOSITORY_EXPORT_AUDIT_KIND,
       generatedAt: new Date().toISOString(),
       storageKey: PROJECT_REPOSITORY_EXPORT_AUDIT_KEY,
-      total: auditState.records.length,
+      total: verifiedRecords.length,
       exportedCount: records.length,
       limit,
       workspaceCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: records[0] || null,
       records,
       boundary: PROJECT_REPOSITORY_EXPORT_BOUNDARY,
-      message: auditState.records.length
-        ? `已记录 ${auditState.records.length} 条项目仓库包导出回执，最近一次：${formatArchiveDate(auditState.records[0].exportedAt || auditState.records[0].createdAt)}。`
+      message: verifiedRecords.length
+        ? `已记录 ${verifiedRecords.length} 条项目仓库包导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatArchiveDate(verifiedRecords[0].exportedAt || verifiedRecords[0].createdAt)}。`
         : "暂无项目仓库包导出回执。"
     };
     audit.auditDigest = sha256StableJson({
@@ -3932,6 +3939,81 @@
       auditDigest: ""
     });
     return audit;
+  }
+
+  function addProjectRepositoryExportVerification(record) {
+    const normalized = normalizeProjectRepositoryExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyProjectRepositoryExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyProjectRepositoryExportReceiptDigest(record = {}) {
+    const receiptDigest = normalizeSha256(record.receiptDigest);
+    if (!receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧项目仓库包导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createProjectRepositoryExportReceiptVerificationPayload(record));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 与项目仓库包导出回执声明字段一致。",
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按项目仓库包导出回执声明字段重算匹配。"
+    };
+    return {
+      status,
+      expectedDigest,
+      message: messages[status]
+    };
+  }
+
+  function createProjectRepositoryExportReceiptVerificationPayload(record = {}) {
+    const normalized = normalizeProjectRepositoryExportReceipt(record) || {};
+    const createdAt = normalized.createdAt || "";
+    const digestSuffix = normalized.receiptDigest ? `-${normalized.receiptDigest.slice(0, 8)}` : "";
+    const baseId = digestSuffix && normalized.id.endsWith(digestSuffix)
+      ? normalized.id.slice(0, -digestSuffix.length)
+      : normalized.id || `project-repository-export-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    return {
+      id: baseId,
+      kind: PROJECT_REPOSITORY_EXPORT_AUDIT_KIND,
+      type: "project-repository-package-export",
+      version: PROJECT_REPOSITORY_REMOTE_VERSION,
+      createdAt,
+      exportedAt: normalized.exportedAt || createdAt,
+      filename: normalized.filename || "",
+      mimeType: normalized.mimeType || "application/json;charset=utf-8",
+      byteLength: Number(normalized.byteLength || 0),
+      fileDigest: normalized.fileDigest || "",
+      packageId: normalized.packageId || "",
+      workspaceId: normalized.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE,
+      packageDigest: normalized.packageDigest || "",
+      repositoryDigest: normalized.repositoryDigest || "",
+      repositoryKind: normalized.repositoryKind || "",
+      repositoryStatus: normalized.repositoryStatus || "",
+      schemaKind: normalized.schemaKind || "",
+      sceneCount: Number(normalized.sceneCount || 0),
+      draftSceneCount: Number(normalized.draftSceneCount || 0),
+      publishedSceneCount: Number(normalized.publishedSceneCount || 0),
+      readySceneCount: Number(normalized.readySceneCount || 0),
+      importedModelCount: Number(normalized.importedModelCount || 0),
+      textureAssetCount: Number(normalized.textureAssetCount || 0),
+      missingModelBinaries: Number(normalized.missingModelBinaries || 0),
+      missingTextureBinaries: Number(normalized.missingTextureBinaries || 0),
+      source: normalized.source || "",
+      boundary: normalized.boundary || PROJECT_REPOSITORY_EXPORT_BOUNDARY,
+      message: normalized.message || ""
+    };
   }
 
   function getProjectRepositoryExportAuditExport(options = {}) {
@@ -3992,6 +4074,8 @@
         <li>包摘要：${escapeHtml(record.packageDigest || "未生成")}</li>
         <li>仓库摘要：${escapeHtml(record.repositoryDigest || "未生成")}</li>
         <li>回执摘要：${escapeHtml(record.receiptDigest || "未生成")}</li>
+        <li>本机校验：${escapeHtml(formatProjectRepositoryExportVerificationStatus(record.verificationStatus))}</li>
+        <li>重算摘要：${escapeHtml(record.verificationExpectedDigest || "无法重算")}</li>
       </ul>
       <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
     </article>`).join("");
@@ -4028,13 +4112,21 @@
     <header>
       <p class="muted">MR Calligraphy Project Repository Package Export Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
       <h1>项目仓库包导出回执审计</h1>
-      <p class="muted">本报告来自当前浏览器保存的项目仓库包导出回执；它证明浏览器曾生成与远端推送同结构的 JSON 同步包及摘要，但不代表云端同步已经完成。</p>
+      <p class="muted">本报告来自当前浏览器保存的项目仓库包导出回执；它证明浏览器曾生成与远端推送同结构的 JSON 同步包及摘要，并按 receiptDigest 重算本机一致性校验，但不代表云端同步已经完成。</p>
     </header>
     <section class="stack">${rows}</section>
-    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
   </main>
 </body>
 </html>`;
+  }
+
+  function formatProjectRepositoryExportVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
   }
 
   function recordProjectImpactExportReceipt(payload = {}) {
@@ -6454,7 +6546,7 @@
         const detail = document.createElement("span");
         detail.textContent = `${record.sceneCount} 个场景 / ${record.importedModelCount} 个模型 / ${record.textureAssetCount} 个贴图 · 空间 ${record.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE}`;
         const digest = document.createElement("span");
-        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 包 ${record.packageDigest ? record.packageDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
+        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 包 ${record.packageDigest ? record.packageDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"} · ${formatProjectRepositoryExportVerificationStatus(record.verificationStatus)}`;
         item.append(title, detail, digest);
         repositoryExportAuditList.appendChild(item);
       });

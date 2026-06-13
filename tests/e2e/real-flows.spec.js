@@ -4316,12 +4316,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectRepositoryExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(projectRepositoryExportState.records[0].sceneCount).toBe(2);
   expect(projectRepositoryExportState.records[0].boundary).toContain("与远端推送同结构");
+  const projectRepositoryExportAuditState = await page.evaluate(() => window.MRProjectArchive.getProjectRepositoryExportAudit());
+  expect(projectRepositoryExportAuditState.verifiedCount).toBe(1);
+  expect(projectRepositoryExportAuditState.failedCount).toBe(0);
+  expect(projectRepositoryExportAuditState.records[0].verificationStatus).toBe("verified");
+  expect(projectRepositoryExportAuditState.records[0].verificationExpectedDigest).toBe(projectRepositoryExportState.records[0].receiptDigest);
   const projectRepositoryExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectRepositoryExportAuditExport());
   expect(projectRepositoryExportAudit.ok).toBe(true);
   expect(projectRepositoryExportAudit.html).toContain("MR 书法项目仓库包导出回执审计");
   expect(projectRepositoryExportAudit.html).toContain(projectRepositoryPackageJson.packageId);
   expect(projectRepositoryExportAudit.html).toContain(projectRepositoryPackageJson.packageDigest);
   expect(projectRepositoryExportAudit.html).toContain(projectRepositoryExportState.records[0].receiptDigest);
+  expect(projectRepositoryExportAudit.html).toContain("本机校验通过");
 
   const projectRepositoryAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#projectRepositoryExportAuditExport").click();
@@ -4333,6 +4339,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectRepositoryAuditHtml).toContain(projectRepositoryPackageJson.packageId);
   expect(projectRepositoryAuditHtml).toContain(projectRepositoryPackageJson.packageDigest);
   expect(projectRepositoryAuditHtml).toContain("与远端推送同结构的 JSON 同步包");
+  expect(projectRepositoryAuditHtml).toContain("本机校验通过");
+
+  const tamperedProjectRepositoryExportAudit = await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    state.records[0].sceneCount = Number(state.records[0].sceneCount || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+    return window.MRProjectArchive.getProjectRepositoryExportAudit();
+  }, PROJECT_REPOSITORY_EXPORT_AUDIT_KEY);
+  expect(tamperedProjectRepositoryExportAudit.failedCount).toBe(1);
+  expect(tamperedProjectRepositoryExportAudit.records[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedProjectRepositoryExportAudit.records[0].verificationExpectedDigest).not.toBe(tamperedProjectRepositoryExportAudit.records[0].receiptDigest);
 
   await page.locator("#projectImportFile").setInputFiles(projectRepositoryPackagePath);
   await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库包已校验");
