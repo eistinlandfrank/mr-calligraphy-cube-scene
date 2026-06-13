@@ -260,6 +260,14 @@
             </label>
           </div>
           <p id="projectArchiveStatus" class="main-project-status">可导出学习记录、房间配置、场景布局、发布版本、保存历史和本机导入模型；导入时可选择恢复范围。</p>
+          <div id="projectArchiveExportAudit" class="main-project-audit" aria-label="项目档案导出回执审计">
+            <div class="main-project-audit-head">
+              <strong>导出回执</strong>
+              <button data-feature-state="real-export" id="projectArchiveExportAuditExport" type="button">导出回执</button>
+            </div>
+            <p id="projectArchiveExportAuditStatus">暂无项目档案导出回执。</p>
+            <ul id="projectArchiveExportAuditList" class="main-project-audit-list"></ul>
+          </div>
           <div class="main-project-repository" aria-label="统一项目仓库状态">
             <div class="main-project-repository-head">
               <strong>项目仓库状态</strong>

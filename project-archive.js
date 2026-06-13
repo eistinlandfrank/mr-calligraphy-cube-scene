@@ -4,6 +4,10 @@
   const RESTORE_AUDIT_KEY = "mr-calligraphy-project-archive-audit-v1";
   const RESTORE_AUDIT_DIGEST_ALGORITHM = "sha256-stable-json";
   const MAX_RESTORE_AUDIT_RECORDS = 50;
+  const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
+  const PROJECT_ARCHIVE_EXPORT_AUDIT_KIND = "mr-calligraphy-project-archive-export-audit-v1";
+  const PROJECT_ARCHIVE_EXPORT_MAX_RECEIPTS = 24;
+  const PROJECT_ARCHIVE_EXPORT_BOUNDARY = "项目档案导出回执记录当前浏览器生成 JSON 备份文件的时间、摘要和范围；它不是云端备份完成证明，也不能替代账号权限或服务端不可篡改审计。";
   const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
   const PROJECT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-project-repository-receipt-v1";
@@ -39,8 +43,24 @@
     archive.migrations = [];
     archive.projectSchema = createProjectSchema(archive);
 
-    downloadJson(archive, `mr-calligraphy-project-${formatTimestamp(new Date())}.json`);
-    return summarizeArchive(archive, "已导出项目档案。");
+    const filename = `mr-calligraphy-project-${formatTimestamp(new Date())}.json`;
+    const payload = JSON.stringify(archive, null, 2);
+    downloadJsonPayload(payload, filename);
+    const receiptResult = await recordProjectArchiveExportReceipt({
+      archive,
+      filename,
+      payload,
+      exportedAt: archive.exportedAt
+    });
+    const summary = summarizeArchive(archive, "已导出项目档案。");
+    return {
+      ...summary,
+      filename,
+      exportReceipt: receiptResult.receipt || null,
+      message: receiptResult.ok
+        ? `${summary.message} 已写入项目档案导出回执。`
+        : `${summary.message} ${receiptResult.message || "导出回执记录失败。"}`
+    };
   }
 
   async function createCurrentProjectArchiveSnapshot() {
@@ -3218,6 +3238,300 @@
     };
   }
 
+  async function recordProjectArchiveExportReceipt(payload = {}) {
+    try {
+      const archive = payload.archive && typeof payload.archive === "object" ? payload.archive : null;
+      const filename = String(payload.filename || "").trim();
+      const content = String(payload.payload ?? payload.content ?? (archive ? JSON.stringify(archive, null, 2) : ""));
+      if (!archive || !filename || !content) {
+        return {
+          ok: false,
+          message: "项目档案导出回执缺少有效档案内容。"
+        };
+      }
+
+      const receipt = await createProjectArchiveExportReceipt(archive, {
+        filename,
+        content,
+        exportedAt: payload.exportedAt
+      });
+      const audit = readProjectArchiveExportAuditState();
+      const records = [
+        receipt,
+        ...audit.records.filter((record) => record.id !== receipt.id && record.receiptDigest !== receipt.receiptDigest)
+      ].slice(0, PROJECT_ARCHIVE_EXPORT_MAX_RECEIPTS);
+      writeProjectArchiveExportAuditState({
+        version: 1,
+        updatedAt: receipt.createdAt,
+        records
+      });
+      return {
+        ok: true,
+        receipt: cloneJsonValue(receipt),
+        audit: getProjectArchiveExportAudit(),
+        message: `已记录项目档案导出回执：${receipt.filename}。`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error?.message ? `项目档案已下载，但导出回执记录失败：${error.message}` : "项目档案已下载，但导出回执记录失败。"
+      };
+    }
+  }
+
+  async function createProjectArchiveExportReceipt(archive, options = {}) {
+    const createdAt = new Date().toISOString();
+    const exportedAt = normalizeIsoDate(options.exportedAt || archive.exportedAt) || createdAt;
+    const filename = String(options.filename || `mr-calligraphy-project-${formatTimestamp(new Date(exportedAt))}.json`).trim();
+    const content = String(options.content || JSON.stringify(archive, null, 2));
+    const summary = summarizeArchive(archive, "项目档案导出回执");
+    const projectSchema = getArchiveProjectSchema(archive);
+    const schemaSummary = summarizeProjectSchema(projectSchema);
+    const repository = projectSchema.repository || {};
+    const repositorySummary = repository.summary || {};
+    const base = {
+      id: `project-archive-export-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`,
+      kind: PROJECT_ARCHIVE_EXPORT_AUDIT_KIND,
+      type: "project-archive-export",
+      version: 1,
+      createdAt,
+      exportedAt,
+      filename,
+      mimeType: "application/json;charset=utf-8",
+      byteLength: utf8Bytes(content).length,
+      fileDigest: sha256Hex(content),
+      archiveDigest: await createStableJsonSha256(archive),
+      archiveKind: String(archive.kind || "").slice(0, 120),
+      archiveVersion: Number(archive.version || 0),
+      archiveSource: String(archive.source || "").slice(0, 420),
+      storageCount: summary.storageCount,
+      modelCount: summary.modelCount,
+      modelHashCount: summary.modelHashCount,
+      migrationCount: summary.migrationCount,
+      schemaKind: String(projectSchema.kind || "").slice(0, 120),
+      schemaVersion: Number(projectSchema.version || 0),
+      repositoryKind: String(repository.kind || "").slice(0, 120),
+      repositoryStatus: String(repository.status || "").slice(0, 80),
+      sceneCount: Number(repositorySummary.sceneCount || schemaSummary.repositorySceneCount || 0),
+      draftSceneCount: Number(repositorySummary.draftSceneCount || 0),
+      publishedSceneCount: Number(repositorySummary.publishedSceneCount || 0),
+      importedModelCount: Number(schemaSummary.importedModels || repositorySummary.importedModelCount || 0),
+      textureAssetCount: Number(schemaSummary.textureAssets || repositorySummary.textureAssetCount || 0),
+      boundary: PROJECT_ARCHIVE_EXPORT_BOUNDARY,
+      message: `已记录 ${summary.storageCount} 组配置、${summary.modelCount} 个导入资产的项目档案 JSON 导出。`
+    };
+    const receiptDigest = await createStableJsonSha256(base);
+    return {
+      ...base,
+      id: `${base.id}-${receiptDigest.slice(0, 8)}`,
+      receiptDigest
+    };
+  }
+
+  function readProjectArchiveExportAuditState() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(PROJECT_ARCHIVE_EXPORT_AUDIT_KEY) || "{}");
+      const records = Array.isArray(parsed.records)
+        ? parsed.records.map(normalizeProjectArchiveExportReceipt).filter(Boolean)
+        : [];
+      return {
+        version: 1,
+        updatedAt: normalizeIsoDate(parsed.updatedAt),
+        records
+      };
+    } catch (error) {
+      return { version: 1, updatedAt: "", records: [] };
+    }
+  }
+
+  function writeProjectArchiveExportAuditState(state = {}) {
+    const records = Array.isArray(state.records)
+      ? state.records.map(normalizeProjectArchiveExportReceipt).filter(Boolean).slice(0, PROJECT_ARCHIVE_EXPORT_MAX_RECEIPTS)
+      : [];
+    const normalized = {
+      version: 1,
+      updatedAt: normalizeIsoDate(state.updatedAt) || records[0]?.createdAt || "",
+      records
+    };
+    window.localStorage.setItem(PROJECT_ARCHIVE_EXPORT_AUDIT_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function normalizeProjectArchiveExportReceipt(record) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+    const createdAt = normalizeIsoDate(record.createdAt || record.exportedAt) || "";
+    const exportedAt = normalizeIsoDate(record.exportedAt || record.createdAt) || createdAt;
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const fileDigest = normalizeSha256(record.fileDigest);
+    const archiveDigest = normalizeSha256(record.archiveDigest);
+    const receiptDigest = normalizeSha256(record.receiptDigest || record.recordDigest);
+    if (!filename && !fileDigest && !archiveDigest && !createdAt) {
+      return null;
+    }
+    return {
+      id: String(record.id || `project-archive-export-${createdAt || filename || "record"}`).slice(0, 180),
+      kind: PROJECT_ARCHIVE_EXPORT_AUDIT_KIND,
+      type: "project-archive-export",
+      version: 1,
+      createdAt,
+      exportedAt,
+      filename,
+      mimeType: String(record.mimeType || "application/json;charset=utf-8").slice(0, 120),
+      byteLength: Math.max(0, Math.round(Number(record.byteLength || 0))),
+      fileDigest,
+      archiveDigest,
+      archiveKind: String(record.archiveKind || ARCHIVE_KIND).slice(0, 120),
+      archiveVersion: Number(record.archiveVersion || ARCHIVE_VERSION),
+      archiveSource: String(record.archiveSource || "").slice(0, 420),
+      storageCount: Math.max(0, Math.round(Number(record.storageCount || 0))),
+      modelCount: Math.max(0, Math.round(Number(record.modelCount || 0))),
+      modelHashCount: Math.max(0, Math.round(Number(record.modelHashCount || 0))),
+      migrationCount: Math.max(0, Math.round(Number(record.migrationCount || 0))),
+      schemaKind: String(record.schemaKind || "").slice(0, 120),
+      schemaVersion: Number(record.schemaVersion || 0),
+      repositoryKind: String(record.repositoryKind || "").slice(0, 120),
+      repositoryStatus: String(record.repositoryStatus || "").slice(0, 80),
+      sceneCount: Math.max(0, Math.round(Number(record.sceneCount || 0))),
+      draftSceneCount: Math.max(0, Math.round(Number(record.draftSceneCount || 0))),
+      publishedSceneCount: Math.max(0, Math.round(Number(record.publishedSceneCount || 0))),
+      importedModelCount: Math.max(0, Math.round(Number(record.importedModelCount || 0))),
+      textureAssetCount: Math.max(0, Math.round(Number(record.textureAssetCount || 0))),
+      boundary: String(record.boundary || PROJECT_ARCHIVE_EXPORT_BOUNDARY).slice(0, 360),
+      message: String(record.message || "").slice(0, 240),
+      receiptDigest
+    };
+  }
+
+  function getProjectArchiveExportAudit(options = {}) {
+    const limit = Math.max(1, Math.min(PROJECT_ARCHIVE_EXPORT_MAX_RECEIPTS, Number(options.limit) || PROJECT_ARCHIVE_EXPORT_MAX_RECEIPTS));
+    const auditState = readProjectArchiveExportAuditState();
+    const records = auditState.records.slice(0, limit).map(cloneJsonValue);
+    const audit = {
+      ok: true,
+      kind: PROJECT_ARCHIVE_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
+      total: auditState.records.length,
+      exportedCount: records.length,
+      limit,
+      latestReceipt: records[0] || null,
+      records,
+      boundary: PROJECT_ARCHIVE_EXPORT_BOUNDARY,
+      message: auditState.records.length
+        ? `已记录 ${auditState.records.length} 条项目档案导出回执，最近一次：${formatArchiveDate(auditState.records[0].exportedAt || auditState.records[0].createdAt)}。`
+        : "暂无项目档案导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getProjectArchiveExportAuditExport(options = {}) {
+    const audit = getProjectArchiveExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的项目档案导出回执。"
+      };
+    }
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-project-archive-export-audit-${formatTimestamp(new Date(exportedAt))}.html`;
+    const html = createProjectArchiveExportAuditHtml(audit, exportedAt);
+    return {
+      ok: true,
+      filename,
+      mimeType: "text/html;charset=utf-8",
+      html,
+      byteLength: html.length,
+      audit,
+      recordCount: audit.exportedCount,
+      message: `已生成 ${audit.exportedCount} 条项目档案导出回执审计报告：${filename}。`
+    };
+  }
+
+  function downloadProjectArchiveExportAudit(options = {}) {
+    const result = getProjectArchiveExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      recordCount: result.recordCount,
+      message: `已下载项目档案导出回执审计报告：${result.filename}。`
+    };
+  }
+
+  function createProjectArchiveExportAuditHtml(audit, exportedAt) {
+    const rows = audit.records.map((record) => `<article class="card">
+      <div class="item-head">
+        <h2>${escapeHtml(record.filename || "项目档案导出")}</h2>
+        <span>${escapeHtml(formatBytes(record.byteLength))}</span>
+      </div>
+      <p>${escapeHtml(record.message || "已生成项目档案 JSON 备份。")}</p>
+      <ul>
+        <li>导出时间：${escapeHtml(formatArchiveDate(record.exportedAt || record.createdAt))}</li>
+        <li>档案来源：${escapeHtml(record.archiveSource || "当前浏览器")}</li>
+        <li>配置 / 资产 / 哈希：${escapeHtml(record.storageCount)} / ${escapeHtml(record.modelCount)} / ${escapeHtml(record.modelHashCount)}</li>
+        <li>场景：${escapeHtml(record.draftSceneCount)} 草稿 / ${escapeHtml(record.publishedSceneCount)} 发布 / ${escapeHtml(record.sceneCount)} 总计</li>
+        <li>导入模型 / 贴图：${escapeHtml(record.importedModelCount)} / ${escapeHtml(record.textureAssetCount)}</li>
+        <li>Project Schema：${escapeHtml(record.schemaKind || "未知")} v${escapeHtml(record.schemaVersion || 0)}</li>
+        <li>项目仓库状态：${escapeHtml(record.repositoryStatus || "未知")}</li>
+        <li>文件摘要：${escapeHtml(record.fileDigest || "未生成")}</li>
+        <li>档案摘要：${escapeHtml(record.archiveDigest || "未生成")}</li>
+        <li>回执摘要：${escapeHtml(record.receiptDigest || "未生成")}</li>
+      </ul>
+      <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
+    </article>`).join("");
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法项目档案导出回执审计</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 44px; }
+    header { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(28px, 5vw, 46px); line-height: 1.08; }
+    h2 { font-size: 16px; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 12px; margin-top: 22px; }
+    .card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+    .item-head span { color: var(--jade); font-weight: 800; white-space: nowrap; }
+    ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted); overflow-wrap: anywhere; }
+    pre { max-height: 260px; margin: 6px 0 0; padding: 10px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #f7faf8; color: #24332f; white-space: pre-wrap; word-break: break-word; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { .item-head { display: grid; } .item-head span { white-space: normal; } }
+    @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">MR Calligraphy Project Archive Export Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
+      <h1>项目档案导出回执审计</h1>
+      <p class="muted">本报告来自当前浏览器保存的项目档案导出回执；它证明浏览器曾生成 JSON 备份文件及其摘要，但不代表云端备份或服务端审计已经完成。</p>
+    </header>
+    <section class="stack">${rows}</section>
+    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   async function appendRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
     try {
       const audit = readRestoreAuditState();
@@ -3713,7 +4027,10 @@
   }
 
   function downloadJson(data, filename) {
-    const payload = JSON.stringify(data, null, 2);
+    downloadJsonPayload(JSON.stringify(data, null, 2), filename);
+  }
+
+  function downloadJsonPayload(payload, filename) {
     const blob = new Blob([payload], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -3804,6 +4121,9 @@
     const exportButton = document.getElementById("projectExportButton");
     const importFile = document.getElementById("projectImportFile");
     const status = document.getElementById("projectArchiveStatus");
+    const exportAuditStatus = document.getElementById("projectArchiveExportAuditStatus");
+    const exportAuditList = document.getElementById("projectArchiveExportAuditList");
+    const exportAuditButton = document.getElementById("projectArchiveExportAuditExport");
     const previewBox = document.getElementById("projectImportPreview");
     const previewTitle = document.getElementById("projectImportPreviewTitle");
     const previewMeta = document.getElementById("projectImportPreviewMeta");
@@ -3849,6 +4169,7 @@
       isBusy = Boolean(busy);
       if (exportButton) exportButton.disabled = isBusy;
       if (importFile) importFile.disabled = isBusy;
+      if (exportAuditButton) exportAuditButton.disabled = isBusy || !getProjectArchiveExportAudit({ limit: 1 }).total;
       if (impactButton) impactButton.disabled = isBusy || !pendingPreview;
       if (auditExportButton) auditExportButton.disabled = isBusy || !getRestoreAuditLog(1).records.length;
       if (repositoryRefreshButton) repositoryRefreshButton.disabled = isBusy;
@@ -4054,6 +4375,42 @@
         source.textContent = `${record.archiveSource || "本机项目档案"}${digestText}`;
         item.append(title, detail, source);
         auditList.appendChild(item);
+      });
+    };
+
+    const renderProjectArchiveExportAudit = () => {
+      const audit = getProjectArchiveExportAudit({ limit: 5 });
+      if (exportAuditStatus) {
+        exportAuditStatus.textContent = audit.message;
+        exportAuditStatus.dataset.receiptTone = audit.total ? "ready" : "idle";
+      }
+      if (exportAuditButton) {
+        exportAuditButton.disabled = isBusy || audit.total === 0;
+      }
+      if (!exportAuditList) {
+        return;
+      }
+      exportAuditList.innerHTML = "";
+      if (!audit.records.length) {
+        const empty = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = "尚无项目档案导出回执";
+        const detail = document.createElement("span");
+        detail.textContent = "点击“导出项目档案”后会记录文件摘要、档案摘要和导出范围。";
+        empty.append(title, detail);
+        exportAuditList.appendChild(empty);
+        return;
+      }
+      audit.records.forEach((record) => {
+        const item = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = record.filename || "项目档案导出";
+        const detail = document.createElement("span");
+        detail.textContent = `${record.storageCount} 组配置 / ${record.modelCount} 个导入资产 / ${record.modelHashCount} 个哈希 · ${formatBytes(record.byteLength)}`;
+        const digest = document.createElement("span");
+        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
+        item.append(title, detail, digest);
+        exportAuditList.appendChild(item);
       });
     };
 
@@ -4537,6 +4894,7 @@
         try {
           const result = await exportProject();
           setStatus(result.message, "success");
+          renderProjectArchiveExportAudit();
           renderProjectRepositoryStatus();
         } catch (error) {
           setStatus(error?.message || "项目档案导出失败。", "error");
@@ -4545,6 +4903,12 @@
         }
       });
     }
+
+    exportAuditButton?.addEventListener("click", () => {
+      const result = downloadProjectArchiveExportAudit();
+      setStatus(result.message || "项目档案导出回执审计导出失败。", result.ok ? "success" : "error");
+      renderProjectArchiveExportAudit();
+    });
 
     if (importFile) {
       importFile.addEventListener("change", async () => {
@@ -4716,6 +5080,7 @@
     });
 
     renderRestoreAudit();
+    renderProjectArchiveExportAudit();
     syncProjectRepositoryRemoteInputs();
     renderProjectRepositoryRemoteStatus();
     renderProjectRepositoryStatus();
@@ -4725,6 +5090,10 @@
     kind: ARCHIVE_KIND,
     version: ARCHIVE_VERSION,
     exportProject,
+    getProjectArchiveExportAudit,
+    getProjectArchiveExportAuditExport,
+    downloadProjectArchiveExportAudit,
+    recordProjectArchiveExportReceipt,
     importProject,
     prepareImportProject,
     getCurrentProjectRepositoryStatus,

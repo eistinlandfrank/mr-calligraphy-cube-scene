@@ -12,6 +12,7 @@ const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
 const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
+const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
 const REALISTIC_HISTORY_KEY = "mr-calligraphy-realistic-history-v1";
@@ -62,6 +63,7 @@ test.beforeEach(async ({ page }) => {
       MAIN_PUBLISHED_KEY,
       ADMIN_AUDIT_KEY,
       REMOTE_PUBLISH_KEY,
+      PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
       PROJECT_REPOSITORY_REMOTE_KEY,
       REALISTIC_LAYOUT_KEY,
       REALISTIC_HISTORY_KEY,
@@ -4216,6 +4218,45 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(mainRepositoryScene.draft.objectCount).toBeGreaterThan(0);
   expect(mainRepositoryScene.published.releaseCount).toBeGreaterThan(0);
   expect(mainRepositoryScene.unifiedSchema).toBe("project-scene-repository-v1");
+
+  const projectArchiveDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectExportButton").click();
+  const projectArchiveDownload = await projectArchiveDownloadPromise;
+  expect(projectArchiveDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-.*\.json$/);
+  const projectArchivePath = await projectArchiveDownload.path();
+  const projectArchiveJson = JSON.parse(fs.readFileSync(projectArchivePath, "utf8"));
+  expect(projectArchiveJson.kind).toBe("mr-calligraphy-project-archive");
+  expect(projectArchiveJson.projectSchema.repository.kind).toBe("mr-calligraphy-project-repository-v1");
+  await expect(page.locator("#projectArchiveStatus")).toContainText("已写入项目档案导出回执");
+  await expect(page.locator("#projectArchiveExportAuditStatus")).toContainText("已记录 1 条项目档案导出回执");
+  await expect(page.locator("#projectArchiveExportAuditList")).toContainText(projectArchiveDownload.suggestedFilename());
+  await expect(page.locator("#projectArchiveExportAuditList")).toContainText("组配置");
+  const projectArchiveExportState = await readJsonLocalStorage(page, PROJECT_ARCHIVE_EXPORT_AUDIT_KEY);
+  expect(projectArchiveExportState.records).toHaveLength(1);
+  expect(projectArchiveExportState.records[0].filename).toBe(projectArchiveDownload.suggestedFilename());
+  expect(projectArchiveExportState.records[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectArchiveExportState.records[0].archiveDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectArchiveExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectArchiveExportState.records[0].storageCount).toBeGreaterThan(0);
+  expect(projectArchiveExportState.records[0].sceneCount).toBe(2);
+  expect(projectArchiveExportState.records[0].boundary).toContain("不是云端备份完成证明");
+  const projectArchiveExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectArchiveExportAuditExport());
+  expect(projectArchiveExportAudit.ok).toBe(true);
+  expect(projectArchiveExportAudit.html).toContain("MR 书法项目档案导出回执审计");
+  expect(projectArchiveExportAudit.html).toContain(projectArchiveDownload.suggestedFilename());
+  expect(projectArchiveExportAudit.html).toContain(projectArchiveExportState.records[0].fileDigest);
+  expect(projectArchiveExportAudit.html).toContain(projectArchiveExportState.records[0].receiptDigest);
+
+  const projectArchiveAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectArchiveExportAuditExport").click();
+  const projectArchiveAuditDownload = await projectArchiveAuditDownloadPromise;
+  expect(projectArchiveAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-archive-export-audit-.*\.html$/);
+  const projectArchiveAuditPath = await projectArchiveAuditDownload.path();
+  const projectArchiveAuditHtml = fs.readFileSync(projectArchiveAuditPath, "utf8");
+  expect(projectArchiveAuditHtml).toContain("MR 书法项目档案导出回执审计");
+  expect(projectArchiveAuditHtml).toContain(projectArchiveDownload.suggestedFilename());
+  expect(projectArchiveAuditHtml).toContain(projectArchiveExportState.records[0].fileDigest);
+  expect(projectArchiveAuditHtml).toContain("当前浏览器保存的项目档案导出回执");
 
   await page.locator(".project-repository-remote summary").click();
   await expect(page.locator("#projectRepositoryEndpoint")).toBeVisible();

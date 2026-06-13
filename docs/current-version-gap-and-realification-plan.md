@@ -5867,3 +5867,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告仓库导出回执审计`
+
+## 141. 2026-06-13 新增项目档案导出回执审计
+
+本次补齐主后台“导出项目档案”的本机审计闭环。此前项目档案 JSON 可下载，但用户无法在后台确认最近导出的文件名、摘要和档案范围；现在下载后会保存到 `mr-calligraphy-project-archive-export-audit-v1`，并可导出 HTML 审计页。
+
+完成内容：
+
+- 新增 `mr-calligraphy-project-archive-export-audit-v1` 审计包，保存最近 24 条项目档案导出回执。
+- `MRProjectArchive.exportProject()` 发起 JSON 下载后写入导出回执。
+- 回执记录文件名、MIME、字节数、文件摘要、档案摘要、回执摘要、项目 schema、项目仓库状态、场景数量、导入模型数量和贴图数量。
+- 新增 `getProjectArchiveExportAudit()`、`getProjectArchiveExportAuditExport()` 和 `downloadProjectArchiveExportAudit()`。
+- 主后台项目备份面板新增“导出回执”列表和“导出回执”按钮。
+- Smoke 页面标记检查新增项目档案导出回执审计节点。
+- 控件清单更新为主后台 `real-export 8`、`handled 54`、`missingHandler 0`。
+- Playwright 主后台用例验证真实点击“导出项目档案”、下载 JSON、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：`MRProjectArchive.createCurrentProjectArchiveSnapshot()` 生成的真实项目档案 JSON，包含当前浏览器 localStorage、IndexedDB 导入模型快照和项目 schema。
+- 写入状态：下载 JSON 项目档案后写入 `mr-calligraphy-project-archive-export-audit-v1`。
+- 成功反馈：主后台显示导出文件名、配置数量、导入资产数量、资产哈希数量、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载 `mr-calligraphy-project-archive-export-audit-*.html`；无回执时按钮禁用。
+- 刷新后复现方式：回执随 localStorage 持久化，可再次导出审计 HTML。
+
+仍待补：
+
+- 该回执只能证明当前浏览器生成并发起了项目档案 JSON 下载请求，并记录生成内容摘要；它不是云端项目仓库日志、系统文件保存证明、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin manages objects"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目档案导出回执审计`
