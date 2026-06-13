@@ -4964,3 +4964,52 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划导出回执审计`
+
+## 132. 2026-06-13 新增复盘导出回执审计
+
+本次把复盘区的非视频导出按钮补成真实可追踪回执：作品图片、复盘证据、学习报告和作品分享页下载后都会在复盘面板留下本机回执，并可导出 HTML 审计页。
+
+完成内容：
+
+- 新增 `REVIEW_EXPORT_AUDIT_KIND = "mr-calligraphy-review-export-audit-v1"` 和复盘导出审计边界说明。
+- 学习状态新增 `reviewExportReceipts`，随状态持久化到 localStorage。
+- `MRAppState.recordReviewExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getReviewExportAudit({ limit })` 返回类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getReviewExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReviewExportAudit()` 下载 `mr-calligraphy-review-export-audit-*.html`。
+- `MRAppState.downloadReviewEvidence()`、`downloadReport()`、`downloadArtworkSharePage()` 成功下载后写入复盘导出回执。
+- 前台 `reviewDownloadImage` 会记录作品图片回执。
+- 前台复盘面板新增“复盘导出回执”面板和“导出回执”按钮。
+- Smoke 首页标记检查新增复盘导出回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 35`、`handled 110`、`missingHandler 0`。
+- `learning-state-check.js` 验证四类复盘导出回执、文件摘要、统计、边界和 HTML。
+- Playwright 前台真实练习用例验证点击下载图片、证据、报告、分享页、回执面板、localStorage 和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.reviewExportReceipts`。
+- 写入状态：本机下载请求成功发起后写入回执，并保存文件内容 SHA-256 摘要。
+- 成功反馈：面板显示最近导出数量、导出类型、来源、文件名和摘要。
+- 失败反馈：无回执时导出按钮禁用；不存在的报告、作品或证据不会伪造回执。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可查看和导出。
+
+仍待补：
+
+- 该审计只证明当前浏览器生成并发起了本机下载请求，不代表系统保存完成、云端下载日志、公网访问记录、跨设备同步、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘导出回执审计`

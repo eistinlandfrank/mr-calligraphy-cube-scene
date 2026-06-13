@@ -846,6 +846,9 @@ const els = {
   reviewDownloadEvidence: document.getElementById("reviewDownloadEvidence"),
   reviewDownloadReport: document.getElementById("reviewDownloadReport"),
   reviewDownloadShare: document.getElementById("reviewDownloadShare"),
+  reviewExportAuditStatus: document.getElementById("reviewExportAuditStatus"),
+  reviewExportAuditList: document.getElementById("reviewExportAuditList"),
+  reviewExportAuditExport: document.getElementById("reviewExportAuditExport"),
   videoExportSummary: document.getElementById("videoExportSummary"),
   videoExportRecords: document.getElementById("videoExportRecords"),
   shareServiceSummary: document.getElementById("shareServiceSummary"),
@@ -4048,6 +4051,7 @@ function bindReviewControls() {
   els.reviewDownloadEvidence?.addEventListener("click", downloadLatestReviewEvidence);
   els.reviewDownloadReport?.addEventListener("click", downloadLatestReport);
   els.reviewDownloadShare?.addEventListener("click", downloadLatestArtworkSharePage);
+  els.reviewExportAuditExport?.addEventListener("click", downloadReviewExportAudit);
   els.videoExportRecords?.addEventListener("click", handleVideoExportAction);
   els.reviewCreateShareLink?.addEventListener("click", createLatestArtworkShareLink);
   els.reviewCopyShareLink?.addEventListener("click", () => copyActiveArtworkShareLink());
@@ -5128,6 +5132,7 @@ function renderReviewPanel(sceneIndex = currentIndex) {
   els.reviewDownloadReport.disabled = !report;
   if (els.reviewDownloadShare) els.reviewDownloadShare.disabled = !artwork;
   renderVideoExportPanel(artwork, session);
+  renderReviewExportAudit();
   renderShareServicePanel(artwork);
 }
 
@@ -5265,6 +5270,42 @@ function renderVideoExportPanel(artwork, session) {
   });
 }
 
+function renderReviewExportAudit() {
+  const audit = window.MRAppState?.getReviewExportAudit?.({ limit: 5 });
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.reviewExportAuditStatus) {
+    els.reviewExportAuditStatus.textContent = audit?.message || "暂无复盘导出回执。";
+    els.reviewExportAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.reviewExportAuditExport) {
+    els.reviewExportAuditExport.disabled = !receipts.length;
+  }
+  if (!els.reviewExportAuditList) return;
+  els.reviewExportAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatReviewExportType(receipt.exportType)} · ${receipt.sourceTitle || receipt.sourceId || "复盘记录"}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.filename || "导出文件"}`;
+    const detail = document.createElement("small");
+    const fileDigest = receipt.fileDigest ? `文件 ${receipt.fileDigest.slice(0, 12)}` : "文件摘要未生成";
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    detail.textContent = `${fileDigest} · ${receiptDigest} · ${receipt.score || 0} 分 / ${receipt.strokeCount || 0} 笔 / ${receipt.pointCount || 0} 点`;
+    item.append(title, meta, detail);
+    els.reviewExportAuditList.appendChild(item);
+  });
+}
+
+function formatReviewExportType(type) {
+  return {
+    "artwork-image": "作品图片",
+    "review-evidence": "复盘证据 HTML",
+    "report-html": "学习报告 HTML",
+    "share-html": "作品分享页 HTML"
+  }[type] || "复盘导出";
+}
+
 async function handleVideoExportAction(event) {
   const retryButton = event.target?.closest?.("[data-video-export-retry]");
   if (!retryButton) return;
@@ -5295,14 +5336,34 @@ function downloadLatestArtworkImage() {
     showNotice("还没有可下载的作品图片。");
     return;
   }
-  downloadDataUrl(artwork.imageData, `${sanitizeFilename(artwork.title)}.jpg`);
-  showNotice("已下载最近保存的作品图片。");
+  const filename = `${sanitizeFilename(artwork.title)}.jpg`;
+  downloadDataUrl(artwork.imageData, filename);
+  const receiptResult = window.MRAppState?.recordReviewExportReceipt?.({
+    exportType: "artwork-image",
+    sourceType: "artwork",
+    sourceId: artwork.id,
+    sourceTitle: artwork.title || "书法作品",
+    artworkId: artwork.id,
+    sessionId: artwork.sessionId || "",
+    glyph: artwork.glyph || "",
+    score: artwork.score || 0,
+    strokeCount: artwork.strokeCount || 0,
+    pointCount: artwork.pointCount || 0,
+    filename,
+    mimeType: "image/jpeg",
+    dataUrl: artwork.imageData
+  });
+  showNotice(receiptResult?.ok
+    ? "已下载最近保存的作品图片，并记录复盘导出回执。"
+    : "已下载最近保存的作品图片。");
+  renderReviewPanel(currentIndex);
 }
 
 function downloadLatestReviewEvidence() {
   const result = window.MRAppState?.downloadReviewEvidence?.();
   if (result?.message) {
     showNotice(result.message);
+    renderReviewPanel(currentIndex);
     return;
   }
   showNotice("还没有可导出的复盘证据。请先完成书写并保存评分证据。");
@@ -5312,6 +5373,7 @@ function downloadLatestReport() {
   const result = window.MRAppState?.downloadReport?.();
   if (result?.message) {
     showNotice(result.message);
+    renderReviewPanel(currentIndex);
   }
 }
 
@@ -5319,9 +5381,20 @@ function downloadLatestArtworkSharePage() {
   const result = window.MRAppState?.downloadArtworkSharePage?.();
   if (result?.message) {
     showNotice(result.message);
+    renderReviewPanel(currentIndex);
     return;
   }
   showNotice("还没有可导出的作品分享页。请先保存作品。");
+}
+
+function downloadReviewExportAudit() {
+  const result = window.MRAppState?.downloadReviewExportAudit?.({ limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的复盘导出回执。");
+  }
+  renderReviewPanel(currentIndex);
 }
 
 function renderShareServicePanel(artwork) {

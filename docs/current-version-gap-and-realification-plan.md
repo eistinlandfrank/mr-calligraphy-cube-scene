@@ -5443,3 +5443,52 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划导出回执审计`
+
+## 132. 2026-06-13 新增复盘导出回执审计
+
+本次把复盘面板里已有的作品图片、复盘证据、学习报告和作品分享页下载补成可回看、可导出的本机回执。用户点击对应下载按钮后，复盘面板会显示导出类型、来源、文件名、文件摘要和回执摘要，后续可下载 HTML 审计页。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-review-export-audit-v1` 审计包。
+- 学习状态新增 `reviewExportReceipts`，保存最近 30 条复盘导出回执。
+- `MRAppState.recordReviewExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getReviewExportAudit()` 返回类型统计、回执列表和 64 位 `auditDigest`。
+- `MRAppState.getReviewExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReviewExportAudit()` 下载 `mr-calligraphy-review-export-audit-*.html`。
+- `MRAppState.downloadReviewEvidence()`、`downloadReport()` 和 `downloadArtworkSharePage()` 成功发起下载后写入复盘导出回执。
+- 前台 `reviewDownloadImage` 成功下载作品图片后写入作品图片回执。
+- 前台复盘面板新增 `reviewExportAudit`、`reviewExportAuditStatus`、`reviewExportAuditList` 和 `reviewExportAuditExport`。
+- Smoke 首页标记检查新增复盘导出回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 35`、`handled 110`、`missingHandler 0`。
+- 状态层脚本覆盖作品图片、复盘证据、报告 HTML、作品分享页 HTML 回执、文件摘要、类型统计、边界说明和 HTML 审计导出。
+- Playwright 前台真实练习用例会点击“下载图片”“下载证据”“导出报告”“导出分享页”，验证真实下载、回执面板、localStorage 持久化和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.reviewExportReceipts`。
+- 写入状态：用户点击复盘导出按钮并成功发起本机下载后写入本机回执，同时保存当时生成内容的 SHA-256 摘要。
+- 成功反馈：复盘面板显示导出类型、来源、文件名、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载 HTML；无回执时按钮禁用，不生成空壳审计。
+- 刷新后复现方式：导出回执随学习状态保存在 localStorage，刷新后仍能读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面生成并发起了作品图片、复盘证据、报告 HTML 或作品分享页 HTML 的本机下载请求，并记录生成内容摘要；它不代表操作系统保存成功、云端下载日志、公网分享访问日志、跨设备同步、文件长期存在或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘导出回执审计`

@@ -10654,3 +10654,55 @@
 提交：
 
 - 中文 commit message：`新增计划导出回执审计`
+
+### 2026-06-13：新增复盘导出回执审计
+
+功能名：前台复盘区作品图片、证据、报告和分享页导出回执与 HTML 审计导出。
+
+开发原因：
+
+- 复盘区已经能真实导出作品图片、复盘证据、学习报告和作品分享页。
+- 但这些导出之间缺少统一回执，用户无法刷新后确认“导出了什么、来源是什么、文件摘要是什么”，也无法把导出记录交给老师或自己留档。
+
+完成内容：
+
+- 新增 `mr-calligraphy-review-export-audit-v1` 审计包。
+- 学习状态新增 `reviewExportReceipts`，保存最近复盘导出回执。
+- `MRAppState.recordReviewExportReceipt()` 记录作品图片、复盘证据、报告 HTML 和作品分享页 HTML 回执。
+- `MRAppState.getReviewExportAudit()` 返回类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getReviewExportAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadReviewExportAudit()` 下载 `mr-calligraphy-review-export-audit-*.html`。
+- `downloadReviewEvidence()`、`downloadReport()`、`downloadArtworkSharePage()` 和前台作品图片下载入口写入回执。
+- 前台复盘面板新增“复盘导出回执”面板和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台保存作品并打开复盘面板。
+- 点击“下载图片”应下载 JPG，并在“复盘导出回执”面板出现“作品图片”回执。
+- 点击“下载证据”应下载 HTML，并在同一面板出现“复盘证据 HTML”回执。
+- 生成报告后点击“导出报告”应下载 HTML，并出现“学习报告 HTML”回执。
+- 点击“导出分享页”应下载 HTML，并出现“作品分享页 HTML”回执。
+- 点击“导出回执”应下载 HTML，文件包含四种导出类型、文件摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机导出请求回执，只能证明页面生成并发起了下载，并记录生成内容摘要；它不是操作系统保存完成证明、云端下载日志、公网访问记录、跨设备同步、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘导出回执审计`

@@ -649,6 +649,76 @@ assert(evidenceSharePackage.html.includes("路径误差热力"), "带评分证�
 assert(evidenceSharePackage.html.includes("逐笔路径贴合"), "带评分证据的作品分享页 HTML 应包含逐笔路径贴合。");
 assert(evidenceSharePackage.html.includes("逐笔轨迹匹配"), "带评分证据的作品分享页 HTML 应包含逐笔轨迹匹配。");
 assert(evidenceSharePackage.message.includes("评分证据"), "带评分证据的作品分享页消息应提示包含证据。");
+const reviewImageReceipt = window.MRAppState.recordReviewExportReceipt({
+  exportType: "artwork-image",
+  sourceType: "artwork",
+  sourceId: evidenceArtwork.artwork.id,
+  sourceTitle: evidenceArtwork.artwork.title,
+  artworkId: evidenceArtwork.artwork.id,
+  glyph: evidenceArtwork.artwork.glyph,
+  score: evidenceArtwork.artwork.score,
+  strokeCount: evidenceArtwork.artwork.strokeCount,
+  pointCount: evidenceArtwork.artwork.pointCount,
+  filename: "mr-calligraphy-review-image.jpg",
+  mimeType: "image/jpeg",
+  dataUrl: "data:image/jpeg;base64,cmV2aWV3LWltYWdl"
+});
+assert(reviewImageReceipt.ok, "作品图片导出应能写入复盘导出回执。");
+assert(reviewImageReceipt.receipt.exportType === "artwork-image", "作品图片回执应记录导出类型。");
+assert(reviewImageReceipt.receipt.fileDigest.match(/^[a-f0-9]{64}$/), "作品图片回执应包含文件摘要。");
+const reviewEvidenceReceipt = window.MRAppState.recordReviewExportReceipt({
+  exportType: "review-evidence",
+  sourceType: reviewEvidenceExport.evidencePackage.sourceType,
+  sourceId: reviewEvidenceExport.evidencePackage.sourceId,
+  sourceTitle: evidenceArtwork.artwork.title,
+  artworkId: evidenceArtwork.artwork.id,
+  sessionId: reviewEvidenceExport.evidencePackage.session?.id || "",
+  filename: reviewEvidenceExport.filename,
+  mimeType: "text/html;charset=utf-8",
+  content: reviewEvidenceExport.html
+});
+assert(reviewEvidenceReceipt.ok, "复盘证据页导出应能写入回执。");
+const reviewShareReceipt = window.MRAppState.recordReviewExportReceipt({
+  exportType: "share-html",
+  sourceType: "artwork",
+  sourceId: evidenceArtwork.artwork.id,
+  sourceTitle: evidenceArtwork.artwork.title,
+  artworkId: evidenceArtwork.artwork.id,
+  filename: evidenceSharePackage.filename,
+  mimeType: "text/html;charset=utf-8",
+  content: evidenceSharePackage.html
+});
+assert(reviewShareReceipt.ok, "作品分享页导出应能写入复盘导出回执。");
+const reviewReportReceipt = window.MRAppState.recordReviewExportReceipt({
+  exportType: "report-html",
+  sourceType: "report",
+  sourceId: "report-2",
+  sourceTitle: "学习报告",
+  reportId: "report-2",
+  filename: reviewedHtml.filename,
+  mimeType: reviewedHtml.mimeType,
+  content: reviewedHtml.html,
+  score: reviewedHtml.report.averageScore
+});
+assert(reviewReportReceipt.ok, "学习报告 HTML 导出应能写入复盘导出回执。");
+const reviewExportAudit = window.MRAppState.getReviewExportAudit({ limit: 6 });
+assert(reviewExportAudit.kind === "mr-calligraphy-review-export-audit-v1", "复盘导出审计应返回稳定 kind。");
+assert(reviewExportAudit.total === 4, "复盘导出审计应统计四类导出回执。");
+assert(reviewExportAudit.typeCounts["artwork-image"] === 1, "复盘导出审计应统计作品图片。");
+assert(reviewExportAudit.typeCounts["review-evidence"] === 1, "复盘导出审计应统计复盘证据。");
+assert(reviewExportAudit.typeCounts["share-html"] === 1, "复盘导出审计应统计分享页。");
+assert(reviewExportAudit.typeCounts["report-html"] === 1, "复盘导出审计应统计报告 HTML。");
+assert(/^[a-f0-9]{64}$/.test(reviewExportAudit.auditDigest), "复盘导出审计应包含稳定摘要。");
+assert(reviewExportAudit.boundary.includes("不是云端下载日志"), "复盘导出审计应说明本机边界。");
+const reviewExportAuditExport = window.MRAppState.getReviewExportAuditExport({ limit: 6 });
+assert(reviewExportAuditExport.ok, "复盘导出审计应可导出 HTML。");
+assert(reviewExportAuditExport.filename.startsWith("mr-calligraphy-review-export-audit-"), "复盘导出审计文件名应可识别。");
+assert(reviewExportAuditExport.html.includes("MR 书法复盘导出回执审计"), "复盘导出审计 HTML 应包含标题。");
+assert(reviewExportAuditExport.html.includes("作品图片"), "复盘导出审计 HTML 应包含作品图片类型。");
+assert(reviewExportAuditExport.html.includes("复盘证据 HTML"), "复盘导出审计 HTML 应包含复盘证据类型。");
+assert(reviewExportAuditExport.html.includes("作品分享页 HTML"), "复盘导出审计 HTML 应包含分享页类型。");
+assert(reviewExportAuditExport.html.includes("学习报告 HTML"), "复盘导出审计 HTML 应包含报告类型。");
+assert(reviewExportAuditExport.html.includes(reviewExportAuditExport.audit.auditDigest), "复盘导出审计 HTML 应包含审计摘要。");
 assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
 assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.2.0"), "评分服务状态消息应显示算法版本。");
 const persistedScoreService = JSON.parse(storage.get("mr-calligraphy-learning-state-v1")).scoreService;
@@ -1265,7 +1335,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
