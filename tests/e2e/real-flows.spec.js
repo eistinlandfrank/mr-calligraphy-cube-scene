@@ -1304,6 +1304,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reportComparisonExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.reportComparisonExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.reportComparisonExportReceipts[0].boundary).toContain("不是云端长期报告");
+  const reportComparisonExportAuditState = await page.evaluate((reportId) => window.MRAppState.getReportComparisonExportAudit(reportId, { limit: 5 }), activeReportId);
+  expect(reportComparisonExportAuditState.verifiedCount).toBe(1);
+  expect(reportComparisonExportAuditState.failedCount).toBe(0);
+  expect(reportComparisonExportAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(reportComparisonExportAuditState.receipts[0].verificationExpectedDigest).toBe(learningState.reportComparisonExportReceipts[0].receiptDigest);
+  await expect(page.locator("#reportComparisonExportAuditStatus")).toContainText("本机校验通过 1 条");
+  await expect(page.locator("#reportComparisonExportAuditList")).toContainText("本机校验通过");
   const reportComparisonAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportComparisonExportAuditExport").click();
   const reportComparisonAuditDownload = await reportComparisonAuditDownloadPromise;
@@ -1312,6 +1319,24 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const reportComparisonAuditHtml = fs.readFileSync(reportComparisonAuditPath, "utf8");
   expect(reportComparisonAuditHtml).toContain("MR 书法报告对比导出回执审计");
   expect(reportComparisonAuditHtml).toContain(learningState.reportComparisonExportReceipts[0].receiptDigest);
+  expect(reportComparisonAuditHtml).toContain("本机校验通过");
+  expect(reportComparisonAuditHtml).toContain("重算摘要");
+  const originalReportComparisonExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate(({ storageKey, reportId }) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.reportComparisonExportReceipts || []).find((item) => item.currentReportId === reportId);
+    receipt.averageDelta = Number(receipt.averageDelta || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, reportId: activeReportId });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
+  const tamperedReportComparisonExportAudit = await page.evaluate((reportId) => window.MRAppState.getReportComparisonExportAudit(reportId, { limit: 5 }), activeReportId);
+  expect(tamperedReportComparisonExportAudit.failedCount).toBe(1);
+  expect(tamperedReportComparisonExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedReportComparisonExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedReportComparisonExportAudit.receipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalReportComparisonExportState });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
   await page.evaluate(({ storageKey, previousId }) => {
     const state = JSON.parse(localStorage.getItem(storageKey));
     state.reports = (state.reports || []).filter((report) => report.id !== previousId);

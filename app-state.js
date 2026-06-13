@@ -1058,6 +1058,64 @@
       .slice(0, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS);
   }
 
+  function addReportComparisonExportReceiptVerification(record) {
+    const normalized = normalizeReportComparisonExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyReportComparisonExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyReportComparisonExportReceiptDigest(record = {}) {
+    const receipt = normalizeReportComparisonExportReceipt(record);
+    const receiptDigest = normalizeReportTeacherReviewDigest(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧报告对比导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createReportComparisonExportReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与报告对比导出回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按报告对比导出回执声明字段重算匹配。"
+    };
+  }
+
+  function createReportComparisonExportReceiptDigestPayload(record = {}) {
+    const receipt = normalizeReportComparisonExportReceipt(record) || {};
+    return {
+      kind: REPORT_COMPARISON_EXPORT_AUDIT_KIND,
+      currentReportId: receipt.currentReportId || "",
+      previousReportId: receipt.previousReportId || "",
+      averageDelta: normalizeInteger(receipt.averageDelta, 0, -1000, 1000),
+      filename: receipt.filename || "",
+      mimeType: receipt.mimeType || "text/html;charset=utf-8",
+      byteLength: normalizeInteger(receipt.byteLength, 0, 0, 999999999),
+      fileDigest: receipt.fileDigest || "",
+      exportedAt: receipt.exportedAt || ""
+    };
+  }
+
+  function formatReportComparisonExportReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
+  }
+
   function normalizeReportComparisonExportReceipt(record) {
     if (!record || typeof record !== "object") return null;
     const currentReportId = String(record.currentReportId || record.reportId || "").trim().slice(0, 120);
@@ -8805,13 +8863,18 @@
   function getReportComparisonExportAudit(reportId = null, options = {}) {
     const targetReportId = String(reportId || "").trim();
     const limit = normalizeInteger(options.limit, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS, 1, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS);
-    const allReceipts = normalizeReportComparisonExportReceipts(state.reportComparisonExportReceipts);
+    const allReceipts = normalizeReportComparisonExportReceipts(state.reportComparisonExportReceipts)
+      .map(addReportComparisonExportReceiptVerification)
+      .filter(Boolean);
     const filtered = allReceipts.filter((receipt) => (
       !targetReportId || receipt.currentReportId === targetReportId || receipt.previousReportId === targetReportId
     ));
     const receipts = filtered.slice(0, limit).map(clone);
     const positiveDeltaCount = filtered.filter((receipt) => receipt.averageDelta > 0).length;
     const negativeDeltaCount = filtered.filter((receipt) => receipt.averageDelta < 0).length;
+    const verifiedCount = filtered.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = filtered.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = filtered.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: REPORT_COMPARISON_EXPORT_AUDIT_KIND,
@@ -8824,11 +8887,14 @@
       limit,
       positiveDeltaCount,
       negativeDeltaCount,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: REPORT_COMPARISON_EXPORT_AUDIT_BOUNDARY,
       message: filtered.length
-        ? `已记录 ${filtered.length} 条报告对比导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        ? `已记录 ${filtered.length} 条报告对比导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
         : targetReportId
           ? "当前报告暂无对比导出回执记录。"
           : "暂无报告对比导出回执记录。"
@@ -8888,6 +8954,8 @@
           <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd></div>
           <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
           <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>本机校验</dt><dd>${escapeHtml(formatReportComparisonExportReceiptVerificationStatus(receipt.verificationStatus))}</dd></div>
+          <div><dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd></div>
           <div><dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd></div>
           <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
         </dl>
@@ -8917,11 +8985,11 @@
   <main>
     <p class="meta">MR Calligraphy Report Comparison Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法报告对比导出回执审计</h1>
-    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条报告对比导出回执。${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条报告对比导出回执，本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? `，失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? `，旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}。${escapeHtml(audit.boundary)}</p>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

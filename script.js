@@ -6102,10 +6102,18 @@ function renderReportComparisonExportAudit(detail) {
     const meta = document.createElement("span");
     meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · 平均 ${formatSignedDelta(receipt.averageDelta, "分")} · ${receipt.filename || "对比导出"}`;
     const detailText = document.createElement("small");
-    detailText.textContent = `文件 ${receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "未生成"} · 回执 ${receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "未生成"} · ${receipt.previousReportId || "-"} → ${receipt.currentReportId || "-"}`;
+    detailText.textContent = `文件 ${receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "未生成"} · 回执 ${receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "未生成"} · ${formatReportComparisonExportReceiptVerificationStatus(receipt.verificationStatus)} · ${receipt.previousReportId || "-"} → ${receipt.currentReportId || "-"}`;
     item.append(title, meta, detailText);
     els.reportComparisonExportAuditList.appendChild(item);
   });
+}
+
+function formatReportComparisonExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function renderReportSeries(series, metricKey = activeReportMetricKey) {

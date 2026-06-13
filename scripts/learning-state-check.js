@@ -553,6 +553,10 @@ const reportComparisonExportAudit = window.MRAppState.getReportComparisonExportA
 assert(reportComparisonExportAudit.kind === "mr-calligraphy-report-comparison-export-audit-v1", "报告对比导出审计应返回稳定 kind。");
 assert(reportComparisonExportAudit.total === 1, "报告对比导出审计应统计当前报告回执。");
 assert(reportComparisonExportAudit.positiveDeltaCount === 1, "报告对比导出审计应统计提升对比。");
+assert(reportComparisonExportAudit.verifiedCount === 1, "报告对比导出审计应统计本机校验通过数量。");
+assert(reportComparisonExportAudit.failedCount === 0, "报告对比导出正常回执不应出现摘要失败。");
+assert(reportComparisonExportAudit.receipts[0].verificationStatus === "verified", "报告对比导出回执应通过本机 receiptDigest 重算校验。");
+assert(reportComparisonExportAudit.receipts[0].verificationExpectedDigest === reportComparisonExportAudit.receipts[0].receiptDigest, "报告对比导出回执重算摘要应匹配 receiptDigest。");
 assert(/^[a-f0-9]{64}$/.test(reportComparisonExportAudit.auditDigest), "报告对比导出审计应包含稳定摘要。");
 assert(reportComparisonExportAudit.boundary.includes("不是云端长期报告"), "报告对比导出审计应说明本机边界。");
 const reportComparisonExportAuditExport = window.MRAppState.getReportComparisonExportAuditExport("report-2", { limit: 5 });
@@ -561,6 +565,8 @@ assert(reportComparisonExportAuditExport.filename.startsWith("mr-calligraphy-rep
 assert(reportComparisonExportAuditExport.html.includes("MR 书法报告对比导出回执审计"), "报告对比导出审计 HTML 应包含标题。");
 assert(reportComparisonExportAuditExport.html.includes("report-1") && reportComparisonExportAuditExport.html.includes("report-2"), "报告对比导出审计 HTML 应包含两份报告 ID。");
 assert(reportComparisonExportAuditExport.html.includes(reportComparisonExportReceipt.receipt.receiptDigest), "报告对比导出审计 HTML 应包含回执摘要。");
+assert(reportComparisonExportAuditExport.html.includes("本机校验通过"), "报告对比导出审计 HTML 应包含本机校验结果。");
+assert(reportComparisonExportAuditExport.html.includes("重算摘要"), "报告对比导出审计 HTML 应包含重算摘要。");
 assert(!window.MRAppState.getReportComparison("report-1").ok, "第一份报告不应伪造上一份对比。");
 
 const reportPdfExport = window.MRAppState.getReportPdfExport("report-2");

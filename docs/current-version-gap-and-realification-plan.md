@@ -6400,3 +6400,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告导出回执校验`
+
+## 155. 2026-06-13 新增报告对比导出回执本机校验
+
+本次补齐“报告对比导出回执”的本机一致性校验。报告对比 HTML 导出回执已经记录 `receiptDigest`、前后报告 ID、平均分差、文件摘要和导出时间；现在前台读取审计时会按回执声明字段重算摘要，正常回执显示“本机校验通过”，被手动篡改的回执显示“摘要不匹配”。
+
+完成内容：
+
+- 新增 `verifyReportComparisonExportReceiptDigest()`、`addReportComparisonExportReceiptVerification()` 和 `createReportComparisonExportReceiptDigestPayload()`。
+- `getReportComparisonExportAudit()` 返回 `verifiedCount`、`failedCount`、`legacyCount`，每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 前台“报告对比导出回执”列表显示本机校验状态。
+- 报告对比导出回执 HTML 审计页新增“本机校验”和“重算摘要”。
+- Playwright 前台报告流程验证正常对比导出回执为 `verified`，并临时篡改 `averageDelta` 确认 `digest-mismatch` 被识别。
+
+真实化说明：
+
+- 数据来源：当前浏览器学习状态里的 `reportComparisonExportReceipts`。
+- 校验方式：按 `kind`、`currentReportId`、`previousReportId`、`averageDelta`、`filename`、`mimeType`、`byteLength`、`fileDigest` 和 `exportedAt` 稳定 JSON + SHA-256 重算。
+- 成功反馈：报告对比导出回执列表和 HTML 审计页显示“本机校验通过”。
+- 失败反馈：回执字段被篡改后，读取 API 返回 `digest-mismatch` 和重算摘要。
+
+仍待补：
+
+- 这是本机摘要一致性校验，只能证明报告对比导出回执与自身 `receiptDigest` 声明字段一致；它不是云端长期报告、跨设备下载日志、账号审计、生产证书链或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告对比回执校验`
