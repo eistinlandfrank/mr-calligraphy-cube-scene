@@ -12,6 +12,7 @@ const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
 const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
+const PROJECT_RESTORE_AUDIT_KEY = "mr-calligraphy-project-archive-audit-v1";
 const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
 const PROJECT_IMPACT_EXPORT_AUDIT_KEY = "mr-calligraphy-project-impact-export-audit-v1";
 const PROJECT_RESTORE_AUDIT_EXPORT_KEY = "mr-calligraphy-project-restore-audit-export-v1";
@@ -66,6 +67,7 @@ test.beforeEach(async ({ page }) => {
       MAIN_PUBLISHED_KEY,
       ADMIN_AUDIT_KEY,
       REMOTE_PUBLISH_KEY,
+      PROJECT_RESTORE_AUDIT_KEY,
       PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
       PROJECT_IMPACT_EXPORT_AUDIT_KEY,
       PROJECT_RESTORE_AUDIT_EXPORT_KEY,
@@ -4486,8 +4488,15 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await page.locator("#projectImportConfirm").click();
   await restoredNavigation;
   await expect(page.locator("#projectAuditStatus")).toContainText("恢复记录");
+  await expect(page.locator("#projectAuditStatus")).toContainText("本机校验通过 1 条");
   await expect(page.locator("#projectAuditList")).toContainText("审计");
+  await expect(page.locator("#projectAuditList")).toContainText("本机校验通过");
   const restoreAuditLog = await page.evaluate(() => window.MRProjectArchive.getRestoreAuditLog());
+  expect(restoreAuditLog.verifiedCount).toBe(1);
+  expect(restoreAuditLog.failedCount).toBe(0);
+  expect(restoreAuditLog.records[0].verificationStatus).toBe("verified");
+  expect(restoreAuditLog.records[0].verificationExpectedDigest).toBe(restoreAuditLog.records[0].recordDigest);
+  expect(restoreAuditLog.records[0].verificationMessage).toContain("本机一致性校验通过");
   expect(restoreAuditLog.records[0].recordDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(restoreAuditLog.records[0].archiveDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(restoreAuditLog.records[0].selectionDigest).toMatch(/^[a-f0-9]{64}$/);
@@ -4499,6 +4508,8 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const restoreAuditHtml = fs.readFileSync(restoreAuditPath, "utf8");
   expect(restoreAuditHtml).toContain("MR 书法项目档案恢复审计");
   expect(restoreAuditHtml).toContain(restoreAuditLog.records[0].recordDigest);
+  expect(restoreAuditHtml).toContain("本机校验通过");
+  expect(restoreAuditHtml).toContain("重算摘要");
   await expect(page.locator("#projectArchiveStatus")).toContainText("写入导出回执");
   await expect(page.locator("#projectRestoreAuditExportAuditStatus")).toContainText("已记录 1 条项目档案恢复审计导出回执");
   await expect(page.locator("#projectRestoreAuditExportAuditList")).toContainText(restoreAuditDownload.suggestedFilename());
@@ -4531,6 +4542,21 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(restoreAuditExportReceiptHtml).toContain(restoreAuditDownload.suggestedFilename());
   expect(restoreAuditExportReceiptHtml).toContain(restoreAuditExportState.records[0].latestRestoreRecordDigest);
   expect(restoreAuditExportReceiptHtml).toContain("当前浏览器保存的恢复审计导出回执");
+
+  const originalRestoreAuditState = await readJsonLocalStorage(page, PROJECT_RESTORE_AUDIT_KEY);
+  const tamperedRestoreAuditLog = await page.evaluate(({ key }) => {
+    const state = JSON.parse(window.localStorage.getItem(key) || "{}");
+    state.records[0].message = `${state.records[0].message || ""} 已被 E2E 临时篡改`;
+    window.localStorage.setItem(key, JSON.stringify(state));
+    return window.MRProjectArchive.getRestoreAuditLog();
+  }, { key: PROJECT_RESTORE_AUDIT_KEY });
+  expect(tamperedRestoreAuditLog.failedCount).toBe(1);
+  expect(tamperedRestoreAuditLog.records[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedRestoreAuditLog.records[0].verificationExpectedDigest).not.toBe(tamperedRestoreAuditLog.records[0].recordDigest);
+  expect(tamperedRestoreAuditLog.records[0].verificationMessage).toContain("本机一致性校验失败");
+  await page.evaluate(({ key, state }) => {
+    window.localStorage.setItem(key, JSON.stringify(state));
+  }, { key: PROJECT_RESTORE_AUDIT_KEY, state: originalRestoreAuditState });
 
   await page.locator(".main-publish-panel .remote-publish-panel summary").click();
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();

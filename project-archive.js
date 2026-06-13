@@ -4371,15 +4371,98 @@
   function getRestoreAuditLog(limit = MAX_RESTORE_AUDIT_RECORDS) {
     const audit = readRestoreAuditState();
     const safeLimit = Math.max(1, Math.min(MAX_RESTORE_AUDIT_RECORDS, Number(limit) || MAX_RESTORE_AUDIT_RECORDS));
+    const verifiedRecords = audit.records.map(addRestoreAuditVerification).filter(Boolean);
+    const verifiedCount = verifiedRecords.filter((record) => record.verificationStatus === "verified").length;
+    const failedCount = verifiedRecords.filter((record) => record.verificationStatus === "digest-mismatch").length;
+    const legacyCount = verifiedRecords.filter((record) => record.verificationStatus === "legacy").length;
     return {
       ok: true,
       storageKey: RESTORE_AUDIT_KEY,
-      total: audit.records.length,
-      records: audit.records.slice(0, safeLimit),
-      message: audit.records.length
-        ? `已读取 ${audit.records.length} 条项目档案恢复审计记录。`
+      total: verifiedRecords.length,
+      verifiedCount,
+      failedCount,
+      legacyCount,
+      records: verifiedRecords.slice(0, safeLimit),
+      message: verifiedRecords.length
+        ? `已读取 ${verifiedRecords.length} 条项目档案恢复审计记录，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。`
         : "还没有项目档案恢复审计记录。"
     };
+  }
+
+  function addRestoreAuditVerification(record) {
+    const normalized = normalizeRestoreAuditRecord(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyRestoreAuditRecordDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyRestoreAuditRecordDigest(record = {}) {
+    const recordDigest = normalizeSha256(record.recordDigest);
+    if (!recordDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧恢复审计记录未生成 recordDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createRestoreAuditRecordVerificationPayload(record));
+    const status = expectedDigest === recordDigest ? "verified" : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：recordDigest 与恢复审计声明字段一致。",
+      "digest-mismatch": "本机一致性校验失败：recordDigest 无法按恢复审计声明字段重算匹配。"
+    };
+    return {
+      status,
+      expectedDigest,
+      message: messages[status]
+    };
+  }
+
+  function createRestoreAuditRecordVerificationPayload(record = {}) {
+    const normalized = normalizeRestoreAuditRecord(record) || {};
+    const createdAt = normalized.createdAt || "";
+    const digestSuffix = normalized.recordDigest ? `-${normalized.recordDigest.slice(0, 8)}` : "";
+    const baseId = digestSuffix && normalized.id.endsWith(digestSuffix)
+      ? normalized.id.slice(0, -digestSuffix.length)
+      : normalized.id || `archive-restore-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    return {
+      id: baseId,
+      type: "project-archive-restore",
+      createdAt,
+      archiveExportedAt: normalized.archiveExportedAt || "",
+      archiveSource: normalized.archiveSource || "",
+      storageKeys: normalized.storageKeys || [],
+      dbIds: normalized.dbIds || [],
+      storageFields: normalized.storageFields || {},
+      dbRecords: normalized.dbRecords || {},
+      storageCount: Number(normalized.storageCount || 0),
+      modelCount: Number(normalized.modelCount || 0),
+      modelHashCount: Number(normalized.modelHashCount || 0),
+      missingHashCount: Number(normalized.missingHashCount || 0),
+      migrationCount: Number(normalized.migrationCount || 0),
+      storageFieldCount: Number(normalized.storageFieldCount || 0),
+      dbModelCount: Number(normalized.dbModelCount || 0),
+      digestAlgorithm: normalized.digestAlgorithm || "",
+      archiveDigest: normalized.archiveDigest || "",
+      selectionDigest: normalized.selectionDigest || "",
+      message: normalized.message || ""
+    };
+  }
+
+  function formatRestoreAuditVerificationStatus(status) {
+    const labels = {
+      verified: "本机校验通过",
+      "digest-mismatch": "本机校验失败",
+      legacy: "旧记录未校验"
+    };
+    return labels[status] || "本机校验未执行";
   }
 
   function readRestoreAuditState() {
@@ -4800,6 +4883,9 @@
           <li>档案摘要：${escapeHtml(record.archiveDigest || "旧记录未生成")}</li>
           <li>选择摘要：${escapeHtml(record.selectionDigest || "旧记录未生成")}</li>
           <li>审计摘要：${escapeHtml(record.recordDigest || "旧记录未生成")}</li>
+          <li>本机校验：${escapeHtml(formatRestoreAuditVerificationStatus(record.verificationStatus))}</li>
+          <li>重算摘要：${escapeHtml(record.verificationExpectedDigest || "旧记录未生成")}</li>
+          <li>校验说明：${escapeHtml(record.verificationMessage || "本机校验未执行")}</li>
         </ul>
         <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
       </article>`).join("")
@@ -4836,7 +4922,7 @@
     <header>
       <p class="muted">MR Calligraphy Project Archive Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
       <h1>项目档案恢复审计</h1>
-      <p class="muted">本报告来自当前浏览器本机审计记录，只记录恢复成功后的项目档案恢复范围。</p>
+      <p class="muted">本报告来自当前浏览器本机审计记录，只记录恢复成功后的项目档案恢复范围，并按 recordDigest 重算本机一致性校验。</p>
     </header>
     <section class="stack">${rows}</section>
     <footer>审计数据来源：${escapeHtml(RESTORE_AUDIT_KEY)}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。</footer>
@@ -5435,7 +5521,7 @@
       const audit = getRestoreAuditLog(5);
       if (auditStatus) {
         auditStatus.textContent = audit.records.length
-          ? `最近 ${audit.records.length}/${audit.total} 条恢复记录保存在本机。`
+          ? `最近 ${audit.records.length}/${audit.total} 条恢复记录保存在本机，本机校验通过 ${audit.verifiedCount} 条${audit.failedCount ? `，失败 ${audit.failedCount} 条` : ""}${audit.legacyCount ? `，旧记录 ${audit.legacyCount} 条` : ""}。`
           : "尚无项目档案恢复记录。";
       }
       if (auditExportButton) {
@@ -5453,7 +5539,7 @@
         detail.textContent = `${record.storageCount} 组配置 / ${record.modelCount} 个模型 / ${record.modelHashCount} 个哈希`;
         const source = document.createElement("span");
         const digestText = record.recordDigest ? ` / 审计 ${record.recordDigest.slice(0, 12)}` : " / 旧记录未生成摘要";
-        source.textContent = `${record.archiveSource || "本机项目档案"}${digestText}`;
+        source.textContent = `${record.archiveSource || "本机项目档案"}${digestText} / ${formatRestoreAuditVerificationStatus(record.verificationStatus)}`;
         item.append(title, detail, source);
         auditList.appendChild(item);
       });

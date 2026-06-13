@@ -5548,3 +5548,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增恢复审计导出回执审计`
+
+## 145. 2026-06-13 新增项目档案恢复审计本机校验
+
+本次把主后台“恢复审计”从只展示 `recordDigest`，推进为会主动重算摘要的本机验真。恢复记录如果被手动篡改，后台和导出的恢复审计 HTML 都会显示校验失败。
+
+完成内容：
+
+- `getRestoreAuditLog()` 读取恢复审计记录时会按原始写入字段重算 `recordDigest`。
+- 恢复审计返回 `verifiedCount`、`failedCount`、`legacyCount`，每条记录新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 主后台“恢复审计”状态文案显示本机校验通过数量、失败数量和旧记录数量。
+- 恢复审计列表每条记录显示“本机校验通过 / 本机校验失败 / 旧记录未校验”。
+- 恢复审计 HTML 导出新增“本机校验”“重算摘要”和“校验说明”。
+- Playwright 主后台用例验证正常恢复记录本机校验通过，并临时篡改恢复记录确认 `digest-mismatch` 能被识别。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-project-archive-audit-v1` 中的恢复审计记录。
+- 校验方式：去掉记录中的 `recordDigest`，还原生成摘要时使用的基础 ID，再用稳定 JSON + SHA-256 重算。
+- 成功反馈：后台状态显示“本机校验通过 N 条”，导出 HTML 也保留同一重算摘要。
+- 失败反馈：记录字段被篡改后，`getRestoreAuditLog()` 返回 `digest-mismatch`，并给出本机一致性校验失败说明。
+
+仍待补：
+
+- 这是当前浏览器本机一致性校验，只能证明恢复审计记录与自身摘要一致；它不是服务端签名、账号审批、远端不可篡改日志或多人审计链。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增恢复审计本机校验`
