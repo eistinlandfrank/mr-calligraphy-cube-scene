@@ -13,6 +13,7 @@ const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
 const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
+const PROJECT_IMPACT_EXPORT_AUDIT_KEY = "mr-calligraphy-project-impact-export-audit-v1";
 const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
@@ -65,6 +66,7 @@ test.beforeEach(async ({ page }) => {
       ADMIN_AUDIT_KEY,
       REMOTE_PUBLISH_KEY,
       PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
+      PROJECT_IMPACT_EXPORT_AUDIT_KEY,
       PROJECT_REPOSITORY_EXPORT_AUDIT_KEY,
       PROJECT_REPOSITORY_REMOTE_KEY,
       REALISTIC_LAYOUT_KEY,
@@ -4444,6 +4446,39 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(remoteImpactHtml).toContain("e2e-project-repository-1");
   expect(remoteImpactHtml).toContain("Workspace project-e2e");
   expect(remoteImpactHtml).toContain(firstProjectRepositoryPut.body.packageDigest);
+  await expect(page.locator("#projectArchiveStatus")).toContainText("已下载项目档案导入差异报告");
+  await expect(page.locator("#projectArchiveStatus")).toContainText("写入导出回执");
+  await expect(page.locator("#projectImpactExportAuditStatus")).toContainText("已记录 1 条项目档案差异报告导出回执");
+  await expect(page.locator("#projectImpactExportAuditList")).toContainText("e2e-project-repository-1");
+  await expect(page.locator("#projectImpactExportAuditList")).toContainText("远端项目仓库预览");
+  const projectImpactExportState = await readJsonLocalStorage(page, PROJECT_IMPACT_EXPORT_AUDIT_KEY);
+  expect(projectImpactExportState.records).toHaveLength(1);
+  expect(projectImpactExportState.records[0].filename).toBe(remoteImpactDownload.suggestedFilename());
+  expect(projectImpactExportState.records[0].sourceType).toBe("remote-project-repository");
+  expect(projectImpactExportState.records[0].remotePackageId).toBe("e2e-project-repository-1");
+  expect(projectImpactExportState.records[0].remoteWorkspaceId).toBe("project-e2e");
+  expect(projectImpactExportState.records[0].remotePackageDigest).toBe(firstProjectRepositoryPut.body.packageDigest);
+  expect(projectImpactExportState.records[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImpactExportState.records[0].previewDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImpactExportState.records[0].selectionDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImpactExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImpactExportState.records[0].boundary).toContain("恢复前审阅 HTML");
+  const projectImpactExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectImpactExportAuditExport());
+  expect(projectImpactExportAudit.ok).toBe(true);
+  expect(projectImpactExportAudit.html).toContain("MR 书法项目档案差异报告导出回执审计");
+  expect(projectImpactExportAudit.html).toContain("e2e-project-repository-1");
+  expect(projectImpactExportAudit.html).toContain(projectImpactExportState.records[0].fileDigest);
+  expect(projectImpactExportAudit.html).toContain(projectImpactExportState.records[0].receiptDigest);
+
+  const projectImpactAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectImpactExportAuditExport").click();
+  const projectImpactAuditDownload = await projectImpactAuditDownloadPromise;
+  expect(projectImpactAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-impact-export-audit-.*\.html$/);
+  const projectImpactAuditPath = await projectImpactAuditDownload.path();
+  const projectImpactAuditHtml = fs.readFileSync(projectImpactAuditPath, "utf8");
+  expect(projectImpactAuditHtml).toContain("MR 书法项目档案差异报告导出回执审计");
+  expect(projectImpactAuditHtml).toContain("e2e-project-repository-1");
+  expect(projectImpactAuditHtml).toContain(projectImpactExportState.records[0].receiptDigest);
 
   const restoredNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
   await page.locator("#projectImportConfirm").click();

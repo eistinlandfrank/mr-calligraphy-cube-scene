@@ -11189,3 +11189,48 @@
 提交：
 
 - 中文 commit message：`新增项目仓库包导出回执审计`
+
+### 2026-06-13：新增项目档案差异报告导出回执审计
+
+功能名：主后台项目档案差异报告 HTML 导出回执。
+
+开发原因：
+
+- “导出差异报告”已经能生成恢复前审阅 HTML，包含字段覆盖、模型冲突、恢复选择和远端项目仓库来源。
+- 但它没有本机回执，用户无法在恢复前后确认导出的审阅报告文件摘要、风险摘要和选择范围。
+
+完成内容：
+
+- 新增 `mr-calligraphy-project-impact-export-audit-v1` 审计包。
+- `downloadImportImpactReport()` 发起 HTML 下载后写入差异报告导出回执。
+- 回执记录文件名、MIME、字节数、文件摘要、预览摘要、选择摘要、回执摘要、来源类型、远端 packageId、Workspace、风险摘要、配置差异、模型/贴图数量和恢复选择数量。
+- 新增 `getProjectImpactExportAudit()`、`getProjectImpactExportAuditExport()` 和 `downloadProjectImpactExportAudit()`。
+- 主后台项目备份区新增“差异报告回执”列表和“导出回执”按钮。
+- 控件清单更新为主后台 `real-export 11`、`handled 57`、`missingHandler 0`。
+- Smoke 和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 拉取一个远端项目仓库版本或导入一个项目档案并生成恢复预览。
+- 点击“导出差异报告”应下载 `mr-calligraphy-archive-impact-*.html`。
+- “差异报告回执”面板应显示远端包或文件名、来源类型、风险等级、恢复选择数量、文件摘要和回执摘要。
+- 点击“导出回执”应下载 `mr-calligraphy-project-impact-export-audit-*.html`。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机 HTML 下载请求回执，只能证明页面生成并发起了恢复前差异报告下载，并记录生成内容摘要；它不是恢复动作证明、多人三方合并审计、账号审批或服务端不可篡改日志。
+
+验收命令：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目档案差异报告回执审计`

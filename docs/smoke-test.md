@@ -91,6 +91,7 @@ node scripts/learning-state-check.js
 本轮新增项目仓库 Workspace 验收：主后台远端项目仓库面板新增 `projectRepositoryWorkspace`；项目仓库包输出顶层 `workspaceId`；检查、推送和拉取携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存项目仓库包、回执和版本历史；回执审计 HTML 会包含 workspace。
 本轮新增项目仓库回执本机校验验收：项目仓库回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，回执审计 HTML 会保留重算摘要。
 本轮新增项目仓库包本机导出验收：主后台项目仓库状态区新增 `projectRepositoryExportButton`、`projectRepositoryExportAudit`、`projectRepositoryExportAuditStatus`、`projectRepositoryExportAuditList` 和 `projectRepositoryExportAuditExport`；Playwright 会真实点击“导出仓库包”，验证下载的 `mr-calligraphy-project-repository-package-v1` JSON 通过结构校验，localStorage 保存包摘要、仓库摘要、文件摘要和回执摘要，HTML 审计页可下载。
+本轮新增项目档案差异报告导出回执验收：主后台项目备份区新增 `projectImpactExportAudit`、`projectImpactExportAuditStatus`、`projectImpactExportAuditList` 和 `projectImpactExportAuditExport`；Playwright 会在远端项目仓库版本预览后真实点击“导出差异报告”，验证 HTML 下载、来源包、风险摘要、恢复选择、文件摘要、预览摘要、选择摘要、回执摘要和 HTML 审计页下载。
 
 本轮新增远端发布 Workspace 验收：主后台和写实后台远端发布面板新增 `mainRemotePublishWorkspace` / `realisticRemotePublishWorkspace`；发布包、manifest、撤销包、回执和回执审计均保留 `workspaceId`；GET / POST / DELETE 携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存发布回执和重复摘要锁；跨空间回执不会被当前空间误判为发布锁。
 本轮新增远端发布回执本机校验验收：发布回执会按 `sceneId`、`workspaceId`、`releaseId`、`packageDigest`、`acceptedAt`、`assetSignatureSummary` 和 `cdnUploadSummary` 重算摘要；撤销回执会按 `direction`、`workspaceId`、`sceneId`、`packageId`、`sourcePackageId`、`releaseId`、`packageDigest`、`acceptedAt`、`revokedAt` 和 `cdnPurgeSummary` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”。
