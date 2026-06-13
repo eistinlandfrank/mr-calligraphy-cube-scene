@@ -4915,3 +4915,52 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增计划提醒回执审计`
+
+## 131. 2026-06-13 新增计划导出回执审计
+
+本次把学习计划 HTML / ICS 导出补成可回看、可导出的本机回执。用户点击“导出计划”或“导出日历”后，计划面板会显示导出类型、文件名、完成度、文件摘要和回执摘要，后续可下载 HTML 审计页。
+
+完成内容：
+
+- 新增 `PLAN_EXPORT_AUDIT_KIND = "mr-calligraphy-plan-export-audit-v1"` 和计划导出审计边界说明。
+- 学习状态新增 `planExportReceipts`，随状态持久化到 localStorage。
+- `MRAppState.downloadPlan()` 下载 HTML 后记录计划导出回执。
+- `MRAppState.downloadPlanCalendar()` 下载 ICS 后记录计划导出回执和日历事件数量。
+- `MRAppState.recordPlanExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getPlanExportAudit({ limit })` 返回类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getPlanExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadPlanExportAudit()` 下载 `mr-calligraphy-plan-export-audit-*.html`。
+- 前台计划面板新增“导出回执审计”面板和“导出回执”按钮。
+- Smoke 首页标记检查新增计划导出回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 34`、`handled 109`、`missingHandler 0`。
+- `learning-state-check.js` 验证 HTML / ICS 回执持久化、摘要、统计、边界和 HTML。
+- Playwright 前台真实练习用例验证点击导出计划、导出日历、回执面板、localStorage 和 HTML 下载。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.planExportReceipts`。
+- 写入状态：本机 HTML 或 ICS 下载请求成功发起后写入回执，并保存文件内容 SHA-256 摘要。
+- 成功反馈：面板显示最近导出数量、导出类型、文件名、任务数量、完成度和摘要。
+- 失败反馈：无计划或无回执时导出按钮禁用；不存在的计划不会伪造回执。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可查看和导出。
+
+仍待补：
+
+- 该审计只证明当前浏览器生成并发起了本机下载请求，不代表系统保存完成、云端下载日志、跨设备同步、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划导出回执审计`

@@ -10603,3 +10603,54 @@
 提交：
 
 - 中文 commit message：`新增计划提醒回执审计`
+
+### 2026-06-13：新增计划导出回执审计
+
+功能名：前台学习计划 HTML / ICS 导出回执与 HTML 审计导出。
+
+开发原因：
+
+- 学习计划已经可以真实导出离线 HTML，也可以生成标准 `.ics` 日历提醒文件。
+- 但导出后没有本机回执，用户无法在页面上回看“导出了哪份计划、哪种文件、文件摘要是什么”，也无法导出审计页。
+
+完成内容：
+
+- 新增 `mr-calligraphy-plan-export-audit-v1` 审计包。
+- 学习状态新增 `planExportReceipts`，保存最近计划导出回执。
+- `MRAppState.downloadPlan()` 下载 HTML 后写入计划、文件名、MIME、任务数量、完成度、文件摘要和回执摘要。
+- `MRAppState.downloadPlanCalendar()` 下载 ICS 后写入计划导出回执，并记录日历事件数量。
+- `MRAppState.recordPlanExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getPlanExportAudit()` 返回类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getPlanExportAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadPlanExportAudit()` 下载 `mr-calligraphy-plan-export-audit-*.html`。
+- 前台计划面板新增“导出回执审计”面板和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台生成学习计划。
+- 点击“导出计划”应下载 HTML，并在“导出回执审计”面板出现“学习计划 HTML”回执。
+- 点击“导出日历”应下载 ICS，并在同一面板出现“日历 ICS”回执。
+- 点击“导出回执”应下载 HTML，文件包含“MR 书法计划导出回执审计”、两种导出类型、文件摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机导出请求回执，只能证明页面生成并发起了 HTML / ICS 下载，并记录生成内容摘要；它不是操作系统保存完成证明、云端下载日志、跨设备同步、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划导出回执审计`

@@ -1441,7 +1441,19 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await page.evaluate(() => window.MRAppState.createPlan());
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#planPanel")).toBeVisible();
+  await expect(page.locator("#planExportButton")).toBeEnabled();
   await expect(page.locator("#planCalendarExportButton")).toBeEnabled();
+  const planExportDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planExportButton").click();
+  const planExportDownload = await planExportDownloadPromise;
+  expect(planExportDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-.*\.html$/);
+  const planExportPath = await planExportDownload.path();
+  const planExportHtml = fs.readFileSync(planExportPath, "utf8");
+  expect(planExportHtml).toContain("MR Calligraphy Plan");
+  expect(planExportHtml).toContain("本机导出的学习计划");
+  await expect(page.locator("#planExportAuditStatus")).toContainText("1 条计划导出回执");
+  await expect(page.locator("#planExportAuditList")).toContainText("学习计划 HTML");
+  await expect(page.locator("#planExportAuditList")).toContainText("文件");
   const planCalendarDownloadPromise = page.waitForEvent("download");
   await page.locator("#planCalendarExportButton").click();
   const planCalendarDownload = await planCalendarDownloadPromise;
@@ -1452,6 +1464,24 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(planCalendarText).toContain("BEGIN:VEVENT");
   expect(planCalendarText).toContain("BEGIN:VALARM");
   expect(planCalendarText).toContain("MR书法");
+  await expect(page.locator("#planExportAuditStatus")).toContainText("2 条计划导出回执");
+  await expect(page.locator("#planExportAuditList")).toContainText("日历 ICS");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planExportReceipts).toHaveLength(2);
+  expect(learningState.planExportReceipts.map((receipt) => receipt.exportType)).toEqual(["calendar-ics", "html"]);
+  expect(learningState.planExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.planExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.planExportReceipts[0].boundary).toContain("不是云端下载日志");
+  const planExportAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planExportAuditExport").click();
+  const planExportAuditDownload = await planExportAuditDownloadPromise;
+  expect(planExportAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-export-audit-.*\.html$/);
+  const planExportAuditPath = await planExportAuditDownload.path();
+  const planExportAuditHtml = fs.readFileSync(planExportAuditPath, "utf8");
+  expect(planExportAuditHtml).toContain("MR 书法计划导出回执审计");
+  expect(planExportAuditHtml).toContain("学习计划 HTML");
+  expect(planExportAuditHtml).toContain("日历 ICS");
+  expect(planExportAuditHtml).toContain(learningState.planExportReceipts[0].receiptDigest);
 });
 
 test("front report repository imports a local JSON package", async ({ page }) => {

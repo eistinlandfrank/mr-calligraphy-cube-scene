@@ -856,6 +856,43 @@ assert(planCalendar.calendar.includes("BEGIN:VEVENT"), "学习计划日历导出
 assert(planCalendar.calendar.includes("BEGIN:VALARM"), "学习计划日历导出应包含提醒闹钟。");
 assert(planCalendar.calendar.includes("MR书法"), "学习计划日历导出应包含任务标题。");
 assert(planCalendar.boundary.includes("不是云端推送提醒"), "学习计划日历导出应明确非云端推送边界。");
+const planHtmlReceipt = window.MRAppState.recordPlanExportReceipt(latestPlan.id, {
+  exportType: "html",
+  filename: planExport.filename,
+  mimeType: "text/html;charset=utf-8",
+  content: planExport.html,
+  exportedAt: planExport.exportedAt
+});
+assert(planHtmlReceipt.ok, "学习计划 HTML 导出应能记录本机回执。");
+assert(planHtmlReceipt.receipt.exportType === "html", "学习计划 HTML 回执应记录导出类型。");
+assert(planHtmlReceipt.receipt.fileDigest.match(/^[a-f0-9]{64}$/), "学习计划 HTML 回执应包含文件摘要。");
+assert(planHtmlReceipt.receipt.receiptDigest.match(/^[a-f0-9]{64}$/), "学习计划 HTML 回执应包含回执摘要。");
+const planCalendarReceipt = window.MRAppState.recordPlanExportReceipt(latestPlan.id, {
+  exportType: "calendar-ics",
+  filename: planCalendar.filename,
+  mimeType: planCalendar.mimeType,
+  content: planCalendar.calendar,
+  exportedAt: planCalendar.exportedAt,
+  eventCount: planCalendar.eventCount
+});
+assert(planCalendarReceipt.ok, "学习计划日历导出应能记录本机回执。");
+assert(planCalendarReceipt.receipt.exportType === "calendar-ics", "学习计划日历回执应记录导出类型。");
+assert(planCalendarReceipt.receipt.eventCount === planCalendar.eventCount, "学习计划日历回执应记录事件数量。");
+assert(planCalendarReceipt.receipt.fileDigest.match(/^[a-f0-9]{64}$/), "学习计划日历回执应包含文件摘要。");
+const planExportAudit = window.MRAppState.getPlanExportAudit(latestPlan.id, { limit: 5 });
+assert(planExportAudit.kind === "mr-calligraphy-plan-export-audit-v1", "计划导出审计应返回稳定 kind。");
+assert(planExportAudit.total === 2, "计划导出审计应统计当前计划回执。");
+assert(planExportAudit.typeCounts.html === 1, "计划导出审计应统计 HTML 导出。");
+assert(planExportAudit.typeCounts["calendar-ics"] === 1, "计划导出审计应统计日历 ICS 导出。");
+assert(/^[a-f0-9]{64}$/.test(planExportAudit.auditDigest), "计划导出审计应包含稳定摘要。");
+assert(planExportAudit.boundary.includes("不是云端下载日志"), "计划导出审计应说明本机边界。");
+const planExportAuditExport = window.MRAppState.getPlanExportAuditExport(latestPlan.id, { limit: 5 });
+assert(planExportAuditExport.ok, "计划导出审计应可导出 HTML。");
+assert(planExportAuditExport.filename.startsWith("mr-calligraphy-plan-export-audit-"), "计划导出审计文件名应可识别。");
+assert(planExportAuditExport.html.includes("MR 书法计划导出回执审计"), "计划导出审计 HTML 应包含标题。");
+assert(planExportAuditExport.html.includes("学习计划 HTML"), "计划导出审计 HTML 应包含 HTML 类型。");
+assert(planExportAuditExport.html.includes("日历 ICS"), "计划导出审计 HTML 应包含日历类型。");
+assert(planExportAuditExport.html.includes(planExportAuditExport.audit.auditDigest), "计划导出审计 HTML 应包含审计摘要。");
 assert(!window.MRAppState.getPlanDependencyGraph("missing-plan").ok, "不存在的计划不应伪造依赖图。");
 assert(!window.MRAppState.getPlanCycleStatus("missing-plan").ok, "不存在的计划不应伪造周期状态。");
 assert(!window.MRAppState.getPlanExport("missing-plan").ok, "不存在的计划不应伪造导出成功。");
@@ -1228,7 +1265,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {

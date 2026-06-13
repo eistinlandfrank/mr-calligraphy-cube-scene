@@ -8375,7 +8375,8 @@ body.is-model-view .notice-panel {
   background: rgba(135, 47, 47, 0.2);
 }
 
-.plan-reminder-audit {
+.plan-reminder-audit,
+.plan-export-audit {
   display: grid;
   gap: 7px;
   margin-top: 8px;
@@ -8385,20 +8386,23 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
-.plan-reminder-audit-head {
+.plan-reminder-audit-head,
+.plan-export-audit-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
 }
 
-.plan-reminder-audit-head strong {
+.plan-reminder-audit-head strong,
+.plan-export-audit-head strong {
   color: rgba(255, 250, 241, 0.88);
   font-size: 11px;
   font-weight: 850;
 }
 
-.plan-reminder-audit-head button {
+.plan-reminder-audit-head button,
+.plan-export-audit-head button {
   min-height: 28px;
   padding: 0 9px;
   border: 1px solid rgba(116, 255, 219, 0.24);
@@ -8411,25 +8415,30 @@ body.is-model-view .notice-panel {
 }
 
 .plan-reminder-audit-head button:hover,
-.plan-reminder-audit-head button:focus-visible {
+.plan-reminder-audit-head button:focus-visible,
+.plan-export-audit-head button:hover,
+.plan-export-audit-head button:focus-visible {
   border-color: rgba(116, 255, 219, 0.5);
   outline: none;
   background: rgba(47, 111, 104, 0.42);
 }
 
-.plan-reminder-audit-head button:disabled {
+.plan-reminder-audit-head button:disabled,
+.plan-export-audit-head button:disabled {
   cursor: not-allowed;
   opacity: 0.44;
 }
 
-.plan-reminder-audit p {
+.plan-reminder-audit p,
+.plan-export-audit p {
   margin: 0;
   color: rgba(255, 250, 241, 0.58);
   font-size: 11px;
   line-height: 1.45;
 }
 
-.plan-reminder-audit-list {
+.plan-reminder-audit-list,
+.plan-export-audit-list {
   display: grid;
   gap: 6px;
   margin: 0;
@@ -8437,7 +8446,8 @@ body.is-model-view .notice-panel {
   list-style: none;
 }
 
-.plan-reminder-audit-list li {
+.plan-reminder-audit-list li,
+.plan-export-audit-list li {
   display: grid;
   gap: 3px;
   min-width: 0;
@@ -8447,14 +8457,17 @@ body.is-model-view .notice-panel {
   background: rgba(0, 0, 0, 0.12);
 }
 
-.plan-reminder-audit-list strong {
+.plan-reminder-audit-list strong,
+.plan-export-audit-list strong {
   color: rgba(255, 250, 241, 0.86);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
 
 .plan-reminder-audit-list span,
-.plan-reminder-audit-list small {
+.plan-reminder-audit-list small,
+.plan-export-audit-list span,
+.plan-export-audit-list small {
   color: rgba(255, 250, 241, 0.58);
   font-size: 10px;
   line-height: 1.4;

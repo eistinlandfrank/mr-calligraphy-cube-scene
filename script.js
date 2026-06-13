@@ -1003,6 +1003,9 @@ const els = {
   planReminderAuditStatus: document.getElementById("planReminderAuditStatus"),
   planReminderAuditList: document.getElementById("planReminderAuditList"),
   planReminderAuditExport: document.getElementById("planReminderAuditExport"),
+  planExportAuditStatus: document.getElementById("planExportAuditStatus"),
+  planExportAuditList: document.getElementById("planExportAuditList"),
+  planExportAuditExport: document.getElementById("planExportAuditExport"),
   planRepositorySummary: document.getElementById("planRepositorySummary"),
   planCycleSummary: document.getElementById("planCycleSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
@@ -4293,6 +4296,7 @@ function bindPlanControls() {
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
   els.planReminderPermissionButton?.addEventListener("click", requestActivePlanReminderPermission);
   els.planReminderAuditExport?.addEventListener("click", exportPlanReminderAudit);
+  els.planExportAuditExport?.addEventListener("click", exportPlanExportAudit);
   els.planRepositoryExportButton?.addEventListener("click", downloadPlanRepositoryPackage);
   els.planRepositoryImportButton?.addEventListener("click", choosePlanRepositoryImport);
   els.planRepositorySaveRemoteButton?.addEventListener("click", savePlanRepositoryRemoteConfig);
@@ -8097,6 +8101,7 @@ function renderPlanPanel(sceneIndex = currentIndex) {
   if (els.planCalendarExportButton) {
     els.planCalendarExportButton.disabled = !plan;
   }
+  renderPlanExportAudit(plan);
   if (els.planNextCycleButton) {
     els.planNextCycleButton.disabled = !plan?.cycleStatus?.canCreateNext;
   }
@@ -8239,6 +8244,44 @@ function renderPlanReminderAudit(plan) {
     item.append(title, meta, detail);
     els.planReminderAuditList.appendChild(item);
   });
+}
+
+function renderPlanExportAudit(plan) {
+  const audit = plan
+    ? window.MRAppState?.getPlanExportAudit?.(plan.id, { limit: 5 })
+    : null;
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.planExportAuditStatus) {
+    els.planExportAuditStatus.textContent = plan
+      ? audit?.message || "当前计划暂无导出回执。"
+      : "生成学习计划后查看导出回执。";
+    els.planExportAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.planExportAuditExport) {
+    els.planExportAuditExport.disabled = !plan || !receipts.length;
+  }
+  if (!els.planExportAuditList) return;
+  els.planExportAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatPlanExportType(receipt.exportType)} · ${receipt.filename || "计划导出文件"}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.itemCount || 0} 项 · 完成 ${receipt.completedCount || 0}/${receipt.itemCount || 0}`;
+    const detail = document.createElement("small");
+    const fileDigest = receipt.fileDigest ? `文件 ${receipt.fileDigest.slice(0, 12)}` : "文件摘要未生成";
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    detail.textContent = `${fileDigest} · ${receiptDigest} · 仅证明当前浏览器发起本机导出`;
+    item.append(title, meta, detail);
+    els.planExportAuditList.appendChild(item);
+  });
+}
+
+function formatPlanExportType(type) {
+  return {
+    html: "学习计划 HTML",
+    "calendar-ics": "日历 ICS"
+  }[type] || "计划导出";
 }
 
 function formatPlanReminderChannel(channel) {
@@ -8723,12 +8766,14 @@ function downloadActivePlan() {
   const planId = activePlanId || els.planHistorySelect?.value || "";
   const result = window.MRAppState?.downloadPlan?.(planId);
   showNotice(result?.message || "暂无可导出的学习计划。");
+  renderPlanPanel(currentIndex);
 }
 
 function downloadActivePlanCalendar() {
   const planId = activePlanId || els.planHistorySelect?.value || "";
   const result = window.MRAppState?.downloadPlanCalendar?.(planId);
   showNotice(result?.message || "暂无可导出的学习计划提醒日历。");
+  renderPlanPanel(currentIndex);
 }
 
 function downloadPlanRepositoryPackage() {
@@ -8745,6 +8790,17 @@ function exportPlanRepositoryReceipts() {
     showNotice(result.message);
   } else {
     showNotice("暂无可导出的计划仓库回执。");
+  }
+  renderPlanPanel(currentIndex);
+}
+
+function exportPlanExportAudit() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  const result = window.MRAppState?.downloadPlanExportAudit?.(planId, { limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的计划导出回执。");
   }
   renderPlanPanel(currentIndex);
 }

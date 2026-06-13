@@ -5394,3 +5394,52 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划提醒回执审计`
+
+## 131. 2026-06-13 新增计划导出回执审计
+
+本次继续把学习计划相关按钮从“能下载”推进到“可追溯”。学习计划 HTML 和日历 ICS 已经是真实导出，但导出后页面没有留下回执，刷新后也无法确认曾经导出过哪份计划、哪种文件和文件摘要。现在计划面板新增“导出回执审计”，两种导出都会写入本机回执，并可下载 HTML 审计页。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-plan-export-audit-v1` 审计包。
+- 学习状态新增 `planExportReceipts`，保存最近 24 条计划导出回执。
+- `MRAppState.downloadPlan()` 成功下载 HTML 后写入计划 ID、计划标题、文件名、MIME、任务数量、完成度、文件摘要和回执摘要。
+- `MRAppState.downloadPlanCalendar()` 成功下载 ICS 后写入同样的导出回执，并额外保存日历事件数量。
+- `MRAppState.recordPlanExportReceipt()` 提供不依赖 DOM 下载的纯状态记录入口，便于状态层脚本验证。
+- `MRAppState.getPlanExportAudit()` 返回当前计划或全部计划的导出回执、类型统计和 64 位 `auditDigest`。
+- `MRAppState.getPlanExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadPlanExportAudit()` 真实下载 `mr-calligraphy-plan-export-audit-*.html`。
+- 前台计划面板新增 `planExportAudit`、`planExportAuditStatus`、`planExportAuditList` 和 `planExportAuditExport`。
+- Smoke 页面标记检查新增计划导出回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 34`、`handled 109`、`missingHandler 0`。
+- 状态层脚本覆盖 HTML / ICS 回执、文件摘要、回执摘要、类型统计、边界说明和 HTML 审计导出。
+- Playwright 前台真实练习用例会点击“导出计划”和“导出日历”，验证真实下载、回执面板、localStorage 持久化和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.planExportReceipts`。
+- 写入状态：用户点击“导出计划”或“导出日历”并成功发起下载后写入本机回执，同时写入学习动作事件队列。
+- 成功反馈：计划面板显示导出类型、文件名、计划任务数量、完成度、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载 HTML；无回执时按钮禁用，不生成空壳审计。
+- 刷新后复现方式：导出回执随学习状态保存在 localStorage，刷新后仍能读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面发起了本机 HTML 或 ICS 下载请求，并记录当时生成内容的摘要；它不代表操作系统保存成功、云端下载日志、跨设备同步、文件长期存在或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划导出回执审计`

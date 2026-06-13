@@ -52,6 +52,9 @@
   const PLAN_REMINDER_AUDIT_KIND = "mr-calligraphy-plan-reminder-audit-v1";
   const PLAN_REMINDER_MAX_RECEIPTS = 24;
   const PLAN_REMINDER_AUDIT_BOUNDARY = "计划提醒回执保存在当前浏览器 planReminderService.receipts，记录本机 Notification 请求、页面内提醒渠道、计划项和时间；它不是云端推送日志、系统通知中心记录、跨设备提醒或不可篡改审计链。";
+  const PLAN_EXPORT_AUDIT_KIND = "mr-calligraphy-plan-export-audit-v1";
+  const PLAN_EXPORT_MAX_RECEIPTS = 24;
+  const PLAN_EXPORT_AUDIT_BOUNDARY = "计划导出回执保存在当前浏览器 planExportReceipts，记录学习计划 HTML 与日历 ICS 导出请求、计划摘要、文件摘要和时间；它不是云端下载日志、系统文件保存证明、跨设备同步或不可篡改审计链。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，并携带 Workspace 空间 ID 做服务端隔离第一版，但仍不包含完整账号权限、教师端排课或后台推送。";
@@ -444,6 +447,7 @@
       shareService: normalizeShareService(source?.shareService),
       artworkRepository: normalizeArtworkRepository(source?.artworkRepository),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
+      planExportReceipts: normalizePlanExportReceipts(source?.planExportReceipts),
       planRepository: normalizePlanRepository(source?.planRepository),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
       reportRepository: normalizeReportRepository(source?.reportRepository),
@@ -1531,6 +1535,102 @@
       payload.message = `已记录计划项“${payload.itemTitle}”的本机提醒回执。`;
     }
     return payload;
+  }
+
+  function normalizePlanExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizePlanExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, PLAN_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizePlanExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const planId = String(record.planId || "").trim().slice(0, 120);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const exportType = normalizePlanExportType(record.exportType || record.type);
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    if (!planId || !exportedAt || !exportType || !filename) return null;
+    const itemCount = normalizeInteger(record.itemCount, 0, 0, 999);
+    const completedCount = normalizeInteger(record.completedCount, 0, 0, 999);
+    const progressPercent = normalizeInteger(record.progressPercent, 0, 0, 100);
+    const eventCount = normalizeInteger(record.eventCount, exportType === "calendar-ics" ? itemCount : 0, 0, 999);
+    const fileDigest = normalizeReportTeacherReviewDigest(record.fileDigest || record.contentDigest || record.digest);
+    const id = String(record.id || `plan-export-${sha256StableJson({
+      planId,
+      exportedAt,
+      exportType,
+      filename,
+      fileDigest
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: PLAN_EXPORT_AUDIT_KIND,
+      id: id.slice(0, 120),
+      planId,
+      planTitle: String(record.planTitle || planId || "学习计划").trim().slice(0, 140) || "学习计划",
+      exportType,
+      exportLabel: formatPlanExportTypeLabel(exportType),
+      filename,
+      mimeType: String(record.mimeType || getPlanExportMimeType(exportType)).trim().slice(0, 120),
+      itemCount,
+      completedCount,
+      progressPercent,
+      eventCount,
+      exportedAt,
+      source: String(record.source || getPlanExportSource(exportType)).trim().slice(0, 80),
+      fileDigest,
+      boundary: String(record.boundary || PLAN_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 280) || PLAN_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 220)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      planId: payload.planId,
+      exportType: payload.exportType,
+      filename: payload.filename,
+      itemCount: payload.itemCount,
+      completedCount: payload.completedCount,
+      progressPercent: payload.progressPercent,
+      eventCount: payload.eventCount,
+      exportedAt: payload.exportedAt,
+      fileDigest: payload.fileDigest
+    });
+    if (!payload.message) {
+      payload.message = `已记录“${payload.planTitle}”的${payload.exportLabel}导出回执。`;
+    }
+    return payload;
+  }
+
+  function normalizePlanExportType(value) {
+    const type = String(value || "").trim().toLowerCase();
+    if (["html", "plan-html", "learning-plan-html"].includes(type)) return "html";
+    if (["calendar", "calendar-ics", "ics", "plan-calendar"].includes(type)) return "calendar-ics";
+    return "";
+  }
+
+  function formatPlanExportTypeLabel(type) {
+    return {
+      html: "学习计划 HTML",
+      "calendar-ics": "日历 ICS"
+    }[type] || "计划导出";
+  }
+
+  function getPlanExportMimeType(type) {
+    return type === "calendar-ics"
+      ? "text/calendar;charset=utf-8"
+      : "text/html;charset=utf-8";
+  }
+
+  function getPlanExportSource(type) {
+    return type === "calendar-ics" ? "plan-calendar-export" : "plan-html-export";
   }
 
   function normalizePlanRepository(record = {}) {
@@ -5036,6 +5136,188 @@
       fallback: "页面内降级",
       failed: "请求失败"
     }[status] || "已请求通知";
+  }
+
+  function recordPlanExportReceipt(planId = null, payload = {}) {
+    const payloadPlan = payload.plan && typeof payload.plan === "object"
+      ? normalizePlan(payload.plan)
+      : null;
+    const plan = payloadPlan ? decoratePlan(payloadPlan) : getPlan(planId || payload.planId);
+    if (!plan) {
+      return {
+        ok: false,
+        message: "还没有可记录导出回执的学习计划。"
+      };
+    }
+    const exportType = normalizePlanExportType(payload.exportType || payload.type);
+    if (!exportType) {
+      return {
+        ok: false,
+        plan: clone(plan),
+        message: "计划导出回执缺少有效的导出类型。"
+      };
+    }
+    const content = String(payload.content ?? payload.html ?? payload.calendar ?? "");
+    const progress = plan.progress || getPlanProgress(plan);
+    const receipt = normalizePlanExportReceipt({
+      id: payload.id || makeId("plan-export"),
+      planId: plan.id,
+      planTitle: plan.title || "学习计划",
+      exportType,
+      filename: payload.filename,
+      mimeType: payload.mimeType || getPlanExportMimeType(exportType),
+      itemCount: Array.isArray(plan.items) ? plan.items.length : progress.total || 0,
+      completedCount: progress.done || 0,
+      progressPercent: progress.percent || 0,
+      eventCount: payload.eventCount || (exportType === "calendar-ics" ? (payload.eventCount || 0) : 0),
+      exportedAt: payload.exportedAt || new Date().toISOString(),
+      source: payload.source || getPlanExportSource(exportType),
+      fileDigest: payload.fileDigest || (content ? sha256Hex(content) : ""),
+      boundary: PLAN_EXPORT_AUDIT_BOUNDARY,
+      message: payload.message || `已记录“${plan.title || "学习计划"}”的${formatPlanExportTypeLabel(exportType)}导出回执。`
+    });
+    if (!receipt) {
+      return {
+        ok: false,
+        plan: clone(plan),
+        message: "计划导出回执格式无效。"
+      };
+    }
+    const previous = normalizePlanExportReceipts(state.planExportReceipts);
+    state.planExportReceipts = [
+      receipt,
+      ...previous.filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, PLAN_EXPORT_MAX_RECEIPTS);
+    addEvent("plan-export-receipt", `记录计划导出回执：${formatPlanExportTypeLabel(exportType)} · ${plan.title || plan.id}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getPlanExportAudit(plan.id),
+      message: receipt.message
+    };
+  }
+
+  function getPlanExportAudit(planId = null, options = {}) {
+    const targetPlanId = String(planId || "").trim();
+    const limit = normalizeInteger(options.limit, PLAN_EXPORT_MAX_RECEIPTS, 1, PLAN_EXPORT_MAX_RECEIPTS);
+    const allReceipts = normalizePlanExportReceipts(state.planExportReceipts);
+    const filtered = targetPlanId
+      ? allReceipts.filter((receipt) => receipt.planId === targetPlanId)
+      : allReceipts;
+    const receipts = filtered.slice(0, limit).map(clone);
+    const typeCounts = {};
+    filtered.forEach((receipt) => {
+      const type = receipt.exportType || "html";
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: PLAN_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      planId: targetPlanId,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      typeCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: PLAN_EXPORT_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条计划导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        : targetPlanId
+          ? "当前计划暂无导出回执。"
+          : "暂无计划导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getPlanExportAuditExport(planId = null, options = {}) {
+    const audit = getPlanExportAudit(planId, options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的计划导出回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    const planSlug = audit.planId ? makeDownloadSlug(audit.planId) : "all";
+    return {
+      ok: true,
+      filename: `mr-calligraphy-plan-export-audit-${planSlug}-${exportedAt.slice(0, 10)}.html`,
+      html: renderPlanExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条计划导出回执审计导出。`
+    };
+  }
+
+  function downloadPlanExportAudit(planId = null, options = {}) {
+    const result = getPlanExportAuditExport(planId, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderPlanExportAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.exportLabel || formatPlanExportTypeLabel(receipt.exportType))} · ${escapeHtml(receipt.planTitle || receipt.planId)}</h2>
+        <p>${escapeHtml(receipt.message || "计划导出回执已记录。")}</p>
+        <dl>
+          <div><dt>计划 ID</dt><dd>${escapeHtml(receipt.planId)}</dd></div>
+          <div><dt>计划标题</dt><dd>${escapeHtml(receipt.planTitle || "学习计划")}</dd></div>
+          <div><dt>导出类型</dt><dd>${escapeHtml(formatPlanExportTypeLabel(receipt.exportType))}</dd></div>
+          <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd></div>
+          <div><dt>MIME</dt><dd>${escapeHtml(receipt.mimeType || getPlanExportMimeType(receipt.exportType))}</dd></div>
+          <div><dt>任务数量</dt><dd>${escapeHtml(receipt.itemCount || 0)}</dd></div>
+          <div><dt>已完成</dt><dd>${escapeHtml(receipt.completedCount || 0)} / ${escapeHtml(receipt.progressPercent || 0)}%</dd></div>
+          <div><dt>日历事件</dt><dd>${escapeHtml(receipt.eventCount || 0)}</dd></div>
+          <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法计划导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Plan Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法计划导出回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条计划导出回执。${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
   }
 
   function buildPlanCycleStatus(plan, progress = getPlanProgress(plan)) {
@@ -12366,10 +12648,20 @@
     }
 
     downloadHtml(result.html, result.filename);
+    const receiptResult = recordPlanExportReceipt(result.plan?.id || planId, {
+      exportType: "html",
+      filename: result.filename,
+      mimeType: "text/html;charset=utf-8",
+      content: result.html,
+      exportedAt: result.exportedAt,
+      plan: result.plan
+    });
     return {
       ok: true,
       filename: result.filename,
-      message: "已下载学习计划离线 HTML，可打开后打印或保存为 PDF。"
+      receipt: receiptResult.ok ? receiptResult.receipt : null,
+      audit: receiptResult.ok ? receiptResult.audit : null,
+      message: "已下载学习计划离线 HTML，并记录导出回执；可打开后打印或保存为 PDF。"
     };
   }
 
@@ -12380,11 +12672,22 @@
     }
 
     downloadText(result.calendar, result.filename, result.mimeType);
+    const receiptResult = recordPlanExportReceipt(result.plan?.id || planId, {
+      exportType: "calendar-ics",
+      filename: result.filename,
+      mimeType: result.mimeType,
+      content: result.calendar,
+      exportedAt: result.exportedAt,
+      eventCount: result.eventCount,
+      plan: result.plan
+    });
     return {
       ok: true,
       filename: result.filename,
       eventCount: result.eventCount,
-      message: `已下载学习计划提醒日历：${result.filename}。`
+      receipt: receiptResult.ok ? receiptResult.receipt : null,
+      audit: receiptResult.ok ? receiptResult.audit : null,
+      message: `已下载学习计划提醒日历：${result.filename}，并记录导出回执。`
     };
   }
 
@@ -18000,6 +18303,8 @@
     getPlanReminderServiceStatus,
     getPlanReminderAudit,
     getPlanReminderAuditExport,
+    getPlanExportAudit,
+    getPlanExportAuditExport,
     getPlanRepositoryStatus,
     getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
@@ -18068,6 +18373,7 @@
     downloadHistoryBatchReceiptAudit,
     downloadLocalLinkCopyAudit,
     downloadPlanReminderAudit,
+    downloadPlanExportAudit,
     downloadHistoryRepository,
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,
@@ -18096,6 +18402,7 @@
     resolveArtworkRepositoryConflict,
     recordLocalLinkCopyReceipt,
     recordReportPrintReceipt,
+    recordPlanExportReceipt,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
     checkRemoteReportRepository,

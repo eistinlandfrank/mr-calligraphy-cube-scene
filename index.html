@@ -584,6 +584,14 @@
             <button data-feature-state="real-export" id="planCalendarExportButton" type="button">导出日历</button>
             <button data-feature-state="real-local" id="planNextCycleButton" type="button">生成下周期</button>
           </div>
+          <div id="planExportAudit" class="plan-export-audit" aria-label="计划导出回执审计">
+            <div class="plan-export-audit-head">
+              <strong>导出回执审计</strong>
+              <button data-feature-state="real-export" id="planExportAuditExport" type="button">导出回执</button>
+            </div>
+            <p id="planExportAuditStatus">暂无计划导出回执。</p>
+            <ul id="planExportAuditList" class="plan-export-audit-list"></ul>
+          </div>
           <details class="plan-repository-remote">
             <summary>远端 API 同步</summary>
             <div class="plan-repository-fields">
