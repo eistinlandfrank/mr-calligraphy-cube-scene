@@ -271,10 +271,19 @@
           <div class="main-project-repository" aria-label="统一项目仓库状态">
             <div class="main-project-repository-head">
               <strong>项目仓库状态</strong>
+              <button data-feature-state="real-export" id="projectRepositoryExportButton" type="button">导出仓库包</button>
               <button data-feature-state="real-local" id="projectRepositoryRefresh" type="button">刷新</button>
             </div>
             <p id="projectRepositoryStatus" class="main-project-status">正在读取本机项目仓库状态。</p>
             <ul id="projectRepositoryList" class="main-project-repository-list" aria-live="polite"></ul>
+            <div id="projectRepositoryExportAudit" class="project-repository-receipt" aria-label="项目仓库包导出回执审计">
+              <div class="project-repository-receipt-head">
+                <strong>仓库包导出回执</strong>
+                <button data-feature-state="real-export" id="projectRepositoryExportAuditExport" type="button">导出回执</button>
+              </div>
+              <p id="projectRepositoryExportAuditStatus" class="project-repository-receipt-status">暂无项目仓库包导出回执。</p>
+              <ul id="projectRepositoryExportAuditList" class="main-project-repository-list project-repository-receipt-list" aria-live="polite"></ul>
+            </div>
             <details class="project-repository-remote remote-publish-panel">
               <summary>远端项目仓库 API</summary>
               <p id="projectRepositoryRemoteStatus" class="remote-publish-status">尚未配置远端项目仓库 API。</p>

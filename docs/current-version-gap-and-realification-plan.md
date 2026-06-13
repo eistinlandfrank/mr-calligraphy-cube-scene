@@ -5908,3 +5908,44 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增项目档案导出回执审计`
+
+## 142. 2026-06-13 新增项目仓库包本机导出回执审计
+
+本次补齐主后台项目仓库包的本机导出闭环。此前 `createProjectRepositoryPackage()` 只在远端推送时使用，没有独立下载入口；现在用户不配置 endpoint 也能导出同结构项目仓库包，并在后台看到导出回执。
+
+完成内容：
+
+- 新增 `mr-calligraphy-project-repository-export-audit-v1` 审计包，保存最近 24 条项目仓库包导出回执。
+- 新增 `MRProjectArchive.downloadProjectRepositoryPackage()`，下载与远端 PUT 同结构的 `mr-calligraphy-project-repository-package-v1` JSON。
+- 回执记录文件名、MIME、字节数、文件摘要、包摘要、仓库摘要、回执摘要、Workspace、场景数量、导入模型数量、贴图数量和缺失资产数量。
+- 新增 `getProjectRepositoryExportAudit()`、`getProjectRepositoryExportAuditExport()` 和 `downloadProjectRepositoryExportAudit()`。
+- 主后台项目仓库状态区新增“导出仓库包”和“仓库包导出回执”审计面板。
+- Smoke 页面标记检查新增项目仓库包导出入口和回执审计节点。
+- 控件清单更新为主后台 `real-export 10`、`handled 56`、`missingHandler 0`。
+- Playwright 主后台用例验证真实点击“导出仓库包”、下载 JSON、项目仓库包结构校验、localStorage 回执持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：`MRProjectArchive.createProjectRepositoryPackage()` 生成的真实项目仓库包。
+- 写入状态：下载 JSON 项目仓库包后写入 `mr-calligraphy-project-repository-export-audit-v1`。
+- 成功反馈：主后台显示 packageId、Workspace、场景/模型/贴图统计、包摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载 `mr-calligraphy-project-repository-export-audit-*.html`；无回执时按钮禁用。
+- 刷新后复现方式：回执随 localStorage 持久化，可再次导出审计 HTML。
+
+仍待补：
+
+- 该回执只能证明当前浏览器生成并发起了项目仓库包 JSON 下载请求，并记录生成内容摘要；它不是云端同步完成证明、账号化项目空间、多人合并审计或服务端不可篡改证据链。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增项目仓库包导出回执审计`

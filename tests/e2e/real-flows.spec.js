@@ -13,6 +13,7 @@ const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
 const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
+const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
 const REALISTIC_HISTORY_KEY = "mr-calligraphy-realistic-history-v1";
@@ -64,6 +65,7 @@ test.beforeEach(async ({ page }) => {
       ADMIN_AUDIT_KEY,
       REMOTE_PUBLISH_KEY,
       PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
+      PROJECT_REPOSITORY_EXPORT_AUDIT_KEY,
       PROJECT_REPOSITORY_REMOTE_KEY,
       REALISTIC_LAYOUT_KEY,
       REALISTIC_HISTORY_KEY,
@@ -3859,7 +3861,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
 });
 
 test("main admin publishes a local draft that the front page reads", async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(150_000);
   const objectLabel = `E2E 发布方块 ${Date.now()}`;
   const remoteEndpointPath = "/e2e-remote-publish";
   const projectRepositoryEndpointPath = "/e2e-project-repository";
@@ -4257,6 +4259,55 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectArchiveAuditHtml).toContain(projectArchiveDownload.suggestedFilename());
   expect(projectArchiveAuditHtml).toContain(projectArchiveExportState.records[0].fileDigest);
   expect(projectArchiveAuditHtml).toContain("当前浏览器保存的项目档案导出回执");
+
+  const projectRepositoryPackageDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectRepositoryExportButton").click();
+  const projectRepositoryPackageDownload = await projectRepositoryPackageDownloadPromise;
+  expect(projectRepositoryPackageDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-repository-package-.*\.json$/);
+  const projectRepositoryPackagePath = await projectRepositoryPackageDownload.path();
+  const projectRepositoryPackageJson = JSON.parse(fs.readFileSync(projectRepositoryPackagePath, "utf8"));
+  expect(projectRepositoryPackageJson.kind).toBe("mr-calligraphy-project-repository-package-v1");
+  expect(projectRepositoryPackageJson.workspaceId).toBe("local-browser");
+  expect(projectRepositoryPackageJson.repository.kind).toBe("mr-calligraphy-project-repository-v1");
+  expect(projectRepositoryPackageJson.projectSchema.kind).toBe("mr-calligraphy-project-schema");
+  expect(projectRepositoryPackageJson.archive.kind).toBe("mr-calligraphy-project-archive");
+  expect(projectRepositoryPackageJson.summary.sceneCount).toBe(2);
+  expect(projectRepositoryPackageJson.summary.publishedSceneCount).toBeGreaterThan(0);
+  expect(projectRepositoryPackageJson.packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  const localPackageValidation = validateProjectRepositoryPackage(projectRepositoryPackageJson, { workspaceId: "local-browser" });
+  expect(localPackageValidation.ok, localPackageValidation.message).toBe(true);
+  await expect(page.locator("#projectArchiveStatus")).toContainText("已导出本机项目仓库包");
+  await expect(page.locator("#projectRepositoryExportAuditStatus")).toContainText("已记录 1 条项目仓库包导出回执");
+  await expect(page.locator("#projectRepositoryExportAuditList")).toContainText(projectRepositoryPackageJson.packageId);
+  await expect(page.locator("#projectRepositoryExportAuditList")).toContainText("空间 local-browser");
+  const projectRepositoryExportState = await readJsonLocalStorage(page, PROJECT_REPOSITORY_EXPORT_AUDIT_KEY);
+  expect(projectRepositoryExportState.records).toHaveLength(1);
+  expect(projectRepositoryExportState.records[0].filename).toBe(projectRepositoryPackageDownload.suggestedFilename());
+  expect(projectRepositoryExportState.records[0].packageId).toBe(projectRepositoryPackageJson.packageId);
+  expect(projectRepositoryExportState.records[0].workspaceId).toBe("local-browser");
+  expect(projectRepositoryExportState.records[0].packageDigest).toBe(projectRepositoryPackageJson.packageDigest);
+  expect(projectRepositoryExportState.records[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectRepositoryExportState.records[0].repositoryDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectRepositoryExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectRepositoryExportState.records[0].sceneCount).toBe(2);
+  expect(projectRepositoryExportState.records[0].boundary).toContain("与远端推送同结构");
+  const projectRepositoryExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectRepositoryExportAuditExport());
+  expect(projectRepositoryExportAudit.ok).toBe(true);
+  expect(projectRepositoryExportAudit.html).toContain("MR 书法项目仓库包导出回执审计");
+  expect(projectRepositoryExportAudit.html).toContain(projectRepositoryPackageJson.packageId);
+  expect(projectRepositoryExportAudit.html).toContain(projectRepositoryPackageJson.packageDigest);
+  expect(projectRepositoryExportAudit.html).toContain(projectRepositoryExportState.records[0].receiptDigest);
+
+  const projectRepositoryAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectRepositoryExportAuditExport").click();
+  const projectRepositoryAuditDownload = await projectRepositoryAuditDownloadPromise;
+  expect(projectRepositoryAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-repository-export-audit-.*\.html$/);
+  const projectRepositoryAuditPath = await projectRepositoryAuditDownload.path();
+  const projectRepositoryAuditHtml = fs.readFileSync(projectRepositoryAuditPath, "utf8");
+  expect(projectRepositoryAuditHtml).toContain("MR 书法项目仓库包导出回执审计");
+  expect(projectRepositoryAuditHtml).toContain(projectRepositoryPackageJson.packageId);
+  expect(projectRepositoryAuditHtml).toContain(projectRepositoryPackageJson.packageDigest);
+  expect(projectRepositoryAuditHtml).toContain("与远端推送同结构的 JSON 同步包");
 
   await page.locator(".project-repository-remote summary").click();
   await expect(page.locator("#projectRepositoryEndpoint")).toBeVisible();

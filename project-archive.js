@@ -10,6 +10,9 @@
   const PROJECT_ARCHIVE_EXPORT_BOUNDARY = "项目档案导出回执记录当前浏览器生成 JSON 备份文件的时间、摘要和范围；它不是云端备份完成证明，也不能替代账号权限或服务端不可篡改审计。";
   const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
+  const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
+  const PROJECT_REPOSITORY_EXPORT_AUDIT_KIND = "mr-calligraphy-project-repository-export-audit-v1";
+  const PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS = 24;
   const PROJECT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-project-repository-receipt-v1";
   const PROJECT_REPOSITORY_REMOTE_VERSION = 1;
   const PROJECT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
@@ -20,6 +23,7 @@
   const PROJECT_REPOSITORY_RETRY_BASE_MS = 15000;
   const PROJECT_REPOSITORY_RETRY_MAX_MS = 300000;
   const PROJECT_REPOSITORY_REMOTE_BOUNDARY = "项目仓库远端 API adapter 会真实发送当前本机项目档案包，并携带 Workspace 空间 ID 做服务端隔离第一版；它不是账号权限、多人协作 CMS、CDN 资产库或生产服务端本身。";
+  const PROJECT_REPOSITORY_EXPORT_BOUNDARY = "项目仓库包导出会下载与远端推送同结构的本机 JSON 包，并记录文件摘要、包摘要和仓库摘要；它不是云端同步完成证明，也不能替代账号权限、多人协作或服务端不可篡改审计。";
   const STORAGE_ITEMS = [
     { key: "mr-calligraphy-learning-state-v1", label: "学习状态" },
     { key: "mr-calligraphy-room-config-v3-wood", label: "房间与角色配置" },
@@ -113,6 +117,29 @@
 
     packageBody.packageDigest = await createStableJsonSha256(packageBody);
     return packageBody;
+  }
+
+  async function downloadProjectRepositoryPackage(options = {}) {
+    const repositoryPackage = await createProjectRepositoryPackage();
+    const exportedAt = options.exportedAt || repositoryPackage.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-project-repository-package-${formatTimestamp(new Date(exportedAt))}.json`;
+    const payload = JSON.stringify(repositoryPackage, null, 2);
+    downloadJsonPayload(payload, filename);
+    const receiptResult = await recordProjectRepositoryExportReceipt({
+      package: repositoryPackage,
+      filename,
+      payload,
+      exportedAt
+    });
+    return {
+      ok: true,
+      filename,
+      package: repositoryPackage,
+      exportReceipt: receiptResult.receipt || null,
+      message: receiptResult.ok
+        ? `已导出本机项目仓库包：${filename}，并写入导出回执。`
+        : `已导出本机项目仓库包：${filename}。${receiptResult.message || "导出回执记录失败。"}`
+    };
   }
 
   function createProjectRepositoryPackageSummary(archive, repository) {
@@ -3532,6 +3559,302 @@
 </html>`;
   }
 
+  async function recordProjectRepositoryExportReceipt(payload = {}) {
+    try {
+      const packageRecord = payload.package && typeof payload.package === "object" ? payload.package : null;
+      const filename = String(payload.filename || "").trim();
+      const content = String(payload.payload ?? payload.content ?? (packageRecord ? JSON.stringify(packageRecord, null, 2) : ""));
+      if (!packageRecord || !filename || !content || packageRecord.kind !== PROJECT_REPOSITORY_PACKAGE_KIND) {
+        return {
+          ok: false,
+          message: "项目仓库包导出回执缺少有效仓库包内容。"
+        };
+      }
+
+      const receipt = await createProjectRepositoryExportReceipt(packageRecord, {
+        filename,
+        content,
+        exportedAt: payload.exportedAt
+      });
+      const audit = readProjectRepositoryExportAuditState();
+      const records = [
+        receipt,
+        ...audit.records.filter((record) => record.id !== receipt.id && record.receiptDigest !== receipt.receiptDigest)
+      ].slice(0, PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS);
+      writeProjectRepositoryExportAuditState({
+        version: 1,
+        updatedAt: receipt.createdAt,
+        records
+      });
+      return {
+        ok: true,
+        receipt: cloneJsonValue(receipt),
+        audit: getProjectRepositoryExportAudit(),
+        message: `已记录项目仓库包导出回执：${receipt.filename}。`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error?.message ? `项目仓库包已下载，但导出回执记录失败：${error.message}` : "项目仓库包已下载，但导出回执记录失败。"
+      };
+    }
+  }
+
+  async function createProjectRepositoryExportReceipt(packageRecord, options = {}) {
+    const createdAt = new Date().toISOString();
+    const exportedAt = normalizeIsoDate(options.exportedAt || packageRecord.exportedAt) || createdAt;
+    const filename = String(options.filename || `mr-calligraphy-project-repository-package-${formatTimestamp(new Date(exportedAt))}.json`).trim();
+    const content = String(options.content || JSON.stringify(packageRecord, null, 2));
+    const summary = packageRecord.summary || {};
+    const repositoryDigest = await createStableJsonSha256(packageRecord.repository || {});
+    const base = {
+      id: `project-repository-export-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`,
+      kind: PROJECT_REPOSITORY_EXPORT_AUDIT_KIND,
+      type: "project-repository-package-export",
+      version: PROJECT_REPOSITORY_REMOTE_VERSION,
+      createdAt,
+      exportedAt,
+      filename,
+      mimeType: "application/json;charset=utf-8",
+      byteLength: utf8Bytes(content).length,
+      fileDigest: sha256Hex(content),
+      packageId: String(packageRecord.packageId || "").slice(0, 160),
+      workspaceId: normalizeProjectRepositoryWorkspaceId(packageRecord.workspaceId),
+      packageDigest: normalizeSha256(packageRecord.packageDigest),
+      repositoryDigest,
+      repositoryKind: String(packageRecord.repository?.kind || "").slice(0, 120),
+      repositoryStatus: String(packageRecord.repository?.status || "").slice(0, 80),
+      schemaKind: String(packageRecord.projectSchema?.kind || "").slice(0, 120),
+      sceneCount: Math.max(0, Math.round(Number(summary.sceneCount || 0))),
+      draftSceneCount: Math.max(0, Math.round(Number(summary.draftSceneCount || 0))),
+      publishedSceneCount: Math.max(0, Math.round(Number(summary.publishedSceneCount || 0))),
+      readySceneCount: Math.max(0, Math.round(Number(summary.readySceneCount || 0))),
+      importedModelCount: Math.max(0, Math.round(Number(summary.importedModels || 0))),
+      textureAssetCount: Math.max(0, Math.round(Number(summary.textureAssets || 0))),
+      missingModelBinaries: Math.max(0, Math.round(Number(summary.missingModelBinaries || 0))),
+      missingTextureBinaries: Math.max(0, Math.round(Number(summary.missingTextureBinaries || 0))),
+      source: String(packageRecord.source || "").slice(0, 420),
+      boundary: PROJECT_REPOSITORY_EXPORT_BOUNDARY,
+      message: `已记录项目仓库包 ${packageRecord.packageId || "未命名包"} 的本机 JSON 导出回执。`
+    };
+    const receiptDigest = await createStableJsonSha256(base);
+    return {
+      ...base,
+      id: `${base.id}-${receiptDigest.slice(0, 8)}`,
+      receiptDigest
+    };
+  }
+
+  function readProjectRepositoryExportAuditState() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(PROJECT_REPOSITORY_EXPORT_AUDIT_KEY) || "{}");
+      const records = Array.isArray(parsed.records)
+        ? parsed.records.map(normalizeProjectRepositoryExportReceipt).filter(Boolean)
+        : [];
+      return {
+        version: 1,
+        updatedAt: normalizeIsoDate(parsed.updatedAt),
+        records
+      };
+    } catch (error) {
+      return { version: 1, updatedAt: "", records: [] };
+    }
+  }
+
+  function writeProjectRepositoryExportAuditState(state = {}) {
+    const records = Array.isArray(state.records)
+      ? state.records.map(normalizeProjectRepositoryExportReceipt).filter(Boolean).slice(0, PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS)
+      : [];
+    const normalized = {
+      version: 1,
+      updatedAt: normalizeIsoDate(state.updatedAt) || records[0]?.createdAt || "",
+      records
+    };
+    window.localStorage.setItem(PROJECT_REPOSITORY_EXPORT_AUDIT_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function normalizeProjectRepositoryExportReceipt(record) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+    const createdAt = normalizeIsoDate(record.createdAt || record.exportedAt) || "";
+    const exportedAt = normalizeIsoDate(record.exportedAt || record.createdAt) || createdAt;
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const packageId = String(record.packageId || "").slice(0, 160);
+    const packageDigest = normalizeSha256(record.packageDigest);
+    const receiptDigest = normalizeSha256(record.receiptDigest || record.recordDigest);
+    if (!filename && !packageId && !packageDigest && !createdAt) {
+      return null;
+    }
+    return {
+      id: String(record.id || `project-repository-export-${createdAt || packageId || filename || "record"}`).slice(0, 180),
+      kind: PROJECT_REPOSITORY_EXPORT_AUDIT_KIND,
+      type: "project-repository-package-export",
+      version: PROJECT_REPOSITORY_REMOTE_VERSION,
+      createdAt,
+      exportedAt,
+      filename,
+      mimeType: String(record.mimeType || "application/json;charset=utf-8").slice(0, 120),
+      byteLength: Math.max(0, Math.round(Number(record.byteLength || 0))),
+      fileDigest: normalizeSha256(record.fileDigest),
+      packageId,
+      workspaceId: normalizeProjectRepositoryWorkspaceId(record.workspaceId),
+      packageDigest,
+      repositoryDigest: normalizeSha256(record.repositoryDigest),
+      repositoryKind: String(record.repositoryKind || "").slice(0, 120),
+      repositoryStatus: String(record.repositoryStatus || "").slice(0, 80),
+      schemaKind: String(record.schemaKind || "").slice(0, 120),
+      sceneCount: Math.max(0, Math.round(Number(record.sceneCount || 0))),
+      draftSceneCount: Math.max(0, Math.round(Number(record.draftSceneCount || 0))),
+      publishedSceneCount: Math.max(0, Math.round(Number(record.publishedSceneCount || 0))),
+      readySceneCount: Math.max(0, Math.round(Number(record.readySceneCount || 0))),
+      importedModelCount: Math.max(0, Math.round(Number(record.importedModelCount || 0))),
+      textureAssetCount: Math.max(0, Math.round(Number(record.textureAssetCount || 0))),
+      missingModelBinaries: Math.max(0, Math.round(Number(record.missingModelBinaries || 0))),
+      missingTextureBinaries: Math.max(0, Math.round(Number(record.missingTextureBinaries || 0))),
+      source: String(record.source || "").slice(0, 420),
+      boundary: String(record.boundary || PROJECT_REPOSITORY_EXPORT_BOUNDARY).slice(0, 420),
+      message: String(record.message || "").slice(0, 260),
+      receiptDigest
+    };
+  }
+
+  function getProjectRepositoryExportAudit(options = {}) {
+    const limit = Math.max(1, Math.min(PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS, Number(options.limit) || PROJECT_REPOSITORY_EXPORT_MAX_RECEIPTS));
+    const auditState = readProjectRepositoryExportAuditState();
+    const records = auditState.records.slice(0, limit).map(cloneJsonValue);
+    const workspaceCounts = auditState.records.reduce((counts, record) => {
+      const workspaceId = record.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE;
+      counts[workspaceId] = (counts[workspaceId] || 0) + 1;
+      return counts;
+    }, {});
+    const audit = {
+      ok: true,
+      kind: PROJECT_REPOSITORY_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: PROJECT_REPOSITORY_EXPORT_AUDIT_KEY,
+      total: auditState.records.length,
+      exportedCount: records.length,
+      limit,
+      workspaceCounts,
+      latestReceipt: records[0] || null,
+      records,
+      boundary: PROJECT_REPOSITORY_EXPORT_BOUNDARY,
+      message: auditState.records.length
+        ? `已记录 ${auditState.records.length} 条项目仓库包导出回执，最近一次：${formatArchiveDate(auditState.records[0].exportedAt || auditState.records[0].createdAt)}。`
+        : "暂无项目仓库包导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getProjectRepositoryExportAuditExport(options = {}) {
+    const audit = getProjectRepositoryExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的项目仓库包导出回执。"
+      };
+    }
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-project-repository-export-audit-${formatTimestamp(new Date(exportedAt))}.html`;
+    const html = createProjectRepositoryExportAuditHtml(audit, exportedAt);
+    return {
+      ok: true,
+      filename,
+      mimeType: "text/html;charset=utf-8",
+      html,
+      byteLength: html.length,
+      audit,
+      recordCount: audit.exportedCount,
+      message: `已生成 ${audit.exportedCount} 条项目仓库包导出回执审计报告：${filename}。`
+    };
+  }
+
+  function downloadProjectRepositoryExportAudit(options = {}) {
+    const result = getProjectRepositoryExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      recordCount: result.recordCount,
+      message: `已下载项目仓库包导出回执审计报告：${result.filename}。`
+    };
+  }
+
+  function createProjectRepositoryExportAuditHtml(audit, exportedAt) {
+    const rows = audit.records.map((record) => `<article class="card">
+      <div class="item-head">
+        <h2>${escapeHtml(record.filename || record.packageId || "项目仓库包导出")}</h2>
+        <span>${escapeHtml(record.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE)}</span>
+      </div>
+      <p>${escapeHtml(record.message || "已生成项目仓库 JSON 同步包。")}</p>
+      <ul>
+        <li>导出时间：${escapeHtml(formatArchiveDate(record.exportedAt || record.createdAt))}</li>
+        <li>Package ID：${escapeHtml(record.packageId || "未知")}</li>
+        <li>Workspace：${escapeHtml(record.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE)}</li>
+        <li>场景：${escapeHtml(record.draftSceneCount)} 草稿 / ${escapeHtml(record.publishedSceneCount)} 发布 / ${escapeHtml(record.sceneCount)} 总计</li>
+        <li>导入模型 / 贴图：${escapeHtml(record.importedModelCount)} / ${escapeHtml(record.textureAssetCount)}</li>
+        <li>缺失模型文件 / 缺失贴图文件：${escapeHtml(record.missingModelBinaries)} / ${escapeHtml(record.missingTextureBinaries)}</li>
+        <li>文件大小：${escapeHtml(formatBytes(record.byteLength))}</li>
+        <li>文件摘要：${escapeHtml(record.fileDigest || "未生成")}</li>
+        <li>包摘要：${escapeHtml(record.packageDigest || "未生成")}</li>
+        <li>仓库摘要：${escapeHtml(record.repositoryDigest || "未生成")}</li>
+        <li>回执摘要：${escapeHtml(record.receiptDigest || "未生成")}</li>
+      </ul>
+      <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
+    </article>`).join("");
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法项目仓库包导出回执审计</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 44px; }
+    header { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(28px, 5vw, 46px); line-height: 1.08; }
+    h2 { font-size: 16px; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 12px; margin-top: 22px; }
+    .card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+    .item-head span { color: var(--jade); font-weight: 800; white-space: nowrap; }
+    ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted); overflow-wrap: anywhere; }
+    pre { max-height: 260px; margin: 6px 0 0; padding: 10px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #f7faf8; color: #24332f; white-space: pre-wrap; word-break: break-word; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { .item-head { display: grid; } .item-head span { white-space: normal; } }
+    @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">MR Calligraphy Project Repository Package Export Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
+      <h1>项目仓库包导出回执审计</h1>
+      <p class="muted">本报告来自当前浏览器保存的项目仓库包导出回执；它证明浏览器曾生成与远端推送同结构的 JSON 同步包及摘要，但不代表云端同步已经完成。</p>
+    </header>
+    <section class="stack">${rows}</section>
+    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   async function appendRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
     try {
       const audit = readRestoreAuditState();
@@ -4139,6 +4462,10 @@
     const auditExportButton = document.getElementById("projectAuditExport");
     const repositoryStatus = document.getElementById("projectRepositoryStatus");
     const repositoryList = document.getElementById("projectRepositoryList");
+    const repositoryExportButton = document.getElementById("projectRepositoryExportButton");
+    const repositoryExportAuditStatus = document.getElementById("projectRepositoryExportAuditStatus");
+    const repositoryExportAuditList = document.getElementById("projectRepositoryExportAuditList");
+    const repositoryExportAuditButton = document.getElementById("projectRepositoryExportAuditExport");
     const repositoryRefreshButton = document.getElementById("projectRepositoryRefresh");
     const repositoryRemoteStatus = document.getElementById("projectRepositoryRemoteStatus");
     const repositoryEndpointInput = document.getElementById("projectRepositoryEndpoint");
@@ -4172,6 +4499,8 @@
       if (exportAuditButton) exportAuditButton.disabled = isBusy || !getProjectArchiveExportAudit({ limit: 1 }).total;
       if (impactButton) impactButton.disabled = isBusy || !pendingPreview;
       if (auditExportButton) auditExportButton.disabled = isBusy || !getRestoreAuditLog(1).records.length;
+      if (repositoryExportButton) repositoryExportButton.disabled = isBusy;
+      if (repositoryExportAuditButton) repositoryExportAuditButton.disabled = isBusy || !getProjectRepositoryExportAudit({ limit: 1 }).total;
       if (repositoryRefreshButton) repositoryRefreshButton.disabled = isBusy;
       if (repositoryRemoteSaveButton) repositoryRemoteSaveButton.disabled = isBusy;
       if (repositoryRemoteCheckButton) repositoryRemoteCheckButton.disabled = isBusy;
@@ -4411,6 +4740,44 @@
         digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
         item.append(title, detail, digest);
         exportAuditList.appendChild(item);
+      });
+    };
+
+    const renderProjectRepositoryExportAudit = () => {
+      const audit = getProjectRepositoryExportAudit({ limit: 5 });
+      if (repositoryExportAuditStatus) {
+        repositoryExportAuditStatus.textContent = audit.message;
+        repositoryExportAuditStatus.dataset.receiptTone = audit.total ? "ready" : "idle";
+      }
+      if (repositoryExportAuditButton) {
+        repositoryExportAuditButton.disabled = isBusy || audit.total === 0;
+      }
+      if (!repositoryExportAuditList) {
+        return;
+      }
+      repositoryExportAuditList.innerHTML = "";
+      if (!audit.records.length) {
+        const empty = document.createElement("li");
+        empty.dataset.repositoryStatus = "empty";
+        const title = document.createElement("strong");
+        title.textContent = "尚无项目仓库包导出回执";
+        const detail = document.createElement("span");
+        detail.textContent = "点击“导出仓库包”后会下载与远端推送同结构的 JSON，并记录包摘要、仓库摘要和文件摘要。";
+        empty.append(title, detail);
+        repositoryExportAuditList.appendChild(empty);
+        return;
+      }
+      audit.records.forEach((record) => {
+        const item = document.createElement("li");
+        item.dataset.repositoryStatus = "ready";
+        const title = document.createElement("strong");
+        title.textContent = record.packageId || record.filename || "项目仓库包导出";
+        const detail = document.createElement("span");
+        detail.textContent = `${record.sceneCount} 个场景 / ${record.importedModelCount} 个模型 / ${record.textureAssetCount} 个贴图 · 空间 ${record.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE}`;
+        const digest = document.createElement("span");
+        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 包 ${record.packageDigest ? record.packageDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
+        item.append(title, detail, digest);
+        repositoryExportAuditList.appendChild(item);
       });
     };
 
@@ -4958,6 +5325,29 @@
       renderProjectRepositoryStatus();
     });
 
+    repositoryExportButton?.addEventListener("click", async () => {
+      clearPendingImport();
+      setBusy(true);
+      setStatus("正在生成本机项目仓库包，请稍候。", "loading");
+      try {
+        const result = await downloadProjectRepositoryPackage();
+        const digestText = result.package?.packageDigest ? ` 包摘要 ${result.package.packageDigest.slice(0, 12)}。` : "";
+        setStatus(`${result.message || "项目仓库包已导出。"}${digestText}`, result.ok ? "success" : "error");
+        renderProjectRepositoryExportAudit();
+      } catch (error) {
+        setStatus(error?.message || "项目仓库包导出失败。", "error");
+      } finally {
+        setBusy(false);
+        renderProjectRepositoryStatus();
+      }
+    });
+
+    repositoryExportAuditButton?.addEventListener("click", () => {
+      const result = downloadProjectRepositoryExportAudit();
+      setStatus(result.message || "项目仓库包导出回执审计导出失败。", result.ok ? "success" : "error");
+      renderProjectRepositoryExportAudit();
+    });
+
     repositoryRemoteSaveButton?.addEventListener("click", () => {
       const result = configureProjectRepositoryRemote({
         endpoint: repositoryEndpointInput?.value || "",
@@ -5081,6 +5471,7 @@
 
     renderRestoreAudit();
     renderProjectArchiveExportAudit();
+    renderProjectRepositoryExportAudit();
     syncProjectRepositoryRemoteInputs();
     renderProjectRepositoryRemoteStatus();
     renderProjectRepositoryStatus();
@@ -5098,6 +5489,11 @@
     prepareImportProject,
     getCurrentProjectRepositoryStatus,
     createProjectRepositoryPackage,
+    downloadProjectRepositoryPackage,
+    getProjectRepositoryExportAudit,
+    getProjectRepositoryExportAuditExport,
+    downloadProjectRepositoryExportAudit,
+    recordProjectRepositoryExportReceipt,
     configureProjectRepositoryRemote,
     getProjectRepositoryRemoteConfig,
     getProjectRepositoryRemoteStatus,

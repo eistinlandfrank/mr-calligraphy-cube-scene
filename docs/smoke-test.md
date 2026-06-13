@@ -90,6 +90,7 @@ node scripts/learning-state-check.js
 
 本轮新增项目仓库 Workspace 验收：主后台远端项目仓库面板新增 `projectRepositoryWorkspace`；项目仓库包输出顶层 `workspaceId`；检查、推送和拉取携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存项目仓库包、回执和版本历史；回执审计 HTML 会包含 workspace。
 本轮新增项目仓库回执本机校验验收：项目仓库回执会按 `sourcePackageId`、`workspaceId`、`repositoryDigest` 和 `acceptedAt` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”，回执审计 HTML 会保留重算摘要。
+本轮新增项目仓库包本机导出验收：主后台项目仓库状态区新增 `projectRepositoryExportButton`、`projectRepositoryExportAudit`、`projectRepositoryExportAuditStatus`、`projectRepositoryExportAuditList` 和 `projectRepositoryExportAuditExport`；Playwright 会真实点击“导出仓库包”，验证下载的 `mr-calligraphy-project-repository-package-v1` JSON 通过结构校验，localStorage 保存包摘要、仓库摘要、文件摘要和回执摘要，HTML 审计页可下载。
 
 本轮新增远端发布 Workspace 验收：主后台和写实后台远端发布面板新增 `mainRemotePublishWorkspace` / `realisticRemotePublishWorkspace`；发布包、manifest、撤销包、回执和回执审计均保留 `workspaceId`；GET / POST / DELETE 携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存发布回执和重复摘要锁；跨空间回执不会被当前空间误判为发布锁。
 本轮新增远端发布回执本机校验验收：发布回执会按 `sceneId`、`workspaceId`、`releaseId`、`packageDigest`、`acceptedAt`、`assetSignatureSummary` 和 `cdnUploadSummary` 重算摘要；撤销回执会按 `direction`、`workspaceId`、`sceneId`、`packageId`、`sourcePackageId`、`releaseId`、`packageDigest`、`acceptedAt`、`revokedAt` 和 `cdnPurgeSummary` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”。
@@ -181,4 +182,5 @@ Smoke test 通过：26 个脚本，4 个页面。
 
 - 轻量 smoke test 不会打开真实浏览器；WebGL 非空渲染由 Playwright 像素采样覆盖。
 - Playwright 已覆盖首批真实交互闭环、前台学习详情总结、前台服务边界状态、前台学习动作审计导出、复盘导出回执审计导出、学习档案详情操作回执审计导出、计划提醒回执审计导出、计划导出回执审计导出、计划仓库导出回执审计导出、学习档案仓库导出回执审计导出、报告仓库导出回执审计导出、项目档案导出回执审计导出、学习档案批量回执审计导出、本机链接复制审计导出、报告打印回执审计导出、后台服务边界状态、本机后台操作者审计、本机后台角色权限门控、核心入口移动端视口验收、作品仓库本机导入导出、包摘要验真和冲突审计、作品集离线 HTML 导出、课堂评阅表 HTML 导出、课堂评阅 JSON 导入回写和摘要验真、课堂评阅汇总 HTML 导出、作品导出回执审计导出、远端分享 API adapter、作品分享远端失败恢复、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注角色与本机签名摘要、学习档案远端同步、主后台项目仓库远端版本恢复风险预览、主后台远端发布回执与本机校验、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换/孤立贴图清理、主后台导入模型删除审计和历史文件本机清理、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换/孤立贴图清理、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收、不可篡改服务端审计和完整移动设备矩阵。
+- 本轮 Playwright 额外覆盖主后台项目仓库包本机导出、包结构校验、导出回执持久化和仓库包审计 HTML 下载。
 - 当前本机已经可以运行定向 Playwright 用例；若换到缺少 npm 依赖的新环境，需要先在具备代理认证的环境执行 `npm install`。
