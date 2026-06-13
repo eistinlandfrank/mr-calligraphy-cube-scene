@@ -14,6 +14,7 @@ const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
 const PROJECT_IMPACT_EXPORT_AUDIT_KEY = "mr-calligraphy-project-impact-export-audit-v1";
+const PROJECT_RESTORE_AUDIT_EXPORT_KEY = "mr-calligraphy-project-restore-audit-export-v1";
 const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
 const REALISTIC_LAYOUT_KEY = "mr-calligraphy-realistic-layout-v1";
@@ -67,6 +68,7 @@ test.beforeEach(async ({ page }) => {
       REMOTE_PUBLISH_KEY,
       PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
       PROJECT_IMPACT_EXPORT_AUDIT_KEY,
+      PROJECT_RESTORE_AUDIT_EXPORT_KEY,
       PROJECT_REPOSITORY_EXPORT_AUDIT_KEY,
       PROJECT_REPOSITORY_REMOTE_KEY,
       REALISTIC_LAYOUT_KEY,
@@ -4497,6 +4499,38 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   const restoreAuditHtml = fs.readFileSync(restoreAuditPath, "utf8");
   expect(restoreAuditHtml).toContain("MR 书法项目档案恢复审计");
   expect(restoreAuditHtml).toContain(restoreAuditLog.records[0].recordDigest);
+  await expect(page.locator("#projectArchiveStatus")).toContainText("写入导出回执");
+  await expect(page.locator("#projectRestoreAuditExportAuditStatus")).toContainText("已记录 1 条项目档案恢复审计导出回执");
+  await expect(page.locator("#projectRestoreAuditExportAuditList")).toContainText(restoreAuditDownload.suggestedFilename());
+  await expect(page.locator("#projectRestoreAuditExportAuditList")).toContainText("恢复记录");
+  const restoreAuditExportState = await readJsonLocalStorage(page, PROJECT_RESTORE_AUDIT_EXPORT_KEY);
+  expect(restoreAuditExportState.records).toHaveLength(1);
+  expect(restoreAuditExportState.records[0].filename).toBe(restoreAuditDownload.suggestedFilename());
+  expect(restoreAuditExportState.records[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(restoreAuditExportState.records[0].auditDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(restoreAuditExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(restoreAuditExportState.records[0].restoreRecordCount).toBe(1);
+  expect(restoreAuditExportState.records[0].latestRestoreRecordDigest).toBe(restoreAuditLog.records[0].recordDigest);
+  expect(restoreAuditExportState.records[0].latestArchiveDigest).toBe(restoreAuditLog.records[0].archiveDigest);
+  expect(restoreAuditExportState.records[0].latestSelectionDigest).toBe(restoreAuditLog.records[0].selectionDigest);
+  expect(restoreAuditExportState.records[0].boundary).toContain("恢复审计 HTML");
+  const restoreAuditExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectRestoreAuditExportAuditExport());
+  expect(restoreAuditExportAudit.ok).toBe(true);
+  expect(restoreAuditExportAudit.html).toContain("MR 书法项目档案恢复审计导出回执审计");
+  expect(restoreAuditExportAudit.html).toContain(restoreAuditDownload.suggestedFilename());
+  expect(restoreAuditExportAudit.html).toContain(restoreAuditExportState.records[0].fileDigest);
+  expect(restoreAuditExportAudit.html).toContain(restoreAuditExportState.records[0].receiptDigest);
+
+  const restoreAuditExportReceiptDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectRestoreAuditExportAuditExport").click();
+  const restoreAuditExportReceiptDownload = await restoreAuditExportReceiptDownloadPromise;
+  expect(restoreAuditExportReceiptDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-restore-audit-export-audit-.*\.html$/);
+  const restoreAuditExportReceiptPath = await restoreAuditExportReceiptDownload.path();
+  const restoreAuditExportReceiptHtml = fs.readFileSync(restoreAuditExportReceiptPath, "utf8");
+  expect(restoreAuditExportReceiptHtml).toContain("MR 书法项目档案恢复审计导出回执审计");
+  expect(restoreAuditExportReceiptHtml).toContain(restoreAuditDownload.suggestedFilename());
+  expect(restoreAuditExportReceiptHtml).toContain(restoreAuditExportState.records[0].latestRestoreRecordDigest);
+  expect(restoreAuditExportReceiptHtml).toContain("当前浏览器保存的恢复审计导出回执");
 
   await page.locator(".main-publish-panel .remote-publish-panel summary").click();
   await expect(page.locator("#mainRemotePublishEndpoint")).toBeVisible();

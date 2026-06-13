@@ -5990,3 +5990,43 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增项目档案差异报告回执审计`
+
+## 144. 2026-06-13 新增项目档案恢复审计导出回执审计
+
+本次补齐主后台“恢复审计”导出的本机回执。项目档案恢复成功后已经会生成恢复审计记录；现在用户点击“导出审计”下载 HTML 时，也会保存导出回执，记录文件摘要、审计摘要、最近恢复记录摘要和恢复范围。
+
+完成内容：
+
+- 新增 `mr-calligraphy-project-restore-audit-export-v1` 审计包，保存最近 24 条项目档案恢复审计导出回执。
+- `downloadRestoreAuditLog()` 发起 HTML 下载后写入导出回执。
+- 回执记录文件名、MIME、字节数、文件摘要、审计报告摘要、回执摘要、恢复记录数、最近恢复记录摘要、档案摘要、选择摘要和恢复范围统计。
+- 新增 `getProjectRestoreAuditExportAudit()`、`getProjectRestoreAuditExportAuditExport()` 和 `downloadProjectRestoreAuditExportAudit()`。
+- 主后台项目备份区新增“恢复审计导出回执”审计面板。
+- Smoke 页面标记检查新增恢复审计导出回执审计节点。
+- Playwright 主后台用例验证真实点击“导出审计”、下载 HTML、回执面板、localStorage 回执持久化和 HTML 回执审计页。
+
+真实化说明：
+
+- 数据来源：本机恢复动作写入的 `mr-calligraphy-project-archive-audit-v1` 和实际生成的恢复审计 HTML。
+- 写入状态：下载恢复审计 HTML 后写入 `mr-calligraphy-project-restore-audit-export-v1`。
+- 成功反馈：主后台显示恢复审计报告文件名、恢复记录数、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载 `mr-calligraphy-project-restore-audit-export-audit-*.html`；无回执时按钮禁用。
+- 刷新后复现方式：回执随 localStorage 持久化，可再次导出审计 HTML。
+
+仍待补：
+
+- 该回执只能证明当前浏览器生成并发起了恢复审计 HTML 下载请求；它不是系统文件保存完成证明、账号审批、服务端归档或不可篡改审计。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增恢复审计导出回执审计`
