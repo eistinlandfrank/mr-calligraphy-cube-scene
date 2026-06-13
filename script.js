@@ -986,6 +986,9 @@ const els = {
   historyDetailOpenReport: document.getElementById("historyDetailOpenReport"),
   historyDetailCopyLink: document.getElementById("historyDetailCopyLink"),
   historyDetailDelete: document.getElementById("historyDetailDelete"),
+  historyDetailActionAuditStatus: document.getElementById("historyDetailActionAuditStatus"),
+  historyDetailActionAuditList: document.getElementById("historyDetailActionAuditList"),
+  historyDetailActionAuditExport: document.getElementById("historyDetailActionAuditExport"),
   historyRenameDialog: document.getElementById("historyRenameDialog"),
   historyRenameForm: document.getElementById("historyRenameForm"),
   historyRenameCancel: document.getElementById("historyRenameCancel"),
@@ -4252,6 +4255,7 @@ function bindHistoryControls() {
   els.historyDetailOpenReport?.addEventListener("click", openHistoryReportDetail);
   els.historyDetailCopyLink?.addEventListener("click", copyHistoryDetailLink);
   els.historyDetailDelete?.addEventListener("click", deleteHistoryDetail);
+  els.historyDetailActionAuditExport?.addEventListener("click", downloadHistoryDetailActionAudit);
   els.historyRenameForm?.addEventListener("submit", submitHistoryRenameForm);
   els.historyRenameCancel?.addEventListener("click", closeHistoryRenameDialog);
   els.historyRenameDialog?.addEventListener("cancel", () => {
@@ -10040,6 +10044,20 @@ function copyHistoryDetailLink() {
         url,
         ok
       });
+      window.MRAppState?.recordHistoryDetailActionReceipt?.({
+        actionType: "link-copy",
+        recordType: detail.type,
+        recordId: detail.id,
+        recordTitle: detail.title || detail.label || "学习档案链接",
+        url,
+        mimeType: "text/uri-list",
+        copyStatus: ok ? "clipboard" : "route-fallback",
+        copySucceeded: ok,
+        message: ok
+          ? `已复制“${detail.title || "学习档案"}”的详情直达链接。`
+          : `已把“${detail.title || "学习档案"}”的详情直达链接写入地址栏，可手动复制。`
+      });
+      renderHistoryDetailActionAudit(detail);
       showNotice(ok
         ? "已复制这条学习档案的直达链接。"
         : "已把这条学习档案的直达链接写入地址栏，可手动复制。");
@@ -10639,6 +10657,7 @@ function renderHistoryDetail() {
   if (!detail) {
     els.historyDetail.hidden = true;
     setHistoryDetailActions(null);
+    renderHistoryDetailActionAudit(null);
     return;
   }
 
@@ -10651,6 +10670,7 @@ function renderHistoryDetail() {
   }
   renderHistoryDetailBody(detail);
   setHistoryDetailActions(detail);
+  renderHistoryDetailActionAudit(detail);
 }
 
 function renderHistoryDetailBody(detail) {
@@ -10761,6 +10781,57 @@ function setHistoryDetailActions(detail) {
   if (els.historyDetailOpenReport) els.historyDetailOpenReport.disabled = !hasReport;
   if (els.historyDetailCopyLink) els.historyDetailCopyLink.disabled = !hasDetail;
   if (els.historyDetailDelete) els.historyDetailDelete.disabled = !hasDetail;
+}
+
+function renderHistoryDetailActionAudit(detail = getActiveHistoryDetail()) {
+  const recordId = detail?.id || "";
+  const audit = recordId
+    ? window.MRAppState?.getHistoryDetailActionAudit?.({ recordId, limit: 5 })
+    : null;
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.historyDetailActionAuditStatus) {
+    els.historyDetailActionAuditStatus.textContent = audit?.message || "暂无详情操作回执。";
+    els.historyDetailActionAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.historyDetailActionAuditExport) {
+    els.historyDetailActionAuditExport.disabled = !recordId || !receipts.length;
+  }
+  if (!els.historyDetailActionAuditList) return;
+  els.historyDetailActionAuditList.replaceChildren();
+  if (!recordId || !receipts.length) {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = recordId ? "等待详情操作" : "未选择记录";
+    const meta = document.createElement("span");
+    meta.textContent = recordId
+      ? "下载图片、下载报告或复制链接后，会在这里留下本机回执。"
+      : "选择一条学习档案记录后查看详情操作回执。";
+    item.append(title, meta);
+    els.historyDetailActionAuditList.appendChild(item);
+    return;
+  }
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatHistoryDetailActionType(receipt.actionType)} · ${receipt.recordTitle || receipt.recordId || "学习档案"}`;
+    const meta = document.createElement("span");
+    const target = receipt.filename || receipt.url || "操作目标";
+    meta.textContent = `${formatHistoryTime(receipt.createdAt)} · ${target}`;
+    const detailText = document.createElement("small");
+    const artifactDigest = receipt.artifactDigest ? `摘要 ${receipt.artifactDigest.slice(0, 12)}` : "摘要未生成";
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    detailText.textContent = `${artifactDigest} · ${receiptDigest}`;
+    item.append(title, meta, detailText);
+    els.historyDetailActionAuditList.appendChild(item);
+  });
+}
+
+function formatHistoryDetailActionType(type) {
+  return {
+    "image-download": "详情图片下载",
+    "report-download": "详情报告 HTML 下载",
+    "link-copy": "详情直达链接复制"
+  }[type] || "详情操作";
 }
 
 function getActiveHistoryDetail() {
@@ -10890,8 +10961,24 @@ function downloadHistoryDetailImage() {
     showNotice("这条记录没有可下载的图片。");
     return;
   }
-  downloadDataUrl(detail.imageData, `${sanitizeFilename(detail.title)}.jpg`);
-  showNotice("已下载所选历史作品图片。");
+  const filename = `${sanitizeFilename(detail.title)}.jpg`;
+  downloadDataUrl(detail.imageData, filename);
+  const receiptResult = window.MRAppState?.recordHistoryDetailActionReceipt?.({
+    actionType: "image-download",
+    recordType: detail.type,
+    recordId: detail.id,
+    recordTitle: detail.title || "学习档案图片",
+    artworkId: detail.type === "artwork" ? detail.id : "",
+    sessionId: detail.type === "practice" ? detail.id : detail.sessionId || "",
+    filename,
+    mimeType: "image/jpeg",
+    dataUrl: detail.imageData,
+    message: `已记录“${detail.title || "学习档案"}”的详情图片下载回执。`
+  });
+  renderHistoryDetailActionAudit(detail);
+  showNotice(receiptResult?.ok
+    ? "已下载所选历史作品图片，并记录详情操作回执。"
+    : "已下载所选历史作品图片。");
 }
 
 function downloadHistoryDetailReport() {
@@ -10902,8 +10989,39 @@ function downloadHistoryDetailReport() {
   }
   const result = window.MRAppState?.downloadReport?.(detail.id);
   if (result?.message) {
-    showNotice(result.message);
+    const receiptResult = result.ok
+      ? window.MRAppState?.recordHistoryDetailActionReceipt?.({
+        actionType: "report-download",
+        recordType: detail.type,
+        recordId: detail.id,
+        recordTitle: detail.title || "学习报告",
+        reportId: detail.id,
+        filename: result.filename || result.receipt?.filename || `mr-calligraphy-report-${detail.id}.html`,
+        mimeType: "text/html;charset=utf-8",
+        artifactDigest: result.receipt?.fileDigest || "",
+        byteLength: result.receipt?.byteLength || 0,
+        message: `已记录“${detail.title || "学习报告"}”的详情报告 HTML 下载回执。`
+      })
+      : null;
+    renderHistoryDetailActionAudit(detail);
+    showNotice(receiptResult?.ok
+      ? `${result.message} 已记录详情操作回执。`
+      : result.message);
   }
+}
+
+function downloadHistoryDetailActionAudit() {
+  const detail = getActiveHistoryDetail();
+  const result = window.MRAppState?.downloadHistoryDetailActionAudit?.({
+    recordId: detail?.id || "",
+    limit: 20
+  });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的学习档案详情操作回执。");
+  }
+  renderHistoryDetailActionAudit(detail);
 }
 
 function formatHistoryTime(value) {

@@ -5013,3 +5013,51 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增复盘导出回执审计`
+
+## 133. 2026-06-13 新增学习档案详情操作回执审计
+
+本次把学习档案详情里的局部操作补成可回看回执：下载图片、下载报告和复制直达链接后，当前详情面板会显示真实操作记录，并支持导出 HTML 审计页。
+
+完成内容：
+
+- 新增 `HISTORY_DETAIL_ACTION_AUDIT_KIND = "mr-calligraphy-history-detail-action-audit-v1"` 和详情操作审计边界说明。
+- 学习状态新增 `historyDetailActionReceipts`，随状态持久化到 localStorage。
+- `MRAppState.recordHistoryDetailActionReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getHistoryDetailActionAudit({ recordId, actionType, limit })` 返回操作统计、记录类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getHistoryDetailActionAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadHistoryDetailActionAudit()` 下载 `mr-calligraphy-history-detail-action-audit-*.html`。
+- 前台学习档案详情新增“详情操作回执”面板和“导出回执”按钮。
+- `historyDetailDownloadImage`、`historyDetailDownloadReport` 和 `historyDetailCopyLink` 写入对应详情回执。
+- Smoke 首页标记检查新增学习档案详情操作回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 36`、`handled 111`、`missingHandler 0`。
+- `learning-state-check.js` 验证三类详情操作回执、记录级过滤、摘要、统计、边界和 HTML。
+- Playwright 前台真实练习用例验证作品详情图片下载、链接复制、报告详情下载、回执面板、localStorage 和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.historyDetailActionReceipts`。
+- 写入状态：详情页本机操作请求成功发起后写入回执，并保存文件内容或链接 SHA-256 摘要。
+- 成功反馈：面板显示最近操作数量、操作类型、目标记录、文件名或链接和摘要。
+- 失败反馈：无图片、无报告或无回执时按钮禁用或返回明确失败，不伪造成功回执。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可按详情记录查看和导出。
+
+仍待补：
+
+- 该审计只证明当前浏览器发起了详情页本机下载或复制请求，不代表系统保存完成、云端访问日志、系统剪贴板审计、跨设备同步、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案详情操作回执审计`

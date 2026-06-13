@@ -5492,3 +5492,53 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增复盘导出回执审计`
+
+## 133. 2026-06-13 新增学习档案详情操作回执审计
+
+本次继续治理“按钮点完像没发生”的问题，把学习档案详情里的图片下载、报告下载和直达链接复制补成本机可追溯回执。用户进入某条学习档案详情后，可以直接看到这条记录最近发生过哪些详情操作，并可导出 HTML 审计页。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-history-detail-action-audit-v1` 审计包。
+- 学习状态新增 `historyDetailActionReceipts`，保存最近 30 条详情操作回执。
+- `MRAppState.recordHistoryDetailActionReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getHistoryDetailActionAudit()` 支持按记录 ID 或操作类型过滤详情操作回执，返回类型统计和 64 位 `auditDigest`。
+- `MRAppState.getHistoryDetailActionAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadHistoryDetailActionAudit()` 下载 `mr-calligraphy-history-detail-action-audit-*.html`。
+- 前台学习档案详情面板新增 `historyDetailActionAudit`、`historyDetailActionAuditStatus`、`historyDetailActionAuditList` 和 `historyDetailActionAuditExport`。
+- `historyDetailDownloadImage` 成功下载详情图片后写入图片下载回执。
+- `historyDetailDownloadReport` 成功下载报告 HTML 后写入报告下载回执，同时保留既有复盘导出回执。
+- `historyDetailCopyLink` 复制直达链接后写入详情链接复制回执，同时保留既有本机链接复制审计。
+- Smoke 页面标记检查新增学习档案详情操作回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 36`、`handled 111`、`missingHandler 0`。
+- 状态层脚本覆盖图片下载、报告下载、链接复制、记录级过滤、操作类型统计、边界说明和 HTML 审计导出。
+- Playwright 前台真实练习用例会在作品详情和报告详情中点击下载、复制和导出回执，验证真实下载、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.historyDetailActionReceipts`。
+- 写入状态：用户在学习档案详情中下载图片、下载报告或复制直达链接后写入本机回执，并保存文件或链接摘要。
+- 成功反馈：详情面板显示操作类型、目标记录、文件名或链接、摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载当前详情记录相关的 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：详情操作回执随学习状态保存在 localStorage，刷新后仍能按记录 ID 读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面发起了详情页图片下载、报告 HTML 下载或链接复制请求，并记录生成内容摘要；它不代表操作系统保存成功、云端访问日志、系统剪贴板审计、跨设备同步、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案详情操作回执审计`

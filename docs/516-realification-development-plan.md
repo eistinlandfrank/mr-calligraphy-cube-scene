@@ -10706,3 +10706,53 @@
 提交：
 
 - 中文 commit message：`新增复盘导出回执审计`
+
+### 2026-06-13：新增学习档案详情操作回执审计
+
+功能名：前台学习档案详情图片下载、报告下载和直达链接复制回执与 HTML 审计导出。
+
+开发原因：
+
+- 学习档案详情里的“下载图片”“下载报告”“复制链接”已经有真实本机动作。
+- 但动作完成后缺少详情级回执，用户从当前记录视角无法确认刚刚下载或复制了什么，也无法把某条记录的详情操作单独导出留档。
+
+完成内容：
+
+- 新增 `mr-calligraphy-history-detail-action-audit-v1` 审计包。
+- 学习状态新增 `historyDetailActionReceipts`，保存最近详情操作回执。
+- `MRAppState.recordHistoryDetailActionReceipt()` 记录详情图片下载、详情报告 HTML 下载和详情直达链接复制。
+- `MRAppState.getHistoryDetailActionAudit()` 返回操作统计、记录类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getHistoryDetailActionAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadHistoryDetailActionAudit()` 下载 `mr-calligraphy-history-detail-action-audit-*.html`。
+- 前台学习档案详情面板新增“详情操作回执”面板和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台保存作品并打开学习档案作品详情。
+- 点击“下载图片”应下载 JPG，并在“详情操作回执”面板出现“详情图片下载”回执。
+- 点击“复制链接”应复制或提供地址栏降级，并出现“详情直达链接复制”回执。
+- 生成报告后打开学习档案报告详情，点击“下载报告”应下载 HTML，并出现“详情报告 HTML 下载”回执。
+- 点击“导出回执”应下载 HTML，文件包含操作类型、目标记录、文件或链接摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 按记录 ID 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机详情操作回执，只能证明页面发起了下载或复制请求，并记录生成内容摘要；它不是操作系统保存完成证明、云端访问日志、系统剪贴板审计、跨设备同步、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案详情操作回执审计`

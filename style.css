@@ -8365,6 +8365,102 @@ body.is-model-view .notice-panel {
   background: rgba(135, 47, 47, 0.46);
 }
 
+.history-detail-action-audit {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid rgba(116, 255, 219, 0.14);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.history-detail-action-audit-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.history-detail-action-audit-head strong {
+  color: rgba(255, 250, 241, 0.84);
+  font-size: 12px;
+}
+
+.history-detail-action-audit-head button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(116, 255, 219, 0.3);
+  border-radius: 6px;
+  color: #fffaf1;
+  background: rgba(47, 111, 104, 0.34);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.history-detail-action-audit-head button:hover,
+.history-detail-action-audit-head button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.5);
+  outline: none;
+  background: rgba(47, 111, 104, 0.56);
+}
+
+.history-detail-action-audit-head button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.history-detail-action-audit p {
+  margin: 0;
+  color: rgba(255, 250, 241, 0.58);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.history-detail-action-audit p[data-audit-tone="ready"] {
+  color: rgba(188, 245, 217, 0.9);
+}
+
+.history-detail-action-audit-list {
+  display: grid;
+  gap: 5px;
+  max-height: 128px;
+  margin: 0;
+  padding: 0;
+  overflow: auto;
+  list-style: none;
+}
+
+.history-detail-action-audit-list li {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: 7px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-left: 3px solid rgba(116, 255, 219, 0.48);
+  border-radius: 6px;
+  background: rgba(5, 16, 21, 0.34);
+}
+
+.history-detail-action-audit-list strong,
+.history-detail-action-audit-list span,
+.history-detail-action-audit-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-detail-action-audit-list strong {
+  color: rgba(255, 250, 241, 0.84);
+  font-size: 11px;
+}
+
+.history-detail-action-audit-list span,
+.history-detail-action-audit-list small {
+  color: rgba(255, 250, 241, 0.56);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .plan-panel {
   margin-top: 10px;
   padding-top: 10px;

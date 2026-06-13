@@ -515,6 +515,14 @@
               <button data-feature-state="real-local" id="historyDetailCopyLink" type="button">复制链接</button>
               <button data-feature-state="real-local" id="historyDetailDelete" type="button">删除记录</button>
             </div>
+            <div id="historyDetailActionAudit" class="history-detail-action-audit" aria-label="学习档案详情操作回执">
+              <div class="history-detail-action-audit-head">
+                <strong>详情操作回执</strong>
+                <button data-feature-state="real-export" id="historyDetailActionAuditExport" type="button">导出回执</button>
+              </div>
+              <p id="historyDetailActionAuditStatus">暂无详情操作回执。</p>
+              <ul id="historyDetailActionAuditList" class="history-detail-action-audit-list"></ul>
+            </div>
           </div>
           <input id="historyRepositoryImportInput" type="file" accept="application/json,.json" hidden>
         </section>

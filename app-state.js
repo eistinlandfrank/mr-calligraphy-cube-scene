@@ -12,6 +12,9 @@
   const REVIEW_EXPORT_AUDIT_KIND = "mr-calligraphy-review-export-audit-v1";
   const REVIEW_EXPORT_MAX_RECEIPTS = 30;
   const REVIEW_EXPORT_AUDIT_BOUNDARY = "复盘导出回执保存在当前浏览器 reviewExportReceipts，记录作品图片、复盘证据、报告 HTML 和作品分享页导出请求、来源记录、文件摘要和时间；它不是云端下载日志、系统文件保存证明、公网分享访问日志或不可篡改审计链。";
+  const HISTORY_DETAIL_ACTION_AUDIT_KIND = "mr-calligraphy-history-detail-action-audit-v1";
+  const HISTORY_DETAIL_ACTION_MAX_RECEIPTS = 30;
+  const HISTORY_DETAIL_ACTION_AUDIT_BOUNDARY = "学习档案详情操作回执保存在当前浏览器 historyDetailActionReceipts，记录详情页图片下载、报告 HTML 下载和直达链接复制请求、目标记录、文件或链接摘要和时间；它不是云端访问日志、系统文件保存证明、剪贴板系统审计或不可篡改证据链。";
   const MAX_ARTWORK_TAGS = 8;
   const MAX_ARTWORK_REPOSITORY_CONFLICTS = 12;
   const MAX_SHARE_RECORDS = 24;
@@ -446,6 +449,7 @@
       reportTeacherReviewAudits: normalizeReportTeacherReviewAudits(source?.reportTeacherReviewAudits),
       reportPrintReceipts: normalizeReportPrintReceipts(source?.reportPrintReceipts),
       reviewExportReceipts: normalizeReviewExportReceipts(source?.reviewExportReceipts),
+      historyDetailActionReceipts: normalizeHistoryDetailActionReceipts(source?.historyDetailActionReceipts),
       videoExportService: normalizeVideoExportService(source?.videoExportService),
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
@@ -975,6 +979,138 @@
       "report-html": "review-report-export",
       "share-html": "review-share-export"
     }[type] || "review-export";
+  }
+
+  function normalizeHistoryDetailActionReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeHistoryDetailActionReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, HISTORY_DETAIL_ACTION_MAX_RECEIPTS);
+  }
+
+  function normalizeHistoryDetailActionReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const actionType = normalizeHistoryDetailActionType(record.actionType || record.action || record.type);
+    const recordId = String(record.recordId || record.targetId || record.artworkId || record.reportId || record.sessionId || "").trim().slice(0, 120);
+    const createdAt = normalizePlanDate(record.createdAt || record.exportedAt || record.copiedAt);
+    if (!actionType || !recordId || !createdAt) return null;
+    const recordType = normalizeHistoryDetailRecordType(record.recordType || record.targetType);
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const url = String(record.url || "").trim().slice(0, 800);
+    if (actionType !== "link-copy" && !filename) return null;
+    if (actionType === "link-copy" && !url) return null;
+    const artifactDigest = normalizeReportTeacherReviewDigest(record.artifactDigest || record.fileDigest || record.urlDigest || record.digest);
+    const byteLength = normalizeInteger(record.byteLength, 0, 0, 999999999);
+    const copyStatus = ["clipboard", "route-fallback", "manual"].includes(record.copyStatus)
+      ? record.copyStatus
+      : actionType === "link-copy"
+        ? "clipboard"
+        : "";
+    const id = String(record.id || `history-detail-action-${sha256StableJson({
+      actionType,
+      recordId,
+      filename,
+      url,
+      createdAt,
+      artifactDigest
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: HISTORY_DETAIL_ACTION_AUDIT_KIND,
+      id: id.slice(0, 120),
+      actionType,
+      actionLabel: formatHistoryDetailActionTypeLabel(actionType),
+      recordType,
+      recordLabel: formatHistoryDetailRecordTypeLabel(recordType),
+      recordId,
+      recordTitle: String(record.recordTitle || record.title || recordId || "学习档案记录").trim().slice(0, 140) || "学习档案记录",
+      artworkId: String(record.artworkId || (recordType === "artwork" ? recordId : "") || "").trim().slice(0, 120),
+      reportId: String(record.reportId || (recordType === "report" ? recordId : "") || "").trim().slice(0, 120),
+      sessionId: String(record.sessionId || (recordType === "practice" ? recordId : "") || "").trim().slice(0, 120),
+      filename,
+      url,
+      mimeType: String(record.mimeType || getHistoryDetailActionMimeType(actionType)).trim().slice(0, 120),
+      byteLength,
+      artifactDigest,
+      copyStatus,
+      copySucceeded: Boolean(record.copySucceeded),
+      createdAt,
+      source: String(record.source || getHistoryDetailActionSource(actionType)).trim().slice(0, 80),
+      boundary: String(record.boundary || HISTORY_DETAIL_ACTION_AUDIT_BOUNDARY).trim().slice(0, 320) || HISTORY_DETAIL_ACTION_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 260)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      actionType: payload.actionType,
+      recordType: payload.recordType,
+      recordId: payload.recordId,
+      filename: payload.filename,
+      url: payload.url,
+      artifactDigest: payload.artifactDigest,
+      copyStatus: payload.copyStatus,
+      createdAt: payload.createdAt
+    });
+    if (!payload.message) {
+      payload.message = `已记录“${payload.recordTitle}”的${payload.actionLabel}回执。`;
+    }
+    return payload;
+  }
+
+  function normalizeHistoryDetailActionType(value) {
+    const type = String(value || "").trim().toLowerCase();
+    if (["image", "image-download", "artwork-image", "download-image", "jpg", "jpeg"].includes(type)) return "image-download";
+    if (["report", "report-download", "report-html", "download-report"].includes(type)) return "report-download";
+    if (["copy", "copy-link", "link-copy", "history-link"].includes(type)) return "link-copy";
+    return "";
+  }
+
+  function normalizeHistoryDetailRecordType(value) {
+    const type = String(value || "").trim().toLowerCase();
+    if (["practice", "session"].includes(type)) return "practice";
+    if (["artwork", "report", "stage"].includes(type)) return type;
+    return "history";
+  }
+
+  function formatHistoryDetailActionTypeLabel(type) {
+    return {
+      "image-download": "详情图片下载",
+      "report-download": "详情报告 HTML 下载",
+      "link-copy": "详情直达链接复制"
+    }[type] || "详情操作";
+  }
+
+  function formatHistoryDetailRecordTypeLabel(type) {
+    return {
+      practice: "练习",
+      artwork: "作品",
+      report: "报告",
+      stage: "阶段",
+      history: "学习档案"
+    }[type] || "学习档案";
+  }
+
+  function getHistoryDetailActionMimeType(type) {
+    return {
+      "image-download": "image/jpeg",
+      "report-download": "text/html;charset=utf-8",
+      "link-copy": "text/uri-list"
+    }[type] || "application/octet-stream";
+  }
+
+  function getHistoryDetailActionSource(type) {
+    return {
+      "image-download": "history-detail-image-download",
+      "report-download": "history-detail-report-download",
+      "link-copy": "history-detail-link-copy"
+    }[type] || "history-detail-action";
   }
 
   function normalizeVideoExportService(record = {}) {
@@ -11555,6 +11691,205 @@
     }[type] || "复盘记录";
   }
 
+  function recordHistoryDetailActionReceipt(payload = {}) {
+    const actionType = normalizeHistoryDetailActionType(payload.actionType || payload.action || payload.type);
+    if (!actionType) {
+      return { ok: false, message: "学习档案详情操作回执缺少有效操作类型。" };
+    }
+    const recordId = String(payload.recordId || payload.targetId || payload.artworkId || payload.reportId || payload.sessionId || "").trim();
+    const detail = recordId ? getHistoryDetail(recordId) : null;
+    if (!recordId || (!detail && !payload.recordTitle)) {
+      return { ok: false, message: "学习档案详情操作回执缺少目标记录。" };
+    }
+    const recordType = normalizeHistoryDetailRecordType(payload.recordType || detail?.type || payload.targetType);
+    const filename = String(payload.filename || "").trim();
+    const url = String(payload.url || "").trim();
+    if (actionType !== "link-copy" && !filename) {
+      return { ok: false, message: "学习档案详情下载回执缺少文件名。" };
+    }
+    if (actionType === "link-copy" && !url) {
+      return { ok: false, message: "学习档案详情复制回执缺少链接。" };
+    }
+    const content = String(payload.content ?? payload.html ?? payload.dataUrl ?? "");
+    const digestSource = content || url;
+    const byteLength = normalizeInteger(
+      payload.byteLength,
+      content ? utf8Bytes(content).length : url ? utf8Bytes(url).length : 0,
+      0,
+      999999999
+    );
+    const receipt = normalizeHistoryDetailActionReceipt({
+      id: payload.id || makeId("history-detail-action"),
+      actionType,
+      recordType,
+      recordId,
+      recordTitle: payload.recordTitle || detail?.title || filename || "学习档案记录",
+      artworkId: payload.artworkId || (recordType === "artwork" ? recordId : ""),
+      reportId: payload.reportId || (recordType === "report" ? recordId : ""),
+      sessionId: payload.sessionId || (recordType === "practice" ? recordId : ""),
+      filename,
+      url,
+      mimeType: payload.mimeType || getHistoryDetailActionMimeType(actionType),
+      byteLength,
+      artifactDigest: payload.artifactDigest || payload.fileDigest || (digestSource ? sha256Hex(digestSource) : ""),
+      copyStatus: payload.copyStatus || (payload.copySucceeded ? "clipboard" : "route-fallback"),
+      copySucceeded: payload.copySucceeded,
+      createdAt: payload.createdAt || new Date().toISOString(),
+      source: payload.source || getHistoryDetailActionSource(actionType),
+      boundary: HISTORY_DETAIL_ACTION_AUDIT_BOUNDARY,
+      message: payload.message || `已记录“${payload.recordTitle || detail?.title || recordId}”的${formatHistoryDetailActionTypeLabel(actionType)}回执。`
+    });
+    if (!receipt) {
+      return { ok: false, message: "学习档案详情操作回执格式无效。" };
+    }
+    const previous = normalizeHistoryDetailActionReceipts(state.historyDetailActionReceipts);
+    state.historyDetailActionReceipts = [
+      receipt,
+      ...previous.filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, HISTORY_DETAIL_ACTION_MAX_RECEIPTS);
+    addEvent("history-detail-action-receipt", `${formatHistoryDetailActionTypeLabel(actionType)}：${receipt.recordTitle}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getHistoryDetailActionAudit({ recordId, limit: HISTORY_DETAIL_ACTION_MAX_RECEIPTS }),
+      message: receipt.message
+    };
+  }
+
+  function getHistoryDetailActionAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, HISTORY_DETAIL_ACTION_MAX_RECEIPTS, 1, HISTORY_DETAIL_ACTION_MAX_RECEIPTS);
+    const recordId = String(options.recordId || options.targetId || "").trim();
+    const actionType = normalizeHistoryDetailActionType(options.actionType || options.action || "");
+    const allReceipts = normalizeHistoryDetailActionReceipts(state.historyDetailActionReceipts);
+    const filtered = allReceipts.filter((receipt) => (
+      (!recordId || receipt.recordId === recordId || receipt.artworkId === recordId || receipt.reportId === recordId || receipt.sessionId === recordId)
+      && (!actionType || receipt.actionType === actionType)
+    ));
+    const receipts = filtered.slice(0, limit).map(clone);
+    const actionCounts = {};
+    const recordTypeCounts = {};
+    filtered.forEach((receipt) => {
+      const action = receipt.actionType || "history-detail-action";
+      const recordType = receipt.recordType || "history";
+      actionCounts[action] = (actionCounts[action] || 0) + 1;
+      recordTypeCounts[recordType] = (recordTypeCounts[recordType] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: HISTORY_DETAIL_ACTION_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      recordId,
+      actionType,
+      actionCounts,
+      recordTypeCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: HISTORY_DETAIL_ACTION_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条学习档案详情操作回执，最近一次：${formatPlanDate(filtered[0].createdAt)}。`
+        : "暂无学习档案详情操作回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getHistoryDetailActionAuditExport(options = {}) {
+    const audit = getHistoryDetailActionAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的学习档案详情操作回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-history-detail-action-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderHistoryDetailActionAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条学习档案详情操作回执审计导出。`
+    };
+  }
+
+  function downloadHistoryDetailActionAudit(options = {}) {
+    const result = getHistoryDetailActionAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderHistoryDetailActionAuditHtml(audit, exportedAt) {
+    const actionBadges = Object.entries(audit.actionCounts || {})
+      .map(([type, count]) => `<span>${escapeHtml(formatHistoryDetailActionTypeLabel(type))} ${escapeHtml(count)}</span>`)
+      .join("");
+    const typeBadges = Object.entries(audit.recordTypeCounts || {})
+      .map(([type, count]) => `<span>${escapeHtml(formatHistoryDetailRecordTypeLabel(type))} ${escapeHtml(count)}</span>`)
+      .join("");
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.actionLabel || formatHistoryDetailActionTypeLabel(receipt.actionType))} · ${escapeHtml(receipt.recordTitle || receipt.recordId)}</h2>
+        <p>${escapeHtml(receipt.message || "学习档案详情操作回执已记录。")}</p>
+        <dl>
+          <div><dt>记录类型</dt><dd>${escapeHtml(formatHistoryDetailRecordTypeLabel(receipt.recordType))}</dd></div>
+          <div><dt>记录 ID</dt><dd>${escapeHtml(receipt.recordId)}</dd></div>
+          <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename || "无")}</dd></div>
+          <div><dt>链接</dt><dd>${escapeHtml(receipt.url || "无")}</dd></div>
+          <div><dt>MIME</dt><dd>${escapeHtml(receipt.mimeType || "无")}</dd></div>
+          <div><dt>摘要</dt><dd>${escapeHtml(receipt.artifactDigest || "未生成")}</dd></div>
+          <div><dt>复制状态</dt><dd>${escapeHtml(receipt.copyStatus || "不适用")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>记录时间</dt><dd>${escapeHtml(formatDateTime(receipt.createdAt))}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法学习档案详情操作回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .badges span { padding: 5px 10px; border-radius: 99px; background: #efe0c5; color: #574831; font-weight: 800; font-size: 12px; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy History Detail Action Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法学习档案详情操作回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条详情操作回执。${escapeHtml(audit.boundary)}</p>
+    <div class="badges">${actionBadges || "<span>暂无操作统计</span>"}${typeBadges || ""}</div>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function findReviewEvidenceSource(sourceId = null) {
     const requestedId = String(sourceId || "").trim();
     const fromArtwork = (artwork) => {
@@ -18747,6 +19082,8 @@
     getPracticeVideoExportStatus,
     getPracticeVideoExportAudit,
     getPracticeVideoExportAuditExport,
+    getHistoryDetailActionAudit,
+    getHistoryDetailActionAuditExport,
     getPracticeVideoRetrySource,
     getArtworkRepositoryStatus,
     getArtworkRepositoryPackage,
@@ -18769,6 +19106,7 @@
     downloadHistoryBatchReceiptAudit,
     downloadLocalLinkCopyAudit,
     downloadReviewExportAudit,
+    downloadHistoryDetailActionAudit,
     downloadPlanReminderAudit,
     downloadPlanExportAudit,
     downloadHistoryRepository,
@@ -18798,6 +19136,7 @@
     importArtworkRepositoryPackage,
     resolveArtworkRepositoryConflict,
     recordLocalLinkCopyReceipt,
+    recordHistoryDetailActionReceipt,
     recordReportPrintReceipt,
     recordReviewExportReceipt,
     recordPlanExportReceipt,
