@@ -927,6 +927,9 @@ const els = {
   historySummary: document.getElementById("historySummary"),
   historyDownloadArchive: document.getElementById("historyDownloadArchive"),
   historyRepositorySummary: document.getElementById("historyRepositorySummary"),
+  historyRepositoryExportAuditStatus: document.getElementById("historyRepositoryExportAuditStatus"),
+  historyRepositoryExportAuditList: document.getElementById("historyRepositoryExportAuditList"),
+  historyRepositoryExportAuditExport: document.getElementById("historyRepositoryExportAuditExport"),
   historyRepositoryExportButton: document.getElementById("historyRepositoryExportButton"),
   historyRepositoryImportButton: document.getElementById("historyRepositoryImportButton"),
   historyRepositoryEndpointInput: document.getElementById("historyRepositoryEndpointInput"),
@@ -4303,6 +4306,7 @@ function bindHistoryControls() {
   els.historyRepositoryRemoteButton?.addEventListener("click", checkHistoryRepositoryRemote);
   els.historyRepositoryPushButton?.addEventListener("click", pushHistoryRepositoryRemote);
   els.historyRepositoryPullButton?.addEventListener("click", pullHistoryRepositoryRemote);
+  els.historyRepositoryExportAuditExport?.addEventListener("click", exportHistoryRepositoryExportAudit);
   els.historyRepositoryReceiptExportButton?.addEventListener("click", exportHistoryRepositoryReceipts);
   els.historyRepositoryConflictList?.addEventListener("click", handleHistoryRepositoryConflictAction);
   els.historyRepositoryImportInput?.addEventListener("change", importHistoryRepositoryFile);
@@ -7876,8 +7880,36 @@ function renderHistoryRepositoryStatus(history) {
   if (els.historyRepositoryPullButton) {
     els.historyRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
+  renderHistoryRepositoryExportAudit();
   renderHistoryRepositoryReceipts();
   renderHistoryRepositoryConflictPanel(status);
+}
+
+function renderHistoryRepositoryExportAudit() {
+  const audit = window.MRAppState?.getHistoryRepositoryExportAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.historyRepositoryExportAuditStatus) {
+    els.historyRepositoryExportAuditStatus.textContent = audit?.message || "暂无学习档案仓库导出回执。";
+    els.historyRepositoryExportAuditStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.historyRepositoryExportAuditExport) {
+    els.historyRepositoryExportAuditExport.disabled = !receipts.length;
+  }
+  if (!els.historyRepositoryExportAuditList) return;
+  els.historyRepositoryExportAuditList.replaceChildren();
+  receipts.slice(0, 6).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.filename || receipt.packageId || "学习档案同步包";
+    const meta = document.createElement("span");
+    const packageDigest = receipt.packageDigest ? receipt.packageDigest.slice(0, 12) : "包摘要未知";
+    const fileDigest = receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "文件摘要未知";
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.recordCount || 0} 条 · 练习 ${receipt.practiceCount || 0} / 作品 ${receipt.artworkCount || 0} / 报告 ${receipt.reportCount || 0} / 阶段 ${receipt.stageCount || 0}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${receipt.workspaceId || "local-browser"} / 包 ${packageDigest} / 文件 ${fileDigest} / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"}`;
+    item.append(title, meta, detail);
+    els.historyRepositoryExportAuditList.appendChild(item);
+  });
 }
 
 function renderHistoryRepositoryReceipts() {
@@ -8165,6 +8197,16 @@ function exportHistoryRepositoryReceipts() {
   const result = window.MRAppState?.downloadHistoryRepositoryReceiptAudit?.();
   if (result?.message) {
     showNotice(result.message);
+  }
+  renderHistoryPanel(currentIndex);
+}
+
+function exportHistoryRepositoryExportAudit() {
+  const result = window.MRAppState?.downloadHistoryRepositoryExportAudit?.({ limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的学习档案仓库导出回执。");
   }
   renderHistoryPanel(currentIndex);
 }

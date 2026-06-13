@@ -1928,6 +1928,35 @@ async function runHistoryRepositoryMockServerChecks(fetchApi) {
   assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "学习档案同步包应保留报告教师批注内容。");
   const reviewedHistoryDetail = packageResult.package.history.find((item) => item.id === "report-2");
   assert(reviewedHistoryDetail.teacherReview.note.includes("结构更稳"), "学习档案详情快照应保留教师批注。");
+  const historyRepositoryPackageJson = JSON.stringify(packageResult.package, null, 2);
+  const historyRepositoryExportReceipt = window.MRAppState.recordHistoryRepositoryExportReceipt({
+    filename: packageResult.filename,
+    package: packageResult.package,
+    content: historyRepositoryPackageJson,
+    exportedAt: packageResult.package.exportedAt
+  });
+  assert(historyRepositoryExportReceipt.ok, "学习档案仓库 JSON 同步包导出应能记录本机回执。");
+  assert(historyRepositoryExportReceipt.receipt.kind === "mr-calligraphy-history-repository-export-audit-v1", "学习档案仓库导出回执应返回稳定 kind。");
+  assert(historyRepositoryExportReceipt.receipt.recordCount === packageResult.package.summary.total, "学习档案仓库导出回执应记录总档案数量。");
+  assert(historyRepositoryExportReceipt.receipt.practiceCount === packageResult.package.summary.practiceCount, "学习档案仓库导出回执应记录练习数量。");
+  assert(historyRepositoryExportReceipt.receipt.artworkCount === packageResult.package.summary.artworkCount, "学习档案仓库导出回执应记录作品数量。");
+  assert(historyRepositoryExportReceipt.receipt.reportCount === packageResult.package.summary.reportCount, "学习档案仓库导出回执应记录报告数量。");
+  assert(historyRepositoryExportReceipt.receipt.stageCount === packageResult.package.summary.stageCount, "学习档案仓库导出回执应记录阶段数量。");
+  assert(historyRepositoryExportReceipt.receipt.packageDigest === packageResult.package.packageDigest, "学习档案仓库导出回执应记录包摘要。");
+  assert(historyRepositoryExportReceipt.receipt.fileDigest === crypto.createHash("sha256").update(historyRepositoryPackageJson).digest("hex"), "学习档案仓库导出回执应记录 JSON 文件摘要。");
+  assert(historyRepositoryExportReceipt.receipt.receiptDigest.match(/^[a-f0-9]{64}$/), "学习档案仓库导出回执应包含回执摘要。");
+  assert(historyRepositoryExportReceipt.receipt.boundary.includes("不是云端档案仓库日志"), "学习档案仓库导出回执应说明本机边界。");
+  const historyRepositoryExportAudit = window.MRAppState.getHistoryRepositoryExportAudit({ limit: 5 });
+  assert(historyRepositoryExportAudit.kind === "mr-calligraphy-history-repository-export-audit-v1", "学习档案仓库导出审计应返回稳定 kind。");
+  assert(historyRepositoryExportAudit.total === 1, "学习档案仓库导出审计应统计同步包导出回执。");
+  assert(historyRepositoryExportAudit.latestReceipt.packageDigest === packageResult.package.packageDigest, "学习档案仓库导出审计应保留最近包摘要。");
+  assert(/^[a-f0-9]{64}$/.test(historyRepositoryExportAudit.auditDigest), "学习档案仓库导出审计应包含稳定摘要。");
+  const historyRepositoryExportAuditExport = window.MRAppState.getHistoryRepositoryExportAuditExport({ limit: 5 });
+  assert(historyRepositoryExportAuditExport.ok, "学习档案仓库导出审计应可导出 HTML。");
+  assert(historyRepositoryExportAuditExport.filename.startsWith("mr-calligraphy-history-repository-export-audit-"), "学习档案仓库导出审计文件名应可识别。");
+  assert(historyRepositoryExportAuditExport.html.includes("MR 书法学习档案仓库导出回执审计"), "学习档案仓库导出审计 HTML 应包含标题。");
+  assert(historyRepositoryExportAuditExport.html.includes(packageResult.package.packageDigest), "学习档案仓库导出审计 HTML 应包含包摘要。");
+  assert(historyRepositoryExportAuditExport.html.includes(historyRepositoryExportAuditExport.audit.auditDigest), "学习档案仓库导出审计 HTML 应包含审计摘要。");
   const tamperedHistoryPackage = JSON.parse(JSON.stringify(packageResult.package));
   tamperedHistoryPackage.records.sessions[0].title = "被篡改的学习档案";
   const tamperedHistoryImport = window.MRAppState.importHistoryRepositoryPackage(tamperedHistoryPackage);

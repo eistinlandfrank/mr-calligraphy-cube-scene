@@ -80,6 +80,9 @@
   const HISTORY_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const HISTORY_REPOSITORY_BOUNDARY = "学习档案仓库同步练习、作品、报告和阶段记录；配置远端 API 后会通过 fetch 同步档案包、携带 Workspace 空间 ID 并按 nextPageUrl 追取分页，但仍不包含完整账号权限、教师批注审计或公开作品墙。";
   const HISTORY_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
+  const HISTORY_REPOSITORY_EXPORT_AUDIT_KIND = "mr-calligraphy-history-repository-export-audit-v1";
+  const HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS = 24;
+  const HISTORY_REPOSITORY_EXPORT_AUDIT_BOUNDARY = "学习档案仓库导出回执保存在当前浏览器 historyRepositoryExportReceipts，记录学习档案 JSON 同步包下载请求、练习/作品/报告/阶段数量、包摘要、文件摘要和时间；它不是云端档案仓库日志、系统文件保存证明、账号审计或不可篡改证据链。";
   const HISTORY_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-history-repository-receipt-v1";
   const HISTORY_REPOSITORY_MAX_RECEIPTS = 12;
   const HISTORY_REPOSITORY_MAX_PULL_PAGES = 20;
@@ -473,6 +476,7 @@
       planExportReceipts: normalizePlanExportReceipts(source?.planExportReceipts),
       planRepositoryExportReceipts: normalizePlanRepositoryExportReceipts(source?.planRepositoryExportReceipts),
       planRepository: normalizePlanRepository(source?.planRepository),
+      historyRepositoryExportReceipts: normalizeHistoryRepositoryExportReceipts(source?.historyRepositoryExportReceipts),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
       reportRepository: normalizeReportRepository(source?.reportRepository),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
@@ -18401,6 +18405,277 @@
     }[status] || "未校验";
   }
 
+  function normalizeHistoryRepositoryExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeHistoryRepositoryExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizeHistoryRepositoryExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const packageId = String(record.packageId || record.sourcePackageId || "").trim().slice(0, 160);
+    const packageDigest = normalizeHistoryRepositoryHex(record.packageDigest || record.repositoryDigest || record.digest);
+    if (!filename || !exportedAt || !packageId || !packageDigest) return null;
+    const practiceCount = normalizeInteger(record.practiceCount || record.sessionCount, 0, 0, 99999);
+    const artworkCount = normalizeInteger(record.artworkCount, 0, 0, 99999);
+    const reportCount = normalizeInteger(record.reportCount, 0, 0, 99999);
+    const stageCount = normalizeInteger(record.stageCount, 0, 0, 99999);
+    const recordCount = normalizeInteger(
+      record.recordCount || record.totalRecordCount,
+      practiceCount + artworkCount + reportCount + stageCount,
+      0,
+      999999
+    );
+    const payload = {
+      kind: HISTORY_REPOSITORY_EXPORT_AUDIT_KIND,
+      id: String(record.id || `history-repository-export-${sha256StableJson({
+        filename,
+        exportedAt,
+        packageId,
+        packageDigest
+      }).slice(0, 18)}`).trim().slice(0, 140),
+      filename,
+      mimeType: String(record.mimeType || "application/json;charset=utf-8").trim().slice(0, 120),
+      byteLength: normalizeInteger(record.byteLength || record.payloadBytes, 0, 0, 300000000),
+      fileDigest: normalizeHistoryRepositoryHex(record.fileDigest || record.contentDigest),
+      packageId,
+      packageDigest,
+      recordCount,
+      practiceCount,
+      artworkCount,
+      reportCount,
+      stageCount,
+      workspaceId: normalizeHistoryRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId),
+      exportedAt,
+      source: String(record.source || "local-json-download").trim().slice(0, 80) || "local-json-download",
+      boundary: String(record.boundary || HISTORY_REPOSITORY_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 320) || HISTORY_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 260)
+    };
+    payload.receiptDigest = normalizeHistoryRepositoryHex(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      filename: payload.filename,
+      byteLength: payload.byteLength,
+      fileDigest: payload.fileDigest,
+      packageId: payload.packageId,
+      packageDigest: payload.packageDigest,
+      recordCount: payload.recordCount,
+      practiceCount: payload.practiceCount,
+      artworkCount: payload.artworkCount,
+      reportCount: payload.reportCount,
+      stageCount: payload.stageCount,
+      workspaceId: payload.workspaceId,
+      exportedAt: payload.exportedAt
+    });
+    if (!payload.message) {
+      payload.message = `已记录 ${payload.recordCount} 条学习档案的 JSON 同步包导出回执。`;
+    }
+    return payload;
+  }
+
+  function recordHistoryRepositoryExportReceipt(payload = {}) {
+    const packageRecord = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : null;
+    const content = String(payload.content ?? payload.json ?? (packageRecord ? JSON.stringify(packageRecord, null, 2) : ""));
+    const filename = String(payload.filename || "").trim();
+    const packageId = String(payload.packageId || packageRecord?.packageId || "").trim();
+    const packageDigest = normalizeHistoryRepositoryHex(payload.packageDigest || packageRecord?.packageDigest);
+    const records = packageRecord?.records && typeof packageRecord.records === "object" ? packageRecord.records : {};
+    const summary = packageRecord?.summary && typeof packageRecord.summary === "object" ? packageRecord.summary : {};
+    const practiceCount = normalizeInteger(payload.practiceCount || summary.practiceCount || records.sessions?.length, 0, 0, 99999);
+    const artworkCount = normalizeInteger(payload.artworkCount || summary.artworkCount || records.artworks?.length, 0, 0, 99999);
+    const reportCount = normalizeInteger(payload.reportCount || summary.reportCount || records.reports?.length, 0, 0, 99999);
+    const stageCount = normalizeInteger(payload.stageCount || summary.stageCount || records.stages?.length, 0, 0, 99999);
+    const recordCount = normalizeInteger(
+      payload.recordCount || summary.total,
+      practiceCount + artworkCount + reportCount + stageCount,
+      0,
+      999999
+    );
+    if (!filename || !packageId || !packageDigest || !recordCount) {
+      return {
+        ok: false,
+        message: "学习档案仓库导出回执缺少有效的同步包信息。"
+      };
+    }
+    const receipt = normalizeHistoryRepositoryExportReceipt({
+      id: payload.id || makeId("history-repository-export"),
+      filename,
+      mimeType: payload.mimeType || "application/json;charset=utf-8",
+      byteLength: payload.byteLength || (content ? utf8Bytes(content).length : 0),
+      fileDigest: payload.fileDigest || (content ? sha256Hex(content) : ""),
+      packageId,
+      packageDigest,
+      recordCount,
+      practiceCount,
+      artworkCount,
+      reportCount,
+      stageCount,
+      workspaceId: payload.workspaceId || packageRecord?.workspaceId || state.historyRepository?.workspaceId || HISTORY_REPOSITORY_DEFAULT_WORKSPACE,
+      exportedAt: payload.exportedAt || new Date().toISOString(),
+      source: payload.source || "local-json-download",
+      boundary: HISTORY_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: payload.message || `已记录 ${recordCount} 条学习档案的 JSON 同步包导出回执。`
+    });
+    if (!receipt) {
+      return {
+        ok: false,
+        message: "学习档案仓库导出回执格式无效。"
+      };
+    }
+    const previous = normalizeHistoryRepositoryExportReceipts(state.historyRepositoryExportReceipts);
+    state.historyRepositoryExportReceipts = [
+      receipt,
+      ...previous.filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS);
+    addEvent("history-repository-export-receipt", `记录学习档案仓库导出回执：${receipt.recordCount} 条记录 · ${receipt.filename}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getHistoryRepositoryExportAudit(),
+      message: receipt.message
+    };
+  }
+
+  function getHistoryRepositoryExportAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS, 1, HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS);
+    const allReceipts = normalizeHistoryRepositoryExportReceipts(state.historyRepositoryExportReceipts);
+    const receipts = allReceipts.slice(0, limit).map(clone);
+    const workspaceCounts = {};
+    allReceipts.forEach((receipt) => {
+      const workspaceId = receipt.workspaceId || HISTORY_REPOSITORY_DEFAULT_WORKSPACE;
+      workspaceCounts[workspaceId] = (workspaceCounts[workspaceId] || 0) + 1;
+    });
+    const totals = allReceipts.reduce((sum, receipt) => ({
+      recordCount: sum.recordCount + (receipt.recordCount || 0),
+      practiceCount: sum.practiceCount + (receipt.practiceCount || 0),
+      artworkCount: sum.artworkCount + (receipt.artworkCount || 0),
+      reportCount: sum.reportCount + (receipt.reportCount || 0),
+      stageCount: sum.stageCount + (receipt.stageCount || 0)
+    }), {
+      recordCount: 0,
+      practiceCount: 0,
+      artworkCount: 0,
+      reportCount: 0,
+      stageCount: 0
+    });
+    const audit = {
+      ok: true,
+      kind: HISTORY_REPOSITORY_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      workspaceCounts,
+      totals,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: HISTORY_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: allReceipts.length
+        ? `已记录 ${allReceipts.length} 条学习档案仓库导出回执，最近一次：${formatPlanDate(allReceipts[0].exportedAt)}。`
+        : "暂无学习档案仓库导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getHistoryRepositoryExportAuditExport(options = {}) {
+    const audit = getHistoryRepositoryExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的学习档案仓库导出回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-history-repository-export-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderHistoryRepositoryExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条学习档案仓库导出回执审计导出。`
+    };
+  }
+
+  function downloadHistoryRepositoryExportAudit(options = {}) {
+    const result = getHistoryRepositoryExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderHistoryRepositoryExportAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.filename || receipt.packageId)}</h2>
+        <p>${escapeHtml(receipt.message || "学习档案仓库导出回执已记录。")}</p>
+        <dl>
+          <dt>包 ID</dt><dd>${escapeHtml(receipt.packageId)}</dd>
+          <dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd>
+          <dt>MIME</dt><dd>${escapeHtml(receipt.mimeType || "application/json;charset=utf-8")}</dd>
+          <dt>档案数量</dt><dd>${escapeHtml(receipt.recordCount || 0)}</dd>
+          <dt>练习 / 作品</dt><dd>${escapeHtml(receipt.practiceCount || 0)} / ${escapeHtml(receipt.artworkCount || 0)}</dd>
+          <dt>报告 / 阶段</dt><dd>${escapeHtml(receipt.reportCount || 0)} / ${escapeHtml(receipt.stageCount || 0)}</dd>
+          <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || HISTORY_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
+          <dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd>
+          <dt>包摘要</dt><dd>${escapeHtml(receipt.packageDigest || "未生成")}</dd>
+          <dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd>
+          <dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd>
+          <dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法学习档案仓库导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta, footer { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 10px; font-size: 17px; overflow-wrap: anywhere; }
+    p { margin: 0 0 12px; color: #5f6b7a; line-height: 1.6; }
+    dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f2937; color: #f8fafc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法学习档案仓库导出回执审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total} · 展示 ${audit.exportedCount}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getHistoryRepositoryRemoteConfig() {
     const repository = normalizeHistoryRepository(state.historyRepository);
     return {
@@ -18512,12 +18787,29 @@
       lastError: ""
     });
     addEvent("history-repository-export", `导出学习档案同步包：${result.package.summary.total} 条记录`);
-    saveState();
+    const receiptResult = recordHistoryRepositoryExportReceipt({
+      filename: result.filename,
+      package: result.package,
+      content: JSON.stringify(result.package, null, 2),
+      packageId: result.package.packageId,
+      packageDigest: result.package.packageDigest,
+      recordCount: result.package.summary.total,
+      practiceCount: result.package.summary.practiceCount,
+      artworkCount: result.package.summary.artworkCount,
+      reportCount: result.package.summary.reportCount,
+      stageCount: result.package.summary.stageCount,
+      exportedAt: now
+    });
+    if (!receiptResult.ok) {
+      saveState();
+    }
     return {
       ok: true,
       filename: result.filename,
+      receipt: receiptResult.ok ? receiptResult.receipt : null,
+      audit: receiptResult.ok ? receiptResult.audit : null,
       status: getHistoryRepositoryStatus(),
-      message: `已下载学习档案 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${HISTORY_REPOSITORY_BOUNDARY}`
+      message: `已下载学习档案 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}，并记录导出回执。${HISTORY_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -20243,6 +20535,8 @@
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,
+    getHistoryRepositoryExportAudit,
+    getHistoryRepositoryExportAuditExport,
     getHistoryRepositoryReceiptAudit,
     getHistoryRepositoryReceiptAuditExport,
     getReportRepositoryStatus,
@@ -20309,6 +20603,7 @@
     downloadPlanExportAudit,
     downloadPlanRepositoryExportAudit,
     downloadHistoryRepository,
+    downloadHistoryRepositoryExportAudit,
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,
     downloadReportRepository,
@@ -20339,6 +20634,7 @@
     resolveArtworkRepositoryConflict,
     recordLocalLinkCopyReceipt,
     recordHistoryDetailActionReceipt,
+    recordHistoryRepositoryExportReceipt,
     recordReportPrintReceipt,
     recordReportExportReceipt,
     recordReportComparisonExportReceipt,

@@ -5773,3 +5773,50 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划仓库导出回执审计`
+
+## 139. 2026-06-13 新增学习档案仓库导出回执审计
+
+本次补齐“学习档案导出同步包”的本机审计闭环。此前 `mr-calligraphy-history-repository-*.json` 可以迁移练习、作品、报告和阶段记录，但导出后没有独立回执；现在下载后会保存到 `historyRepositoryExportReceipts`，并能导出 HTML 审计页。
+
+完成内容：
+
+- 新增 `mr-calligraphy-history-repository-export-audit-v1` 审计包。
+- 学习状态新增 `historyRepositoryExportReceipts`，保存最近 24 条学习档案仓库导出回执。
+- `MRAppState.recordHistoryRepositoryExportReceipt()` 记录文件名、MIME、字节数、练习/作品/报告/阶段数量、Workspace、包摘要、文件摘要和回执摘要。
+- `MRAppState.getHistoryRepositoryExportAudit()` 返回最近回执列表、Workspace 统计、累计记录数量和 `auditDigest`。
+- `MRAppState.getHistoryRepositoryExportAuditExport()` / `downloadHistoryRepositoryExportAudit()` 生成并下载 `mr-calligraphy-history-repository-export-audit-*.html`。
+- `downloadHistoryRepository()` 发起 JSON 同步包下载后自动写入导出回执。
+- 前台学习档案面板新增 `historyRepositoryExportAudit`、`historyRepositoryExportAuditStatus`、`historyRepositoryExportAuditList` 和 `historyRepositoryExportAuditExport`。
+- Smoke 页面标记检查新增学习档案仓库导出回执审计节点。
+- 控件清单更新为前台 `real-export 41`、`handled 116`、`missingHandler 0`。
+- `learning-state-check.js` 验证 JSON 同步包导出回执、四类记录数量、包摘要、文件摘要、边界说明和 HTML 审计导出。
+- Playwright 学习档案仓库用例验证真实点击“导出同步包”、下载 JSON、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getHistoryRepositoryPackage()` 生成的真实学习档案仓库 JSON 包。
+- 写入状态：下载 JSON 同步包后写入 `mr-calligraphy-learning-state-v1.historyRepositoryExportReceipts`。
+- 成功反馈：学习档案面板显示同步包文件名、总记录数、练习/作品/报告/阶段数量、包摘要、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载学习档案仓库导出 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：回执随学习状态持久化，可再次导出审计 HTML。
+
+仍待补：
+
+- 该回执只能证明当前浏览器生成并发起了学习档案仓库 JSON 下载请求，并记录生成内容摘要；它不是云端档案仓库日志、系统文件保存证明、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front history repository handles network, paged pull, and id conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案仓库导出回执审计`

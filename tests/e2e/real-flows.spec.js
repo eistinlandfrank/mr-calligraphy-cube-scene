@@ -3171,6 +3171,36 @@ test("front history repository handles network, paged pull, and id conflicts", a
 
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#historyPanel")).toBeVisible();
+
+  const historyRepositoryDownloadPromise = page.waitForEvent("download");
+  await page.locator("#historyRepositoryExportButton").click();
+  const historyRepositoryDownload = await historyRepositoryDownloadPromise;
+  expect(historyRepositoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-repository-.*\.json$/);
+  await expect(page.locator("#noticeState")).toContainText("并记录导出回执");
+  await expect(page.locator("#historyRepositoryExportAuditStatus")).toContainText("已记录 1 条学习档案仓库导出回执");
+  await expect(page.locator("#historyRepositoryExportAuditList")).toContainText("2 条");
+  await expect(page.locator("#historyRepositoryExportAuditList")).toContainText(historyRepositoryDownload.suggestedFilename());
+
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.historyRepositoryExportReceipts).toHaveLength(1);
+  expect(learningState.historyRepositoryExportReceipts[0].filename).toBe(historyRepositoryDownload.suggestedFilename());
+  expect(learningState.historyRepositoryExportReceipts[0].recordCount).toBe(2);
+  expect(learningState.historyRepositoryExportReceipts[0].practiceCount).toBe(1);
+  expect(learningState.historyRepositoryExportReceipts[0].artworkCount).toBe(1);
+  expect(learningState.historyRepositoryExportReceipts[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.historyRepositoryExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.historyRepositoryExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+
+  const historyRepositoryExportAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#historyRepositoryExportAuditExport").click();
+  const historyRepositoryExportAuditDownload = await historyRepositoryExportAuditDownloadPromise;
+  expect(historyRepositoryExportAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-repository-export-audit-.*\.html$/);
+  const historyRepositoryExportAuditPath = await historyRepositoryExportAuditDownload.path();
+  const historyRepositoryExportAuditHtml = fs.readFileSync(historyRepositoryExportAuditPath, "utf8");
+  expect(historyRepositoryExportAuditHtml).toContain("MR 书法学习档案仓库导出回执审计");
+  expect(historyRepositoryExportAuditHtml).toContain(learningState.historyRepositoryExportReceipts[0].packageDigest);
+  expect(historyRepositoryExportAuditHtml).toContain(learningState.historyRepositoryExportReceipts[0].receiptDigest);
+
   await page.locator(".history-repository-remote summary").click();
 
   const networkEndpoint = await getSameOriginEndpoint(page, networkPath);
@@ -3178,7 +3208,7 @@ test("front history repository handles network, paged pull, and id conflicts", a
   await page.locator("#historyRepositoryRemoteButton").click();
   await expect(page.locator("#noticeState")).toContainText("网络请求异常");
   await expect(page.locator("#historyRepositorySummary")).toContainText("网络请求异常");
-  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepository.lastError).toContain("网络请求异常");
   expect(requests.some((item) => item.path === networkPath && item.authorization === "Bearer history-network-token" && item.workspaceId === "local-browser")).toBe(true);
 

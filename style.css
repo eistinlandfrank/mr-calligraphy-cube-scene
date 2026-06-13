@@ -5756,6 +5756,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt,
+.history-repository-export-audit,
 .history-repository-receipt,
 .plan-repository-receipt {
   display: grid;
@@ -5768,6 +5769,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head,
+.history-repository-export-audit-head,
 .history-repository-receipt-head,
 .plan-repository-receipt-head {
   display: flex;
@@ -5777,6 +5779,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head strong,
+.history-repository-export-audit-head strong,
 .history-repository-receipt-head strong,
 .plan-repository-receipt-head strong {
   color: #e8fff9;
@@ -5785,6 +5788,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head button,
+.history-repository-export-audit-head button,
 .history-repository-receipt-head button,
 .plan-repository-receipt-head button {
   min-height: 28px;
@@ -5798,6 +5802,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head button:disabled,
+.history-repository-export-audit-head button:disabled,
 .history-repository-receipt-head button:disabled,
 .plan-repository-receipt-head button:disabled {
   cursor: not-allowed;
@@ -5807,6 +5812,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt p,
+.history-repository-export-audit p,
 .history-repository-receipt p,
 .plan-repository-receipt p {
   margin: 0;
@@ -5817,12 +5823,14 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt p[data-receipt-tone="ready"],
+.history-repository-export-audit p[data-receipt-tone="ready"],
 .history-repository-receipt p[data-receipt-tone="ready"],
 .plan-repository-receipt p[data-receipt-tone="ready"] {
   color: #e8fff9;
 }
 
 .report-repository-receipt-list,
+.history-repository-export-audit-list,
 .history-repository-receipt-list,
 .plan-repository-receipt-list {
   display: grid;
@@ -5833,6 +5841,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-list li,
+.history-repository-export-audit-list li,
 .history-repository-receipt-list li,
 .plan-repository-receipt-list li {
   display: grid;
@@ -5846,6 +5855,9 @@ body.is-model-view .notice-panel {
 .report-repository-receipt-list strong,
 .report-repository-receipt-list span,
 .report-repository-receipt-list small,
+.history-repository-export-audit-list strong,
+.history-repository-export-audit-list span,
+.history-repository-export-audit-list small,
 .history-repository-receipt-list strong,
 .history-repository-receipt-list span,
 .history-repository-receipt-list small,
@@ -5856,6 +5868,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-list strong,
+.history-repository-export-audit-list strong,
 .history-repository-receipt-list strong,
 .plan-repository-receipt-list strong {
   color: #fffaf1;
@@ -5864,6 +5877,8 @@ body.is-model-view .notice-panel {
 
 .report-repository-receipt-list span,
 .report-repository-receipt-list small,
+.history-repository-export-audit-list span,
+.history-repository-export-audit-list small,
 .history-repository-receipt-list span,
 .history-repository-receipt-list small,
 .plan-repository-receipt-list span,

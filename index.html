@@ -405,6 +405,14 @@
             <button data-feature-state="real-export" id="historyRepositoryExportButton" type="button">导出同步包</button>
             <button data-feature-state="real-local" id="historyRepositoryImportButton" type="button">导入同步包</button>
           </div>
+          <div id="historyRepositoryExportAudit" class="history-repository-export-audit" aria-label="学习档案仓库导出回执审计">
+            <div class="history-repository-export-audit-head">
+              <strong>同步包导出回执</strong>
+              <button data-feature-state="real-export" id="historyRepositoryExportAuditExport" type="button">导出回执</button>
+            </div>
+            <p id="historyRepositoryExportAuditStatus">暂无学习档案仓库导出回执。</p>
+            <ul id="historyRepositoryExportAuditList" class="history-repository-export-audit-list"></ul>
+          </div>
           <details class="history-repository-remote">
             <summary>远端学习档案 API</summary>
             <div class="history-repository-fields">

@@ -10999,3 +10999,52 @@
 提交：
 
 - 中文 commit message：`新增计划仓库导出回执审计`
+
+### 2026-06-13：新增学习档案仓库导出回执审计
+
+功能名：前台学习档案仓库 JSON 同步包导出回执。
+
+开发原因：
+
+- “导出同步包”已经会生成真实 `mr-calligraphy-history-repository-v1` JSON 包，并带 `packageDigest` 摘要。
+- 但导出后没有本机回执列表，用户无法在页面确认导出的包包含多少练习、作品、报告和阶段记录，也无法导出审计页。
+
+完成内容：
+
+- 新增 `mr-calligraphy-history-repository-export-audit-v1` 审计包。
+- 学习状态新增 `historyRepositoryExportReceipts`。
+- `downloadHistoryRepository()` 发起 JSON 下载后写入学习档案仓库导出回执。
+- 回执记录文件名、MIME、字节数、练习/作品/报告/阶段数量、Workspace、包摘要、文件摘要和回执摘要。
+- 新增 `getHistoryRepositoryExportAudit()`、`getHistoryRepositoryExportAuditExport()` 和 `downloadHistoryRepositoryExportAudit()`。
+- 前台学习档案面板新增“同步包导出回执”列表和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台至少保存一条练习或作品记录。
+- 点击“导出同步包”应下载 `mr-calligraphy-history-repository-*.json`。
+- “同步包导出回执”面板应显示文件名、总记录数、练习/作品/报告/阶段数量、包摘要和文件摘要。
+- 点击“导出回执”应下载 `mr-calligraphy-history-repository-export-audit-*.html`。
+- 审计 HTML 应包含“MR 书法学习档案仓库导出回执审计”、包摘要、文件摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机 JSON 下载请求回执，只能证明页面生成并发起了学习档案仓库同步包下载，并记录生成内容摘要；它不是云端档案仓库日志、系统文件保存证明、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front history repository handles network, paged pull, and id conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案仓库导出回执审计`
