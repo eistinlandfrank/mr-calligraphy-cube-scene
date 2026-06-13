@@ -4819,3 +4819,52 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增本机链接复制审计`
+
+## 129. 2026-06-13 新增报告打印回执审计
+
+本次把报告详情里的“打印 / 保存 PDF”从一次性浏览器动作推进到可回看、可导出的本机打印请求回执。用户点击打印时，页面先写入回执，再打开浏览器打印窗口；报告区会显示最近打印请求，后续可下载 HTML 审计页。
+
+完成内容：
+
+- 新增 `REPORT_PRINT_AUDIT_KIND = "mr-calligraphy-report-print-audit-v1"` 和报告打印审计边界说明。
+- 状态层新增 `reportPrintReceipts`，随学习状态持久化到 localStorage。
+- `MRAppState.recordReportPrintReceipt()` 写入报告 ID、标题、报告验真摘要、浏览器信息、请求时间和回执摘要。
+- `MRAppState.getReportPrintAudit({ limit })` 返回回执列表、状态统计、总数和 `auditDigest`。
+- `MRAppState.getReportPrintAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReportPrintAudit()` 下载 `mr-calligraphy-report-print-audit-*.html`。
+- 前台报告详情新增 `reportPrintAudit` 面板，展示最近 5 条打印请求。
+- `printReportDetail()` 会先记录回执，再调用 `window.print()`。
+- 打印 CSS 会隐藏交互按钮和打印回执审计面板，避免保存 PDF 时混入操作控件。
+- Smoke 首页标记检查新增报告打印回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 32`、`handled 107`、`missingHandler 0`。
+- `learning-state-check.js` 验证打印回执、报告摘要、回执摘要、边界、审计摘要和 HTML。
+- Playwright 前台真实练习用例验证打印按钮触发本机回执、调用浏览器打印请求，并下载打印回执审计 HTML。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.reportPrintReceipts`。
+- 写入状态：点击“打印 / 保存 PDF”后写入本机回执，并通过 `report-print` 写入学习动作事件。
+- 成功反馈：面板显示最近打印数量、报告标题、报告摘要、回执摘要和请求时间。
+- 失败反馈：无报告时不写空回执；无回执时导出按钮禁用。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可查看和导出。
+
+仍待补：
+
+- 该审计只证明本页发起了浏览器打印/保存 PDF 请求，不代表系统打印完成、云端 PDF 渲染、打印机状态、账号化留档或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告打印回执审计`

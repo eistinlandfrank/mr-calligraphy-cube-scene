@@ -85,6 +85,9 @@
   const REPORT_TEACHER_REVIEW_SIGNED_FIELDS = ["reportId", "reportCreatedAt", "reviewer", "role", "note", "reviewedAt", "source", "reviewDigest"];
   const REPORT_TEACHER_REVIEW_MAX_AUDITS = 30;
   const REPORT_TEACHER_REVIEW_AUDIT_BOUNDARY = "教师批注审计保存在当前浏览器 localStorage 中，记录本机保存/清除动作、角色、批注摘要、本机签名摘要和时间；它不是云端教师账号、生产电子签章或不可篡改审计链。";
+  const REPORT_PRINT_AUDIT_KIND = "mr-calligraphy-report-print-audit-v1";
+  const REPORT_PRINT_MAX_RECEIPTS = 24;
+  const REPORT_PRINT_AUDIT_BOUNDARY = "报告打印回执保存在当前浏览器 reportPrintReceipts，记录浏览器打印/保存 PDF 请求、报告摘要和时间；它只能证明本页发起了打印窗口请求，不代表操作系统打印完成、云端 PDF 渲染或不可篡改审计链。";
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
     title: "标题",
@@ -432,6 +435,7 @@
       artworks,
       reports,
       reportTeacherReviewAudits: normalizeReportTeacherReviewAudits(source?.reportTeacherReviewAudits),
+      reportPrintReceipts: normalizeReportPrintReceipts(source?.reportPrintReceipts),
       videoExportService: normalizeVideoExportService(source?.videoExportService),
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
@@ -778,6 +782,70 @@
     state.reportTeacherReviewAudits = [normalized, ...existing.filter((item) => item.id !== normalized.id)]
       .slice(0, REPORT_TEACHER_REVIEW_MAX_AUDITS);
     return normalized;
+  }
+
+  function normalizeReportPrintReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeReportPrintReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.requestedAt || 0) - Date.parse(a.requestedAt || 0))
+      .filter((record) => {
+        if (seen.has(record.id)) return false;
+        seen.add(record.id);
+        return true;
+      })
+      .slice(0, REPORT_PRINT_MAX_RECEIPTS);
+  }
+
+  function normalizeReportPrintReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const reportId = String(record.reportId || "").trim().slice(0, 120);
+    const requestedAt = normalizePlanDate(record.requestedAt || record.createdAt);
+    if (!reportId || !requestedAt) return null;
+    const reportDigest = normalizeReportTeacherReviewDigest(record.reportDigest || record.digest || record.verificationDigest);
+    const reportCreatedAt = normalizePlanDate(record.reportCreatedAt) || "";
+    const printStatus = ["requested", "opened", "cancelled", "failed"].includes(record.printStatus)
+      ? record.printStatus
+      : "requested";
+    const printTarget = ["browser-print", "save-pdf", "system-dialog"].includes(record.printTarget)
+      ? record.printTarget
+      : "browser-print";
+    const id = String(record.id || `report-print-${sha256StableJson({
+      reportId,
+      requestedAt,
+      reportDigest,
+      printTarget
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: REPORT_PRINT_AUDIT_KIND,
+      id: id.slice(0, 120),
+      reportId,
+      reportTitle: String(record.reportTitle || reportId || "学习报告").trim().slice(0, 140) || "学习报告",
+      reportCreatedAt,
+      reportDigest,
+      requestedAt,
+      printStatus,
+      printTarget,
+      userAgent: String(record.userAgent || "").trim().slice(0, 220),
+      source: String(record.source || "browser-window-print").trim().slice(0, 80) || "browser-window-print",
+      boundary: String(record.boundary || REPORT_PRINT_AUDIT_BOUNDARY).trim().slice(0, 260) || REPORT_PRINT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 220)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      reportId: payload.reportId,
+      reportDigest: payload.reportDigest,
+      requestedAt: payload.requestedAt,
+      printStatus: payload.printStatus,
+      printTarget: payload.printTarget,
+      source: payload.source
+    });
+    if (!payload.message) {
+      payload.message = `已记录报告“${payload.reportTitle}”的浏览器打印/保存 PDF 请求。`;
+    }
+    return payload;
   }
 
   function normalizeVideoExportService(record = {}) {
@@ -6905,6 +6973,181 @@
       digest: verification.digest,
       message: "已根据本机报告核心字段重新计算验真摘要。"
     };
+  }
+
+  function recordReportPrintReceipt(reportId = null, options = {}) {
+    const detail = getReportDetail(reportId);
+    if (!detail) {
+      return { ok: false, message: "还没有可打印的站内报告。" };
+    }
+    const verification = getReportVerification(detail.id);
+    const requestedAt = new Date().toISOString();
+    const receipt = normalizeReportPrintReceipt({
+      id: makeId("report-print"),
+      reportId: detail.id,
+      reportTitle: detail.title || "学习报告",
+      reportCreatedAt: detail.createdAt,
+      reportDigest: verification?.digest || "",
+      requestedAt,
+      printStatus: "requested",
+      printTarget: options.printTarget || "browser-print",
+      userAgent: options.userAgent || "",
+      source: options.source || "browser-window-print",
+      boundary: REPORT_PRINT_AUDIT_BOUNDARY,
+      message: `已记录报告“${detail.title || "学习报告"}”的浏览器打印/保存 PDF 请求。`
+    });
+    if (!receipt) {
+      return { ok: false, message: "报告打印回执记录失败。" };
+    }
+    state.reportPrintReceipts = [
+      receipt,
+      ...normalizeReportPrintReceipts(state.reportPrintReceipts).filter((item) => item.id !== receipt.id)
+    ].slice(0, REPORT_PRINT_MAX_RECEIPTS);
+    addEvent("report-print", `${receipt.reportTitle}：浏览器打印请求`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getReportPrintAudit(detail.id),
+      message: "已记录报告打印/保存 PDF 请求。"
+    };
+  }
+
+  function getReportPrintAudit(reportId = null, options = {}) {
+    const targetReportId = String(reportId || "").trim();
+    const limit = normalizeInteger(options.limit, REPORT_PRINT_MAX_RECEIPTS, 1, REPORT_PRINT_MAX_RECEIPTS);
+    const allReceipts = normalizeReportPrintReceipts(state.reportPrintReceipts);
+    const filtered = targetReportId
+      ? allReceipts.filter((receipt) => receipt.reportId === targetReportId)
+      : allReceipts;
+    const receipts = filtered.slice(0, limit).map(clone);
+    const statusCounts = {};
+    receipts.forEach((receipt) => {
+      const status = receipt.printStatus || "requested";
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: REPORT_PRINT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      reportId: targetReportId,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      statusCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: REPORT_PRINT_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条报告打印/保存 PDF 请求，最近一次：${formatPlanDate(filtered[0].requestedAt)}。`
+        : targetReportId
+          ? "当前报告暂无打印回执记录。"
+          : "暂无报告打印回执记录。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getReportPrintAuditExport(reportId = null, options = {}) {
+    const audit = getReportPrintAudit(reportId, options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的报告打印回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    const reportSlug = audit.reportId ? makeDownloadSlug(audit.reportId) : "all";
+    return {
+      ok: true,
+      filename: `mr-calligraphy-report-print-audit-${reportSlug}-${exportedAt.slice(0, 10)}.html`,
+      html: renderReportPrintAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条报告打印回执审计导出。`
+    };
+  }
+
+  function downloadReportPrintAudit(reportId = null, options = {}) {
+    const result = getReportPrintAuditExport(reportId, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderReportPrintAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.reportTitle || receipt.reportId)}</h2>
+        <p>${escapeHtml(receipt.message || "浏览器打印请求已记录。")}</p>
+        <dl>
+          <div><dt>报告 ID</dt><dd>${escapeHtml(receipt.reportId)}</dd></div>
+          <div><dt>报告摘要</dt><dd>${escapeHtml(receipt.reportDigest || "未生成")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>打印目标</dt><dd>${escapeHtml(formatReportPrintTarget(receipt.printTarget))}</dd></div>
+          <div><dt>请求状态</dt><dd>${escapeHtml(formatReportPrintStatus(receipt.printStatus))}</dd></div>
+          <div><dt>请求时间</dt><dd>${escapeHtml(formatDateTime(receipt.requestedAt))}</dd></div>
+          <div><dt>报告时间</dt><dd>${escapeHtml(formatDateTime(receipt.reportCreatedAt))}</dd></div>
+          <div><dt>回执 ID</dt><dd>${escapeHtml(receipt.id)}</dd></div>
+          <div><dt>浏览器</dt><dd>${escapeHtml(receipt.userAgent || "未记录")}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法报告打印回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Report Print Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法报告打印回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条浏览器打印请求。${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatReportPrintTarget(target) {
+    return {
+      "browser-print": "浏览器打印请求",
+      "save-pdf": "保存 PDF",
+      "system-dialog": "系统打印窗口"
+    }[target] || "浏览器打印请求";
+  }
+
+  function formatReportPrintStatus(status) {
+    return {
+      requested: "已请求",
+      opened: "已打开",
+      cancelled: "可能取消",
+      failed: "请求失败"
+    }[status] || "已请求";
   }
 
   function getReportRepositoryStatus() {
@@ -17524,6 +17767,8 @@
     getReportPdfExport,
     getReportTeacherReviewAudit,
     getReportTeacherReviewAuditExport,
+    getReportPrintAudit,
+    getReportPrintAuditExport,
     getReportComparison,
     getReportComparisonExport,
     getReportSeries,
@@ -17564,6 +17809,7 @@
     downloadReportRepository,
     downloadReportRepositoryReceiptAudit,
     downloadReportTeacherReviewAudit,
+    downloadReportPrintAudit,
     downloadPracticeVideoExportAudit,
     downloadArtworkRepository,
     getArtworkCollectionExport,
@@ -17584,6 +17830,7 @@
     importArtworkRepositoryPackage,
     resolveArtworkRepositoryConflict,
     recordLocalLinkCopyReceipt,
+    recordReportPrintReceipt,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
     checkRemoteReportRepository,

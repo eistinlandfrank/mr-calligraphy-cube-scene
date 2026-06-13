@@ -911,6 +911,9 @@ const els = {
   reportDetailDownloadPdf: document.getElementById("reportDetailDownloadPdf"),
   reportDetailPrint: document.getElementById("reportDetailPrint"),
   reportDetailOpenHistory: document.getElementById("reportDetailOpenHistory"),
+  reportPrintAuditStatus: document.getElementById("reportPrintAuditStatus"),
+  reportPrintAuditList: document.getElementById("reportPrintAuditList"),
+  reportPrintAuditExport: document.getElementById("reportPrintAuditExport"),
   historyPanel: document.getElementById("historyPanel"),
   historySummary: document.getElementById("historySummary"),
   historyDownloadArchive: document.getElementById("historyDownloadArchive"),
@@ -4061,6 +4064,7 @@ function bindReportControls() {
   els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
   els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
   els.reportTeacherReviewAuditExport?.addEventListener("click", exportReportTeacherReviewAudit);
+  els.reportPrintAuditExport?.addEventListener("click", exportReportPrintAudit);
   els.reportRepositoryExportButton?.addEventListener("click", downloadReportRepositoryPackage);
   els.reportRepositoryImportButton?.addEventListener("click", chooseReportRepositoryImport);
   els.reportRepositoryImportInput?.addEventListener("change", importReportRepositoryFile);
@@ -5723,6 +5727,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   renderReportTeacherReview(detail);
   renderReportRepositoryStatus(detail);
   setReportDetailActions(detail);
+  renderReportPrintAudit(detail);
 }
 
 function renderReportEmptyState() {
@@ -5750,6 +5755,7 @@ function renderReportEmptyState() {
   }
   renderReportTeacherReview(null);
   renderReportRepositoryStatus(null);
+  renderReportPrintAudit(null);
 }
 
 function renderReportVerification(detail) {
@@ -6675,6 +6681,37 @@ function renderReportTeacherReviewAudit(detail) {
   });
 }
 
+function renderReportPrintAudit(detail) {
+  const audit = detail
+    ? window.MRAppState?.getReportPrintAudit?.(detail.id, { limit: 5 })
+    : null;
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.reportPrintAuditStatus) {
+    els.reportPrintAuditStatus.textContent = detail
+      ? audit?.message || "当前报告暂无打印回执记录。"
+      : "请选择一份报告后查看打印回执审计。";
+    els.reportPrintAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.reportPrintAuditExport) {
+    els.reportPrintAuditExport.disabled = !detail || !receipts.length;
+  }
+  if (!els.reportPrintAuditList) return;
+  els.reportPrintAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `浏览器打印请求 · ${receipt.reportTitle || "学习报告"}`;
+    const meta = document.createElement("span");
+    const reportDigest = receipt.reportDigest ? `报告摘要 ${receipt.reportDigest.slice(0, 12)}` : "报告摘要未生成";
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    meta.textContent = `${formatHistoryTime(receipt.requestedAt)} · ${reportDigest}`;
+    const detailText = document.createElement("small");
+    detailText.textContent = `${receiptDigest} · 仅证明本页发起打印/保存 PDF 请求`;
+    item.append(title, meta, detailText);
+    els.reportPrintAuditList.appendChild(item);
+  });
+}
+
 function formatReportTeacherReviewAuditAction(action) {
   return action === "clear" ? "清除批注" : "保存批注";
 }
@@ -6928,6 +6965,22 @@ function exportReportTeacherReviewAudit() {
     showNotice(result.message);
   } else {
     showNotice("暂无可导出的教师批注审计记录。");
+  }
+  renderReportPanel(currentIndex);
+}
+
+function exportReportPrintAudit() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("请选择一份报告后导出打印回执。");
+    renderReportPrintAudit(null);
+    return;
+  }
+  const result = window.MRAppState?.downloadReportPrintAudit?.(detail.id, { limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的报告打印回执。");
   }
   renderReportPanel(currentIndex);
 }
@@ -9974,8 +10027,17 @@ function printReportDetail() {
     return;
   }
 
+  const receiptResult = window.MRAppState?.recordReportPrintReceipt?.(detail.id, {
+    userAgent: navigator.userAgent,
+    printTarget: "browser-print"
+  });
+  if (receiptResult?.ok) {
+    renderReportPrintAudit(detail);
+    showNotice(`${receiptResult.message} 正在打开浏览器打印，可在打印窗口中选择“保存为 PDF”。`);
+  } else {
+    showNotice(receiptResult?.message || "正在打开浏览器打印，可在打印窗口中选择“保存为 PDF”。");
+  }
   document.body.classList.add("is-report-printing");
-  showNotice("正在打开浏览器打印，可在打印窗口中选择“保存为 PDF”。");
 
   const cleanup = () => {
     document.body.classList.remove("is-report-printing");

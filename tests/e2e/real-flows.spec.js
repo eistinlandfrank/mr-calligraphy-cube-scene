@@ -1119,6 +1119,37 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(localLinkCopyAuditHtml).toContain("本机分享链接");
   expect(localLinkCopyAuditHtml).toContain("审计摘要");
 
+  const activeReportId = learningState.reports[0].id;
+  await page.evaluate(() => {
+    window.__reportPrintCalled = false;
+    window.print = () => {
+      window.__reportPrintCalled = true;
+      window.dispatchEvent(new Event("afterprint"));
+    };
+  });
+  await page.locator("#reportDetailPrint").click();
+  await expect(page.locator("#reportPrintAuditStatus")).toContainText("1 条报告打印");
+  await expect(page.locator("#reportPrintAuditList")).toContainText("浏览器打印请求");
+  await expect(page.locator("#reportPrintAuditList")).toContainText("仅证明本页发起");
+  await expect.poll(() => page.evaluate(() => window.__reportPrintCalled)).toBe(true);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportPrintReceipts).toHaveLength(1);
+  expect(learningState.reportPrintReceipts[0].reportId).toBe(activeReportId);
+  expect(learningState.reportPrintReceipts[0].reportDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportPrintReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportPrintReceipts[0].boundary).toContain("只能证明本页发起");
+
+  const reportPrintAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportPrintAuditExport").click();
+  const reportPrintAuditDownload = await reportPrintAuditDownloadPromise;
+  expect(reportPrintAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-print-audit-.*\.html$/);
+  const reportPrintAuditPath = await reportPrintAuditDownload.path();
+  const reportPrintAuditHtml = fs.readFileSync(reportPrintAuditPath, "utf8");
+  expect(reportPrintAuditHtml).toContain("MR 书法报告打印回执审计");
+  expect(reportPrintAuditHtml).toContain("浏览器打印请求");
+  expect(reportPrintAuditHtml).toContain("不代表操作系统打印完成");
+  expect(reportPrintAuditHtml).toContain(learningState.reportPrintReceipts[0].receiptDigest);
+
   await page.locator("#reportTeacherReviewerInput").fill("王老师");
   await page.locator("#reportTeacherReviewRoleInput").selectOption("local-reviewer");
   await page.locator("#reportTeacherReviewInput").fill("结构更稳，下一次重点放慢竖钩收笔。");

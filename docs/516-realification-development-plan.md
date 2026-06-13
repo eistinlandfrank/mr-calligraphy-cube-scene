@@ -10505,3 +10505,53 @@
 提交：
 
 - 中文 commit message：`新增本机链接复制审计`
+
+### 2026-06-13：新增报告打印回执审计
+
+功能名：前台报告打印请求回执与 HTML 导出。
+
+开发原因：
+
+- 报告详情已有“打印 / 保存 PDF”按钮，但此前点击后只调用浏览器打印窗口。
+- 用户无法在页面内确认某份报告是否发起过打印请求，也无法导出这类本机操作证据。
+
+完成内容：
+
+- 新增 `mr-calligraphy-report-print-audit-v1` 审计包。
+- 新增 `reportPrintReceipts` 本机回执队列，保存最近报告打印/保存 PDF 请求。
+- `MRAppState.recordReportPrintReceipt()` 写入报告 ID、标题、报告验真摘要、浏览器信息、请求时间和回执摘要。
+- `MRAppState.getReportPrintAudit()` 返回状态统计、回执列表和 `auditDigest`。
+- `MRAppState.getReportPrintAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadReportPrintAudit()` 下载 `mr-calligraphy-report-print-audit-*.html`。
+- 前台报告详情新增“打印回执审计”面板和“导出打印”按钮。
+- 点击“打印 / 保存 PDF”时先记录回执，再调用浏览器 `window.print()`。
+- 打印样式隐藏交互按钮和回执面板，保存 PDF 时只保留报告内容。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 打开一份站内报告，点击“打印 / 保存 PDF”。
+- “打印回执审计”面板应显示浏览器打印请求、报告摘要和回执摘要。
+- 点击“导出打印”应下载 HTML，文件包含“MR 书法报告打印回执审计”、浏览器打印请求、审计摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是浏览器本机 localStorage 打印请求回执，只能证明页面发起了打印/保存 PDF 请求；它不是系统打印完成证明、云端 PDF 渲染日志、打印机出纸证明、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告打印回执审计`

@@ -358,6 +358,14 @@
             <button data-feature-state="real-export" id="reportDetailPrint" type="button">打印 / 保存 PDF</button>
             <button data-feature-state="real-local" id="reportDetailOpenHistory" type="button">查看档案记录</button>
           </div>
+          <div id="reportPrintAudit" class="report-print-audit" aria-label="报告打印回执审计">
+            <div class="report-print-audit-head">
+              <strong>打印回执审计</strong>
+              <button data-feature-state="real-export" id="reportPrintAuditExport" type="button">导出打印</button>
+            </div>
+            <p id="reportPrintAuditStatus">暂无报告打印回执。</p>
+            <ul id="reportPrintAuditList" class="report-print-audit-list"></ul>
+          </div>
         </section>
 
         <section id="historyPanel" class="history-panel" aria-label="学习档案" hidden>

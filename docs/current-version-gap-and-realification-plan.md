@@ -5299,3 +5299,51 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增本机链接复制审计`
+
+## 129. 2026-06-13 新增报告打印回执审计
+
+本次继续把报告区的导出类按钮真实化。“打印 / 保存 PDF”此前会调用浏览器 `window.print()`，但只给出瞬时提示；用户无法确认本机是否发起过打印窗口，也无法把打印请求留档。现在报告详情新增“打印回执审计”，每次点击打印都会先写入本机回执，再打开浏览器打印窗口，并可导出 HTML 审计页。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-report-print-audit-v1` 审计包。
+- 状态层新增 `reportPrintReceipts`，保存最近 24 条报告打印/保存 PDF 请求。
+- `MRAppState.recordReportPrintReceipt()` 记录报告 ID、报告标题、报告本机验真摘要、请求时间、浏览器信息、回执摘要和能力边界。
+- `MRAppState.getReportPrintAudit()` 返回当前报告或全部报告的打印回执、状态统计、总数和 64 位 `auditDigest`。
+- `MRAppState.getReportPrintAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReportPrintAudit()` 真实下载 `mr-calligraphy-report-print-audit-*.html`。
+- 前台报告详情新增 `reportPrintAudit`、`reportPrintAuditStatus`、`reportPrintAuditList` 和 `reportPrintAuditExport`。
+- `printReportDetail()` 改为先写入回执，再打开浏览器打印窗口；打印版 CSS 会隐藏交互按钮和审计面板，避免 PDF 混入操作回执。
+- Smoke 页面标记检查新增报告打印回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 32`、`handled 107`、`missingHandler 0`。
+- 状态层脚本覆盖打印回执、报告验真摘要、回执摘要、边界说明和 HTML 导出。
+- Playwright 前台真实练习用例会 stub `window.print()`，验证点击打印后写入回执、刷新面板、触发浏览器打印请求并下载打印审计 HTML。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.reportPrintReceipts`。
+- 写入状态：用户点击“打印 / 保存 PDF”后立即写入本机回执，同时写入学习动作事件队列。
+- 成功反馈：报告区显示最近打印请求、报告摘要、回执摘要和时间。
+- 导出反馈：点击“导出打印”会下载 HTML；无回执时按钮禁用，不生成空壳审计。
+- 刷新后复现方式：打印回执保存在 localStorage，刷新后面板仍能读取并导出。
+
+仍待补：
+
+- 当前只证明当前浏览器页面发起了打印/保存 PDF 请求，不代表操作系统打印完成、云端 PDF 渲染、打印机出纸、账号化教师端留档或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告打印回执审计`
