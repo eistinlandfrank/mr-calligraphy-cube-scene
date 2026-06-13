@@ -838,6 +838,62 @@
       .slice(0, REPORT_PRINT_MAX_RECEIPTS);
   }
 
+  function addReportPrintReceiptVerification(record) {
+    const normalized = normalizeReportPrintReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyReportPrintReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyReportPrintReceiptDigest(record = {}) {
+    const receipt = normalizeReportPrintReceipt(record);
+    const receiptDigest = normalizeReportTeacherReviewDigest(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧报告打印回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createReportPrintReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与报告打印回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按报告打印回执声明字段重算匹配。"
+    };
+  }
+
+  function createReportPrintReceiptDigestPayload(record = {}) {
+    const receipt = normalizeReportPrintReceipt(record) || {};
+    return {
+      kind: REPORT_PRINT_AUDIT_KIND,
+      reportId: receipt.reportId || "",
+      reportDigest: receipt.reportDigest || "",
+      requestedAt: receipt.requestedAt || "",
+      printStatus: receipt.printStatus || "requested",
+      printTarget: receipt.printTarget || "browser-print",
+      source: receipt.source || "browser-window-print"
+    };
+  }
+
+  function formatReportPrintReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
+  }
+
   function normalizeReportPrintReceipt(record) {
     if (!record || typeof record !== "object") return null;
     const reportId = String(record.reportId || "").trim().slice(0, 120);
@@ -8477,7 +8533,9 @@
   function getReportPrintAudit(reportId = null, options = {}) {
     const targetReportId = String(reportId || "").trim();
     const limit = normalizeInteger(options.limit, REPORT_PRINT_MAX_RECEIPTS, 1, REPORT_PRINT_MAX_RECEIPTS);
-    const allReceipts = normalizeReportPrintReceipts(state.reportPrintReceipts);
+    const allReceipts = normalizeReportPrintReceipts(state.reportPrintReceipts)
+      .map(addReportPrintReceiptVerification)
+      .filter(Boolean);
     const filtered = targetReportId
       ? allReceipts.filter((receipt) => receipt.reportId === targetReportId)
       : allReceipts;
@@ -8487,6 +8545,9 @@
       const status = receipt.printStatus || "requested";
       statusCounts[status] = (statusCounts[status] || 0) + 1;
     });
+    const verifiedCount = filtered.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = filtered.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = filtered.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: REPORT_PRINT_AUDIT_KIND,
@@ -8498,11 +8559,14 @@
       exportedCount: receipts.length,
       limit,
       statusCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: REPORT_PRINT_AUDIT_BOUNDARY,
       message: filtered.length
-        ? `已记录 ${filtered.length} 条报告打印/保存 PDF 请求，最近一次：${formatPlanDate(filtered[0].requestedAt)}。`
+        ? `已记录 ${filtered.length} 条报告打印/保存 PDF 请求，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(filtered[0].requestedAt)}。`
         : targetReportId
           ? "当前报告暂无打印回执记录。"
           : "暂无报告打印回执记录。"
@@ -8552,6 +8616,8 @@
           <div><dt>报告 ID</dt><dd>${escapeHtml(receipt.reportId)}</dd></div>
           <div><dt>报告摘要</dt><dd>${escapeHtml(receipt.reportDigest || "未生成")}</dd></div>
           <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>本机校验</dt><dd>${escapeHtml(formatReportPrintReceiptVerificationStatus(receipt.verificationStatus))}</dd></div>
+          <div><dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd></div>
           <div><dt>打印目标</dt><dd>${escapeHtml(formatReportPrintTarget(receipt.printTarget))}</dd></div>
           <div><dt>请求状态</dt><dd>${escapeHtml(formatReportPrintStatus(receipt.printStatus))}</dd></div>
           <div><dt>请求时间</dt><dd>${escapeHtml(formatDateTime(receipt.requestedAt))}</dd></div>
@@ -8584,11 +8650,11 @@
   <main>
     <p class="meta">MR Calligraphy Report Print Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法报告打印回执审计</h1>
-    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条浏览器打印请求。${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条浏览器打印请求，本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? `，失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? `，旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}。${escapeHtml(audit.boundary)}</p>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

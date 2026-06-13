@@ -1386,6 +1386,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reportPrintReceipts[0].reportDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.reportPrintReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.reportPrintReceipts[0].boundary).toContain("只能证明本页发起");
+  const reportPrintAuditState = await page.evaluate((reportId) => window.MRAppState.getReportPrintAudit(reportId, { limit: 5 }), activeReportId);
+  expect(reportPrintAuditState.verifiedCount).toBe(1);
+  expect(reportPrintAuditState.failedCount).toBe(0);
+  expect(reportPrintAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(reportPrintAuditState.receipts[0].verificationExpectedDigest).toBe(learningState.reportPrintReceipts[0].receiptDigest);
+  await expect(page.locator("#reportPrintAuditStatus")).toContainText("本机校验通过 1 条");
+  await expect(page.locator("#reportPrintAuditList")).toContainText("本机校验通过");
 
   const reportPrintAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportPrintAuditExport").click();
@@ -1397,6 +1404,27 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportPrintAuditHtml).toContain("浏览器打印请求");
   expect(reportPrintAuditHtml).toContain("不代表操作系统打印完成");
   expect(reportPrintAuditHtml).toContain(learningState.reportPrintReceipts[0].receiptDigest);
+  expect(reportPrintAuditHtml).toContain("本机校验通过");
+  expect(reportPrintAuditHtml).toContain("重算摘要");
+
+  const originalReportPrintState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate(({ storageKey, reportId }) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.reportPrintReceipts || []).find((item) => item.reportId === reportId);
+    if (receipt) {
+      receipt.printStatus = "failed";
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, reportId: activeReportId });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
+  const tamperedReportPrintAudit = await page.evaluate((reportId) => window.MRAppState.getReportPrintAudit(reportId, { limit: 5 }), activeReportId);
+  expect(tamperedReportPrintAudit.failedCount).toBe(1);
+  expect(tamperedReportPrintAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedReportPrintAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedReportPrintAudit.receipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalReportPrintState });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
 
   await page.locator("#reportTeacherReviewerInput").fill("王老师");
   await page.locator("#reportTeacherReviewRoleInput").selectOption("local-reviewer");

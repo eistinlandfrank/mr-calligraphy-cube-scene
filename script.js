@@ -6856,10 +6856,18 @@ function renderReportPrintAudit(detail) {
     const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
     meta.textContent = `${formatHistoryTime(receipt.requestedAt)} · ${reportDigest}`;
     const detailText = document.createElement("small");
-    detailText.textContent = `${receiptDigest} · 仅证明本页发起打印/保存 PDF 请求`;
+    detailText.textContent = `${receiptDigest} · ${formatReportPrintReceiptVerificationStatus(receipt.verificationStatus)} · 仅证明本页发起打印/保存 PDF 请求`;
     item.append(title, meta, detailText);
     els.reportPrintAuditList.appendChild(item);
   });
+}
+
+function formatReportPrintReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function renderReportExportAudit(detail) {

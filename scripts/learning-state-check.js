@@ -222,6 +222,10 @@ const reportPrintAudit = window.MRAppState.getReportPrintAudit("report-2", { lim
 assert(reportPrintAudit.kind === "mr-calligraphy-report-print-audit-v1", "报告打印审计应返回稳定 kind。");
 assert(reportPrintAudit.total === 1, "报告打印审计应统计当前报告回执。");
 assert(reportPrintAudit.statusCounts.requested === 1, "报告打印审计应统计请求状态。");
+assert(reportPrintAudit.verifiedCount === 1, "报告打印审计应统计本机校验通过数量。");
+assert(reportPrintAudit.failedCount === 0, "报告打印正常回执不应出现摘要失败。");
+assert(reportPrintAudit.receipts[0].verificationStatus === "verified", "报告打印回执应通过本机 receiptDigest 重算校验。");
+assert(reportPrintAudit.receipts[0].verificationExpectedDigest === reportPrintAudit.receipts[0].receiptDigest, "报告打印回执重算摘要应匹配 receiptDigest。");
 assert(/^[a-f0-9]{64}$/.test(reportPrintAudit.auditDigest), "报告打印审计应包含稳定摘要。");
 assert(reportPrintAudit.boundary.includes("不代表操作系统打印完成"), "报告打印审计应说明打印边界。");
 const reportPrintAuditExport = window.MRAppState.getReportPrintAuditExport("report-2", { limit: 5 });
@@ -230,6 +234,8 @@ assert(reportPrintAuditExport.filename.startsWith("mr-calligraphy-report-print-a
 assert(reportPrintAuditExport.html.includes("MR 书法报告打印回执审计"), "报告打印审计 HTML 应包含标题。");
 assert(reportPrintAuditExport.html.includes("浏览器打印请求"), "报告打印审计 HTML 应包含打印请求类型。");
 assert(reportPrintAuditExport.html.includes(reportPrintAuditExport.audit.auditDigest), "报告打印审计 HTML 应包含审计摘要。");
+assert(reportPrintAuditExport.html.includes("本机校验通过"), "报告打印审计 HTML 应包含本机校验结果。");
+assert(reportPrintAuditExport.html.includes("重算摘要"), "报告打印审计 HTML 应包含重算摘要。");
 
 const comparison = window.MRAppState.getArtworkComparison("永");
 assert(comparison.ok, "同字两幅作品应生成作品对比。");

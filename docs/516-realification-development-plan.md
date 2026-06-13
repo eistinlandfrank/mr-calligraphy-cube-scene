@@ -11759,3 +11759,48 @@
 提交：
 
 - 中文 commit message：`新增报告对比回执校验`
+
+### 2026-06-13：新增报告打印回执本机校验
+
+功能名：前台报告打印 / 保存 PDF 请求回执 receiptDigest 本机重算校验。
+
+背景：
+
+- 报告打印回执已经会记录报告 ID、报告验真摘要、打印目标、请求状态、请求时间和 `receiptDigest`。
+- 但此前前台只展示回执摘要，无法判断 localStorage 里的打印回执是否被手动篡改。
+- 打印 / 保存 PDF 是浏览器侧能力，至少需要在当前浏览器内明确“回执字段和摘要是否一致”。
+
+本轮完成：
+
+- `getReportPrintAudit()` 读取回执时会重算 `receiptDigest`。
+- 每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 回执审计摘要新增 `verifiedCount`、`failedCount` 和 `legacyCount`。
+- 前台“报告打印回执”列表显示本机校验状态。
+- 报告打印回执 HTML 新增“本机校验”和“重算摘要”。
+- Playwright 前台报告用例验证正常报告打印回执校验通过，并临时篡改回执确认 `digest-mismatch` 被识别。
+
+手工验收：
+
+- 在前台进入报告详情，点击“打印 / 保存 PDF”。
+- “报告打印回执”列表应显示“本机校验通过”。
+- 点击“导出回执”下载 HTML，文件中应包含“本机校验通过”和“重算摘要”。
+- 手动篡改 `mr-calligraphy-learning-state-v1.reportPrintReceipts[0]` 任意声明字段后刷新页面并调用 `MRAppState.getReportPrintAudit(reportId)`，应看到 `failedCount: 1` 和 `verificationStatus: "digest-mismatch"`。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+真实边界：
+
+- 这是当前浏览器本机摘要一致性校验，只能证明报告打印回执与自身 `receiptDigest` 声明字段一致；它不是操作系统打印完成证明、云端 PDF 渲染日志、账号打印审计、服务端签名、生产证书链、远端不可篡改日志或多人审计链。
+
+提交：
+
+- 中文 commit message：`新增报告打印回执校验`
