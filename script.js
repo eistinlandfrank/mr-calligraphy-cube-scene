@@ -1022,6 +1022,9 @@ const els = {
   planExportAuditList: document.getElementById("planExportAuditList"),
   planExportAuditExport: document.getElementById("planExportAuditExport"),
   planRepositorySummary: document.getElementById("planRepositorySummary"),
+  planRepositoryExportAuditStatus: document.getElementById("planRepositoryExportAuditStatus"),
+  planRepositoryExportAuditList: document.getElementById("planRepositoryExportAuditList"),
+  planRepositoryExportAuditExport: document.getElementById("planRepositoryExportAuditExport"),
   planCycleSummary: document.getElementById("planCycleSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
   planAddItem: document.getElementById("planAddItem"),
@@ -4317,6 +4320,7 @@ function bindPlanControls() {
   els.planReminderPermissionButton?.addEventListener("click", requestActivePlanReminderPermission);
   els.planReminderAuditExport?.addEventListener("click", exportPlanReminderAudit);
   els.planExportAuditExport?.addEventListener("click", exportPlanExportAudit);
+  els.planRepositoryExportAuditExport?.addEventListener("click", exportPlanRepositoryExportAudit);
   els.planRepositoryExportButton?.addEventListener("click", downloadPlanRepositoryPackage);
   els.planRepositoryImportButton?.addEventListener("click", choosePlanRepositoryImport);
   els.planRepositorySaveRemoteButton?.addEventListener("click", savePlanRepositoryRemoteConfig);
@@ -8510,8 +8514,36 @@ function renderPlanRepositoryStatus(planHistory = []) {
   if (els.planRepositoryPullButton) {
     els.planRepositoryPullButton.disabled = !status?.remoteConfigured;
   }
+  renderPlanRepositoryExportAudit();
   renderPlanRepositoryReceipts();
   renderPlanRepositoryConflictPanel(status);
+}
+
+function renderPlanRepositoryExportAudit() {
+  const audit = window.MRAppState?.getPlanRepositoryExportAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.planRepositoryExportAuditStatus) {
+    els.planRepositoryExportAuditStatus.textContent = audit?.message || "暂无计划仓库导出回执。";
+    els.planRepositoryExportAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.planRepositoryExportAuditExport) {
+    els.planRepositoryExportAuditExport.disabled = !receipts.length;
+  }
+  if (!els.planRepositoryExportAuditList) return;
+  els.planRepositoryExportAuditList.replaceChildren();
+  receipts.slice(0, 5).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.filename || receipt.packageId || "计划仓库同步包";
+    const meta = document.createElement("span");
+    const packageDigest = receipt.packageDigest ? receipt.packageDigest.slice(0, 12) : "包摘要未知";
+    const fileDigest = receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "文件摘要未知";
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.planCount || 0} 份计划 · 包 ${packageDigest} · 文件 ${fileDigest}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${receipt.workspaceId || "local-browser"} / ${receipt.byteLength || 0} bytes / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"}`;
+    item.append(title, meta, detail);
+    els.planRepositoryExportAuditList.appendChild(item);
+  });
 }
 
 function renderPlanRepositoryReceipts() {
@@ -8951,6 +8983,16 @@ function exportPlanRepositoryReceipts() {
     showNotice(result.message);
   } else {
     showNotice("暂无可导出的计划仓库回执。");
+  }
+  renderPlanPanel(currentIndex);
+}
+
+function exportPlanRepositoryExportAudit() {
+  const result = window.MRAppState?.downloadPlanRepositoryExportAudit?.({ limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的计划仓库导出回执。");
   }
   renderPlanPanel(currentIndex);
 }

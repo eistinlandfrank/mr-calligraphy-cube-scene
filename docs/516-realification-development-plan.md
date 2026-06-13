@@ -10950,3 +10950,52 @@
 提交：
 
 - 中文 commit message：`补齐作品仓库导出回执`
+
+### 2026-06-13：新增计划仓库导出回执审计
+
+功能名：前台计划仓库 JSON 同步包导出回执。
+
+开发原因：
+
+- “导出同步包”已经能生成真实 `mr-calligraphy-plan-repository-v1` JSON 包，并带稳定 `packageDigest`。
+- 但它只触发文件下载，没有在页面和本机状态中记录“什么时候导出了哪个计划包、多少计划、文件摘要是什么”。
+
+完成内容：
+
+- 新增 `mr-calligraphy-plan-repository-export-audit-v1` 审计包。
+- 学习状态新增 `planRepositoryExportReceipts`。
+- `downloadPlanRepository()` 发起 JSON 下载后写入计划仓库导出回执。
+- 回执记录文件名、MIME、字节数、计划数量、Workspace、包摘要、文件摘要和回执摘要。
+- 新增 `getPlanRepositoryExportAudit()`、`getPlanRepositoryExportAuditExport()` 和 `downloadPlanRepositoryExportAudit()`。
+- 前台计划面板新增“同步包导出回执”列表和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台生成至少一份学习计划。
+- 点击“导出同步包”应下载 `mr-calligraphy-plan-repository-*.json`。
+- “同步包导出回执”面板应显示文件名、计划数量、包摘要和文件摘要。
+- 点击“导出回执”应下载 `mr-calligraphy-plan-repository-export-audit-*.html`。
+- 审计 HTML 应包含“MR 书法计划仓库导出回执审计”、包摘要、文件摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机 JSON 下载请求回执，只能证明页面生成并发起了计划仓库同步包下载，并记录生成内容摘要；它不是云端仓库日志、系统文件保存证明、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front plan repository detects remote conflicts and saves a remote copy"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库导出回执审计`

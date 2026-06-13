@@ -64,6 +64,9 @@
   const PLAN_EXPORT_AUDIT_KIND = "mr-calligraphy-plan-export-audit-v1";
   const PLAN_EXPORT_MAX_RECEIPTS = 24;
   const PLAN_EXPORT_AUDIT_BOUNDARY = "计划导出回执保存在当前浏览器 planExportReceipts，记录学习计划 HTML 与日历 ICS 导出请求、计划摘要、文件摘要和时间；它不是云端下载日志、系统文件保存证明、跨设备同步或不可篡改审计链。";
+  const PLAN_REPOSITORY_EXPORT_AUDIT_KIND = "mr-calligraphy-plan-repository-export-audit-v1";
+  const PLAN_REPOSITORY_EXPORT_MAX_RECEIPTS = 24;
+  const PLAN_REPOSITORY_EXPORT_AUDIT_BOUNDARY = "计划仓库导出回执保存在当前浏览器 planRepositoryExportReceipts，记录学习计划 JSON 同步包下载请求、计划数量、包摘要、文件摘要和时间；它不是云端仓库日志、系统文件保存证明、账号审计或不可篡改证据链。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，并携带 Workspace 空间 ID 做服务端隔离第一版，但仍不包含完整账号权限、教师端排课或后台推送。";
@@ -468,6 +471,7 @@
       artworkExportReceipts: normalizeArtworkExportReceipts(source?.artworkExportReceipts),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
       planExportReceipts: normalizePlanExportReceipts(source?.planExportReceipts),
+      planRepositoryExportReceipts: normalizePlanRepositoryExportReceipts(source?.planRepositoryExportReceipts),
       planRepository: normalizePlanRepository(source?.planRepository),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
       reportRepository: normalizeReportRepository(source?.reportRepository),
@@ -5869,6 +5873,237 @@
     <p class="meta">MR Calligraphy Plan Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法计划导出回执审计</h1>
     <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条计划导出回执。${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function normalizePlanRepositoryExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizePlanRepositoryExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, PLAN_REPOSITORY_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizePlanRepositoryExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const packageId = String(record.packageId || record.sourcePackageId || "").trim().slice(0, 160);
+    const packageDigest = normalizeReportTeacherReviewDigest(record.packageDigest || record.repositoryDigest || record.digest);
+    if (!filename || !exportedAt || !packageId || !packageDigest) return null;
+    const planCount = normalizeInteger(record.planCount || record.exportedPlanCount, 0, 0, 9999);
+    const fileDigest = normalizeReportTeacherReviewDigest(record.fileDigest || record.contentDigest);
+    const byteLength = normalizeInteger(record.byteLength || record.payloadBytes, 0, 0, 200000000);
+    const id = String(record.id || `plan-repository-export-${sha256StableJson({
+      filename,
+      exportedAt,
+      packageId,
+      packageDigest,
+      fileDigest
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: PLAN_REPOSITORY_EXPORT_AUDIT_KIND,
+      id: id.slice(0, 140),
+      filename,
+      mimeType: String(record.mimeType || "application/json;charset=utf-8").trim().slice(0, 120),
+      byteLength,
+      fileDigest,
+      packageId,
+      packageDigest,
+      planCount,
+      workspaceId: String(record.workspaceId || PLAN_REPOSITORY_DEFAULT_WORKSPACE).trim().slice(0, 120) || PLAN_REPOSITORY_DEFAULT_WORKSPACE,
+      exportedAt,
+      source: String(record.source || "local-json-download").trim().slice(0, 80) || "local-json-download",
+      boundary: String(record.boundary || PLAN_REPOSITORY_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 300) || PLAN_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 240)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      filename: payload.filename,
+      byteLength: payload.byteLength,
+      fileDigest: payload.fileDigest,
+      packageId: payload.packageId,
+      packageDigest: payload.packageDigest,
+      planCount: payload.planCount,
+      workspaceId: payload.workspaceId,
+      exportedAt: payload.exportedAt
+    });
+    if (!payload.message) {
+      payload.message = `已记录 ${payload.planCount} 份计划的 JSON 同步包导出回执。`;
+    }
+    return payload;
+  }
+
+  function recordPlanRepositoryExportReceipt(payload = {}) {
+    const packageRecord = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : null;
+    const content = String(payload.content ?? payload.json ?? (packageRecord ? JSON.stringify(packageRecord, null, 2) : ""));
+    const filename = String(payload.filename || "").trim();
+    const exportedAt = normalizePlanDate(payload.exportedAt) || new Date().toISOString();
+    const packageId = String(payload.packageId || packageRecord?.packageId || "").trim();
+    const packageDigest = normalizeReportTeacherReviewDigest(payload.packageDigest || packageRecord?.packageDigest);
+    const plans = Array.isArray(packageRecord?.plans) ? packageRecord.plans : [];
+    const planCount = normalizeInteger(payload.planCount || plans.length, 0, 0, 9999);
+    if (!filename || !packageId || !packageDigest || !planCount) {
+      return {
+        ok: false,
+        message: "计划仓库导出回执缺少有效的同步包信息。"
+      };
+    }
+    const receipt = normalizePlanRepositoryExportReceipt({
+      id: payload.id || makeId("plan-repository-export"),
+      filename,
+      mimeType: payload.mimeType || "application/json;charset=utf-8",
+      byteLength: payload.byteLength || (content ? utf8Bytes(content).length : 0),
+      fileDigest: payload.fileDigest || (content ? sha256Hex(content) : ""),
+      packageId,
+      packageDigest,
+      planCount,
+      workspaceId: payload.workspaceId || packageRecord?.workspaceId || state.planRepository?.workspaceId || PLAN_REPOSITORY_DEFAULT_WORKSPACE,
+      exportedAt,
+      source: payload.source || "local-json-download",
+      boundary: PLAN_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: payload.message || `已记录 ${planCount} 份计划的 JSON 同步包导出回执。`
+    });
+    if (!receipt) {
+      return {
+        ok: false,
+        message: "计划仓库导出回执格式无效。"
+      };
+    }
+    const previous = normalizePlanRepositoryExportReceipts(state.planRepositoryExportReceipts);
+    state.planRepositoryExportReceipts = [
+      receipt,
+      ...previous.filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, PLAN_REPOSITORY_EXPORT_MAX_RECEIPTS);
+    addEvent("plan-repository-export-receipt", `记录计划仓库导出回执：${receipt.planCount} 份计划 · ${receipt.filename}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getPlanRepositoryExportAudit(),
+      message: receipt.message
+    };
+  }
+
+  function getPlanRepositoryExportAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, PLAN_REPOSITORY_EXPORT_MAX_RECEIPTS, 1, PLAN_REPOSITORY_EXPORT_MAX_RECEIPTS);
+    const allReceipts = normalizePlanRepositoryExportReceipts(state.planRepositoryExportReceipts);
+    const receipts = allReceipts.slice(0, limit).map(clone);
+    const workspaceCounts = {};
+    allReceipts.forEach((receipt) => {
+      const workspaceId = receipt.workspaceId || PLAN_REPOSITORY_DEFAULT_WORKSPACE;
+      workspaceCounts[workspaceId] = (workspaceCounts[workspaceId] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: PLAN_REPOSITORY_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      workspaceCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: PLAN_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: allReceipts.length
+        ? `已记录 ${allReceipts.length} 条计划仓库导出回执，最近一次：${formatPlanDate(allReceipts[0].exportedAt)}。`
+        : "暂无计划仓库导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getPlanRepositoryExportAuditExport(options = {}) {
+    const audit = getPlanRepositoryExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的计划仓库导出回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-plan-repository-export-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderPlanRepositoryExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条计划仓库导出回执审计导出。`
+    };
+  }
+
+  function downloadPlanRepositoryExportAudit(options = {}) {
+    const result = getPlanRepositoryExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderPlanRepositoryExportAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.filename || receipt.packageId)}</h2>
+        <p>${escapeHtml(receipt.message || "计划仓库导出回执已记录。")}</p>
+        <dl>
+          <div><dt>包 ID</dt><dd>${escapeHtml(receipt.packageId)}</dd></div>
+          <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd></div>
+          <div><dt>MIME</dt><dd>${escapeHtml(receipt.mimeType || "application/json;charset=utf-8")}</dd></div>
+          <div><dt>计划数量</dt><dd>${escapeHtml(receipt.planCount || 0)}</dd></div>
+          <div><dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || PLAN_REPOSITORY_DEFAULT_WORKSPACE)}</dd></div>
+          <div><dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd></div>
+          <div><dt>包摘要</dt><dd>${escapeHtml(receipt.packageDigest || "未生成")}</dd></div>
+          <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法计划仓库导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Plan Repository Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法计划仓库导出回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条计划仓库导出回执。${escapeHtml(audit.boundary)}</p>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
@@ -14183,12 +14418,25 @@
       lastError: ""
     });
     addEvent("plan-repository-export", `导出计划同步包：${result.package.plans.length} 份计划`);
-    saveState();
+    const receiptResult = recordPlanRepositoryExportReceipt({
+      filename: result.filename,
+      package: result.package,
+      content: JSON.stringify(result.package, null, 2),
+      packageId: result.package.packageId,
+      packageDigest: result.package.packageDigest,
+      planCount: result.package.plans.length,
+      exportedAt: now
+    });
+    if (!receiptResult.ok) {
+      saveState();
+    }
     return {
       ok: true,
       filename: result.filename,
+      receipt: receiptResult.ok ? receiptResult.receipt : null,
+      audit: receiptResult.ok ? receiptResult.audit : null,
       status: getPlanRepositoryStatus(),
-      message: `已下载计划 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${PLAN_REPOSITORY_BOUNDARY}`
+      message: `已下载计划 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}，并记录导出回执。${PLAN_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -19978,6 +20226,8 @@
     getPlanReminderAuditExport,
     getPlanExportAudit,
     getPlanExportAuditExport,
+    getPlanRepositoryExportAudit,
+    getPlanRepositoryExportAuditExport,
     getPlanRepositoryStatus,
     getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
@@ -20057,6 +20307,7 @@
     downloadHistoryDetailActionAudit,
     downloadPlanReminderAudit,
     downloadPlanExportAudit,
+    downloadPlanRepositoryExportAudit,
     downloadHistoryRepository,
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,
@@ -20093,6 +20344,7 @@
     recordReportComparisonExportReceipt,
     recordReviewExportReceipt,
     recordPlanExportReceipt,
+    recordPlanRepositoryExportReceipt,
     recordArtworkExportReceipt,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,

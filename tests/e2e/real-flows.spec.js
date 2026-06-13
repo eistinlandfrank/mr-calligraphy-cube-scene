@@ -3319,6 +3319,33 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   await expect(page.locator("#planPanel")).toBeVisible();
   await expect(page.locator("#planTitle")).toContainText(seedPlan.title);
 
+  const planRepositoryDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planRepositoryExportButton").click();
+  const planRepositoryDownload = await planRepositoryDownloadPromise;
+  expect(planRepositoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-repository-.*\.json$/);
+  await expect(page.locator("#noticeState")).toContainText("并记录导出回执");
+  await expect(page.locator("#planRepositoryExportAuditStatus")).toContainText("已记录 1 条计划仓库导出回执");
+  await expect(page.locator("#planRepositoryExportAuditList")).toContainText("1 份计划");
+  await expect(page.locator("#planRepositoryExportAuditList")).toContainText(planRepositoryDownload.suggestedFilename());
+
+  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planRepositoryExportReceipts).toHaveLength(1);
+  expect(learningState.planRepositoryExportReceipts[0].filename).toBe(planRepositoryDownload.suggestedFilename());
+  expect(learningState.planRepositoryExportReceipts[0].planCount).toBe(1);
+  expect(learningState.planRepositoryExportReceipts[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.planRepositoryExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.planRepositoryExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+
+  const planRepositoryExportAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planRepositoryExportAuditExport").click();
+  const planRepositoryExportAuditDownload = await planRepositoryExportAuditDownloadPromise;
+  expect(planRepositoryExportAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-repository-export-audit-.*\.html$/);
+  const planRepositoryExportAuditPath = await planRepositoryExportAuditDownload.path();
+  const planRepositoryExportAuditHtml = fs.readFileSync(planRepositoryExportAuditPath, "utf8");
+  expect(planRepositoryExportAuditHtml).toContain("MR 书法计划仓库导出回执审计");
+  expect(planRepositoryExportAuditHtml).toContain(learningState.planRepositoryExportReceipts[0].packageDigest);
+  expect(planRepositoryExportAuditHtml).toContain(learningState.planRepositoryExportReceipts[0].receiptDigest);
+
   await page.locator(".plan-repository-remote summary").click();
   await page.locator("#planRepositoryEndpointInput").fill(planEndpoint);
   await page.locator("#planRepositoryTokenInput").fill("plan-token");
@@ -3356,7 +3383,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(putRequest.body.summary.planCount).toBe(1);
   expect(putRequest.body.plans[0].id).toBe(seedPlan.id);
 
-  let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.planRepository.receipts).toHaveLength(1);
   expect(learningState.planRepository.lastPackageDigest).toBe(remotePlanPackage.packageDigest);
   expect(learningState.planRepository.receipts[0].receiptDigest).toBe(latestPlanReceipt.receiptDigest);

@@ -5726,3 +5726,50 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`补齐作品仓库导出回执`
+
+## 138. 2026-06-13 新增计划仓库导出回执审计
+
+本次把“导出同步包”从单纯下载 JSON 文件推进为可追踪的本机审计闭环。用户下载 `mr-calligraphy-plan-repository-*.json` 后，计划面板会立即显示同步包导出回执，并可单独导出 HTML 审计页。
+
+完成内容：
+
+- 新增 `mr-calligraphy-plan-repository-export-audit-v1` 审计包。
+- 学习状态新增 `planRepositoryExportReceipts`，保存最近 24 条计划仓库导出回执。
+- `MRAppState.recordPlanRepositoryExportReceipt()` 记录文件名、MIME、字节数、计划数量、Workspace、包摘要、文件摘要和回执摘要。
+- `MRAppState.getPlanRepositoryExportAudit()` 返回最近回执列表、Workspace 统计和 `auditDigest`。
+- `MRAppState.getPlanRepositoryExportAuditExport()` / `downloadPlanRepositoryExportAudit()` 生成并下载 `mr-calligraphy-plan-repository-export-audit-*.html`。
+- `downloadPlanRepository()` 发起 JSON 同步包下载后自动写入导出回执。
+- 前台计划面板新增 `planRepositoryExportAudit`、`planRepositoryExportAuditStatus`、`planRepositoryExportAuditList` 和 `planRepositoryExportAuditExport`。
+- Smoke 页面标记检查新增计划仓库导出回执审计节点。
+- 控件清单更新为前台 `real-export 40`、`handled 115`、`missingHandler 0`。
+- `learning-state-check.js` 验证 JSON 同步包导出回执、包摘要、文件摘要、边界说明和 HTML 审计导出。
+- Playwright 计划仓库用例验证真实点击“导出同步包”、下载 JSON、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getPlanRepositoryPackage()` 生成的真实计划仓库 JSON 包。
+- 写入状态：下载 JSON 同步包后写入 `mr-calligraphy-learning-state-v1.planRepositoryExportReceipts`。
+- 成功反馈：计划面板显示同步包文件名、计划数量、包摘要、文件摘要、字节数和回执摘要。
+- 导出反馈：点击“导出回执”会下载计划仓库导出 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：回执随学习状态持久化，可再次导出审计 HTML。
+
+仍待补：
+
+- 该回执只能证明当前浏览器生成并发起了计划仓库 JSON 下载请求，并记录生成内容摘要；它不是云端仓库日志、系统文件保存证明、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front plan repository detects remote conflicts and saves a remote copy"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划仓库导出回执审计`

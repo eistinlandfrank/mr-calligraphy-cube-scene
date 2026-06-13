@@ -1176,6 +1176,31 @@ assert(planRepositoryPackage.package.digestAlgorithm === "sha256-stable-json", "
 assert(/^[a-f0-9]{64}$/.test(planRepositoryPackage.package.packageDigest), "计划同步包应包含 64 位 packageDigest。");
 assert(planRepositoryPackage.package.plans.length >= 2, "计划同步包应包含本机计划列表。");
 assert(planRepositoryPackage.message.includes("本机 JSON 同步包"), "计划同步包应明确本机边界。");
+const planRepositoryPackageJson = JSON.stringify(planRepositoryPackage.package, null, 2);
+const planRepositoryExportReceipt = window.MRAppState.recordPlanRepositoryExportReceipt({
+  filename: planRepositoryPackage.filename,
+  package: planRepositoryPackage.package,
+  content: planRepositoryPackageJson,
+  exportedAt: planRepositoryPackage.package.exportedAt
+});
+assert(planRepositoryExportReceipt.ok, "计划仓库 JSON 同步包导出应能记录本机回执。");
+assert(planRepositoryExportReceipt.receipt.kind === "mr-calligraphy-plan-repository-export-audit-v1", "计划仓库导出回执应返回稳定 kind。");
+assert(planRepositoryExportReceipt.receipt.planCount === planRepositoryPackage.package.plans.length, "计划仓库导出回执应记录计划数量。");
+assert(planRepositoryExportReceipt.receipt.packageDigest === planRepositoryPackage.package.packageDigest, "计划仓库导出回执应记录包摘要。");
+assert(planRepositoryExportReceipt.receipt.fileDigest === crypto.createHash("sha256").update(planRepositoryPackageJson).digest("hex"), "计划仓库导出回执应记录 JSON 文件摘要。");
+assert(planRepositoryExportReceipt.receipt.receiptDigest.match(/^[a-f0-9]{64}$/), "计划仓库导出回执应包含回执摘要。");
+assert(planRepositoryExportReceipt.receipt.boundary.includes("不是云端仓库日志"), "计划仓库导出回执应说明本机边界。");
+const planRepositoryExportAudit = window.MRAppState.getPlanRepositoryExportAudit({ limit: 5 });
+assert(planRepositoryExportAudit.kind === "mr-calligraphy-plan-repository-export-audit-v1", "计划仓库导出审计应返回稳定 kind。");
+assert(planRepositoryExportAudit.total === 1, "计划仓库导出审计应统计同步包导出回执。");
+assert(planRepositoryExportAudit.latestReceipt.packageDigest === planRepositoryPackage.package.packageDigest, "计划仓库导出审计应保留最近包摘要。");
+assert(/^[a-f0-9]{64}$/.test(planRepositoryExportAudit.auditDigest), "计划仓库导出审计应包含稳定摘要。");
+const planRepositoryExportAuditExport = window.MRAppState.getPlanRepositoryExportAuditExport({ limit: 5 });
+assert(planRepositoryExportAuditExport.ok, "计划仓库导出审计应可导出 HTML。");
+assert(planRepositoryExportAuditExport.filename.startsWith("mr-calligraphy-plan-repository-export-audit-"), "计划仓库导出审计文件名应可识别。");
+assert(planRepositoryExportAuditExport.html.includes("MR 书法计划仓库导出回执审计"), "计划仓库导出审计 HTML 应包含标题。");
+assert(planRepositoryExportAuditExport.html.includes(planRepositoryPackage.package.packageDigest), "计划仓库导出审计 HTML 应包含包摘要。");
+assert(planRepositoryExportAuditExport.html.includes(planRepositoryExportAuditExport.audit.auditDigest), "计划仓库导出审计 HTML 应包含审计摘要。");
 const tamperedPlanPackage = JSON.parse(JSON.stringify(planRepositoryPackage.package));
 tamperedPlanPackage.plans[0].title = "被篡改的计划同步包标题";
 const tamperedPlanImport = window.MRAppState.importPlanRepositoryPackage(tamperedPlanPackage, { skipAutoSync: true });
