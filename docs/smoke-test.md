@@ -97,6 +97,7 @@ node scripts/learning-state-check.js
 本轮新增项目仓库包文件导入预览验收：主后台“导入项目档案”入口可识别本机 `mr-calligraphy-project-repository-package-v1` JSON 包；Playwright 会验证导出的仓库包能重新进入“本机项目仓库包预览”，并验证篡改但未重签的仓库包被 `packageDigest` 校验拒绝。
 本轮新增项目档案导入预览 JSON 导出验收：主后台恢复预览区新增 `projectImportExportPreviewJson`；Playwright 会在本机项目仓库包预览后下载 `mr-calligraphy-import-preview-*.json`，验证 kind、来源类型、packageId、Workspace、包摘要、恢复选择、previewDigest、selectionDigest 和 exportDigest。
 本轮新增项目档案导入预览 JSON 导出回执验收：主后台新增 `projectImportPreviewExportAudit`、`projectImportPreviewExportAuditStatus`、`projectImportPreviewExportAuditList` 和 `projectImportPreviewExportAuditExport`；Playwright 会在下载导入预览 JSON 后验证 `mr-calligraphy-project-import-preview-export-audit-v1` 写入文件摘要、previewDigest、selectionDigest、exportDigest、receiptDigest、来源 packageId 和 Workspace，并下载 HTML 回执审计页。
+本轮新增项目档案导入预览 JSON 回执本机校验验收：`getProjectImportPreviewExportAudit()` 会按回执声明字段重算 `receiptDigest`，主后台“预览 JSON 回执”显示本机校验通过；Playwright 会验证正常回执为 `verified`，并临时篡改回执确认 `digest-mismatch` 能被识别。
 
 本轮新增远端发布 Workspace 验收：主后台和写实后台远端发布面板新增 `mainRemotePublishWorkspace` / `realisticRemotePublishWorkspace`；发布包、manifest、撤销包、回执和回执审计均保留 `workspaceId`；GET / POST / DELETE 携带 Bearer 与 `X-MR-Workspace-Id`；mock server 按 workspace 分桶保存发布回执和重复摘要锁；跨空间回执不会被当前空间误判为发布锁。
 本轮新增远端发布回执本机校验验收：发布回执会按 `sceneId`、`workspaceId`、`releaseId`、`packageDigest`、`acceptedAt`、`assetSignatureSummary` 和 `cdnUploadSummary` 重算摘要；撤销回执会按 `direction`、`workspaceId`、`sceneId`、`packageId`、`sourcePackageId`、`releaseId`、`packageDigest`、`acceptedAt`、`revokedAt` 和 `cdnPurgeSummary` 重算摘要；页面、localStorage 和回执审计 HTML 均显示“本机校验通过”。

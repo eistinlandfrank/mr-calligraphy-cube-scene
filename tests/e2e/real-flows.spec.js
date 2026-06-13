@@ -4361,12 +4361,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectImportPreviewExportState.records[0].exportDigest).toBe(projectImportPreviewJson.exportDigest);
   expect(projectImportPreviewExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(projectImportPreviewExportState.records[0].boundary).toContain("恢复前审阅 JSON");
+  const projectImportPreviewExportAuditState = await page.evaluate(() => window.MRProjectArchive.getProjectImportPreviewExportAudit());
+  expect(projectImportPreviewExportAuditState.verifiedCount).toBe(1);
+  expect(projectImportPreviewExportAuditState.failedCount).toBe(0);
+  expect(projectImportPreviewExportAuditState.records[0].verificationStatus).toBe("verified");
+  expect(projectImportPreviewExportAuditState.records[0].verificationExpectedDigest).toBe(projectImportPreviewExportState.records[0].receiptDigest);
   const projectImportPreviewExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectImportPreviewExportAuditExport());
   expect(projectImportPreviewExportAudit.ok).toBe(true);
   expect(projectImportPreviewExportAudit.html).toContain("MR 书法项目档案导入预览 JSON 导出回执审计");
   expect(projectImportPreviewExportAudit.html).toContain(projectRepositoryPackageJson.packageId);
   expect(projectImportPreviewExportAudit.html).toContain(projectImportPreviewJson.exportDigest);
   expect(projectImportPreviewExportAudit.html).toContain(projectImportPreviewExportState.records[0].receiptDigest);
+  expect(projectImportPreviewExportAudit.html).toContain("本机校验通过");
 
   const projectImportPreviewAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#projectImportPreviewExportAuditExport").click();
@@ -4377,6 +4383,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectImportPreviewAuditHtml).toContain("MR 书法项目档案导入预览 JSON 导出回执审计");
   expect(projectImportPreviewAuditHtml).toContain(projectRepositoryPackageJson.packageId);
   expect(projectImportPreviewAuditHtml).toContain(projectImportPreviewExportState.records[0].receiptDigest);
+  expect(projectImportPreviewAuditHtml).toContain("本机校验通过");
+
+  const tamperedProjectImportPreviewExportAudit = await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    state.records[0].selectedCount = Number(state.records[0].selectedCount || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+    return window.MRProjectArchive.getProjectImportPreviewExportAudit();
+  }, PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY);
+  expect(tamperedProjectImportPreviewExportAudit.failedCount).toBe(1);
+  expect(tamperedProjectImportPreviewExportAudit.records[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedProjectImportPreviewExportAudit.records[0].verificationExpectedDigest).not.toBe(tamperedProjectImportPreviewExportAudit.records[0].receiptDigest);
 
   const tamperedProjectRepositoryPackageMessage = await page.evaluate(async ({ repositoryPackage }) => {
     const tampered = JSON.parse(JSON.stringify(repositoryPackage));

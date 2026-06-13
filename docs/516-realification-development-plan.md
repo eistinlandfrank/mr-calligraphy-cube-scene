@@ -11454,3 +11454,46 @@
 提交：
 
 - 中文 commit message：`新增导入预览JSON回执审计`
+
+### 2026-06-13：新增项目档案导入预览 JSON 回执本机校验
+
+功能名：主后台导入预览 JSON 导出回执 receiptDigest 本机重算校验。
+
+背景：
+
+- 导入预览 JSON 导出回执已经会记录 `receiptDigest`、`previewDigest`、`selectionDigest` 和 `exportDigest`。
+- 但后台此前只展示摘要字符串，无法确认回执记录是否被手动篡改。
+- 长期排查恢复前审阅证据时，需要至少能在当前浏览器内识别回执字段与摘要是否一致。
+
+本轮完成：
+
+- `getProjectImportPreviewExportAudit()` 读取回执时会重算 `receiptDigest`。
+- 每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 回执审计摘要新增 `verifiedCount`、`failedCount` 和 `legacyCount`。
+- 主后台“预览 JSON 回执”列表显示本机校验状态。
+- 回执审计 HTML 新增“本机校验”和“重算摘要”。
+- Playwright 主后台用例验证正常导入预览 JSON 导出回执校验通过，并临时篡改回执确认 `digest-mismatch` 被识别。
+
+手工验收：
+
+- 在主后台导入项目档案或项目仓库包，点击“导出预览 JSON”生成回执。
+- “预览 JSON 回执”列表应显示“本机校验通过”。
+- 点击“导出回执”下载 HTML，文件中应包含“本机校验通过”和“重算摘要”。
+- 手动篡改 `mr-calligraphy-project-import-preview-export-audit-v1.records[0]` 任意声明字段后调用 `MRProjectArchive.getProjectImportPreviewExportAudit()`，应看到 `failedCount: 1` 和 `verificationStatus: "digest-mismatch"`。
+
+验收命令：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+真实边界：
+
+- 这是当前浏览器本机摘要一致性校验，只能证明导入预览 JSON 导出回执与自身 `receiptDigest` 声明字段一致；它不是服务端签名、账号审批、生产证书链、远端不可篡改日志或多人审计链。
+
+提交：
+
+- 中文 commit message：`新增导入预览JSON回执校验`

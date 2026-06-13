@@ -5698,3 +5698,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增导入预览JSON回执审计`
+
+## 149. 2026-06-13 新增项目档案导入预览 JSON 回执本机校验
+
+本次把“预览 JSON 回执”从只展示摘要推进为会主动重算摘要的本机验真。用户或调试脚本如果修改了 localStorage 中的回执字段，后台读取时会标出摘要不匹配。
+
+完成内容：
+
+- `getProjectImportPreviewExportAudit()` 会为导入预览 JSON 导出回执附加本机校验结果。
+- 校验结果包含 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 审计摘要新增 `verifiedCount`、`failedCount` 和 `legacyCount`。
+- 主后台“预览 JSON 回执”列表显示“本机校验通过 / 摘要不匹配 / 旧记录未校验”。
+- 回执审计 HTML 保留同一校验状态和重算摘要。
+- Playwright 主后台用例验证正常导出回执可通过本机校验，并篡改字段确认失败状态。
+
+真实化说明：
+
+- 数据来源：当前浏览器保存的 `mr-calligraphy-project-import-preview-export-audit-v1`。
+- 执行动作：读取时重算 `receiptDigest`，不修改原始回执记录。
+- 成功反馈：页面状态统计本机校验通过数量，列表显示校验通过。
+- 失败反馈：摘要不一致时返回 `digest-mismatch`，HTML 审计也保留失败说明和重算摘要。
+
+仍待补：
+
+- 这是本机一致性校验，不是服务端签名、账号审批、生产证书链、远端不可篡改日志或多人审计链。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增导入预览JSON回执校验`
