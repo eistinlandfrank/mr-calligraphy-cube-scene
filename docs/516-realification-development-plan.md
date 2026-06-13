@@ -11984,3 +11984,48 @@
 提交：
 
 - 中文 commit message：`新增复盘导出回执校验`
+
+### 2026-06-13：新增学习档案详情操作回执本机校验
+
+功能名：前台学习档案详情图片下载、报告下载和直达链接复制回执 receiptDigest 本机重算校验。
+
+背景：
+
+- 学习档案详情操作回执已经会记录操作类型、目标记录、文件名、链接、文件或链接摘要、复制状态、记录时间和 `receiptDigest`。
+- 但此前前台只展示回执摘要，无法判断 localStorage 里的详情操作回执是否被手动篡改。
+- 详情页操作会影响用户对学习档案下载和分享链路的信任，至少需要在当前浏览器内明确“回执字段和摘要是否一致”。
+
+本轮完成：
+
+- `getHistoryDetailActionAudit()` 读取回执时会重算 `receiptDigest`。
+- 每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 回执审计摘要新增 `verifiedCount`、`failedCount` 和 `legacyCount`。
+- 前台“详情操作回执”列表显示本机校验状态。
+- 学习档案详情操作回执 HTML 新增“本机校验”和“重算摘要”。
+- Playwright 前台报告用例验证正常详情操作回执校验通过，并临时篡改链接回执确认 `digest-mismatch` 被识别。
+
+手工验收：
+
+- 在前台打开一条学习档案详情，下载图片、下载报告或复制直达链接。
+- “详情操作回执”列表应显示“本机校验通过”。
+- 点击“导出审计”下载 HTML，文件中应包含“本机校验通过”和“重算摘要”。
+- 手动篡改 `mr-calligraphy-learning-state-v1.historyDetailActionReceipts[0]` 任意声明字段后刷新页面并调用 `MRAppState.getHistoryDetailActionAudit()`，应看到 `failedCount: 1` 和 `verificationStatus: "digest-mismatch"`。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+真实边界：
+
+- 这是当前浏览器本机摘要一致性校验，只能证明详情操作回执与自身 `receiptDigest` 声明字段一致；它不是操作系统下载完成证明、剪贴板系统审计、云端访问日志、账号审计、服务端签名、生产证书链、远端不可篡改日志或多人审计链。
+
+提交：
+
+- 中文 commit message：`新增详情操作回执校验`

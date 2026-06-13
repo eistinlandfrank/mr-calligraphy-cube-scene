@@ -954,10 +954,15 @@ assert(historyDetailActionAudit.total === 3, "详情操作审计应统计三类�
 assert(historyDetailActionAudit.actionCounts["image-download"] === 1, "详情操作审计应统计图片下载。");
 assert(historyDetailActionAudit.actionCounts["report-download"] === 1, "详情操作审计应统计报告下载。");
 assert(historyDetailActionAudit.actionCounts["link-copy"] === 1, "详情操作审计应统计链接复制。");
+assert(historyDetailActionAudit.verifiedCount === 3, "详情操作回执应通过本机 receiptDigest 重算校验。");
+assert(historyDetailActionAudit.failedCount === 0, "详情操作回执不应出现摘要不匹配。");
+assert(historyDetailActionAudit.receipts.every((receipt) => receipt.verificationStatus === "verified"), "详情操作回执列表应标记为本机校验通过。");
+assert(historyDetailActionAudit.receipts.every((receipt) => receipt.verificationExpectedDigest === receipt.receiptDigest), "详情操作回执重算摘要应匹配 receiptDigest。");
 assert(/^[a-f0-9]{64}$/.test(historyDetailActionAudit.auditDigest), "详情操作审计应包含稳定摘要。");
 assert(historyDetailActionAudit.boundary.includes("不是云端访问日志"), "详情操作审计应说明本机边界。");
 const historyDetailScopedAudit = window.MRAppState.getHistoryDetailActionAudit({ recordId: evidenceArtwork.artwork.id, limit: 6 });
 assert(historyDetailScopedAudit.total === 2, "按作品记录过滤时应只返回该详情的两条回执。");
+assert(historyDetailScopedAudit.verifiedCount === 2, "按作品过滤的详情操作回执应保留本机校验统计。");
 const historyDetailActionAuditExport = window.MRAppState.getHistoryDetailActionAuditExport({ limit: 6 });
 assert(historyDetailActionAuditExport.ok, "详情操作审计应可导出 HTML。");
 assert(historyDetailActionAuditExport.filename.startsWith("mr-calligraphy-history-detail-action-audit-"), "详情操作审计文件名应可识别。");
@@ -965,6 +970,8 @@ assert(historyDetailActionAuditExport.html.includes("MR 书法学习档案详情
 assert(historyDetailActionAuditExport.html.includes("详情图片下载"), "详情操作审计 HTML 应包含图片下载类型。");
 assert(historyDetailActionAuditExport.html.includes("详情报告 HTML 下载"), "详情操作审计 HTML 应包含报告下载类型。");
 assert(historyDetailActionAuditExport.html.includes("详情直达链接复制"), "详情操作审计 HTML 应包含链接复制类型。");
+assert(historyDetailActionAuditExport.html.includes("本机校验通过"), "详情操作审计 HTML 应包含本机校验状态。");
+assert(historyDetailActionAuditExport.html.includes("重算摘要"), "详情操作审计 HTML 应包含重算摘要。");
 assert(historyDetailActionAuditExport.html.includes(historyDetailActionAuditExport.audit.auditDigest), "详情操作审计 HTML 应包含审计摘要。");
 assert(scoreServiceAfterPractice.message.includes("累计评分 4 次"), "评分服务状态消息应显示累计评分次数。");
 assert(scoreServiceAfterPractice.message.includes("local-heuristic-v2.2.0"), "评分服务状态消息应显示算法版本。");
@@ -1625,7 +1632,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计和本机校验、学习档案详情操作回执审计、同字作品对比、作品集检索、作品导出回执审计、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告对比导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计和本机校验、学习计划日历提醒导出、计划导出回执审计和本机校验、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库导出回执审计和本机校验、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计和本机校验、学习档案详情操作回执审计和本机校验、同字作品对比、作品集检索、作品导出回执审计、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告对比导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计和本机校验、学习计划日历提醒导出、计划导出回执审计和本机校验、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库导出回执审计和本机校验、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {

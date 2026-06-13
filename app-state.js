@@ -1493,6 +1493,64 @@
     return payload;
   }
 
+  function addHistoryDetailActionReceiptVerification(record) {
+    const normalized = normalizeHistoryDetailActionReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyHistoryDetailActionReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyHistoryDetailActionReceiptDigest(record = {}) {
+    const receipt = normalizeHistoryDetailActionReceipt(record);
+    const receiptDigest = normalizeReportTeacherReviewDigest(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧学习档案详情操作回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createHistoryDetailActionReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与学习档案详情操作回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按学习档案详情操作回执声明字段重算匹配。"
+    };
+  }
+
+  function createHistoryDetailActionReceiptDigestPayload(record = {}) {
+    const receipt = normalizeHistoryDetailActionReceipt(record) || {};
+    return {
+      kind: HISTORY_DETAIL_ACTION_AUDIT_KIND,
+      actionType: receipt.actionType || "",
+      recordType: receipt.recordType || "",
+      recordId: receipt.recordId || "",
+      filename: receipt.filename || "",
+      url: receipt.url || "",
+      artifactDigest: receipt.artifactDigest || "",
+      copyStatus: receipt.copyStatus || "",
+      createdAt: receipt.createdAt || ""
+    };
+  }
+
+  function formatHistoryDetailActionReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
+  }
+
   function normalizeHistoryDetailActionType(value) {
     const type = String(value || "").trim().toLowerCase();
     if (["image", "image-download", "artwork-image", "download-image", "jpg", "jpeg"].includes(type)) return "image-download";
@@ -13405,7 +13463,9 @@
     const limit = normalizeInteger(options.limit, HISTORY_DETAIL_ACTION_MAX_RECEIPTS, 1, HISTORY_DETAIL_ACTION_MAX_RECEIPTS);
     const recordId = String(options.recordId || options.targetId || "").trim();
     const actionType = normalizeHistoryDetailActionType(options.actionType || options.action || "");
-    const allReceipts = normalizeHistoryDetailActionReceipts(state.historyDetailActionReceipts);
+    const allReceipts = normalizeHistoryDetailActionReceipts(state.historyDetailActionReceipts)
+      .map(addHistoryDetailActionReceiptVerification)
+      .filter(Boolean);
     const filtered = allReceipts.filter((receipt) => (
       (!recordId || receipt.recordId === recordId || receipt.artworkId === recordId || receipt.reportId === recordId || receipt.sessionId === recordId)
       && (!actionType || receipt.actionType === actionType)
@@ -13419,6 +13479,9 @@
       actionCounts[action] = (actionCounts[action] || 0) + 1;
       recordTypeCounts[recordType] = (recordTypeCounts[recordType] || 0) + 1;
     });
+    const verifiedCount = filtered.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = filtered.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = filtered.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: HISTORY_DETAIL_ACTION_AUDIT_KIND,
@@ -13432,11 +13495,14 @@
       actionType,
       actionCounts,
       recordTypeCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: HISTORY_DETAIL_ACTION_AUDIT_BOUNDARY,
       message: filtered.length
-        ? `已记录 ${filtered.length} 条学习档案详情操作回执，最近一次：${formatPlanDate(filtered[0].createdAt)}。`
+        ? `已记录 ${filtered.length} 条学习档案详情操作回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(filtered[0].createdAt)}。`
         : "暂无学习档案详情操作回执。"
     };
     audit.auditDigest = sha256StableJson({
@@ -13494,6 +13560,8 @@
           <div><dt>摘要</dt><dd>${escapeHtml(receipt.artifactDigest || "未生成")}</dd></div>
           <div><dt>复制状态</dt><dd>${escapeHtml(receipt.copyStatus || "不适用")}</dd></div>
           <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>本机校验</dt><dd>${escapeHtml(formatHistoryDetailActionReceiptVerificationStatus(receipt.verificationStatus))}</dd></div>
+          <div><dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd></div>
           <div><dt>记录时间</dt><dd>${escapeHtml(formatDateTime(receipt.createdAt))}</dd></div>
         </dl>
       </section>`).join("");
@@ -13523,12 +13591,12 @@
   <main>
     <p class="meta">MR Calligraphy History Detail Action Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法学习档案详情操作回执审计</h1>
-    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条详情操作回执。${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条详情操作回执，本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? `，失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? `，旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}。${escapeHtml(audit.boundary)}</p>
     <div class="badges">${actionBadges || "<span>暂无操作统计</span>"}${typeBadges || ""}</div>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

@@ -1001,6 +1001,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.historyDetailActionReceipts[0].artifactDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.historyDetailActionReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.historyDetailActionReceipts[0].boundary).toContain("不是云端访问日志");
+  const historyActionAuditState = await page.evaluate(() => window.MRAppState.getHistoryDetailActionAudit({ limit: 8 }));
+  expect(historyActionAuditState.verifiedCount).toBe(2);
+  expect(historyActionAuditState.failedCount).toBe(0);
+  expect(historyActionAuditState.receipts.every((receipt) => receipt.verificationStatus === "verified")).toBe(true);
+  expect(historyActionAuditState.receipts.every((receipt) => receipt.verificationExpectedDigest === receipt.receiptDigest)).toBe(true);
+  await expect(page.locator("#historyDetailActionAuditStatus")).toContainText("本机校验通过 2 条");
+  await expect(page.locator("#historyDetailActionAuditList")).toContainText("本机校验通过");
   const historyActionAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#historyDetailActionAuditExport").click();
   const historyActionAuditDownload = await historyActionAuditDownloadPromise;
@@ -1011,6 +1018,28 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(historyActionAuditHtml).toContain("详情图片下载");
   expect(historyActionAuditHtml).toContain("详情直达链接复制");
   expect(historyActionAuditHtml).toContain(learningState.historyDetailActionReceipts[0].receiptDigest);
+  expect(historyActionAuditHtml).toContain("本机校验通过");
+  expect(historyActionAuditHtml).toContain("重算摘要");
+  const originalHistoryActionState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.historyDetailActionReceipts || []).find((item) => item.actionType === "link-copy");
+    if (receipt) {
+      receipt.url = `${receipt.url || "http://localhost:41496/"}#tampered`;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, LEARNING_KEY);
+  await page.goto(`/?share=${shareRecordId}`, { waitUntil: "domcontentloaded" });
+  const tamperedHistoryActionAudit = await page.evaluate(() => window.MRAppState.getHistoryDetailActionAudit({ limit: 8 }));
+  expect(tamperedHistoryActionAudit.failedCount).toBe(1);
+  expect(tamperedHistoryActionAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedHistoryActionAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedHistoryActionAudit.receipts[0].receiptDigest);
+  await expect(page.locator("#historyDetailActionAuditStatus")).toContainText("失败 1 条");
+  await expect(page.locator("#historyDetailActionAuditList")).toContainText("摘要不匹配");
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalHistoryActionState });
+  await page.goto(`/?share=${shareRecordId}`, { waitUntil: "domcontentloaded" });
 
   await page.locator("#reviewRevokeShareLink").click();
   await expect(page.locator("#shareServiceSummary")).toContainText("已撤销");

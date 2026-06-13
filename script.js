@@ -11165,10 +11165,18 @@ function renderHistoryDetailActionAudit(detail = getActiveHistoryDetail()) {
     const detailText = document.createElement("small");
     const artifactDigest = receipt.artifactDigest ? `摘要 ${receipt.artifactDigest.slice(0, 12)}` : "摘要未生成";
     const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
-    detailText.textContent = `${artifactDigest} · ${receiptDigest}`;
+    detailText.textContent = `${artifactDigest} · ${receiptDigest} · ${formatHistoryDetailActionReceiptVerificationStatus(receipt.verificationStatus)}`;
     item.append(title, meta, detailText);
     els.historyDetailActionAuditList.appendChild(item);
   });
+}
+
+function formatHistoryDetailActionReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function formatHistoryDetailActionType(type) {
