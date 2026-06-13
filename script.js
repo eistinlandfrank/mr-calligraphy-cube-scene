@@ -914,6 +914,9 @@ const els = {
   reportDetailDownloadPdf: document.getElementById("reportDetailDownloadPdf"),
   reportDetailPrint: document.getElementById("reportDetailPrint"),
   reportDetailOpenHistory: document.getElementById("reportDetailOpenHistory"),
+  reportExportAuditStatus: document.getElementById("reportExportAuditStatus"),
+  reportExportAuditList: document.getElementById("reportExportAuditList"),
+  reportExportAuditExport: document.getElementById("reportExportAuditExport"),
   reportPrintAuditStatus: document.getElementById("reportPrintAuditStatus"),
   reportPrintAuditList: document.getElementById("reportPrintAuditList"),
   reportPrintAuditExport: document.getElementById("reportPrintAuditExport"),
@@ -4074,6 +4077,7 @@ function bindReportControls() {
   els.reportDetailDownloadPdf?.addEventListener("click", downloadReportPdfDetail);
   els.reportDetailPrint?.addEventListener("click", printReportDetail);
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
+  els.reportExportAuditExport?.addEventListener("click", exportReportExportAudit);
   els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
   els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
   els.reportTeacherReviewAuditExport?.addEventListener("click", exportReportTeacherReviewAudit);
@@ -5812,6 +5816,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   renderReportTeacherReview(detail);
   renderReportRepositoryStatus(detail);
   setReportDetailActions(detail);
+  renderReportExportAudit(detail);
   renderReportPrintAudit(detail);
 }
 
@@ -5840,6 +5845,7 @@ function renderReportEmptyState() {
   }
   renderReportTeacherReview(null);
   renderReportRepositoryStatus(null);
+  renderReportExportAudit(null);
   renderReportPrintAudit(null);
 }
 
@@ -6795,6 +6801,45 @@ function renderReportPrintAudit(detail) {
     item.append(title, meta, detailText);
     els.reportPrintAuditList.appendChild(item);
   });
+}
+
+function renderReportExportAudit(detail) {
+  const audit = detail
+    ? window.MRAppState?.getReportExportAudit?.(detail.id, { limit: 5 })
+    : null;
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.reportExportAuditStatus) {
+    els.reportExportAuditStatus.textContent = detail
+      ? audit?.message || "当前报告暂无导出回执记录。"
+      : "请选择一份报告后查看导出回执审计。";
+    els.reportExportAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.reportExportAuditExport) {
+    els.reportExportAuditExport.disabled = !detail || !receipts.length;
+  }
+  if (!els.reportExportAuditList) return;
+  els.reportExportAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatReportExportType(receipt.exportType)} · ${receipt.reportTitle || "学习报告"}`;
+    const meta = document.createElement("span");
+    const fileDigest = receipt.fileDigest ? `文件 ${receipt.fileDigest.slice(0, 12)}` : "文件摘要未生成";
+    const reportDigest = receipt.reportDigest ? `报告 ${receipt.reportDigest.slice(0, 12)}` : "报告摘要未生成";
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.filename || "导出文件"} · ${fileDigest}`;
+    const detailText = document.createElement("small");
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    detailText.textContent = `${reportDigest} · ${receiptDigest} · ${Number(receipt.byteLength || 0)} bytes`;
+    item.append(title, meta, detailText);
+    els.reportExportAuditList.appendChild(item);
+  });
+}
+
+function formatReportExportType(type) {
+  return {
+    "report-html": "报告 HTML",
+    "report-pdf": "原生 PDF"
+  }[type] || "报告导出";
 }
 
 function formatReportTeacherReviewAuditAction(action) {
@@ -10209,6 +10254,7 @@ function downloadReportDetail() {
   const result = window.MRAppState?.downloadReport?.(detail.id);
   if (result?.message) {
     showNotice(result.message);
+    renderReportExportAudit(detail);
   }
 }
 
@@ -10222,7 +10268,24 @@ function downloadReportPdfDetail() {
   const result = window.MRAppState?.downloadReportPdf?.(detail.id);
   if (result?.message) {
     showNotice(result.message);
+    renderReportExportAudit(detail);
   }
+}
+
+function exportReportExportAudit() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("请选择一份报告后导出报告导出回执。");
+    renderReportExportAudit(null);
+    return;
+  }
+  const result = window.MRAppState?.downloadReportExportAudit?.(detail.id, { limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的报告导出回执。");
+  }
+  renderReportExportAudit(detail);
 }
 
 function downloadReportComparisonDetail(reportId = activeReportDetailId) {
@@ -10998,8 +11061,8 @@ function downloadHistoryDetailReport() {
         reportId: detail.id,
         filename: result.filename || result.receipt?.filename || `mr-calligraphy-report-${detail.id}.html`,
         mimeType: "text/html;charset=utf-8",
-        artifactDigest: result.receipt?.fileDigest || "",
-        byteLength: result.receipt?.byteLength || 0,
+        artifactDigest: result.exportReceipt?.fileDigest || result.receipt?.fileDigest || "",
+        byteLength: result.exportReceipt?.byteLength || result.receipt?.byteLength || 0,
         message: `已记录“${detail.title || "学习报告"}”的详情报告 HTML 下载回执。`
       })
       : null;

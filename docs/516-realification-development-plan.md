@@ -10756,3 +10756,53 @@
 提交：
 
 - 中文 commit message：`新增学习档案详情操作回执审计`
+
+### 2026-06-13：新增报告导出回执审计
+
+功能名：前台报告详情 HTML / PDF 导出回执与 HTML 审计导出。
+
+开发原因：
+
+- 站内报告已经支持下载 HTML、下载原生 PDF 和浏览器打印。
+- 打印已有回执，但 HTML / PDF 下载没有独立的报告详情导出回执，用户无法在报告页确认“导出了哪种文件、文件摘要和报告验真摘要是什么”。
+
+完成内容：
+
+- 新增 `mr-calligraphy-report-export-audit-v1` 审计包。
+- 学习状态新增 `reportExportReceipts`，保存最近报告导出回执。
+- `MRAppState.recordReportExportReceipt()` 记录报告 HTML 和原生 PDF 下载回执。
+- `MRAppState.getReportExportAudit()` 返回类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getReportExportAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadReportExportAudit()` 下载 `mr-calligraphy-report-export-audit-*.html`。
+- `downloadReport()` 和 `downloadReportPdf()` 写入报告导出回执。
+- 前台报告详情面板新增“导出回执审计”面板和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台生成一份学习报告并打开报告详情。
+- 点击“下载 HTML”应下载 HTML，并在“导出回执审计”面板出现“报告 HTML”回执。
+- 点击“下载 PDF”应下载原生 PDF，并在同一面板出现“原生 PDF”回执。
+- 点击“导出回执”应下载 HTML，文件包含两种导出类型、报告验真摘要、文件摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 按报告 ID 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机报告导出请求回执，只能证明页面生成并发起了 HTML / PDF 下载，并记录生成内容摘要；它不是操作系统保存完成证明、云端 PDF 渲染日志、账号下载审计、生产证书签名或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告导出回执审计`

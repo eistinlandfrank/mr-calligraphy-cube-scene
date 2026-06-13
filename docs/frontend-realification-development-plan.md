@@ -5061,3 +5061,51 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案详情操作回执审计`
+
+## 134. 2026-06-13 新增报告导出回执审计
+
+本次把报告详情里的 HTML / PDF 下载补成可回看、可导出的本机回执。用户点击“下载 HTML”或“下载 PDF”后，报告详情会显示导出类型、文件名、文件摘要和报告验真摘要，并可下载 HTML 审计页。
+
+完成内容：
+
+- 新增 `REPORT_EXPORT_AUDIT_KIND = "mr-calligraphy-report-export-audit-v1"` 和报告导出审计边界说明。
+- 学习状态新增 `reportExportReceipts`，随状态持久化到 localStorage。
+- `MRAppState.recordReportExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getReportExportAudit({ reportId, exportType, limit })` 返回类型统计、回执列表和 `auditDigest`。
+- `MRAppState.getReportExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReportExportAudit()` 下载 `mr-calligraphy-report-export-audit-*.html`。
+- `MRAppState.downloadReport()` 和 `downloadReportPdf()` 成功下载后写入报告导出回执。
+- 前台报告详情新增“导出回执审计”面板和“导出回执”按钮。
+- Smoke 首页标记检查新增报告导出回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 37`、`handled 112`、`missingHandler 0`。
+- `learning-state-check.js` 验证 HTML / PDF 回执、报告摘要、文件摘要、统计、边界和 HTML。
+- Playwright 前台真实练习用例验证点击下载 HTML、下载 PDF、回执面板、localStorage 和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.reportExportReceipts`。
+- 写入状态：报告 HTML 或原生 PDF 下载请求成功发起后写入回执，并保存文件内容 SHA-256 摘要和同一份报告验真摘要。
+- 成功反馈：面板显示最近导出数量、导出类型、文件名、文件摘要、报告摘要和回执摘要。
+- 失败反馈：无报告或无回执时按钮禁用；不存在的报告不会伪造回执。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可按报告查看和导出。
+
+仍待补：
+
+- 该审计只证明当前浏览器生成并发起了本机报告下载请求，不代表系统保存完成、云端 PDF 渲染日志、账号下载审计、跨设备同步、生产证书签名或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告导出回执审计`

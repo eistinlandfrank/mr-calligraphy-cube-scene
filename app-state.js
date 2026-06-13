@@ -100,6 +100,9 @@
   const REPORT_PRINT_AUDIT_KIND = "mr-calligraphy-report-print-audit-v1";
   const REPORT_PRINT_MAX_RECEIPTS = 24;
   const REPORT_PRINT_AUDIT_BOUNDARY = "报告打印回执保存在当前浏览器 reportPrintReceipts，记录浏览器打印/保存 PDF 请求、报告摘要和时间；它只能证明本页发起了打印窗口请求，不代表操作系统打印完成、云端 PDF 渲染或不可篡改审计链。";
+  const REPORT_EXPORT_AUDIT_KIND = "mr-calligraphy-report-export-audit-v1";
+  const REPORT_EXPORT_MAX_RECEIPTS = 30;
+  const REPORT_EXPORT_AUDIT_BOUNDARY = "报告导出回执保存在当前浏览器 reportExportReceipts，记录学习报告 HTML 和原生 PDF 下载请求、报告验真摘要、文件摘要和时间；它不是操作系统保存完成证明、云端 PDF 渲染日志、账号下载审计或不可篡改证据链。";
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
     title: "标题",
@@ -448,6 +451,7 @@
       reports,
       reportTeacherReviewAudits: normalizeReportTeacherReviewAudits(source?.reportTeacherReviewAudits),
       reportPrintReceipts: normalizeReportPrintReceipts(source?.reportPrintReceipts),
+      reportExportReceipts: normalizeReportExportReceipts(source?.reportExportReceipts),
       reviewExportReceipts: normalizeReviewExportReceipts(source?.reviewExportReceipts),
       historyDetailActionReceipts: normalizeHistoryDetailActionReceipts(source?.historyDetailActionReceipts),
       videoExportService: normalizeVideoExportService(source?.videoExportService),
@@ -861,6 +865,103 @@
       payload.message = `已记录报告“${payload.reportTitle}”的浏览器打印/保存 PDF 请求。`;
     }
     return payload;
+  }
+
+  function normalizeReportExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeReportExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, REPORT_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizeReportExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const exportType = normalizeReportExportType(record.exportType || record.type);
+    const reportId = String(record.reportId || "").trim().slice(0, 120);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    if (!exportType || !reportId || !exportedAt || !filename) return null;
+    const fileDigest = normalizeReportTeacherReviewDigest(record.fileDigest || record.contentDigest || record.digest);
+    const reportDigest = normalizeReportTeacherReviewDigest(record.reportDigest || record.verificationDigest);
+    const byteLength = normalizeInteger(record.byteLength, 0, 0, 999999999);
+    const id = String(record.id || `report-export-${sha256StableJson({
+      exportType,
+      reportId,
+      filename,
+      exportedAt,
+      fileDigest,
+      reportDigest
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: REPORT_EXPORT_AUDIT_KIND,
+      id: id.slice(0, 120),
+      exportType,
+      exportLabel: formatReportExportTypeLabel(exportType),
+      reportId,
+      reportTitle: String(record.reportTitle || record.title || reportId || "学习报告").trim().slice(0, 140) || "学习报告",
+      reportCreatedAt: normalizePlanDate(record.reportCreatedAt) || "",
+      reportDigest,
+      filename,
+      mimeType: String(record.mimeType || getReportExportMimeType(exportType)).trim().slice(0, 120),
+      byteLength,
+      fileDigest,
+      exportedAt,
+      source: String(record.source || getReportExportSource(exportType)).trim().slice(0, 80),
+      features: record.features && typeof record.features === "object" ? clone(record.features) : {},
+      boundary: String(record.boundary || REPORT_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 300) || REPORT_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 260)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      exportType: payload.exportType,
+      reportId: payload.reportId,
+      reportDigest: payload.reportDigest,
+      filename: payload.filename,
+      mimeType: payload.mimeType,
+      byteLength: payload.byteLength,
+      fileDigest: payload.fileDigest,
+      exportedAt: payload.exportedAt
+    });
+    if (!payload.message) {
+      payload.message = `已记录报告“${payload.reportTitle}”的${payload.exportLabel}导出回执。`;
+    }
+    return payload;
+  }
+
+  function normalizeReportExportType(value) {
+    const type = String(value || "").trim().toLowerCase();
+    if (["html", "report-html", "learning-report-html"].includes(type)) return "report-html";
+    if (["pdf", "report-pdf", "learning-report-pdf"].includes(type)) return "report-pdf";
+    return "";
+  }
+
+  function formatReportExportTypeLabel(type) {
+    return {
+      "report-html": "报告 HTML",
+      "report-pdf": "原生 PDF"
+    }[type] || "报告导出";
+  }
+
+  function getReportExportMimeType(type) {
+    return type === "report-pdf"
+      ? "application/pdf"
+      : "text/html;charset=utf-8";
+  }
+
+  function getReportExportSource(type) {
+    return {
+      "report-html": "report-detail-html-download",
+      "report-pdf": "report-detail-pdf-download"
+    }[type] || "report-detail-export";
   }
 
   function normalizeReviewExportReceipts(records) {
@@ -7952,6 +8053,190 @@
     }[status] || "已请求";
   }
 
+  function recordReportExportReceipt(reportId = null, options = {}) {
+    const detail = getReportDetail(reportId);
+    if (!detail) {
+      return { ok: false, message: "还没有可导出的站内报告。" };
+    }
+    const exportType = normalizeReportExportType(options.exportType || options.type);
+    if (!exportType) {
+      return { ok: false, message: "报告导出回执缺少有效导出类型。" };
+    }
+    const filename = String(options.filename || "").trim();
+    if (!filename) {
+      return { ok: false, message: "报告导出回执缺少文件名。" };
+    }
+    const verification = getReportVerification(detail.id);
+    const content = String(options.content ?? options.html ?? options.pdf ?? "");
+    const byteLength = normalizeInteger(
+      options.byteLength,
+      content ? utf8Bytes(content).length : 0,
+      0,
+      999999999
+    );
+    const receipt = normalizeReportExportReceipt({
+      id: options.id || makeId("report-export"),
+      exportType,
+      reportId: detail.id,
+      reportTitle: detail.title || "学习报告",
+      reportCreatedAt: detail.createdAt,
+      reportDigest: options.reportDigest || verification?.digest || "",
+      filename,
+      mimeType: options.mimeType || getReportExportMimeType(exportType),
+      byteLength,
+      fileDigest: options.fileDigest || (content ? sha256Hex(content) : ""),
+      exportedAt: options.exportedAt || new Date().toISOString(),
+      source: options.source || getReportExportSource(exportType),
+      features: options.features || {},
+      boundary: REPORT_EXPORT_AUDIT_BOUNDARY,
+      message: options.message || `已记录报告“${detail.title || "学习报告"}”的${formatReportExportTypeLabel(exportType)}导出回执。`
+    });
+    if (!receipt) {
+      return { ok: false, message: "报告导出回执记录失败。" };
+    }
+    state.reportExportReceipts = [
+      receipt,
+      ...normalizeReportExportReceipts(state.reportExportReceipts).filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, REPORT_EXPORT_MAX_RECEIPTS);
+    addEvent("report-export", `${formatReportExportTypeLabel(exportType)}：${receipt.reportTitle}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getReportExportAudit(detail.id),
+      message: receipt.message
+    };
+  }
+
+  function getReportExportAudit(reportId = null, options = {}) {
+    const targetReportId = String(reportId || "").trim();
+    const limit = normalizeInteger(options.limit, REPORT_EXPORT_MAX_RECEIPTS, 1, REPORT_EXPORT_MAX_RECEIPTS);
+    const exportType = normalizeReportExportType(options.exportType || "");
+    const allReceipts = normalizeReportExportReceipts(state.reportExportReceipts);
+    const filtered = allReceipts.filter((receipt) => (
+      (!targetReportId || receipt.reportId === targetReportId)
+      && (!exportType || receipt.exportType === exportType)
+    ));
+    const receipts = filtered.slice(0, limit).map(clone);
+    const typeCounts = {};
+    filtered.forEach((receipt) => {
+      const type = receipt.exportType || "report-export";
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: REPORT_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      reportId: targetReportId,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      exportType,
+      typeCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: REPORT_EXPORT_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条报告导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        : targetReportId
+          ? "当前报告暂无导出回执记录。"
+          : "暂无报告导出回执记录。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getReportExportAuditExport(reportId = null, options = {}) {
+    const audit = getReportExportAudit(reportId, options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的报告导出回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    const reportSlug = audit.reportId ? makeDownloadSlug(audit.reportId) : "all";
+    return {
+      ok: true,
+      filename: `mr-calligraphy-report-export-audit-${reportSlug}-${exportedAt.slice(0, 10)}.html`,
+      html: renderReportExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条报告导出回执审计导出。`
+    };
+  }
+
+  function downloadReportExportAudit(reportId = null, options = {}) {
+    const result = getReportExportAuditExport(reportId, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderReportExportAuditHtml(audit, exportedAt) {
+    const badges = Object.entries(audit.typeCounts || {})
+      .map(([type, count]) => `<span>${escapeHtml(formatReportExportTypeLabel(type))} ${escapeHtml(count)}</span>`)
+      .join("") || "<span>暂无类型统计</span>";
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.exportLabel || formatReportExportTypeLabel(receipt.exportType))} · ${escapeHtml(receipt.reportTitle || receipt.reportId)}</h2>
+        <p>${escapeHtml(receipt.message || "报告导出回执已记录。")}</p>
+        <dl>
+          <div><dt>报告 ID</dt><dd>${escapeHtml(receipt.reportId)}</dd></div>
+          <div><dt>报告摘要</dt><dd>${escapeHtml(receipt.reportDigest || "未生成")}</dd></div>
+          <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd></div>
+          <div><dt>MIME</dt><dd>${escapeHtml(receipt.mimeType)}</dd></div>
+          <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd></div>
+          <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
+          <div><dt>报告时间</dt><dd>${escapeHtml(formatDateTime(receipt.reportCreatedAt))}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法报告导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .badges span { padding: 5px 10px; border-radius: 99px; background: #efe0c5; color: #574831; font-weight: 800; font-size: 12px; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Report Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法报告导出回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条报告导出回执。${escapeHtml(audit.boundary)}</p>
+    <div class="badges">${badges}</div>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getReportRepositoryStatus() {
     const repository = normalizeReportRepository(state.reportRepository);
     const reports = state.reports.map(normalizeReport).filter(Boolean);
@@ -13347,12 +13632,23 @@
       exportedAt: new Date().toISOString(),
       score: result.report?.averageScore || 0
     });
+    const exportReceiptResult = recordReportExportReceipt(result.report?.id || reportId, {
+      exportType: "report-html",
+      filename: result.filename,
+      mimeType: result.mimeType || "text/html;charset=utf-8",
+      content: result.html,
+      reportDigest: result.verification?.digest || "",
+      features: result.features || {},
+      source: "report-html-download"
+    });
     return {
       ok: true,
       filename: result.filename,
       receipt: receiptResult.ok ? receiptResult.receipt : null,
+      exportReceipt: exportReceiptResult.ok ? exportReceiptResult.receipt : null,
       audit: receiptResult.ok ? receiptResult.audit : null,
-      message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印、教师批注状态和打印样式，并记录复盘导出回执。`
+      exportAudit: exportReceiptResult.ok ? exportReceiptResult.audit : null,
+      message: `已下载${reportId ? "所选" : "最近"} HTML 学习报告，含能力雷达、签名水印、教师批注状态和打印样式，并记录复盘导出回执和报告导出回执。`
     };
   }
 
@@ -13362,11 +13658,25 @@
       return { ok: false, message: result.message };
     }
     downloadPdf(result.pdf, result.filename);
+    const receiptResult = recordReportExportReceipt(result.report?.id || reportId, {
+      exportType: "report-pdf",
+      filename: result.filename,
+      mimeType: result.mimeType || "application/pdf",
+      content: result.pdf,
+      byteLength: result.byteLength,
+      reportDigest: result.verification?.digest || "",
+      features: result.features || {},
+      source: "report-pdf-download"
+    });
     return {
       ok: true,
       filename: result.filename,
       byteLength: result.byteLength,
-      message: `已下载原生 PDF 学习报告：${result.filename}。`
+      receipt: receiptResult.ok ? receiptResult.receipt : null,
+      audit: receiptResult.ok ? receiptResult.audit : null,
+      message: receiptResult.ok
+        ? `已下载原生 PDF 学习报告：${result.filename}，并记录报告导出回执。`
+        : `已下载原生 PDF 学习报告：${result.filename}。`
     };
   }
 
@@ -19069,6 +19379,8 @@
     getReportTeacherReviewAuditExport,
     getReportPrintAudit,
     getReportPrintAuditExport,
+    getReportExportAudit,
+    getReportExportAuditExport,
     getReportComparison,
     getReportComparisonExport,
     getReportSeries,
@@ -19116,6 +19428,7 @@
     downloadReportRepositoryReceiptAudit,
     downloadReportTeacherReviewAudit,
     downloadReportPrintAudit,
+    downloadReportExportAudit,
     downloadPracticeVideoExportAudit,
     downloadArtworkRepository,
     getArtworkCollectionExport,
@@ -19138,6 +19451,7 @@
     recordLocalLinkCopyReceipt,
     recordHistoryDetailActionReceipt,
     recordReportPrintReceipt,
+    recordReportExportReceipt,
     recordReviewExportReceipt,
     recordPlanExportReceipt,
     checkRemotePlanRepository,

@@ -5542,3 +5542,52 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习档案详情操作回执审计`
+
+## 134. 2026-06-13 新增报告导出回执审计
+
+本次继续补齐报告详情里的导出闭环。站内报告已经能真实下载 HTML 和原生 PDF，但此前 PDF 下载没有本机回执，HTML 下载也只进入复盘导出记录，用户无法在报告详情里按报告查看“我导出了哪种文件、文件摘要是什么”。现在报告详情新增“导出回执审计”，HTML 和 PDF 下载都会写入本机回执，并可导出 HTML 审计页。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-report-export-audit-v1` 审计包。
+- 学习状态新增 `reportExportReceipts`，保存最近 30 条报告导出回执。
+- `MRAppState.recordReportExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getReportExportAudit()` 支持按报告 ID 或导出类型过滤，返回类型统计、回执列表和 64 位 `auditDigest`。
+- `MRAppState.getReportExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReportExportAudit()` 下载 `mr-calligraphy-report-export-audit-*.html`。
+- `MRAppState.downloadReport()` 成功下载 HTML 后写入报告导出回执，同时保留既有复盘导出回执。
+- `MRAppState.downloadReportPdf()` 成功下载原生 PDF 后写入报告导出回执。
+- 前台报告详情新增 `reportExportAudit`、`reportExportAuditStatus`、`reportExportAuditList` 和 `reportExportAuditExport`。
+- Smoke 页面标记检查新增报告导出回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 37`、`handled 112`、`missingHandler 0`。
+- 状态层脚本覆盖 HTML / PDF 回执、报告验真摘要、文件摘要、类型统计、边界说明和 HTML 审计导出。
+- Playwright 前台真实练习用例会在报告详情中点击“下载 HTML”“下载 PDF”和“导出回执”，验证真实下载、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.reportExportReceipts`。
+- 写入状态：用户在报告详情或其他报告下载入口发起 HTML / PDF 下载后写入本机回执，并保存报告验真摘要和文件 SHA-256 摘要。
+- 成功反馈：报告详情面板显示导出类型、文件名、文件摘要、报告验真摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载当前报告相关的 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：报告导出回执随学习状态保存在 localStorage，刷新后仍能按报告 ID 读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面生成并发起了报告 HTML 或原生 PDF 下载请求，并记录生成内容摘要；它不代表操作系统保存成功、云端 PDF 渲染日志、账号下载审计、跨设备同步、长期报告仓库或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告导出回执审计`

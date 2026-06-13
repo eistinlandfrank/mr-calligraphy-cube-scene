@@ -559,6 +559,45 @@ assert(reviewedPdf.features.verification, "批注后的 PDF 报告应继续包�
 assert(reviewedPdf.pdf.includes("TeacherReview: yes"), "PDF 内容应包含教师批注标记。");
 assert(reviewedPdf.pdf.includes(`TeacherReviewSignatureDigest: ${teacherReview.teacherReview.localSignatureDigest}`), "PDF 内容应包含教师批注本机签名摘要。");
 assert(reviewedPdf.pdf.includes(`ReportDigest: ${reviewedHtml.verification.digest}`), "批注后的 PDF 摘要应与 HTML 导出一致。");
+const reportHtmlExportReceipt = window.MRAppState.recordReportExportReceipt("report-2", {
+  exportType: "report-html",
+  filename: reviewedHtml.filename,
+  mimeType: reviewedHtml.mimeType,
+  content: reviewedHtml.html,
+  reportDigest: reviewedHtml.verification.digest,
+  features: reviewedHtml.features
+});
+assert(reportHtmlExportReceipt.ok, "报告 HTML 下载应能写入报告导出回执。");
+assert(reportHtmlExportReceipt.receipt.exportType === "report-html", "报告 HTML 回执应记录导出类型。");
+assert(reportHtmlExportReceipt.receipt.fileDigest.match(/^[a-f0-9]{64}$/), "报告 HTML 回执应包含文件摘要。");
+assert(reportHtmlExportReceipt.receipt.reportDigest === reviewedHtml.verification.digest, "报告 HTML 回执应记录报告验真摘要。");
+const reportPdfExportReceipt = window.MRAppState.recordReportExportReceipt("report-2", {
+  exportType: "report-pdf",
+  filename: reviewedPdf.filename,
+  mimeType: reviewedPdf.mimeType,
+  content: reviewedPdf.pdf,
+  byteLength: reviewedPdf.byteLength,
+  reportDigest: reviewedPdf.verification.digest,
+  features: reviewedPdf.features
+});
+assert(reportPdfExportReceipt.ok, "报告 PDF 下载应能写入报告导出回执。");
+assert(reportPdfExportReceipt.receipt.exportType === "report-pdf", "报告 PDF 回执应记录导出类型。");
+assert(reportPdfExportReceipt.receipt.fileDigest.match(/^[a-f0-9]{64}$/), "报告 PDF 回执应包含文件摘要。");
+assert(reportPdfExportReceipt.receipt.reportDigest === reviewedPdf.verification.digest, "报告 PDF 回执应记录报告验真摘要。");
+const reportExportAudit = window.MRAppState.getReportExportAudit("report-2", { limit: 5 });
+assert(reportExportAudit.kind === "mr-calligraphy-report-export-audit-v1", "报告导出审计应返回稳定 kind。");
+assert(reportExportAudit.total === 2, "报告导出审计应统计 HTML 和 PDF 两条回执。");
+assert(reportExportAudit.typeCounts["report-html"] === 1, "报告导出审计应统计 HTML。");
+assert(reportExportAudit.typeCounts["report-pdf"] === 1, "报告导出审计应统计 PDF。");
+assert(/^[a-f0-9]{64}$/.test(reportExportAudit.auditDigest), "报告导出审计应包含稳定摘要。");
+assert(reportExportAudit.boundary.includes("不是操作系统保存完成证明"), "报告导出审计应说明本机边界。");
+const reportExportAuditExport = window.MRAppState.getReportExportAuditExport("report-2", { limit: 5 });
+assert(reportExportAuditExport.ok, "报告导出审计应可导出 HTML。");
+assert(reportExportAuditExport.filename.startsWith("mr-calligraphy-report-export-audit-report-2-"), "报告导出审计文件名应可识别。");
+assert(reportExportAuditExport.html.includes("MR 书法报告导出回执审计"), "报告导出审计 HTML 应包含标题。");
+assert(reportExportAuditExport.html.includes("报告 HTML"), "报告导出审计 HTML 应包含 HTML 类型。");
+assert(reportExportAuditExport.html.includes("原生 PDF"), "报告导出审计 HTML 应包含 PDF 类型。");
+assert(reportExportAuditExport.html.includes(reportExportAuditExport.audit.auditDigest), "报告导出审计 HTML 应包含审计摘要。");
 
 const reportRepositoryStatus = window.MRAppState.getReportRepositoryStatus();
 assert(reportRepositoryStatus.ok && reportRepositoryStatus.reportCount >= 3, "报告 repository 应统计本机报告数量。");
@@ -1387,7 +1426,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计、学习档案详情操作回执审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计、学习档案详情操作回执审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {

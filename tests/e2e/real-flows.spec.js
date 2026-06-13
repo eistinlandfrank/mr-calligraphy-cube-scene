@@ -1252,6 +1252,29 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(localLinkCopyAuditHtml).toContain("审计摘要");
 
   const activeReportId = learningState.reports[0].id;
+  const reportExportBaselineReceipts = (learningState.reportExportReceipts || []).filter((receipt) => receipt.reportId === activeReportId);
+  const reportExportBaselineCount = reportExportBaselineReceipts.length;
+  if (reportExportBaselineCount) {
+    await expect(page.locator("#reportExportAuditStatus")).toContainText(`${reportExportBaselineCount} 条报告导出回执`);
+    await expect(page.locator("#reportExportAuditList")).toContainText("报告 HTML");
+  } else {
+    await expect(page.locator("#reportExportAuditStatus")).toContainText("当前报告暂无导出回执记录");
+  }
+  const reportHtmlDetailDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportDetailDownload").click();
+  const reportHtmlDetailDownload = await reportHtmlDetailDownloadPromise;
+  expect(reportHtmlDetailDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-.*\.html$/);
+  const reportHtmlExportCount = reportExportBaselineCount + 1;
+  await expect(page.locator("#reportExportAuditStatus")).toContainText(`${reportHtmlExportCount} 条报告导出回执`);
+  await expect(page.locator("#reportExportAuditList")).toContainText("报告 HTML");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  let currentReportExportReceipts = learningState.reportExportReceipts.filter((receipt) => receipt.reportId === activeReportId);
+  expect(currentReportExportReceipts).toHaveLength(reportHtmlExportCount);
+  expect(currentReportExportReceipts[0].exportType).toBe("report-html");
+  expect(currentReportExportReceipts[0].reportId).toBe(activeReportId);
+  expect(currentReportExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(currentReportExportReceipts[0].reportDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(currentReportExportReceipts[0].boundary).toContain("不是操作系统保存完成证明");
   await page.evaluate(() => {
     window.__reportPrintCalled = false;
     window.print = () => {
@@ -1339,6 +1362,27 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportPdfText).toContain(`TeacherReviewSignatureDigest: ${teacherReviewSignatureDigest}`);
   expect(reportPdfText).toContain("/Subtype /Image");
   expect(reportPdfText).toContain("/DCTDecode");
+  const reportPdfExportCount = reportExportBaselineCount + 2;
+  await expect(page.locator("#reportExportAuditStatus")).toContainText(`${reportPdfExportCount} 条报告导出回执`);
+  await expect(page.locator("#reportExportAuditList")).toContainText("原生 PDF");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  currentReportExportReceipts = learningState.reportExportReceipts.filter((receipt) => receipt.reportId === activeReportId);
+  expect(currentReportExportReceipts).toHaveLength(reportPdfExportCount);
+  expect(currentReportExportReceipts[0].exportType).toBe("report-pdf");
+  expect(currentReportExportReceipts.some((receipt) => receipt.exportType === "report-html")).toBe(true);
+  expect(currentReportExportReceipts[0].reportId).toBe(activeReportId);
+  expect(currentReportExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(currentReportExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  const reportExportAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportExportAuditExport").click();
+  const reportExportAuditDownload = await reportExportAuditDownloadPromise;
+  expect(reportExportAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-export-audit-.*\.html$/);
+  const reportExportAuditPath = await reportExportAuditDownload.path();
+  const reportExportAuditHtml = fs.readFileSync(reportExportAuditPath, "utf8");
+  expect(reportExportAuditHtml).toContain("MR 书法报告导出回执审计");
+  expect(reportExportAuditHtml).toContain("报告 HTML");
+  expect(reportExportAuditHtml).toContain("原生 PDF");
+  expect(reportExportAuditHtml).toContain(currentReportExportReceipts[0].receiptDigest);
 
   const reportRepositoryDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportRepositoryExportButton").click();

@@ -7085,6 +7085,7 @@ body.is-model-view .notice-panel {
   }
 
   body.is-report-printing .report-actions,
+  body.is-report-printing .report-export-audit,
   body.is-report-printing .report-print-audit,
   body.is-report-printing .report-comparison-actions,
   body.is-report-printing .report-series-tooltip {
