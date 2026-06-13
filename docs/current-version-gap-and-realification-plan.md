@@ -5126,3 +5126,42 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增静态控件处理器覆盖验收`
+
+## 125. 2026-06-13 新增动态控件处理器覆盖验收
+
+本次继续处理“前端很多按钮像假的”的问题，把控件状态清单从静态 HTML 扩展到运行时生成按钮。此前前台视频导出“重试”、报告能力结构行和 AI 讲解步骤按钮是 JS 动态创建的，缺少显式 `data-feature-state` 时会被前台兜底标成“暂不可用”，容易让真实功能看起来像假的。
+
+完成内容：
+
+- `script.js` 为视频导出失败记录的“重试”按钮补充 `data-feature-state="real-local"`。
+- `script.js` 为报告能力结构切换行补充 `data-feature-state="real-local"`。
+- `script.js` 为 AI 讲解步骤进度按钮补充 `data-feature-state="disabled"`，明确这是只读进度状态而不是遗漏处理器。
+- `scripts/control-inventory.js` 的动态扫描范围从前台脚本扩展为 `script.js`、`main-admin-scene.js`、`realistic-scene.js` 和 `project-archive.js`。
+- 动态清单会识别 `document.createElement("button")` 创建的运行时按钮，检查是否存在 `dataset.featureState` 或 `setAttribute("data-feature-state", ...)`。
+- 对 `real`、`real-local`、`real-export`、`real-published-local` 动态按钮强制追踪处理器。
+- 处理器追踪支持直接 `.addEventListener("click", ...)`，也支持父容器委托的 `event.target?.closest?.("[data-*]")` / `matches()` 写法。
+- 动态输出新增 `buttons`、`dynamicState`、`missing`、`handled` 和 `missingHandler` 统计。
+- 当前验收：前台 34 个运行时按钮、主后台 8 个运行时按钮、写实场景 4 个运行时按钮均无缺失状态，真实动态按钮均为 `missingHandler 0`。
+
+真实化说明：
+
+- 数据来源：运行时 JS 创建按钮、按钮状态标记、直接点击绑定和 `data-*` 委托处理器。
+- 成功反馈：`node scripts/control-inventory.js --check` 会列出每个脚本的动态按钮数量和 `missingHandler 0`。
+- 失败反馈：新增真实动态按钮但没写状态或没接入处理器时，脚本会指出文件行号和变量名。
+- 刷新后复现方式：该检查已由 smoke 统一调用，后续新增运行时按钮会被同一门禁覆盖。
+
+仍待补：
+
+- 动态处理器覆盖证明按钮接入了处理路径，不等价于所有点击后的业务状态都完整；下载、远端请求、冲突合并和失败恢复仍需要状态脚本与 Playwright 持续扩展。
+
+验收：
+
+- `node --check scripts/control-inventory.js`
+- `node scripts/control-inventory.js --check`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增动态控件处理器覆盖验收`

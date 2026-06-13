@@ -3,7 +3,7 @@
 本项目是静态网页项目。基础 smoke test 使用无依赖 Node 脚本完成语法、控件、项目档案、项目 Schema 和页面可访问检查；浏览器级真实交互使用 Playwright 覆盖高风险闭环。
 
 - 静态语法检查：覆盖 smoke test、控件清单、项目档案迁移检查、项目档案资产哈希检查、项目 Schema 检查、远端发布检查、远端发布 mock server、计划仓库 mock server、学习档案仓库 mock server、报告仓库 mock server、项目仓库 mock server、学习状态检查、学习路径动作覆盖检查、Playwright 测试源码、前台状态层、书写画布、项目 schema、项目档案、远端发布 adapter、房间配置、前台主脚本、主后台 3D 脚本、写实场景脚本。
-- 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效；同时扫描页面实际加载脚本，确认标记为 `real` / `real-local` / `real-export` / `real-published-local` 的静态控件都有可追踪处理器，并扫描前台脚本动态生成控件的 `dataset.featureState` 字面量，避免运行时按钮回退到 `demo-content` 或静态按钮只有标签没有处理。
+- 控件状态清单：确认四个入口 HTML 里的按钮和导航链接都带有 `data-feature-state`，且状态值有效；同时扫描页面实际加载脚本，确认标记为 `real` / `real-local` / `real-export` / `real-published-local` 的静态控件都有可追踪处理器，并扫描前台、主后台、写实场景脚本运行时生成的按钮，确认动态按钮有真实状态、真实状态按钮可追踪直接点击或 `data-*` 委托处理器，避免按钮只有标签、运行时按钮被兜底成“暂不可用”或写死 `demo-content`。
 - 学习路径动作覆盖检查：解析前台 10 个 `SCENES` 场景的 30 个动作，确认每个动作都有 `LEARNING_ACTION_FEATURES` 真实状态标记和 `runLearningAction` 处理分支，避免新增动态按钮后只剩文案或假成功。
 - 项目档案迁移检查：模拟旧档案缺少新增 storage / IndexedDB 项时，确认迁移记录会写入 `projectSchema.migrations`，缺项默认不恢复，避免误清当前本机状态，并验证 localStorage JSON 导入预览会显示字段级差异、字段恢复影响提示、字段 JSON 片段且支持深层字段选择性恢复；同时验证 IndexedDB 模型仓库会显示单模型新增/修改差异、当前/档案元数据片段、完整模型 JSON 安全预览、命名冲突提示，并支持只恢复勾选模型、冲突自动改名、替换本机同名模型和自定义档案模型名称；同时验证项目档案导入差异报告会生成可离线审阅的 HTML，包含字段覆盖、模型冲突、恢复选择和不会直接覆盖本机数据的说明；恢复成功后会写入本机审计日志，记录所选档案摘要、恢复范围摘要和审计记录摘要，并可导出恢复审计 HTML。
 - 项目档案资产哈希检查：模拟带模型二进制的档案，确认 SHA-256 会写入资产清单，错误哈希会阻止恢复且不会提前覆盖本机状态。
@@ -41,7 +41,7 @@ SMOKE_BASE_URL=http://localhost:41496/ node scripts/smoke-test.js
 node scripts/control-inventory.js --check
 ```
 
-该命令会列出四个入口页面中 `real-local`、`real-export`、`real-published-local`、`demo-content`、`disabled`、缺失和非法状态的数量，并额外列出 `script.js dynamic` 中运行时控件的状态字面量；旧 `real` 和 `demo` 仍兼容，但新增控件应优先使用细分状态。
+该命令会列出四个入口页面中 `real-local`、`real-export`、`real-published-local`、`demo-content`、`disabled`、缺失和非法状态的数量，并额外列出 `script.js`、`main-admin-scene.js`、`realistic-scene.js` 和 `project-archive.js` 中运行时按钮的状态、动态状态表达式、按钮总数、已追踪处理器和缺失处理器；旧 `real` 和 `demo` 仍兼容，但新增控件应优先使用细分状态。
 
 ## 单独检查项目档案迁移
 
@@ -105,6 +105,7 @@ node scripts/learning-state-check.js
 本轮新增本机后台操作者审计验收：新增 `admin-audit.js`，主后台检查 `mainAdminOperatorPanel`、`mainAdminOperatorName`、`mainAdminOperatorRole`、`mainAdminAuditList` 和 `mainAdminAuditExport`，写实后台检查 `realisticAdminOperatorPanel`、`realisticAdminOperatorName`、`realisticAdminOperatorRole`、`realisticAdminAuditList` 和 `realisticAdminAuditExport`；Playwright 发布用例会读取 `mr-calligraphy-admin-operator-audit-v1`，确认 `snapshot` 与 `publish-local` 记录写入保存后的操作者。
 本轮新增本机后台角色权限验收：静态 smoke 会检查 `mainAdminPermissionStatus` 与 `realisticAdminPermissionStatus`；Playwright 新增 `admin reviewer role blocks local write controls`，确认复核角色会禁用主后台和写实后台的坐标编辑、导入、快照、删除、本机发布和远端发布入口，切回编辑角色后写入控件恢复。
 本轮新增静态控件处理器覆盖验收：`node scripts/control-inventory.js --check` 会按入口页面扫描实际加载脚本，要求所有真实状态按钮和导出按钮都有 `click`、`submit`、批量 selector 或初始化参数绑定；当前前台 103 个、主后台 53 个、写实演示 3 个、写实后台 34 个真实控件均为 `missingHandler 0`。
+本轮新增动态控件处理器覆盖验收：`node scripts/control-inventory.js --check` 会扫描 `script.js`、`main-admin-scene.js`、`realistic-scene.js` 和 `project-archive.js` 中 `document.createElement("button")` 生成的运行时按钮，要求动态按钮有有效状态，并要求真实状态按钮能追踪直接 `click` 或 `data-*` 委托处理器；当前前台 34 个、主后台 8 个、写实场景 4 个运行时按钮均为 `missingHandler 0`。
 
 ## 浏览器级验收
 
@@ -157,7 +158,7 @@ PLAYWRIGHT_BASE_URL=http://localhost:41496/ npm run test:e2e
 命令应输出：
 
 ```text
-Smoke test 通过：25 个脚本，4 个页面。
+Smoke test 通过：26 个脚本，4 个页面。
 ```
 
 如果任一脚本语法失败、页面无法访问、HTTP 状态不是 2xx，或页面缺少关键标记，命令会以非 0 状态退出。

@@ -10319,3 +10319,45 @@
 提交：
 
 - 中文 commit message：`新增静态控件处理器覆盖验收`
+
+### 2026-06-13：新增动态控件处理器覆盖验收
+
+功能名：运行时生成按钮真实状态与处理器覆盖门禁。
+
+开发原因：
+
+- 前台和后台有大量列表、记录、冲突审计、报告指标等按钮由 JS 运行时生成。
+- 静态控件清单只能覆盖 HTML 里的按钮；运行时按钮如果缺少 `data-feature-state`，会被前台兜底标为“暂不可用”，即使背后已有真实处理器，也会让界面看起来像假按钮。
+
+完成内容：
+
+- 视频导出失败记录的“重试”运行时按钮补充 `real-local` 状态。
+- 报告能力结构的运行时切换按钮补充 `real-local` 状态。
+- AI 讲解步骤运行时按钮补充 `disabled` 状态，明确它是只读进度。
+- `scripts/control-inventory.js` 扫描 `script.js`、`main-admin-scene.js`、`realistic-scene.js` 和 `project-archive.js` 的 `document.createElement("button")`。
+- 运行时按钮必须有有效 `data-feature-state`。
+- 真实运行时按钮必须能追踪到直接 `click` 处理器，或通过自身 `data-*` 属性追踪到父容器委托处理器。
+- 委托追踪支持 `event.target?.closest?.("[data-*]")` 和 `matches()`。
+- 清单输出动态按钮总数、动态状态表达式数量、缺失状态、已处理和缺失处理器统计。
+
+验收方式：
+
+- 新增一个运行时真实按钮但不写状态，`node scripts/control-inventory.js --check` 应失败并指出文件行号。
+- 新增一个运行时真实按钮但没有直接点击或 `data-*` 委托处理器，清单应输出 `missingHandler`。
+- 当前前台 34 个运行时按钮、主后台 8 个运行时按钮、写实场景 4 个运行时按钮全部通过，真实动态按钮均可追踪处理器。
+
+真实边界：
+
+- 该检查证明按钮状态和处理器接线真实存在，不证明处理器内部每条业务路径都完整成功；下载文件、远端 API、导入恢复和冲突合并仍要继续靠状态脚本与 Playwright 验收。
+
+验收命令：
+
+- `node --check scripts/control-inventory.js`
+- `node scripts/control-inventory.js --check`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增动态控件处理器覆盖验收`

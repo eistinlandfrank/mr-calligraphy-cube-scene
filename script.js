@@ -4628,6 +4628,7 @@ function renderLecturePanel(sceneIndex = currentIndex) {
   progress.steps.forEach((step, index) => {
     const button = document.createElement("button");
     button.type = "button";
+    button.dataset.featureState = "disabled";
     button.textContent = step.title;
     const isDone = progress.status === "complete" || index < progress.completedSteps - 1;
     const isCurrent = progress.status !== "idle" && index === progress.stepIndex;
@@ -5073,6 +5074,7 @@ function renderVideoExportPanel(artwork, session) {
       actions.className = "video-export-record-actions";
       const retry = document.createElement("button");
       retry.type = "button";
+      retry.dataset.featureState = "real-local";
       retry.dataset.videoExportRetry = job.id;
       retry.textContent = "重试";
       actions.appendChild(retry);
@@ -5628,6 +5630,7 @@ function renderReportMetrics(detail, selectedKey = activeReportMetricKey) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = `report-metric-row is-${key}`;
+    row.dataset.featureState = "real-local";
     row.dataset.reportMetric = key;
     row.setAttribute("aria-pressed", String(key === activeKey));
     const name = document.createElement("span");

@@ -4646,3 +4646,42 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增静态控件处理器覆盖验收`
+
+## 125. 2026-06-13 新增动态控件处理器覆盖验收
+
+本次把前端控件清单继续推进到运行时按钮层。静态 HTML 已能证明真实控件有处理器，但前台、后台和写实场景还有大量通过 JS 动态生成的操作按钮；如果这些按钮缺少状态或处理路径，用户看到的就是“像真的但点不动”的界面。
+
+完成内容：
+
+- 前台视频导出失败任务的“重试”按钮补充 `data-feature-state="real-local"`，和现有 `handleVideoExportAction()` 委托处理对应。
+- 报告能力结构行补充 `data-feature-state="real-local"`，和 `data-report-metric` 点击切换对应。
+- AI 讲解步骤按钮补充 `data-feature-state="disabled"`，明确它是只读播放进度，而不是漏接点击逻辑。
+- `scripts/control-inventory.js` 新增运行时按钮扫描，覆盖 `script.js`、`main-admin-scene.js`、`realistic-scene.js` 和 `project-archive.js`。
+- 运行时扫描会解析 `document.createElement("button")`，要求按钮写入有效状态。
+- 真实状态运行时按钮必须能追踪到直接点击处理器，或能追踪到父容器 `data-*` 委托处理器。
+- 委托处理器支持现代可选链写法，例如 `event.target?.closest?.("[data-video-export-retry]")`。
+- 输出新增 `buttons`、`dynamicState`、`missing`、`handled` 和 `missingHandler`，便于长期开发时快速定位问题。
+- 当前通过结果：`script.js` 动态按钮 34 个、`main-admin-scene.js` 动态按钮 8 个、`realistic-scene.js` 动态按钮 4 个、`project-archive.js` 动态按钮 0 个，全部 `missingHandler 0`。
+
+真实化说明：
+
+- 数据来源：运行时按钮创建代码、状态标记、直接事件绑定和 `data-*` 委托选择器。
+- 写入状态：真实按钮明确标为 `real-local` / `real-export`；只读进度按钮明确标为 `disabled`。
+- 成功反馈：控件清单输出动态按钮总数、已处理数量和缺失处理器数量。
+- 失败反馈：后续新增动态按钮缺状态或缺处理器会直接让 `--check` 失败。
+
+仍待补：
+
+- 该门禁覆盖“按钮是否接入处理路径”，不替代真实点击流；仍要继续补 Playwright 对具体下载、同步、导入、发布和失败恢复路径的断言。
+
+验收：
+
+- `node --check scripts/control-inventory.js`
+- `node scripts/control-inventory.js --check`
+- `node --check scripts/smoke-test.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增动态控件处理器覆盖验收`
