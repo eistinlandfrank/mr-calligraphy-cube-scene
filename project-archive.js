@@ -5556,20 +5556,27 @@
   function getProjectRestoreAuditExportAudit(options = {}) {
     const limit = Math.max(1, Math.min(PROJECT_RESTORE_AUDIT_EXPORT_MAX_RECEIPTS, Number(options.limit) || PROJECT_RESTORE_AUDIT_EXPORT_MAX_RECEIPTS));
     const auditState = readProjectRestoreAuditExportState();
-    const records = auditState.records.slice(0, limit).map(cloneJsonValue);
+    const verifiedRecords = auditState.records.map(addProjectRestoreAuditExportVerification).filter(Boolean);
+    const records = verifiedRecords.slice(0, limit).map(cloneJsonValue);
+    const verifiedCount = verifiedRecords.filter((record) => record.verificationStatus === "verified").length;
+    const failedCount = verifiedRecords.filter((record) => record.verificationStatus === "digest-mismatch").length;
+    const legacyCount = verifiedRecords.filter((record) => record.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: PROJECT_RESTORE_AUDIT_EXPORT_KIND,
       generatedAt: new Date().toISOString(),
       storageKey: PROJECT_RESTORE_AUDIT_EXPORT_KEY,
-      total: auditState.records.length,
+      total: verifiedRecords.length,
       exportedCount: records.length,
       limit,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: records[0] || null,
       records,
       boundary: PROJECT_RESTORE_AUDIT_EXPORT_BOUNDARY,
-      message: auditState.records.length
-        ? `已记录 ${auditState.records.length} 条项目档案恢复审计导出回执，最近一次：${formatArchiveDate(auditState.records[0].exportedAt || auditState.records[0].createdAt)}。`
+      message: verifiedRecords.length
+        ? `已记录 ${verifiedRecords.length} 条项目档案恢复审计导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatArchiveDate(verifiedRecords[0].exportedAt || verifiedRecords[0].createdAt)}。`
         : "暂无项目档案恢复审计导出回执。"
     };
     audit.auditDigest = sha256StableJson({
@@ -5577,6 +5584,80 @@
       auditDigest: ""
     });
     return audit;
+  }
+
+  function addProjectRestoreAuditExportVerification(record) {
+    const normalized = normalizeProjectRestoreAuditExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyProjectRestoreAuditExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyProjectRestoreAuditExportReceiptDigest(record = {}) {
+    const receiptDigest = normalizeSha256(record.receiptDigest);
+    if (!receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧项目档案恢复审计导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createProjectRestoreAuditExportReceiptVerificationPayload(record));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 与项目档案恢复审计导出回执声明字段一致。",
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按项目档案恢复审计导出回执声明字段重算匹配。"
+    };
+    return {
+      status,
+      expectedDigest,
+      message: messages[status]
+    };
+  }
+
+  function createProjectRestoreAuditExportReceiptVerificationPayload(record = {}) {
+    const normalized = normalizeProjectRestoreAuditExportReceipt(record) || {};
+    const createdAt = normalized.createdAt || "";
+    const digestSuffix = normalized.receiptDigest ? `-${normalized.receiptDigest.slice(0, 8)}` : "";
+    const baseId = digestSuffix && normalized.id.endsWith(digestSuffix)
+      ? normalized.id.slice(0, -digestSuffix.length)
+      : normalized.id || `project-restore-audit-export-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    return {
+      id: baseId,
+      kind: PROJECT_RESTORE_AUDIT_EXPORT_KIND,
+      type: "project-archive-restore-audit-export",
+      version: 1,
+      createdAt,
+      exportedAt: normalized.exportedAt || createdAt,
+      filename: normalized.filename || "",
+      mimeType: normalized.mimeType || "text/html;charset=utf-8",
+      byteLength: Number(normalized.byteLength || 0),
+      fileDigest: normalized.fileDigest || "",
+      auditDigest: normalized.auditDigest || "",
+      restoreRecordCount: Number(normalized.restoreRecordCount || 0),
+      latestRestoreRecordId: normalized.latestRestoreRecordId || "",
+      latestRestoreRecordDigest: normalized.latestRestoreRecordDigest || "",
+      latestArchiveDigest: normalized.latestArchiveDigest || "",
+      latestSelectionDigest: normalized.latestSelectionDigest || "",
+      latestArchiveSource: normalized.latestArchiveSource || "",
+      latestArchiveExportedAt: normalized.latestArchiveExportedAt || "",
+      restoredStorageKeyCount: Number(normalized.restoredStorageKeyCount || 0),
+      restoredDbStoreCount: Number(normalized.restoredDbStoreCount || 0),
+      restoredFieldCount: Number(normalized.restoredFieldCount || 0),
+      restoredModelCount: Number(normalized.restoredModelCount || 0),
+      modelHashCount: Number(normalized.modelHashCount || 0),
+      missingHashCount: Number(normalized.missingHashCount || 0),
+      migrationCount: Number(normalized.migrationCount || 0),
+      boundary: normalized.boundary || PROJECT_RESTORE_AUDIT_EXPORT_BOUNDARY,
+      message: normalized.message || ""
+    };
   }
 
   function getProjectRestoreAuditExportAuditExport(options = {}) {
@@ -5638,6 +5719,8 @@
         <li>最近档案摘要：${escapeHtml(record.latestArchiveDigest || "未生成")}</li>
         <li>最近选择摘要：${escapeHtml(record.latestSelectionDigest || "未生成")}</li>
         <li>回执摘要：${escapeHtml(record.receiptDigest || "未生成")}</li>
+        <li>本机校验：${escapeHtml(formatProjectRestoreAuditExportVerificationStatus(record.verificationStatus))}</li>
+        <li>重算摘要：${escapeHtml(record.verificationExpectedDigest || "无法重算")}</li>
       </ul>
       <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
     </article>`).join("");
@@ -5674,13 +5757,21 @@
     <header>
       <p class="muted">MR Calligraphy Project Restore Audit Export Receipt · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
       <h1>项目档案恢复审计导出回执审计</h1>
-      <p class="muted">本报告来自当前浏览器保存的恢复审计导出回执；它证明浏览器曾生成恢复审计 HTML 及摘要，但不代表操作系统已经保存文件或服务端已归档。</p>
+      <p class="muted">本报告来自当前浏览器保存的恢复审计导出回执；它证明浏览器曾生成恢复审计 HTML 及摘要，并按 receiptDigest 重算本机一致性校验，但不代表操作系统已经保存文件或服务端已归档。</p>
     </header>
     <section class="stack">${rows}</section>
-    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
   </main>
 </body>
 </html>`;
+  }
+
+  function formatProjectRestoreAuditExportVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
   }
 
   function downloadRestoreAuditLog(options = {}) {
@@ -6502,7 +6593,7 @@
         const detail = document.createElement("span");
         detail.textContent = `${record.restoreRecordCount} 条恢复记录 / 配置 ${record.restoredStorageKeyCount} / 模型 ${record.restoredModelCount} · ${formatBytes(record.byteLength)}`;
         const digest = document.createElement("span");
-        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
+        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"} · ${formatProjectRestoreAuditExportVerificationStatus(record.verificationStatus)}`;
         item.append(title, detail, digest);
         restoreAuditExportAuditList.appendChild(item);
       });

@@ -4671,12 +4671,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(restoreAuditExportState.records[0].latestArchiveDigest).toBe(restoreAuditLog.records[0].archiveDigest);
   expect(restoreAuditExportState.records[0].latestSelectionDigest).toBe(restoreAuditLog.records[0].selectionDigest);
   expect(restoreAuditExportState.records[0].boundary).toContain("恢复审计 HTML");
+  const restoreAuditExportAuditState = await page.evaluate(() => window.MRProjectArchive.getProjectRestoreAuditExportAudit());
+  expect(restoreAuditExportAuditState.verifiedCount).toBe(1);
+  expect(restoreAuditExportAuditState.failedCount).toBe(0);
+  expect(restoreAuditExportAuditState.records[0].verificationStatus).toBe("verified");
+  expect(restoreAuditExportAuditState.records[0].verificationExpectedDigest).toBe(restoreAuditExportState.records[0].receiptDigest);
   const restoreAuditExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectRestoreAuditExportAuditExport());
   expect(restoreAuditExportAudit.ok).toBe(true);
   expect(restoreAuditExportAudit.html).toContain("MR 书法项目档案恢复审计导出回执审计");
   expect(restoreAuditExportAudit.html).toContain(restoreAuditDownload.suggestedFilename());
   expect(restoreAuditExportAudit.html).toContain(restoreAuditExportState.records[0].fileDigest);
   expect(restoreAuditExportAudit.html).toContain(restoreAuditExportState.records[0].receiptDigest);
+  expect(restoreAuditExportAudit.html).toContain("本机校验通过");
 
   const restoreAuditExportReceiptDownloadPromise = page.waitForEvent("download");
   await page.locator("#projectRestoreAuditExportAuditExport").click();
@@ -4688,6 +4694,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(restoreAuditExportReceiptHtml).toContain(restoreAuditDownload.suggestedFilename());
   expect(restoreAuditExportReceiptHtml).toContain(restoreAuditExportState.records[0].latestRestoreRecordDigest);
   expect(restoreAuditExportReceiptHtml).toContain("当前浏览器保存的恢复审计导出回执");
+  expect(restoreAuditExportReceiptHtml).toContain("本机校验通过");
+
+  const tamperedRestoreAuditExportAudit = await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    state.records[0].restoreRecordCount = Number(state.records[0].restoreRecordCount || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+    return window.MRProjectArchive.getProjectRestoreAuditExportAudit();
+  }, PROJECT_RESTORE_AUDIT_EXPORT_KEY);
+  expect(tamperedRestoreAuditExportAudit.failedCount).toBe(1);
+  expect(tamperedRestoreAuditExportAudit.records[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedRestoreAuditExportAudit.records[0].verificationExpectedDigest).not.toBe(tamperedRestoreAuditExportAudit.records[0].receiptDigest);
 
   const originalRestoreAuditState = await readJsonLocalStorage(page, PROJECT_RESTORE_AUDIT_KEY);
   const tamperedRestoreAuditLog = await page.evaluate(({ key }) => {
