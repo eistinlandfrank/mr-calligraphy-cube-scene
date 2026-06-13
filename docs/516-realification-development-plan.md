@@ -11410,3 +11410,47 @@
 提交：
 
 - 中文 commit message：`新增导入预览JSON导出`
+
+### 2026-06-13：新增项目档案导入预览 JSON 导出回执审计
+
+功能名：主后台恢复前导入预览 JSON 导出回执。
+
+背景：
+
+- 恢复前导入预览 JSON 已经能固定当前预览、风险和恢复勾选方案。
+- 但 JSON 下载动作此前没有本机回执，用户只能拿到文件，无法在后台长期核对该文件摘要、来源和选择范围。
+- 这会让“导出预览 JSON”与差异报告、恢复审计、项目仓库包等导出闭环不一致。
+
+本轮完成：
+
+- 新增 `mr-calligraphy-project-import-preview-export-audit-v1` 本机审计包。
+- `downloadImportPreviewJson()` 下载 JSON 后写入导出回执。
+- 回执记录文件名、MIME、字节数、文件摘要、previewDigest、selectionDigest、exportDigest、回执摘要、来源类型、远端/本机包 ID、Workspace、风险摘要和恢复选择数量。
+- 新增 `getProjectImportPreviewExportAudit()`、`getProjectImportPreviewExportAuditExport()`、`downloadProjectImportPreviewExportAudit()` 和 `recordProjectImportPreviewExportReceipt()`。
+- 主后台项目备份区新增“预览 JSON 回执”面板和“导出回执”按钮。
+- Playwright 主后台用例验证本机项目仓库包预览后下载 JSON、写入回执、持久化 localStorage 和导出 HTML 回执审计。
+
+手工验收：
+
+- 在主后台导入项目档案或项目仓库包，生成恢复预览。
+- 点击“导出预览 JSON”，应下载 `mr-calligraphy-import-preview-*.json`，状态栏提示写入导出回执。
+- “预览 JSON 回执”面板应显示来源、风险、选择数量、JSON 摘要和回执摘要。
+- 点击“预览 JSON 回执”的“导出回执”，应下载 `mr-calligraphy-project-import-preview-export-audit-*.html`，文件内包含导入预览 JSON 文件名、exportDigest 和 receiptDigest。
+
+验收命令：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+真实边界：
+
+- 这是当前浏览器本机 JSON 下载请求回执，只能证明页面生成并发起了恢复前预览 JSON 下载；它不是服务端审批、多人合并请求、账号签名、生产证书链或不可篡改审计。
+
+提交：
+
+- 中文 commit message：`新增导入预览JSON回执审计`

@@ -18,6 +18,10 @@
   const PROJECT_IMPACT_EXPORT_BOUNDARY = "项目档案差异报告导出回执记录当前浏览器生成恢复前审阅 HTML 的时间、摘要、风险和选择范围；它不是恢复动作证明，也不能替代多人合并审计或服务端不可篡改日志。";
   const IMPORT_PREVIEW_EXPORT_KIND = "mr-calligraphy-project-import-preview-v1";
   const IMPORT_PREVIEW_EXPORT_BOUNDARY = "项目档案导入预览 JSON 只记录当前浏览器生成的恢复前审阅数据和勾选方案；它不会恢复或覆盖本机数据，也不能替代服务端审批、多人合并或不可篡改审计。";
+  const PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY = "mr-calligraphy-project-import-preview-export-audit-v1";
+  const PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KIND = "mr-calligraphy-project-import-preview-export-audit-v1";
+  const PROJECT_IMPORT_PREVIEW_EXPORT_MAX_RECEIPTS = 24;
+  const PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_BOUNDARY = "项目档案导入预览 JSON 导出回执记录当前浏览器生成恢复前审阅 JSON 的时间、文件摘要、预览摘要、选择摘要和来源；它不是服务端审批、多人合并请求或不可篡改日志。";
   const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
   const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
@@ -4336,6 +4340,366 @@
 </html>`;
   }
 
+  function recordProjectImportPreviewExportReceipt(payload = {}) {
+    try {
+      const preview = payload.preview && typeof payload.preview === "object" ? payload.preview : null;
+      const filename = String(payload.filename || "").trim();
+      const json = String(payload.json || payload.content || "");
+      if (!preview || !filename || !json) {
+        return {
+          ok: false,
+          message: "项目档案导入预览 JSON 导出回执缺少有效 JSON 内容。"
+        };
+      }
+      const receipt = createProjectImportPreviewExportReceipt(preview, {
+        filename,
+        json,
+        payload: payload.payload || null,
+        restoreOptions: payload.restoreOptions || null,
+        exportedAt: payload.exportedAt,
+        previewDigest: payload.previewDigest,
+        selectionDigest: payload.selectionDigest,
+        exportDigest: payload.exportDigest
+      });
+      const audit = readProjectImportPreviewExportAuditState();
+      const records = [
+        receipt,
+        ...audit.records.filter((record) => record.id !== receipt.id && record.receiptDigest !== receipt.receiptDigest)
+      ].slice(0, PROJECT_IMPORT_PREVIEW_EXPORT_MAX_RECEIPTS);
+      writeProjectImportPreviewExportAuditState({
+        version: 1,
+        updatedAt: receipt.createdAt,
+        records
+      });
+      return {
+        ok: true,
+        receipt: cloneJsonValue(receipt),
+        audit: getProjectImportPreviewExportAudit(),
+        message: `已记录项目档案导入预览 JSON 导出回执：${receipt.filename}。`
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error?.message ? `预览 JSON 已下载，但导出回执记录失败：${error.message}` : "预览 JSON 已下载，但导出回执记录失败。"
+      };
+    }
+  }
+
+  function createProjectImportPreviewExportReceipt(preview, options = {}) {
+    const createdAt = new Date().toISOString();
+    const exportedAt = normalizeIsoDate(options.exportedAt) || createdAt;
+    const filename = String(options.filename || `mr-calligraphy-import-preview-${formatTimestamp(new Date(exportedAt))}.json`).trim();
+    const json = String(options.json || "");
+    const exportPayload = options.payload && typeof options.payload === "object"
+      ? options.payload
+      : parseJsonPayload(json);
+    const summary = exportPayload?.summary || preview.summary || {};
+    const schema = exportPayload?.schemaSummary || preview.schemaSummary || {};
+    const risk = exportPayload?.riskSummary || preview.riskSummary || {};
+    const remote = exportPayload?.remoteRepository || preview.remoteRepository || null;
+    const restorePlan = createImpactRestorePlan(preview, options.restoreOptions || null);
+    const selectedPayload = createImpactRestorePlanDigestPayload(restorePlan);
+    const previewPayload = createImpactPreviewDigestPayload(preview, selectedPayload);
+    const previewDigest = normalizeSha256(options.previewDigest || exportPayload?.previewDigest) || sha256StableJson(previewPayload);
+    const selectionDigest = normalizeSha256(options.selectionDigest || exportPayload?.selectionDigest) || sha256StableJson(selectedPayload);
+    const exportDigest = normalizeSha256(options.exportDigest || exportPayload?.exportDigest) || computeImportPreviewPayloadDigest(exportPayload);
+    const sourceType = exportPayload?.sourceType || remote?.sourceType || (remote ? "remote-project-repository" : "project-archive-file");
+    const base = {
+      id: `project-import-preview-export-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`,
+      kind: PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KIND,
+      type: "project-import-preview-json-export",
+      version: 1,
+      createdAt,
+      exportedAt,
+      filename,
+      mimeType: "application/json;charset=utf-8",
+      byteLength: utf8Bytes(json).length,
+      fileDigest: sha256Hex(json),
+      previewDigest,
+      selectionDigest,
+      exportDigest,
+      archiveExportedAt: normalizeIsoDate(preview.exportedAt),
+      archiveSource: String(preview.source || "").slice(0, 420),
+      sourceType: ["remote-project-repository", "project-repository-file", "project-archive-file"].includes(sourceType) ? sourceType : "project-archive-file",
+      remotePackageId: String(remote?.packageId || remote?.sourcePackageId || "").slice(0, 160),
+      remoteWorkspaceId: remote ? normalizeProjectRepositoryWorkspaceId(remote.workspaceId) : "",
+      remotePackageDigest: normalizeSha256(remote?.packageDigest),
+      remoteRepositoryDigest: normalizeSha256(remote?.repositoryDigest),
+      riskLevel: String(remote?.riskLevel || risk.level || "unknown").slice(0, 40),
+      riskLabel: String(remote?.riskLabel || risk.label || "风险未知").slice(0, 80),
+      riskText: String(remote?.riskText || risk.text || "").slice(0, 260),
+      migrationCount: Array.isArray(preview.migrations) ? preview.migrations.length : 0,
+      storageTotal: Array.isArray(preview.storage) ? preview.storage.length : 0,
+      dbTotal: Array.isArray(preview.indexedDb) ? preview.indexedDb.length : 0,
+      storageAdded: Math.max(0, Math.round(Number(summary.storageAdded || 0))),
+      storageUpdated: Math.max(0, Math.round(Number(summary.storageUpdated || 0))),
+      storageRemoved: Math.max(0, Math.round(Number(summary.storageRemoved || 0))),
+      incomingModelCount: Math.max(0, Math.round(Number(summary.incomingModelCount || 0))),
+      assetHashCount: Math.max(0, Math.round(Number(summary.assetHashCount || 0))),
+      missingAssetHashCount: Math.max(0, Math.round(Number(summary.missingAssetHashCount || 0))),
+      importedModelCount: Math.max(0, Math.round(Number(schema.importedModels || 0))),
+      textureAssetCount: Math.max(0, Math.round(Number(schema.textureAssets || 0))),
+      selectedStorageCount: restorePlan.selectedStorageCount,
+      selectedDbCount: restorePlan.selectedDbCount,
+      selectedFieldCount: restorePlan.selectedFieldCount,
+      selectedModelCount: restorePlan.selectedModelCount,
+      selectedCount: restorePlan.selectedCount,
+      boundary: PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_BOUNDARY,
+      message: `已记录项目档案导入预览 JSON 导出回执：${filename}。`
+    };
+    const receiptDigest = sha256StableJson(base);
+    return {
+      ...base,
+      id: `${base.id}-${receiptDigest.slice(0, 8)}`,
+      receiptDigest
+    };
+  }
+
+  function parseJsonPayload(json) {
+    try {
+      const parsed = JSON.parse(String(json || ""));
+      return parsed && typeof parsed === "object" ? parsed : null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function computeImportPreviewPayloadDigest(payload) {
+    if (!payload || typeof payload !== "object") {
+      return "";
+    }
+    const normalized = cloneJsonValue(payload);
+    delete normalized.exportDigest;
+    return sha256StableJson(normalized);
+  }
+
+  function readProjectImportPreviewExportAuditState() {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY) || "{}");
+      const records = Array.isArray(parsed.records)
+        ? parsed.records.map(normalizeProjectImportPreviewExportReceipt).filter(Boolean)
+        : [];
+      return {
+        version: 1,
+        updatedAt: normalizeIsoDate(parsed.updatedAt),
+        records
+      };
+    } catch (error) {
+      return { version: 1, updatedAt: "", records: [] };
+    }
+  }
+
+  function writeProjectImportPreviewExportAuditState(state = {}) {
+    const records = Array.isArray(state.records)
+      ? state.records.map(normalizeProjectImportPreviewExportReceipt).filter(Boolean).slice(0, PROJECT_IMPORT_PREVIEW_EXPORT_MAX_RECEIPTS)
+      : [];
+    const normalized = {
+      version: 1,
+      updatedAt: normalizeIsoDate(state.updatedAt) || records[0]?.createdAt || "",
+      records
+    };
+    window.localStorage.setItem(PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY, JSON.stringify(normalized));
+    return normalized;
+  }
+
+  function normalizeProjectImportPreviewExportReceipt(record) {
+    if (!record || typeof record !== "object") {
+      return null;
+    }
+    const createdAt = normalizeIsoDate(record.createdAt || record.exportedAt) || "";
+    const exportedAt = normalizeIsoDate(record.exportedAt || record.createdAt) || createdAt;
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const fileDigest = normalizeSha256(record.fileDigest);
+    const previewDigest = normalizeSha256(record.previewDigest);
+    const selectionDigest = normalizeSha256(record.selectionDigest);
+    const exportDigest = normalizeSha256(record.exportDigest);
+    const receiptDigest = normalizeSha256(record.receiptDigest || record.recordDigest);
+    if (!filename && !fileDigest && !previewDigest && !createdAt) {
+      return null;
+    }
+    return {
+      id: String(record.id || `project-import-preview-export-${createdAt || filename || "record"}`).slice(0, 180),
+      kind: PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KIND,
+      type: "project-import-preview-json-export",
+      version: 1,
+      createdAt,
+      exportedAt,
+      filename,
+      mimeType: String(record.mimeType || "application/json;charset=utf-8").slice(0, 120),
+      byteLength: Math.max(0, Math.round(Number(record.byteLength || 0))),
+      fileDigest,
+      previewDigest,
+      selectionDigest,
+      exportDigest,
+      archiveExportedAt: normalizeIsoDate(record.archiveExportedAt),
+      archiveSource: String(record.archiveSource || "").slice(0, 420),
+      sourceType: ["remote-project-repository", "project-repository-file", "project-archive-file"].includes(record.sourceType) ? record.sourceType : "project-archive-file",
+      remotePackageId: String(record.remotePackageId || "").slice(0, 160),
+      remoteWorkspaceId: record.remoteWorkspaceId ? normalizeProjectRepositoryWorkspaceId(record.remoteWorkspaceId) : "",
+      remotePackageDigest: normalizeSha256(record.remotePackageDigest),
+      remoteRepositoryDigest: normalizeSha256(record.remoteRepositoryDigest),
+      riskLevel: String(record.riskLevel || "unknown").slice(0, 40),
+      riskLabel: String(record.riskLabel || "风险未知").slice(0, 80),
+      riskText: String(record.riskText || "").slice(0, 260),
+      migrationCount: Math.max(0, Math.round(Number(record.migrationCount || 0))),
+      storageTotal: Math.max(0, Math.round(Number(record.storageTotal || 0))),
+      dbTotal: Math.max(0, Math.round(Number(record.dbTotal || 0))),
+      storageAdded: Math.max(0, Math.round(Number(record.storageAdded || 0))),
+      storageUpdated: Math.max(0, Math.round(Number(record.storageUpdated || 0))),
+      storageRemoved: Math.max(0, Math.round(Number(record.storageRemoved || 0))),
+      incomingModelCount: Math.max(0, Math.round(Number(record.incomingModelCount || 0))),
+      assetHashCount: Math.max(0, Math.round(Number(record.assetHashCount || 0))),
+      missingAssetHashCount: Math.max(0, Math.round(Number(record.missingAssetHashCount || 0))),
+      importedModelCount: Math.max(0, Math.round(Number(record.importedModelCount || 0))),
+      textureAssetCount: Math.max(0, Math.round(Number(record.textureAssetCount || 0))),
+      selectedStorageCount: Math.max(0, Math.round(Number(record.selectedStorageCount || 0))),
+      selectedDbCount: Math.max(0, Math.round(Number(record.selectedDbCount || 0))),
+      selectedFieldCount: Math.max(0, Math.round(Number(record.selectedFieldCount || 0))),
+      selectedModelCount: Math.max(0, Math.round(Number(record.selectedModelCount || 0))),
+      selectedCount: Math.max(0, Math.round(Number(record.selectedCount || 0))),
+      boundary: String(record.boundary || PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_BOUNDARY).slice(0, 420),
+      message: String(record.message || "").slice(0, 260),
+      receiptDigest
+    };
+  }
+
+  function getProjectImportPreviewExportAudit(options = {}) {
+    const limit = Math.max(1, Math.min(PROJECT_IMPORT_PREVIEW_EXPORT_MAX_RECEIPTS, Number(options.limit) || PROJECT_IMPORT_PREVIEW_EXPORT_MAX_RECEIPTS));
+    const auditState = readProjectImportPreviewExportAuditState();
+    const records = auditState.records.slice(0, limit).map(cloneJsonValue);
+    const sourceCounts = auditState.records.reduce((counts, record) => {
+      const sourceType = record.sourceType || "project-archive-file";
+      counts[sourceType] = (counts[sourceType] || 0) + 1;
+      return counts;
+    }, {});
+    const audit = {
+      ok: true,
+      kind: PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY,
+      total: auditState.records.length,
+      exportedCount: records.length,
+      limit,
+      sourceCounts,
+      latestReceipt: records[0] || null,
+      records,
+      boundary: PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_BOUNDARY,
+      message: auditState.records.length
+        ? `已记录 ${auditState.records.length} 条项目档案导入预览 JSON 导出回执，最近一次：${formatArchiveDate(auditState.records[0].exportedAt || auditState.records[0].createdAt)}。`
+        : "暂无项目档案导入预览 JSON 导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getProjectImportPreviewExportAuditExport(options = {}) {
+    const audit = getProjectImportPreviewExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的项目档案导入预览 JSON 导出回执。"
+      };
+    }
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const filename = options.filename || `mr-calligraphy-project-import-preview-export-audit-${formatTimestamp(new Date(exportedAt))}.html`;
+    const html = createProjectImportPreviewExportAuditHtml(audit, exportedAt);
+    return {
+      ok: true,
+      filename,
+      mimeType: "text/html;charset=utf-8",
+      html,
+      byteLength: html.length,
+      audit,
+      recordCount: audit.exportedCount,
+      message: `已生成 ${audit.exportedCount} 条项目档案导入预览 JSON 导出回执审计报告：${filename}。`
+    };
+  }
+
+  function downloadProjectImportPreviewExportAudit(options = {}) {
+    const result = getProjectImportPreviewExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      recordCount: result.recordCount,
+      message: `已下载项目档案导入预览 JSON 导出回执审计报告：${result.filename}。`
+    };
+  }
+
+  function createProjectImportPreviewExportAuditHtml(audit, exportedAt) {
+    const rows = audit.records.map((record) => `<article class="card">
+      <div class="item-head">
+        <h2>${escapeHtml(record.remotePackageId || record.filename || "项目档案导入预览 JSON")}</h2>
+        <span>${escapeHtml(formatProjectImpactSourceType(record.sourceType))}</span>
+      </div>
+      <p>${escapeHtml(record.message || "已生成恢复前导入预览 JSON。")}</p>
+      <ul>
+        <li>导出时间：${escapeHtml(formatArchiveDate(record.exportedAt || record.createdAt))}</li>
+        <li>档案时间：${escapeHtml(formatArchiveDate(record.archiveExportedAt))}</li>
+        <li>来源：${escapeHtml(record.archiveSource || "未知")}</li>
+        <li>远端包：${escapeHtml(record.remotePackageId || "无")}；Workspace：${escapeHtml(record.remoteWorkspaceId || "无")}</li>
+        <li>风险：${escapeHtml(record.riskLabel)} · ${escapeHtml(record.riskText || "无")}</li>
+        <li>配置差异：新增 ${escapeHtml(record.storageAdded)} / 覆盖 ${escapeHtml(record.storageUpdated)} / 清空 ${escapeHtml(record.storageRemoved)}</li>
+        <li>模型 / 贴图：${escapeHtml(record.importedModelCount || record.incomingModelCount)} / ${escapeHtml(record.textureAssetCount)}</li>
+        <li>恢复选择：${escapeHtml(record.selectedStorageCount)} 组配置 / ${escapeHtml(record.selectedDbCount)} 个模型库 / ${escapeHtml(record.selectedFieldCount)} 个字段 / ${escapeHtml(record.selectedModelCount)} 个模型</li>
+        <li>文件摘要：${escapeHtml(record.fileDigest || "未生成")}</li>
+        <li>预览摘要：${escapeHtml(record.previewDigest || "未生成")}</li>
+        <li>选择摘要：${escapeHtml(record.selectionDigest || "未生成")}</li>
+        <li>JSON 导出摘要：${escapeHtml(record.exportDigest || "未生成")}</li>
+        <li>回执摘要：${escapeHtml(record.receiptDigest || "未生成")}</li>
+      </ul>
+      <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
+    </article>`).join("");
+
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MR 书法项目档案导入预览 JSON 导出回执审计</title>
+  <style>
+    :root { color-scheme: light; --ink:#17221f; --muted:#61706a; --line:#dbe8e2; --jade:#247a67; --paper:#fbf7ee; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: var(--paper); font: 14px/1.62 -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }
+    main { width: min(980px, calc(100% - 32px)); margin: 0 auto; padding: 32px 0 44px; }
+    header { display: grid; gap: 10px; padding-bottom: 18px; border-bottom: 2px solid var(--ink); }
+    h1, h2, p { margin: 0; }
+    h1 { font-size: clamp(28px, 5vw, 46px); line-height: 1.08; }
+    h2 { font-size: 16px; overflow-wrap: anywhere; }
+    .muted { color: var(--muted); }
+    .stack { display: grid; gap: 12px; margin-top: 22px; }
+    .card { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #ffffff; }
+    .item-head { display: flex; gap: 10px; justify-content: space-between; align-items: baseline; }
+    .item-head span { color: var(--jade); font-weight: 800; white-space: nowrap; }
+    ul { display: grid; gap: 4px; margin: 0; padding-left: 18px; color: var(--muted); overflow-wrap: anywhere; }
+    pre { max-height: 260px; margin: 6px 0 0; padding: 10px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; background: #f7faf8; color: #24332f; white-space: pre-wrap; word-break: break-word; }
+    footer { margin-top: 24px; padding-top: 14px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 720px) { .item-head { display: grid; } .item-head span { white-space: normal; } }
+    @media print { body { background: #ffffff; } main { width: 100%; padding: 0; } .card { break-inside: avoid; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p class="muted">MR Calligraphy Project Import Preview JSON Export Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
+      <h1>项目档案导入预览 JSON 导出回执审计</h1>
+      <p class="muted">本报告来自当前浏览器保存的导入预览 JSON 导出回执；它证明浏览器曾生成恢复前机器可读预览及摘要，但不代表已经执行恢复。</p>
+    </header>
+    <section class="stack">${rows}</section>
+    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function formatProjectImpactSourceType(sourceType) {
     if (sourceType === "remote-project-repository") return "远端项目仓库预览";
     if (sourceType === "project-repository-file") return "本机项目仓库包预览";
@@ -5114,6 +5478,17 @@
       return result;
     }
     downloadJsonPayload(result.json, result.filename);
+    const receiptResult = recordProjectImportPreviewExportReceipt({
+      preview,
+      restoreOptions: options.restoreOptions || null,
+      filename: result.filename,
+      json: result.json,
+      payload: result.payload,
+      exportedAt: options.exportedAt || new Date().toISOString(),
+      previewDigest: result.previewDigest,
+      selectionDigest: result.selectionDigest,
+      exportDigest: result.exportDigest
+    });
     return {
       ok: true,
       filename: result.filename,
@@ -5121,7 +5496,10 @@
       previewDigest: result.previewDigest,
       selectionDigest: result.selectionDigest,
       exportDigest: result.exportDigest,
-      message: `已下载项目档案导入预览 JSON：${result.filename}。`
+      exportReceipt: receiptResult.receipt || null,
+      message: receiptResult.ok
+        ? `已下载项目档案导入预览 JSON：${result.filename}，并写入导出回执。`
+        : `已下载项目档案导入预览 JSON：${result.filename}。${receiptResult.message || "导出回执记录失败。"}`
     };
   }
 
@@ -5443,6 +5821,9 @@
     const impactExportAuditStatus = document.getElementById("projectImpactExportAuditStatus");
     const impactExportAuditList = document.getElementById("projectImpactExportAuditList");
     const impactExportAuditButton = document.getElementById("projectImpactExportAuditExport");
+    const importPreviewExportAuditStatus = document.getElementById("projectImportPreviewExportAuditStatus");
+    const importPreviewExportAuditList = document.getElementById("projectImportPreviewExportAuditList");
+    const importPreviewExportAuditButton = document.getElementById("projectImportPreviewExportAuditExport");
     const repositoryStatus = document.getElementById("projectRepositoryStatus");
     const repositoryList = document.getElementById("projectRepositoryList");
     const repositoryExportButton = document.getElementById("projectRepositoryExportButton");
@@ -5485,6 +5866,7 @@
       if (auditExportButton) auditExportButton.disabled = isBusy || !getRestoreAuditLog(1).records.length;
       if (restoreAuditExportAuditButton) restoreAuditExportAuditButton.disabled = isBusy || !getProjectRestoreAuditExportAudit({ limit: 1 }).total;
       if (impactExportAuditButton) impactExportAuditButton.disabled = isBusy || !getProjectImpactExportAudit({ limit: 1 }).total;
+      if (importPreviewExportAuditButton) importPreviewExportAuditButton.disabled = isBusy || !getProjectImportPreviewExportAudit({ limit: 1 }).total;
       if (repositoryExportButton) repositoryExportButton.disabled = isBusy;
       if (repositoryExportAuditButton) repositoryExportAuditButton.disabled = isBusy || !getProjectRepositoryExportAudit({ limit: 1 }).total;
       if (repositoryRefreshButton) repositoryRefreshButton.disabled = isBusy;
@@ -5802,6 +6184,43 @@
         digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
         item.append(title, detail, digest);
         impactExportAuditList.appendChild(item);
+      });
+    };
+
+    const renderProjectImportPreviewExportAudit = () => {
+      const audit = getProjectImportPreviewExportAudit({ limit: 5 });
+      if (importPreviewExportAuditStatus) {
+        importPreviewExportAuditStatus.textContent = audit.message;
+        importPreviewExportAuditStatus.dataset.receiptTone = audit.total ? "ready" : "idle";
+      }
+      if (importPreviewExportAuditButton) {
+        importPreviewExportAuditButton.disabled = isBusy || audit.total === 0;
+      }
+      if (!importPreviewExportAuditList) {
+        return;
+      }
+      importPreviewExportAuditList.innerHTML = "";
+      if (!audit.records.length) {
+        const empty = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = "尚无项目档案导入预览 JSON 导出回执";
+        const detail = document.createElement("span");
+        detail.textContent = "生成导入预览后点击“导出预览 JSON”，会记录来源、恢复选择、JSON 摘要和文件摘要。";
+        empty.append(title, detail);
+        importPreviewExportAuditList.appendChild(empty);
+        return;
+      }
+      audit.records.forEach((record) => {
+        const item = document.createElement("li");
+        const title = document.createElement("strong");
+        title.textContent = record.remotePackageId || record.filename || "项目档案导入预览 JSON";
+        const detail = document.createElement("span");
+        const sourceText = formatProjectImpactSourceType(record.sourceType);
+        detail.textContent = `${sourceText} · ${record.riskLabel || "风险未知"} · 选择 ${record.selectedCount} 项 / 字段 ${record.selectedFieldCount} / 模型 ${record.selectedModelCount}`;
+        const digest = document.createElement("span");
+        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · JSON ${record.exportDigest ? record.exportDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
+        item.append(title, detail, digest);
+        importPreviewExportAuditList.appendChild(item);
       });
     };
 
@@ -6400,6 +6819,7 @@
         restoreOptions: getSelectedRestoreOptions()
       });
       setStatus(result.message || "项目档案导入预览 JSON 导出失败。", result.ok ? "success" : "error");
+      renderProjectImportPreviewExportAudit();
     });
 
     auditExportButton?.addEventListener("click", () => {
@@ -6419,6 +6839,12 @@
       const result = downloadProjectImpactExportAudit();
       setStatus(result.message || "项目档案差异报告导出回执审计导出失败。", result.ok ? "success" : "error");
       renderProjectImpactExportAudit();
+    });
+
+    importPreviewExportAuditButton?.addEventListener("click", () => {
+      const result = downloadProjectImportPreviewExportAudit();
+      setStatus(result.message || "项目档案导入预览 JSON 导出回执审计导出失败。", result.ok ? "success" : "error");
+      renderProjectImportPreviewExportAudit();
     });
 
     repositoryRefreshButton?.addEventListener("click", () => {
@@ -6573,6 +6999,7 @@
     renderProjectArchiveExportAudit();
     renderProjectRestoreAuditExportAudit();
     renderProjectImpactExportAudit();
+    renderProjectImportPreviewExportAudit();
     renderProjectRepositoryExportAudit();
     syncProjectRepositoryRemoteInputs();
     renderProjectRepositoryRemoteStatus();
@@ -6613,6 +7040,10 @@
     downloadImportImpactReport,
     getImportPreviewJsonExport,
     downloadImportPreviewJson,
+    getProjectImportPreviewExportAudit,
+    getProjectImportPreviewExportAuditExport,
+    downloadProjectImportPreviewExportAudit,
+    recordProjectImportPreviewExportReceipt,
     getRestoreAuditLog,
     getRestoreAuditExport,
     downloadRestoreAuditLog,

@@ -15,6 +15,7 @@ const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_RESTORE_AUDIT_KEY = "mr-calligraphy-project-archive-audit-v1";
 const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
 const PROJECT_IMPACT_EXPORT_AUDIT_KEY = "mr-calligraphy-project-impact-export-audit-v1";
+const PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY = "mr-calligraphy-project-import-preview-export-audit-v1";
 const PROJECT_RESTORE_AUDIT_EXPORT_KEY = "mr-calligraphy-project-restore-audit-export-v1";
 const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
 const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
@@ -70,6 +71,7 @@ test.beforeEach(async ({ page }) => {
       PROJECT_RESTORE_AUDIT_KEY,
       PROJECT_ARCHIVE_EXPORT_AUDIT_KEY,
       PROJECT_IMPACT_EXPORT_AUDIT_KEY,
+      PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY,
       PROJECT_RESTORE_AUDIT_EXPORT_KEY,
       PROJECT_REPOSITORY_EXPORT_AUDIT_KEY,
       PROJECT_REPOSITORY_REMOTE_KEY,
@@ -4342,6 +4344,39 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectImportPreviewJson.restoreSelection.selectedCount).toBeGreaterThan(0);
   expect(projectImportPreviewJson.boundary).toContain("不会恢复或覆盖本机数据");
   await expect(page.locator("#projectArchiveStatus")).toContainText("已下载项目档案导入预览 JSON");
+  await expect(page.locator("#projectArchiveStatus")).toContainText("写入导出回执");
+  await expect(page.locator("#projectImportPreviewExportAuditStatus")).toContainText("已记录 1 条项目档案导入预览 JSON 导出回执");
+  await expect(page.locator("#projectImportPreviewExportAuditList")).toContainText(projectRepositoryPackageJson.packageId);
+  await expect(page.locator("#projectImportPreviewExportAuditList")).toContainText("本机项目仓库包预览");
+  const projectImportPreviewExportState = await readJsonLocalStorage(page, PROJECT_IMPORT_PREVIEW_EXPORT_AUDIT_KEY);
+  expect(projectImportPreviewExportState.records).toHaveLength(1);
+  expect(projectImportPreviewExportState.records[0].filename).toBe(projectImportPreviewJsonDownload.suggestedFilename());
+  expect(projectImportPreviewExportState.records[0].sourceType).toBe("project-repository-file");
+  expect(projectImportPreviewExportState.records[0].remotePackageId).toBe(projectRepositoryPackageJson.packageId);
+  expect(projectImportPreviewExportState.records[0].remoteWorkspaceId).toBe("local-browser");
+  expect(projectImportPreviewExportState.records[0].remotePackageDigest).toBe(projectRepositoryPackageJson.packageDigest);
+  expect(projectImportPreviewExportState.records[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImportPreviewExportState.records[0].previewDigest).toBe(projectImportPreviewJson.previewDigest);
+  expect(projectImportPreviewExportState.records[0].selectionDigest).toBe(projectImportPreviewJson.selectionDigest);
+  expect(projectImportPreviewExportState.records[0].exportDigest).toBe(projectImportPreviewJson.exportDigest);
+  expect(projectImportPreviewExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImportPreviewExportState.records[0].boundary).toContain("恢复前审阅 JSON");
+  const projectImportPreviewExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectImportPreviewExportAuditExport());
+  expect(projectImportPreviewExportAudit.ok).toBe(true);
+  expect(projectImportPreviewExportAudit.html).toContain("MR 书法项目档案导入预览 JSON 导出回执审计");
+  expect(projectImportPreviewExportAudit.html).toContain(projectRepositoryPackageJson.packageId);
+  expect(projectImportPreviewExportAudit.html).toContain(projectImportPreviewJson.exportDigest);
+  expect(projectImportPreviewExportAudit.html).toContain(projectImportPreviewExportState.records[0].receiptDigest);
+
+  const projectImportPreviewAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectImportPreviewExportAuditExport").click();
+  const projectImportPreviewAuditDownload = await projectImportPreviewAuditDownloadPromise;
+  expect(projectImportPreviewAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-project-import-preview-export-audit-.*\.html$/);
+  const projectImportPreviewAuditPath = await projectImportPreviewAuditDownload.path();
+  const projectImportPreviewAuditHtml = fs.readFileSync(projectImportPreviewAuditPath, "utf8");
+  expect(projectImportPreviewAuditHtml).toContain("MR 书法项目档案导入预览 JSON 导出回执审计");
+  expect(projectImportPreviewAuditHtml).toContain(projectRepositoryPackageJson.packageId);
+  expect(projectImportPreviewAuditHtml).toContain(projectImportPreviewExportState.records[0].receiptDigest);
 
   const tamperedProjectRepositoryPackageMessage = await page.evaluate(async ({ repositoryPackage }) => {
     const tampered = JSON.parse(JSON.stringify(repositoryPackage));
