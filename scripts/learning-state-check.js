@@ -725,6 +725,33 @@ const reviewedReportPackage = reportRepositoryPackage.package.reports.find((item
 assert(reviewedReportPackage.teacherReview.note.includes("竖钩"), "报告同步包应保留教师批注内容。");
 const reviewedReportVerificationPackage = reportRepositoryPackage.package.verifications.find((item) => item.reportId === "report-2");
 assert(reviewedReportVerificationPackage.digest === reviewedHtml.verification.digest, "报告同步包应保留批注后的验真摘要。");
+const reportRepositoryPackageJson = JSON.stringify(reportRepositoryPackage.package, null, 2);
+const reportRepositoryExportReceipt = window.MRAppState.recordReportRepositoryExportReceipt({
+  filename: reportRepositoryPackage.filename,
+  package: reportRepositoryPackage.package,
+  content: reportRepositoryPackageJson,
+  exportedAt: reportRepositoryPackage.package.exportedAt
+});
+assert(reportRepositoryExportReceipt.ok, "报告仓库 JSON 同步包导出应能记录本机回执。");
+assert(reportRepositoryExportReceipt.receipt.kind === "mr-calligraphy-report-repository-export-audit-v1", "报告仓库导出回执应返回稳定 kind。");
+assert(reportRepositoryExportReceipt.receipt.reportCount === reportRepositoryPackage.package.summary.total, "报告仓库导出回执应记录报告数量。");
+assert(reportRepositoryExportReceipt.receipt.teacherReviewedReportCount === reportRepositoryPackage.package.summary.teacherReviewedReportCount, "报告仓库导出回执应记录教师批注报告数量。");
+assert(reportRepositoryExportReceipt.receipt.verifiedReportCount === reportRepositoryPackage.package.summary.verifiedReportCount, "报告仓库导出回执应记录验真数量。");
+assert(reportRepositoryExportReceipt.receipt.packageDigest === reportRepositoryPackage.package.packageDigest, "报告仓库导出回执应记录包摘要。");
+assert(reportRepositoryExportReceipt.receipt.fileDigest === crypto.createHash("sha256").update(reportRepositoryPackageJson).digest("hex"), "报告仓库导出回执应记录 JSON 文件摘要。");
+assert(reportRepositoryExportReceipt.receipt.receiptDigest.match(/^[a-f0-9]{64}$/), "报告仓库导出回执应包含回执摘要。");
+assert(reportRepositoryExportReceipt.receipt.boundary.includes("不是云端报告仓库日志"), "报告仓库导出回执应说明本机边界。");
+const reportRepositoryExportAudit = window.MRAppState.getReportRepositoryExportAudit({ limit: 5 });
+assert(reportRepositoryExportAudit.kind === "mr-calligraphy-report-repository-export-audit-v1", "报告仓库导出审计应返回稳定 kind。");
+assert(reportRepositoryExportAudit.total === 1, "报告仓库导出审计应统计同步包导出回执。");
+assert(reportRepositoryExportAudit.latestReceipt.packageDigest === reportRepositoryPackage.package.packageDigest, "报告仓库导出审计应保留最近包摘要。");
+assert(/^[a-f0-9]{64}$/.test(reportRepositoryExportAudit.auditDigest), "报告仓库导出审计应包含稳定摘要。");
+const reportRepositoryExportAuditExport = window.MRAppState.getReportRepositoryExportAuditExport({ limit: 5 });
+assert(reportRepositoryExportAuditExport.ok, "报告仓库导出审计应可导出 HTML。");
+assert(reportRepositoryExportAuditExport.filename.startsWith("mr-calligraphy-report-repository-export-audit-"), "报告仓库导出审计文件名应可识别。");
+assert(reportRepositoryExportAuditExport.html.includes("MR 书法报告仓库导出回执审计"), "报告仓库导出审计 HTML 应包含标题。");
+assert(reportRepositoryExportAuditExport.html.includes(reportRepositoryPackage.package.packageDigest), "报告仓库导出审计 HTML 应包含包摘要。");
+assert(reportRepositoryExportAuditExport.html.includes(reportRepositoryExportAuditExport.audit.auditDigest), "报告仓库导出审计 HTML 应包含审计摘要。");
 
 const persistedReviewedState = JSON.parse(storage.get("mr-calligraphy-learning-state-v1"));
 const persistedReviewedReport = persistedReviewedState.reports.find((item) => item.id === "report-2");

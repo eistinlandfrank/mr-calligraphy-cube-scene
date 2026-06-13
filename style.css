@@ -5756,6 +5756,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt,
+.report-repository-export-audit,
 .history-repository-export-audit,
 .history-repository-receipt,
 .plan-repository-receipt {
@@ -5769,6 +5770,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head,
+.report-repository-export-audit-head,
 .history-repository-export-audit-head,
 .history-repository-receipt-head,
 .plan-repository-receipt-head {
@@ -5779,6 +5781,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head strong,
+.report-repository-export-audit-head strong,
 .history-repository-export-audit-head strong,
 .history-repository-receipt-head strong,
 .plan-repository-receipt-head strong {
@@ -5788,6 +5791,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head button,
+.report-repository-export-audit-head button,
 .history-repository-export-audit-head button,
 .history-repository-receipt-head button,
 .plan-repository-receipt-head button {
@@ -5802,6 +5806,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-head button:disabled,
+.report-repository-export-audit-head button:disabled,
 .history-repository-export-audit-head button:disabled,
 .history-repository-receipt-head button:disabled,
 .plan-repository-receipt-head button:disabled {
@@ -5812,6 +5817,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt p,
+.report-repository-export-audit p,
 .history-repository-export-audit p,
 .history-repository-receipt p,
 .plan-repository-receipt p {
@@ -5823,6 +5829,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt p[data-receipt-tone="ready"],
+.report-repository-export-audit p[data-receipt-tone="ready"],
 .history-repository-export-audit p[data-receipt-tone="ready"],
 .history-repository-receipt p[data-receipt-tone="ready"],
 .plan-repository-receipt p[data-receipt-tone="ready"] {
@@ -5830,6 +5837,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-list,
+.report-repository-export-audit-list,
 .history-repository-export-audit-list,
 .history-repository-receipt-list,
 .plan-repository-receipt-list {
@@ -5841,6 +5849,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-list li,
+.report-repository-export-audit-list li,
 .history-repository-export-audit-list li,
 .history-repository-receipt-list li,
 .plan-repository-receipt-list li {
@@ -5855,6 +5864,9 @@ body.is-model-view .notice-panel {
 .report-repository-receipt-list strong,
 .report-repository-receipt-list span,
 .report-repository-receipt-list small,
+.report-repository-export-audit-list strong,
+.report-repository-export-audit-list span,
+.report-repository-export-audit-list small,
 .history-repository-export-audit-list strong,
 .history-repository-export-audit-list span,
 .history-repository-export-audit-list small,
@@ -5868,6 +5880,7 @@ body.is-model-view .notice-panel {
 }
 
 .report-repository-receipt-list strong,
+.report-repository-export-audit-list strong,
 .history-repository-export-audit-list strong,
 .history-repository-receipt-list strong,
 .plan-repository-receipt-list strong {
@@ -5877,6 +5890,8 @@ body.is-model-view .notice-panel {
 
 .report-repository-receipt-list span,
 .report-repository-receipt-list small,
+.report-repository-export-audit-list span,
+.report-repository-export-audit-list small,
 .history-repository-export-audit-list span,
 .history-repository-export-audit-list small,
 .history-repository-receipt-list span,

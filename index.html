@@ -328,6 +328,14 @@
             <button data-feature-state="real-export" id="reportRepositoryExportButton" type="button">导出同步包</button>
             <button data-feature-state="real-local" id="reportRepositoryImportButton" type="button">导入同步包</button>
           </div>
+          <div id="reportRepositoryExportAudit" class="report-repository-export-audit" aria-label="报告仓库导出回执审计">
+            <div class="report-repository-export-audit-head">
+              <strong>同步包导出回执</strong>
+              <button data-feature-state="real-export" id="reportRepositoryExportAuditExport" type="button">导出回执</button>
+            </div>
+            <p id="reportRepositoryExportAuditStatus">暂无报告仓库导出回执。</p>
+            <ul id="reportRepositoryExportAuditList" class="report-repository-export-audit-list"></ul>
+          </div>
           <input id="reportRepositoryImportInput" type="file" accept="application/json,.json" hidden>
           <details class="report-repository-remote">
             <summary>远端报告 API</summary>

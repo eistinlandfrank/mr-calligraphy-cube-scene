@@ -94,6 +94,9 @@
   const REPORT_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const REPORT_REPOSITORY_BOUNDARY = "报告仓库同步本机 ReportRecord 和本机验真摘要；配置远端 API 后会通过 fetch 保存和拉取报告包，携带 Workspace 空间 ID 做服务端隔离第一版，并可保存远端签名回执；当前仍不包含账号化教师端、生产证书签章、不可篡改审计或云端 PDF 渲染。";
   const REPORT_REPOSITORY_DIGEST_ALGORITHM = "sha256-stable-json";
+  const REPORT_REPOSITORY_EXPORT_AUDIT_KIND = "mr-calligraphy-report-repository-export-audit-v1";
+  const REPORT_REPOSITORY_EXPORT_MAX_RECEIPTS = 24;
+  const REPORT_REPOSITORY_EXPORT_AUDIT_BOUNDARY = "报告仓库导出回执保存在当前浏览器 reportRepositoryExportReceipts，记录报告仓库 JSON 同步包下载请求、报告数量、教师批注报告数量、验真数量、包摘要、文件摘要和时间；它不是云端报告仓库日志、系统文件保存证明、账号审计、生产证书签章或不可篡改证据链。";
   const REPORT_REPOSITORY_RECEIPT_KIND = "mr-calligraphy-report-repository-receipt-v1";
   const REPORT_REPOSITORY_MAX_RECEIPTS = 12;
   const REPORT_REPOSITORY_MAX_CONFLICTS = 12;
@@ -478,6 +481,7 @@
       planRepository: normalizePlanRepository(source?.planRepository),
       historyRepositoryExportReceipts: normalizeHistoryRepositoryExportReceipts(source?.historyRepositoryExportReceipts),
       historyRepository: normalizeHistoryRepository(source?.historyRepository),
+      reportRepositoryExportReceipts: normalizeReportRepositoryExportReceipts(source?.reportRepositoryExportReceipts),
       reportRepository: normalizeReportRepository(source?.reportRepository),
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
@@ -9083,6 +9087,252 @@
     }[status] || "未校验";
   }
 
+  function normalizeReportRepositoryExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeReportRepositoryExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, REPORT_REPOSITORY_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizeReportRepositoryExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const packageId = String(record.packageId || record.sourcePackageId || "").trim().slice(0, 160);
+    const packageDigest = normalizeReportRepositoryHex(record.packageDigest || record.repositoryDigest || record.digest);
+    if (!filename || !exportedAt || !packageId || !packageDigest) return null;
+    const reportCount = normalizeInteger(record.reportCount || record.exportedReportCount, 0, 0, 99999);
+    const teacherReviewedReportCount = normalizeInteger(record.teacherReviewedReportCount, 0, 0, 99999);
+    const verifiedReportCount = normalizeInteger(record.verifiedReportCount, 0, 0, 99999);
+    const payload = {
+      kind: REPORT_REPOSITORY_EXPORT_AUDIT_KIND,
+      id: String(record.id || `report-repository-export-${sha256StableJson({
+        filename,
+        exportedAt,
+        packageId,
+        packageDigest
+      }).slice(0, 18)}`).trim().slice(0, 140),
+      filename,
+      mimeType: String(record.mimeType || "application/json;charset=utf-8").trim().slice(0, 120),
+      byteLength: normalizeInteger(record.byteLength || record.payloadBytes, 0, 0, 300000000),
+      fileDigest: normalizeReportRepositoryHex(record.fileDigest || record.contentDigest),
+      packageId,
+      packageDigest,
+      reportCount,
+      teacherReviewedReportCount,
+      verifiedReportCount,
+      workspaceId: normalizeReportRepositoryWorkspaceId(record.workspaceId || record.remoteWorkspaceId),
+      exportedAt,
+      source: String(record.source || "local-json-download").trim().slice(0, 80) || "local-json-download",
+      boundary: String(record.boundary || REPORT_REPOSITORY_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 340) || REPORT_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 260)
+    };
+    payload.receiptDigest = normalizeReportRepositoryHex(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      filename: payload.filename,
+      byteLength: payload.byteLength,
+      fileDigest: payload.fileDigest,
+      packageId: payload.packageId,
+      packageDigest: payload.packageDigest,
+      reportCount: payload.reportCount,
+      teacherReviewedReportCount: payload.teacherReviewedReportCount,
+      verifiedReportCount: payload.verifiedReportCount,
+      workspaceId: payload.workspaceId,
+      exportedAt: payload.exportedAt
+    });
+    if (!payload.message) {
+      payload.message = `已记录 ${payload.reportCount} 份报告的 JSON 同步包导出回执。`;
+    }
+    return payload;
+  }
+
+  function recordReportRepositoryExportReceipt(payload = {}) {
+    const packageRecord = payload.package && typeof payload.package === "object"
+      ? payload.package
+      : null;
+    const content = String(payload.content ?? payload.json ?? (packageRecord ? JSON.stringify(packageRecord, null, 2) : ""));
+    const filename = String(payload.filename || "").trim();
+    const packageId = String(payload.packageId || packageRecord?.packageId || "").trim();
+    const packageDigest = normalizeReportRepositoryHex(payload.packageDigest || packageRecord?.packageDigest);
+    const summary = packageRecord?.summary && typeof packageRecord.summary === "object" ? packageRecord.summary : {};
+    const reportCount = normalizeInteger(payload.reportCount || summary.total || packageRecord?.reports?.length, 0, 0, 99999);
+    const teacherReviewedReportCount = normalizeInteger(payload.teacherReviewedReportCount || summary.teacherReviewedReportCount, 0, 0, 99999);
+    const verifiedReportCount = normalizeInteger(payload.verifiedReportCount || summary.verifiedReportCount || packageRecord?.verifications?.length, 0, 0, 99999);
+    if (!filename || !packageId || !packageDigest || !reportCount) {
+      return {
+        ok: false,
+        message: "报告仓库导出回执缺少有效的同步包信息。"
+      };
+    }
+    const receipt = normalizeReportRepositoryExportReceipt({
+      id: payload.id || makeId("report-repository-export"),
+      filename,
+      mimeType: payload.mimeType || "application/json;charset=utf-8",
+      byteLength: payload.byteLength || (content ? utf8Bytes(content).length : 0),
+      fileDigest: payload.fileDigest || (content ? sha256Hex(content) : ""),
+      packageId,
+      packageDigest,
+      reportCount,
+      teacherReviewedReportCount,
+      verifiedReportCount,
+      workspaceId: payload.workspaceId || packageRecord?.workspaceId || state.reportRepository?.workspaceId || REPORT_REPOSITORY_DEFAULT_WORKSPACE,
+      exportedAt: payload.exportedAt || new Date().toISOString(),
+      source: payload.source || "local-json-download",
+      boundary: REPORT_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: payload.message || `已记录 ${reportCount} 份报告的 JSON 同步包导出回执。`
+    });
+    if (!receipt) {
+      return {
+        ok: false,
+        message: "报告仓库导出回执格式无效。"
+      };
+    }
+    const previous = normalizeReportRepositoryExportReceipts(state.reportRepositoryExportReceipts);
+    state.reportRepositoryExportReceipts = [
+      receipt,
+      ...previous.filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, REPORT_REPOSITORY_EXPORT_MAX_RECEIPTS);
+    addEvent("report-repository-export-receipt", `记录报告仓库导出回执：${receipt.reportCount} 份报告 · ${receipt.filename}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getReportRepositoryExportAudit(),
+      message: receipt.message
+    };
+  }
+
+  function getReportRepositoryExportAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, REPORT_REPOSITORY_EXPORT_MAX_RECEIPTS, 1, REPORT_REPOSITORY_EXPORT_MAX_RECEIPTS);
+    const allReceipts = normalizeReportRepositoryExportReceipts(state.reportRepositoryExportReceipts);
+    const receipts = allReceipts.slice(0, limit).map(clone);
+    const workspaceCounts = {};
+    allReceipts.forEach((receipt) => {
+      const workspaceId = receipt.workspaceId || REPORT_REPOSITORY_DEFAULT_WORKSPACE;
+      workspaceCounts[workspaceId] = (workspaceCounts[workspaceId] || 0) + 1;
+    });
+    const totals = allReceipts.reduce((sum, receipt) => ({
+      reportCount: sum.reportCount + (receipt.reportCount || 0),
+      teacherReviewedReportCount: sum.teacherReviewedReportCount + (receipt.teacherReviewedReportCount || 0),
+      verifiedReportCount: sum.verifiedReportCount + (receipt.verifiedReportCount || 0)
+    }), {
+      reportCount: 0,
+      teacherReviewedReportCount: 0,
+      verifiedReportCount: 0
+    });
+    const audit = {
+      ok: true,
+      kind: REPORT_REPOSITORY_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      workspaceCounts,
+      totals,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: REPORT_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
+      message: allReceipts.length
+        ? `已记录 ${allReceipts.length} 条报告仓库导出回执，最近一次：${formatPlanDate(allReceipts[0].exportedAt)}。`
+        : "暂无报告仓库导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getReportRepositoryExportAuditExport(options = {}) {
+    const audit = getReportRepositoryExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的报告仓库导出回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-report-repository-export-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderReportRepositoryExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条报告仓库导出回执审计导出。`
+    };
+  }
+
+  function downloadReportRepositoryExportAudit(options = {}) {
+    const result = getReportRepositoryExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderReportRepositoryExportAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.filename || receipt.packageId)}</h2>
+        <p>${escapeHtml(receipt.message || "报告仓库导出回执已记录。")}</p>
+        <dl>
+          <dt>包 ID</dt><dd>${escapeHtml(receipt.packageId)}</dd>
+          <dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd>
+          <dt>MIME</dt><dd>${escapeHtml(receipt.mimeType || "application/json;charset=utf-8")}</dd>
+          <dt>报告数量</dt><dd>${escapeHtml(receipt.reportCount || 0)}</dd>
+          <dt>教师批注报告</dt><dd>${escapeHtml(receipt.teacherReviewedReportCount || 0)}</dd>
+          <dt>验真数量</dt><dd>${escapeHtml(receipt.verifiedReportCount || 0)}</dd>
+          <dt>Workspace</dt><dd>${escapeHtml(receipt.workspaceId || REPORT_REPOSITORY_DEFAULT_WORKSPACE)}</dd>
+          <dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd>
+          <dt>包摘要</dt><dd>${escapeHtml(receipt.packageDigest || "未生成")}</dd>
+          <dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd>
+          <dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd>
+          <dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法报告仓库导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #1f2937; background: #f7f4ee; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 8px; font-size: 28px; }
+    .meta, footer { margin: 0 0 18px; color: #5f6b7a; line-height: 1.6; }
+    .receipt { margin: 18px 0; padding: 18px; border: 1px solid #ddd3c2; border-radius: 8px; background: #fffaf2; }
+    h2 { margin: 0 0 10px; font-size: 17px; overflow-wrap: anywhere; }
+    p { margin: 0 0 12px; color: #5f6b7a; line-height: 1.6; }
+    dl { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 8px 12px; margin: 0; }
+    dt { color: #5f6b7a; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f2937; color: #f8fafc; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MR 书法报告仓库导出回执审计</h1>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total} · 展示 ${audit.exportedCount}<br>${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getReportRepositoryRemoteConfig() {
     const repository = normalizeReportRepository(state.reportRepository);
     return {
@@ -9171,13 +9421,28 @@
       lastError: ""
     });
     addEvent("report-repository-export", `导出报告仓库同步包：${result.package.reports.length} 份报告`);
-    saveState();
+    const receiptResult = recordReportRepositoryExportReceipt({
+      filename: result.filename,
+      package: result.package,
+      content: JSON.stringify(result.package, null, 2),
+      packageId: result.package.packageId,
+      packageDigest: result.package.packageDigest,
+      reportCount: result.package.summary.total,
+      teacherReviewedReportCount: result.package.summary.teacherReviewedReportCount,
+      verifiedReportCount: result.package.summary.verifiedReportCount,
+      exportedAt: now
+    });
+    if (!receiptResult.ok) {
+      saveState();
+    }
     return {
       ok: true,
       filename: result.filename,
       exportedReportCount: result.package.reports.length,
+      receipt: receiptResult.ok ? receiptResult.receipt : null,
+      audit: receiptResult.ok ? receiptResult.audit : null,
       status: getReportRepositoryStatus(),
-      message: `已下载报告仓库 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${REPORT_REPOSITORY_BOUNDARY}`
+      message: `已下载报告仓库 JSON 同步包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}，并记录导出回执。${REPORT_REPOSITORY_BOUNDARY}`
     };
   }
 
@@ -20543,6 +20808,8 @@
     getReportRepositoryRemoteConfig,
     getReportRepositoryConflicts,
     getReportRepositoryPackage,
+    getReportRepositoryExportAudit,
+    getReportRepositoryExportAuditExport,
     getReportRepositoryReceiptAudit,
     getReportRepositoryReceiptAuditExport,
     getPlanExport,
@@ -20607,6 +20874,7 @@
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,
     downloadReportRepository,
+    downloadReportRepositoryExportAudit,
     downloadReportRepositoryReceiptAudit,
     downloadReportTeacherReviewAudit,
     downloadReportPrintAudit,
@@ -20635,6 +20903,7 @@
     recordLocalLinkCopyReceipt,
     recordHistoryDetailActionReceipt,
     recordHistoryRepositoryExportReceipt,
+    recordReportRepositoryExportReceipt,
     recordReportPrintReceipt,
     recordReportExportReceipt,
     recordReportComparisonExportReceipt,

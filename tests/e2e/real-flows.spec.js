@@ -1451,11 +1451,33 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const reportRepositoryDigestPayload = cloneJson(reportRepositoryJson);
   delete reportRepositoryDigestPayload.packageDigest;
   expect(reportRepositoryJson.packageDigest).toBe(sha256StableJson(reportRepositoryDigestPayload));
+  await expect(page.locator("#noticeState")).toContainText("并记录导出回执");
   await expect(page.locator("#reportRepositorySummary")).toContainText("最近导出 1 份报告");
+  await expect(page.locator("#reportRepositoryExportAuditStatus")).toContainText("已记录 1 条报告仓库导出回执");
+  await expect(page.locator("#reportRepositoryExportAuditList")).toContainText("1 份报告");
+  await expect(page.locator("#reportRepositoryExportAuditList")).toContainText("验真 1");
+  await expect(page.locator("#reportRepositoryExportAuditList")).toContainText(reportRepositoryDownload.suggestedFilename());
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.reportRepository.lastExportedReportCount).toBe(1);
   expect(learningState.reportRepository.lastPackageId).toMatch(/^report-repository-/);
   expect(learningState.reportRepository.lastPackageDigest).toBe(reportRepositoryJson.packageDigest);
+  expect(learningState.reportRepositoryExportReceipts).toHaveLength(1);
+  expect(learningState.reportRepositoryExportReceipts[0].filename).toBe(reportRepositoryDownload.suggestedFilename());
+  expect(learningState.reportRepositoryExportReceipts[0].reportCount).toBe(1);
+  expect(learningState.reportRepositoryExportReceipts[0].verifiedReportCount).toBe(1);
+  expect(learningState.reportRepositoryExportReceipts[0].packageDigest).toBe(reportRepositoryJson.packageDigest);
+  expect(learningState.reportRepositoryExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportRepositoryExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+
+  const reportRepositoryExportAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportRepositoryExportAuditExport").click();
+  const reportRepositoryExportAuditDownload = await reportRepositoryExportAuditDownloadPromise;
+  expect(reportRepositoryExportAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-repository-export-audit-.*\.html$/);
+  const reportRepositoryExportAuditPath = await reportRepositoryExportAuditDownload.path();
+  const reportRepositoryExportAuditHtml = fs.readFileSync(reportRepositoryExportAuditPath, "utf8");
+  expect(reportRepositoryExportAuditHtml).toContain("MR 书法报告仓库导出回执审计");
+  expect(reportRepositoryExportAuditHtml).toContain(learningState.reportRepositoryExportReceipts[0].packageDigest);
+  expect(reportRepositoryExportAuditHtml).toContain(learningState.reportRepositoryExportReceipts[0].receiptDigest);
 
   await page.locator(".report-repository-remote summary").click();
   await page.locator("#reportRepositoryEndpointInput").fill(reportEndpoint);

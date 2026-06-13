@@ -895,6 +895,9 @@ const els = {
   reportTeacherReviewAuditList: document.getElementById("reportTeacherReviewAuditList"),
   reportTeacherReviewAuditExport: document.getElementById("reportTeacherReviewAuditExport"),
   reportRepositorySummary: document.getElementById("reportRepositorySummary"),
+  reportRepositoryExportAuditStatus: document.getElementById("reportRepositoryExportAuditStatus"),
+  reportRepositoryExportAuditList: document.getElementById("reportRepositoryExportAuditList"),
+  reportRepositoryExportAuditExport: document.getElementById("reportRepositoryExportAuditExport"),
   reportRepositoryExportButton: document.getElementById("reportRepositoryExportButton"),
   reportRepositoryImportButton: document.getElementById("reportRepositoryImportButton"),
   reportRepositoryImportInput: document.getElementById("reportRepositoryImportInput"),
@@ -4102,6 +4105,7 @@ function bindReportControls() {
   els.reportRepositoryRemoteButton?.addEventListener("click", checkReportRepositoryRemote);
   els.reportRepositoryPushButton?.addEventListener("click", pushReportRepositoryRemote);
   els.reportRepositoryPullButton?.addEventListener("click", pullReportRepositoryRemote);
+  els.reportRepositoryExportAuditExport?.addEventListener("click", exportReportRepositoryExportAudit);
   els.reportRepositoryReceiptExportButton?.addEventListener("click", exportReportRepositoryReceipts);
   els.reportRepositoryConflictList?.addEventListener("click", handleReportRepositoryConflictAction);
   els.reportMetrics?.addEventListener("click", (event) => {
@@ -6947,8 +6951,36 @@ function renderReportRepositoryStatus(detail) {
   if (!detail && els.reportRepositoryPushButton) {
     els.reportRepositoryPushButton.disabled = true;
   }
+  renderReportRepositoryExportAudit();
   renderReportRepositoryReceipts();
   renderReportRepositoryConflictPanel(status);
+}
+
+function renderReportRepositoryExportAudit() {
+  const audit = window.MRAppState?.getReportRepositoryExportAudit?.();
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.reportRepositoryExportAuditStatus) {
+    els.reportRepositoryExportAuditStatus.textContent = audit?.message || "暂无报告仓库导出回执。";
+    els.reportRepositoryExportAuditStatus.dataset.receiptTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.reportRepositoryExportAuditExport) {
+    els.reportRepositoryExportAuditExport.disabled = !receipts.length;
+  }
+  if (!els.reportRepositoryExportAuditList) return;
+  els.reportRepositoryExportAuditList.replaceChildren();
+  receipts.slice(0, 5).forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = receipt.filename || receipt.packageId || "报告仓库同步包";
+    const meta = document.createElement("span");
+    const packageDigest = receipt.packageDigest ? receipt.packageDigest.slice(0, 12) : "包摘要未知";
+    const fileDigest = receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "文件摘要未知";
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.reportCount || 0} 份报告 · 批注 ${receipt.teacherReviewedReportCount || 0} · 验真 ${receipt.verifiedReportCount || 0}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${receipt.workspaceId || "local-browser"} / 包 ${packageDigest} / 文件 ${fileDigest} / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"}`;
+    item.append(title, meta, detail);
+    els.reportRepositoryExportAuditList.appendChild(item);
+  });
 }
 
 function renderReportRepositoryReceipts() {
@@ -7176,6 +7208,16 @@ function exportReportRepositoryReceipts() {
     showNotice(result.message);
   } else {
     showNotice("暂无可导出的报告仓库签名回执。");
+  }
+  renderReportPanel(currentIndex);
+}
+
+function exportReportRepositoryExportAudit() {
+  const result = window.MRAppState?.downloadReportRepositoryExportAudit?.({ limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的报告仓库导出回执。");
   }
   renderReportPanel(currentIndex);
 }

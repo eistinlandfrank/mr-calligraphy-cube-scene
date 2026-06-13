@@ -13,7 +13,8 @@
 
 前台站内报告面板提供“导出同步包”和“导入同步包”：
 
-- `MRAppState.downloadReportRepository()` 会下载 `mr-calligraphy-report-repository-*.json`，并把最近导出时间、报告数、workspaceId 和 packageId 写入 `mr-calligraphy-learning-state-v1.reportRepository`。
+- `MRAppState.downloadReportRepository()` 会下载 `mr-calligraphy-report-repository-*.json`，并把最近导出时间、报告数、workspaceId 和 packageId 写入 `mr-calligraphy-learning-state-v1.reportRepository`，同时写入 `reportRepositoryExportReceipts` 本机导出回执。
+- `MRAppState.getReportRepositoryExportAudit()` 会读取最近本机导出回执；`downloadReportRepositoryExportAudit()` 会导出 `mr-calligraphy-report-repository-export-audit-*.html`，包含报告数量、教师批注报告数量、验真数量、包摘要、文件摘要和回执摘要。
 - `MRAppState.importReportRepositoryPackage()` 会读取同一格式的 JSON 包，新增本机不存在的报告；遇到同 ID 差异报告时不覆盖本机记录，而是写入冲突审计。
 - `MRAppState.getReportRepositoryReceiptAudit()` 会读取最近签名回执审计；`downloadReportRepositoryReceiptAudit()` 会导出 `mr-calligraphy-report-repository-receipts-*.html`。
 - 导入成功后刷新站内报告面板和学习状态摘要；导入错文件、空包或格式错误会返回明确失败提示。
@@ -206,7 +207,7 @@ npm run test:e2e -- --grep "front practice saves real strokes"
 验收重点：
 
 - `MRAppState.getReportRepositoryPackage()` 生成报告包和验真摘要。
-- `MRAppState.downloadReportRepository()` 会触发浏览器下载，页面显示最近导出报告数。
+- `MRAppState.downloadReportRepository()` 会触发浏览器下载，页面显示最近导出报告数，并在“同步包导出回执”中显示报告数、验真数、包摘要、文件摘要和回执摘要。
 - 站内报告面板“导入同步包”会通过文件选择器导入 JSON 包，并写入本机 `reports` 与 `reportRepository` 状态。
 - `configureReportRepositoryRemote()` 持久化 endpoint/token/workspace。
 - 检查、推送和拉取都是真实 `fetch`，并携带 Bearer header 与 `X-MR-Workspace-Id` header。

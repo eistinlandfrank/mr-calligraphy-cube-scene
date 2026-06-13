@@ -5338,3 +5338,50 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习档案仓库导出回执审计`
+
+## 140. 2026-06-13 新增报告仓库导出回执审计
+
+本次把前台站内报告“导出同步包”补成可追踪的本机回执闭环。用户下载报告仓库 JSON 后，可以在同一面板看到包里包含多少报告、多少教师批注报告、多少验真摘要，并导出 HTML 审计页留档。
+
+完成内容：
+
+- 新增 `REPORT_REPOSITORY_EXPORT_AUDIT_KIND = "mr-calligraphy-report-repository-export-audit-v1"` 和报告仓库导出边界说明。
+- 学习状态新增 `reportRepositoryExportReceipts`，随 `mr-calligraphy-learning-state-v1` 持久化。
+- `MRAppState.recordReportRepositoryExportReceipt()` 记录文件名、MIME、字节数、报告数量、教师批注报告数量、验真数量、Workspace、包摘要、文件摘要和回执摘要。
+- `MRAppState.getReportRepositoryExportAudit()` 返回 Workspace 统计、累计报告数量、最近回执列表和 64 位 `auditDigest`。
+- `MRAppState.getReportRepositoryExportAuditExport()` / `downloadReportRepositoryExportAudit()` 生成并下载 `mr-calligraphy-report-repository-export-audit-*.html`。
+- `downloadReportRepository()` 成功发起 JSON 下载后写入报告仓库导出回执。
+- 前台站内报告面板新增“同步包导出回执”列表和“导出回执”按钮。
+- Smoke 页面标记检查新增 `reportRepositoryExportAudit`、`reportRepositoryExportAuditStatus`、`reportRepositoryExportAuditList` 和 `reportRepositoryExportAuditExport`。
+- 控件清单更新为前台 `real-export 42`、`handled 117`、`missingHandler 0`。
+- `learning-state-check.js` 验证同步包回执、报告数量、教师批注报告数量、验真数量、文件摘要、包摘要、边界和 HTML 审计页。
+- Playwright 前台练习用例验证真实点击“导出同步包”、JSON 下载、回执面板、localStorage 持久化和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：当前浏览器报告记录、报告验真摘要和 `MRAppState.getReportRepositoryPackage()` 生成的 `mr-calligraphy-report-repository-v1` 包。
+- 写入状态：JSON 同步包下载请求成功发起后写入 `reportRepositoryExportReceipts`。
+- 成功反馈：站内报告面板显示同步包文件名、报告数量、教师批注报告数量、验真数量、包摘要、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载报告仓库导出回执 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：回执随学习状态持久化，可从同一面板重新导出。
+
+仍待补：
+
+- 当前只证明当前浏览器生成并发起了报告仓库 JSON 下载请求，并记录生成内容摘要；它不代表系统保存完成、云端报告仓库日志、账号审计、生产证书签章或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库导出回执审计`

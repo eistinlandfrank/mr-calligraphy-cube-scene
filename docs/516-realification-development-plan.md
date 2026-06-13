@@ -11048,3 +11048,52 @@
 提交：
 
 - 中文 commit message：`新增学习档案仓库导出回执审计`
+
+### 2026-06-13：新增报告仓库导出回执审计
+
+功能名：前台报告仓库 JSON 同步包导出回执。
+
+开发原因：
+
+- “导出同步包”已经会生成真实 `mr-calligraphy-report-repository-v1` JSON 包，并带 `packageDigest` 和报告验真摘要。
+- 但导出后没有本机回执列表，用户无法在页面确认导出的包包含多少报告、多少教师批注报告、多少验真摘要，也无法导出审计页。
+
+完成内容：
+
+- 新增 `mr-calligraphy-report-repository-export-audit-v1` 审计包。
+- 学习状态新增 `reportRepositoryExportReceipts`。
+- `downloadReportRepository()` 发起 JSON 下载后写入报告仓库导出回执。
+- 回执记录文件名、MIME、字节数、报告数量、教师批注报告数量、验真数量、Workspace、包摘要、文件摘要和回执摘要。
+- 新增 `getReportRepositoryExportAudit()`、`getReportRepositoryExportAuditExport()` 和 `downloadReportRepositoryExportAudit()`。
+- 前台站内报告面板新增“同步包导出回执”列表和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台至少生成一份学习报告。
+- 点击“导出同步包”应下载 `mr-calligraphy-report-repository-*.json`。
+- “同步包导出回执”面板应显示文件名、报告数量、教师批注报告数量、验真数量、包摘要和文件摘要。
+- 点击“导出回执”应下载 `mr-calligraphy-report-repository-export-audit-*.html`。
+- 审计 HTML 应包含“MR 书法报告仓库导出回执审计”、包摘要、文件摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机 JSON 下载请求回执，只能证明页面生成并发起了报告仓库同步包下载，并记录生成内容摘要；它不是云端报告仓库日志、系统文件保存证明、账号审计、生产证书签章或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告仓库导出回执审计`
