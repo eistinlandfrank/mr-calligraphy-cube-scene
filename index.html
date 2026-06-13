@@ -561,6 +561,14 @@
           <p id="planSummary">点击“制定计划”后会生成可勾选任务。</p>
           <div id="planReminderSummary" class="plan-reminder-summary" data-plan-reminders="planReminderSummary">暂无计划提醒</div>
           <div id="planReminderServiceSummary" class="plan-reminder-service-summary" data-plan-reminder-service="planReminderServiceSummary">本机提醒尚未检查</div>
+          <div id="planReminderAudit" class="plan-reminder-audit" aria-label="计划提醒回执审计">
+            <div class="plan-reminder-audit-head">
+              <strong>提醒回执审计</strong>
+              <button data-feature-state="real-export" id="planReminderAuditExport" type="button">导出提醒</button>
+            </div>
+            <p id="planReminderAuditStatus">暂无本机提醒回执。</p>
+            <ul id="planReminderAuditList" class="plan-reminder-audit-list"></ul>
+          </div>
           <div id="planRepositorySummary" class="plan-repository-summary" data-plan-repository-summary="planRepositorySummary">计划同步仓库尚未检查</div>
           <div id="planCycleSummary" class="plan-cycle-summary" data-plan-cycle-summary="planCycleSummary">暂无周期规则</div>
           <label class="plan-history-select">

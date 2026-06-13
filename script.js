@@ -1000,6 +1000,9 @@ const els = {
   planSummary: document.getElementById("planSummary"),
   planReminderSummary: document.getElementById("planReminderSummary"),
   planReminderServiceSummary: document.getElementById("planReminderServiceSummary"),
+  planReminderAuditStatus: document.getElementById("planReminderAuditStatus"),
+  planReminderAuditList: document.getElementById("planReminderAuditList"),
+  planReminderAuditExport: document.getElementById("planReminderAuditExport"),
   planRepositorySummary: document.getElementById("planRepositorySummary"),
   planCycleSummary: document.getElementById("planCycleSummary"),
   planHistorySelect: document.getElementById("planHistorySelect"),
@@ -4289,6 +4292,7 @@ function bindPlanControls() {
 
   els.planAddItem?.addEventListener("click", addCustomPlanItem);
   els.planReminderPermissionButton?.addEventListener("click", requestActivePlanReminderPermission);
+  els.planReminderAuditExport?.addEventListener("click", exportPlanReminderAudit);
   els.planRepositoryExportButton?.addEventListener("click", downloadPlanRepositoryPackage);
   els.planRepositoryImportButton?.addEventListener("click", choosePlanRepositoryImport);
   els.planRepositorySaveRemoteButton?.addEventListener("click", savePlanRepositoryRemoteConfig);
@@ -8082,6 +8086,7 @@ function renderPlanPanel(sceneIndex = currentIndex) {
     els.planCycleSummary.dataset.cycleTone = cycleStatus?.tone || "idle";
   }
   renderPlanReminderService(plan);
+  renderPlanReminderAudit(plan);
   renderPlanRepositoryStatus(planHistory);
   if (els.planAddItem) {
     els.planAddItem.disabled = !plan;
@@ -8204,12 +8209,59 @@ function renderPlanReminderService(plan) {
               : "启用本机提醒";
   }
 
-  if (plan && status?.hasPendingLocalReminder) {
-    const dispatched = window.MRAppState?.dispatchPlanReminderNotification?.(plan.id);
-    if (dispatched?.ok) {
-      showNotice(dispatched.message);
-    }
+}
+
+function renderPlanReminderAudit(plan) {
+  const audit = plan
+    ? window.MRAppState?.getPlanReminderAudit?.(plan.id, { limit: 5 })
+    : null;
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.planReminderAuditStatus) {
+    els.planReminderAuditStatus.textContent = plan
+      ? audit?.message || "当前计划暂无本机提醒回执。"
+      : "生成学习计划后查看本机提醒回执。";
+    els.planReminderAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
   }
+  if (els.planReminderAuditExport) {
+    els.planReminderAuditExport.disabled = !plan || !receipts.length;
+  }
+  if (!els.planReminderAuditList) return;
+  els.planReminderAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatPlanReminderChannel(receipt.channel)} · ${receipt.itemTitle || "计划项"}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatHistoryTime(receipt.dispatchedAt)} · ${formatPlanReminderDelivery(receipt.deliveryStatus)} · ${formatPlanReminderStatus(receipt.reminderStatus)}`;
+    const detail = document.createElement("small");
+    const digest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    detail.textContent = `${digest} · 仅证明当前页面发起本机提醒请求`;
+    item.append(title, meta, detail);
+    els.planReminderAuditList.appendChild(item);
+  });
+}
+
+function formatPlanReminderChannel(channel) {
+  return channel === "in-page" ? "页面内提醒" : "浏览器 Notification";
+}
+
+function formatPlanReminderDelivery(status) {
+  return {
+    notified: "已请求通知",
+    fallback: "页面内降级",
+    failed: "请求失败"
+  }[status] || "已请求通知";
+}
+
+function formatPlanReminderStatus(status) {
+  return {
+    overdue: "已逾期",
+    due: "已到提醒",
+    snoozed: "已顺延",
+    "review-pending": "待复盘",
+    reviewed: "已复盘",
+    idle: "未到提醒"
+  }[status] || "已到提醒";
 }
 
 function renderPlanRepositoryStatus(planHistory = []) {
@@ -8693,6 +8745,22 @@ function exportPlanRepositoryReceipts() {
     showNotice(result.message);
   } else {
     showNotice("暂无可导出的计划仓库回执。");
+  }
+  renderPlanPanel(currentIndex);
+}
+
+function exportPlanReminderAudit() {
+  const planId = activePlanId || els.planHistorySelect?.value || "";
+  if (!planId) {
+    showNotice("先生成一份学习计划，再导出本机提醒回执。");
+    renderPlanReminderAudit(null);
+    return;
+  }
+  const result = window.MRAppState?.downloadPlanReminderAudit?.(planId, { limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的本机提醒回执。");
   }
   renderPlanPanel(currentIndex);
 }

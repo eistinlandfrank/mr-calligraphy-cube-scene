@@ -10555,3 +10555,51 @@
 提交：
 
 - 中文 commit message：`新增报告打印回执审计`
+
+### 2026-06-13：新增计划提醒回执审计
+
+功能名：前台学习计划本机提醒回执与 HTML 导出。
+
+开发原因：
+
+- 学习计划已经支持到期、提醒、顺延和复盘状态，也能真实调用浏览器 Notification。
+- 但用户此前只能看到本机提醒服务摘要，无法回看“哪条计划项触发过提醒”，也无法导出提醒请求证据。
+
+完成内容：
+
+- 新增 `mr-calligraphy-plan-reminder-audit-v1` 审计包。
+- `planReminderService.receipts` 保存最近本机提醒回执。
+- `MRAppState.dispatchPlanReminderNotification()` 触发 Notification 成功后写入计划、计划项、渠道、权限、状态、时间、通知 tag 和回执摘要。
+- `MRAppState.getPlanReminderAudit()` 返回渠道统计、状态统计、回执列表和 `auditDigest`。
+- `MRAppState.getPlanReminderAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadPlanReminderAudit()` 下载 `mr-calligraphy-plan-reminder-audit-*.html`。
+- 前台计划面板新增“提醒回执审计”面板和“导出提醒”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台生成学习计划，设置或模拟一条到期/逾期计划项。
+- 启用本机提醒并触发后，“提醒回执审计”面板应显示浏览器 Notification、计划项标题、触发时间和回执摘要。
+- 点击“导出提醒”应下载 HTML，文件包含“MR 书法计划提醒回执审计”、提醒渠道、审计摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机 Notification 请求回执，不是云端推送、系统通知中心送达证明、跨设备提醒、教师端通知、账号审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划提醒回执审计`

@@ -1000,6 +1000,47 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("本机学习计划");
   await expect(page.locator("#actionDetail")).toContainText("计划 ID");
   await expect(page.locator("#actionDetail")).toContainText("下一项");
+  const reminderSetup = await page.evaluate(() => {
+    window.__planNotifications = [];
+    function MockNotification(title, options = {}) {
+      window.__planNotifications.push({ title, options });
+    }
+    MockNotification.permission = "granted";
+    MockNotification.requestPermission = () => Promise.resolve("granted");
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      writable: true,
+      value: MockNotification
+    });
+    const plan = window.MRAppState.getLatestPlan();
+    const firstItem = plan.items[0];
+    window.MRAppState.updatePlanItem(plan.id, firstItem.id, {
+      dueAt: "2000-01-01",
+      remindAt: "2000-01-01"
+    });
+    return { planId: plan.id, itemId: firstItem.id };
+  });
+  await page.locator("#planReminderPermissionButton").click();
+  await expect(page.locator("#planReminderAuditStatus")).toContainText("1 条本机提醒回执");
+  await expect(page.locator("#planReminderAuditList")).toContainText("浏览器 Notification");
+  await expect(page.locator("#planReminderAuditList")).toContainText("仅证明当前页面发起");
+  await expect.poll(() => page.evaluate(() => window.__planNotifications.length)).toBe(1);
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.planReminderService.receipts).toHaveLength(1);
+  expect(learningState.planReminderService.receipts[0].planId).toBe(reminderSetup.planId);
+  expect(learningState.planReminderService.receipts[0].itemId).toBe(reminderSetup.itemId);
+  expect(learningState.planReminderService.receipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.planReminderService.receipts[0].boundary).toContain("不是云端推送日志");
+  const planReminderAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#planReminderAuditExport").click();
+  const planReminderAuditDownload = await planReminderAuditDownloadPromise;
+  expect(planReminderAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-plan-reminder-audit-.*\.html$/);
+  const planReminderAuditPath = await planReminderAuditDownload.path();
+  const planReminderAuditHtml = fs.readFileSync(planReminderAuditPath, "utf8");
+  expect(planReminderAuditHtml).toContain("MR 书法计划提醒回执审计");
+  expect(planReminderAuditHtml).toContain("浏览器 Notification");
+  expect(planReminderAuditHtml).toContain("不是云端推送日志");
+  expect(planReminderAuditHtml).toContain(learningState.planReminderService.receipts[0].receiptDigest);
 
   await page.getByRole("button", { name: /切换到步骤 7/ }).click();
   await page.locator(".history-filters").getByRole("button", { name: "全部" }).click();

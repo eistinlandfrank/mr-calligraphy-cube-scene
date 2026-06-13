@@ -4868,3 +4868,50 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告打印回执审计`
+
+## 130. 2026-06-13 新增计划提醒回执审计
+
+本次把学习计划提醒从“触发一次浏览器通知”推进到“可回看、可导出的本机提醒回执”。用户启用提醒并触发到期或逾期计划项后，计划面板会显示本机提醒回执，后续可下载 HTML 审计页。
+
+完成内容：
+
+- 新增 `PLAN_REMINDER_AUDIT_KIND = "mr-calligraphy-plan-reminder-audit-v1"` 和本机提醒审计边界说明。
+- `planReminderService` 新增 `receipts`，随学习状态持久化到 localStorage。
+- `MRAppState.dispatchPlanReminderNotification()` 触发 Notification 成功后写入本机回执。
+- `MRAppState.getPlanReminderAudit({ limit })` 返回渠道统计、送达状态统计、回执列表和 `auditDigest`。
+- `MRAppState.getPlanReminderAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadPlanReminderAudit()` 下载 `mr-calligraphy-plan-reminder-audit-*.html`。
+- 前台计划面板新增“提醒回执审计”面板和“导出提醒”按钮。
+- Smoke 首页标记检查新增计划提醒回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 33`、`handled 108`、`missingHandler 0`。
+- `learning-state-check.js` 验证本机 Notification 调用、回执持久化、摘要、统计、边界和 HTML。
+- Playwright 前台真实练习用例验证模拟授权后的提醒触发、回执面板、localStorage 和 HTML 下载。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.planReminderService.receipts`。
+- 写入状态：本机 Notification 请求成功后写入回执，并保留提醒 fingerprint 防止重复打扰。
+- 成功反馈：面板显示最近提醒数量、计划项、渠道、送达状态、提醒状态和摘要。
+- 失败反馈：无计划或无回执时导出按钮禁用；重复提醒不会伪造第二条回执。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可查看和导出。
+
+仍待补：
+
+- 该审计只证明当前页面发起了本机浏览器通知请求，不代表云端推送、系统通知中心送达、跨设备提醒、教师端通知、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划提醒回执审计`

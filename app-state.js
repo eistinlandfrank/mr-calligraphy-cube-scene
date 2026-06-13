@@ -49,6 +49,9 @@
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
   const PLAN_REMINDER_BOUNDARY = "本机提醒只在当前浏览器和页面可用，不是云端推送、跨设备提醒或教师端通知。";
+  const PLAN_REMINDER_AUDIT_KIND = "mr-calligraphy-plan-reminder-audit-v1";
+  const PLAN_REMINDER_MAX_RECEIPTS = 24;
+  const PLAN_REMINDER_AUDIT_BOUNDARY = "计划提醒回执保存在当前浏览器 planReminderService.receipts，记录本机 Notification 请求、页面内提醒渠道、计划项和时间；它不是云端推送日志、系统通知中心记录、跨设备提醒或不可篡改审计链。";
   const PLAN_REPOSITORY_KIND = "mr-calligraphy-plan-repository-v1";
   const PLAN_REPOSITORY_DEFAULT_WORKSPACE = "local-browser";
   const PLAN_REPOSITORY_BOUNDARY = "未配置远端时同步仓库是本机 JSON 同步包；配置远端 API 后会通过 fetch 同步计划包，并携带 Workspace 空间 ID 做服务端隔离第一版，但仍不包含完整账号权限、教师端排课或后台推送。";
@@ -1448,8 +1451,86 @@
       lastDispatchedAt: normalizePlanDate(source.lastDispatchedAt),
       lastPlanId: source.lastPlanId ? String(source.lastPlanId) : null,
       lastItemId: source.lastItemId ? String(source.lastItemId) : null,
-      lastReminderFingerprint: source.lastReminderFingerprint ? String(source.lastReminderFingerprint) : null
+      lastReminderFingerprint: source.lastReminderFingerprint ? String(source.lastReminderFingerprint) : null,
+      receipts: normalizePlanReminderReceipts(source.receipts || source.reminderReceipts)
     };
+  }
+
+  function normalizePlanReminderReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizePlanReminderReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.dispatchedAt || 0) - Date.parse(a.dispatchedAt || 0))
+      .filter((receipt) => {
+        if (seen.has(receipt.id)) return false;
+        seen.add(receipt.id);
+        return true;
+      })
+      .slice(0, PLAN_REMINDER_MAX_RECEIPTS);
+  }
+
+  function normalizePlanReminderReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const planId = String(record.planId || "").trim().slice(0, 120);
+    const itemId = String(record.itemId || "").trim().slice(0, 120);
+    const dispatchedAt = normalizePlanDate(record.dispatchedAt || record.createdAt);
+    if (!planId || !itemId || !dispatchedAt) return null;
+    const channel = ["browser-notification", "in-page"].includes(record.channel)
+      ? record.channel
+      : "browser-notification";
+    const deliveryStatus = ["notified", "fallback", "failed"].includes(record.deliveryStatus)
+      ? record.deliveryStatus
+      : "notified";
+    const permission = ["default", "granted", "denied", "unsupported"].includes(record.permission)
+      ? record.permission
+      : "granted";
+    const reminderStatus = ["overdue", "due", "snoozed", "review-pending", "reviewed", "idle"].includes(record.reminderStatus)
+      ? record.reminderStatus
+      : "due";
+    const id = String(record.id || `plan-reminder-${sha256StableJson({
+      planId,
+      itemId,
+      dispatchedAt,
+      channel,
+      deliveryStatus
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: PLAN_REMINDER_AUDIT_KIND,
+      id: id.slice(0, 120),
+      planId,
+      planTitle: String(record.planTitle || planId || "学习计划").trim().slice(0, 140) || "学习计划",
+      itemId,
+      itemTitle: String(record.itemTitle || itemId || "计划项").trim().slice(0, 140) || "计划项",
+      reminderStatus,
+      dueAt: normalizePlanDate(record.dueAt) || "",
+      remindAt: normalizePlanDate(record.remindAt) || "",
+      dispatchedAt,
+      channel,
+      deliveryStatus,
+      permission,
+      notificationTag: String(record.notificationTag || "").trim().slice(0, 160),
+      fingerprint: String(record.fingerprint || record.reminderFingerprint || "").trim().slice(0, 220),
+      boundary: String(record.boundary || PLAN_REMINDER_AUDIT_BOUNDARY).trim().slice(0, 260) || PLAN_REMINDER_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 220)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      planId: payload.planId,
+      itemId: payload.itemId,
+      reminderStatus: payload.reminderStatus,
+      dueAt: payload.dueAt,
+      remindAt: payload.remindAt,
+      dispatchedAt: payload.dispatchedAt,
+      channel: payload.channel,
+      deliveryStatus: payload.deliveryStatus,
+      fingerprint: payload.fingerprint
+    });
+    if (!payload.message) {
+      payload.message = `已记录计划项“${payload.itemTitle}”的本机提醒回执。`;
+    }
+    return payload;
   }
 
   function normalizePlanRepository(record = {}) {
@@ -4595,7 +4676,7 @@
       message = "浏览器已拒绝通知权限，只能保留页面内提醒。";
     } else if (enabled) {
       tone = "ready";
-      message = "浏览器通知已启用；页面打开时可触发本机提醒。";
+      message = "浏览器通知已启用；到点后可手动触发本机提醒。";
     } else if (permission === "granted") {
       tone = "ready";
       message = "浏览器已授权通知，可启用本机提醒。";
@@ -4735,13 +4816,14 @@
     }
 
     const browser = getBrowserNotificationState();
+    const notificationTag = `mr-calligraphy-plan-${plan.id}-${item.id}`;
     try {
       const title = reminder.status === "overdue" ? "学习计划已逾期" : "学习计划提醒";
       const body = `${item.title} / ${reminder.dueLabel || "查看计划面板"}`;
       if (typeof browser.api === "function") {
         new browser.api(title, {
           body,
-          tag: `mr-calligraphy-plan-${plan.id}-${item.id}`,
+          tag: notificationTag,
           renotify: false
         });
       }
@@ -4755,6 +4837,30 @@
     }
 
     const now = new Date().toISOString();
+    const receipt = normalizePlanReminderReceipt({
+      id: makeId("plan-reminder"),
+      planId: plan.id,
+      planTitle: plan.title || "学习计划",
+      itemId: item.id,
+      itemTitle: item.title || "计划项",
+      reminderStatus: reminder.status || "due",
+      dueAt: reminder.dueAt || item.dueAt || "",
+      remindAt: item.remindAt || "",
+      dispatchedAt: now,
+      channel: "browser-notification",
+      deliveryStatus: "notified",
+      permission: "granted",
+      notificationTag,
+      fingerprint,
+      boundary: PLAN_REMINDER_AUDIT_BOUNDARY,
+      message: `已触发计划项“${item.title}”的本机浏览器提醒。`
+    });
+    const receipts = receipt
+      ? [
+          receipt,
+          ...normalizePlanReminderReceipts(state.planReminderService?.receipts).filter((itemReceipt) => itemReceipt.id !== receipt.id)
+        ].slice(0, PLAN_REMINDER_MAX_RECEIPTS)
+      : normalizePlanReminderReceipts(state.planReminderService?.receipts);
     state.planReminderService = normalizePlanReminderService({
       ...state.planReminderService,
       enabled: true,
@@ -4766,14 +4872,170 @@
       lastDispatchedAt: now,
       lastPlanId: plan.id,
       lastItemId: item.id,
-      lastReminderFingerprint: fingerprint
+      lastReminderFingerprint: fingerprint,
+      receipts
     });
     saveState();
     return {
       ok: true,
+      receipt: receipt ? clone(receipt) : null,
+      audit: getPlanReminderAudit(plan.id),
       status: getPlanReminderServiceStatus(plan.id),
       message: `已触发本机浏览器提醒：${item.title}。${PLAN_REMINDER_BOUNDARY}`
     };
+  }
+
+  function getPlanReminderAudit(planId = null, options = {}) {
+    const targetPlanId = String(planId || "").trim();
+    const limit = normalizeInteger(options.limit, PLAN_REMINDER_MAX_RECEIPTS, 1, PLAN_REMINDER_MAX_RECEIPTS);
+    const service = normalizePlanReminderService(state.planReminderService);
+    const allReceipts = normalizePlanReminderReceipts(service.receipts);
+    const filtered = targetPlanId
+      ? allReceipts.filter((receipt) => receipt.planId === targetPlanId)
+      : allReceipts;
+    const receipts = filtered.slice(0, limit).map(clone);
+    const statusCounts = {};
+    const channelCounts = {};
+    receipts.forEach((receipt) => {
+      const status = receipt.deliveryStatus || "notified";
+      const channel = receipt.channel || "browser-notification";
+      statusCounts[status] = (statusCounts[status] || 0) + 1;
+      channelCounts[channel] = (channelCounts[channel] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: PLAN_REMINDER_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      planId: targetPlanId,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      statusCounts,
+      channelCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: PLAN_REMINDER_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条本机提醒回执，最近一次：${formatPlanDate(filtered[0].dispatchedAt)}。`
+        : targetPlanId
+          ? "当前计划暂无本机提醒回执。"
+          : "暂无本机提醒回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getPlanReminderAuditExport(planId = null, options = {}) {
+    const audit = getPlanReminderAudit(planId, options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的本机提醒回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    const planSlug = audit.planId ? makeDownloadSlug(audit.planId) : "all";
+    return {
+      ok: true,
+      filename: `mr-calligraphy-plan-reminder-audit-${planSlug}-${exportedAt.slice(0, 10)}.html`,
+      html: renderPlanReminderAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条本机提醒回执审计导出。`
+    };
+  }
+
+  function downloadPlanReminderAudit(planId = null, options = {}) {
+    const result = getPlanReminderAuditExport(planId, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderPlanReminderAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.itemTitle || receipt.itemId)}</h2>
+        <p>${escapeHtml(receipt.message || "本机提醒回执已记录。")}</p>
+        <dl>
+          <div><dt>计划 ID</dt><dd>${escapeHtml(receipt.planId)}</dd></div>
+          <div><dt>计划标题</dt><dd>${escapeHtml(receipt.planTitle || "学习计划")}</dd></div>
+          <div><dt>计划项 ID</dt><dd>${escapeHtml(receipt.itemId)}</dd></div>
+          <div><dt>提醒状态</dt><dd>${escapeHtml(formatPlanReminderReceiptStatus(receipt.reminderStatus))}</dd></div>
+          <div><dt>触发渠道</dt><dd>${escapeHtml(formatPlanReminderReceiptChannel(receipt.channel))}</dd></div>
+          <div><dt>送达状态</dt><dd>${escapeHtml(formatPlanReminderDeliveryStatus(receipt.deliveryStatus))}</dd></div>
+          <div><dt>到期时间</dt><dd>${escapeHtml(formatDateTime(receipt.dueAt))}</dd></div>
+          <div><dt>提醒时间</dt><dd>${escapeHtml(formatDateTime(receipt.remindAt))}</dd></div>
+          <div><dt>触发时间</dt><dd>${escapeHtml(formatDateTime(receipt.dispatchedAt))}</dd></div>
+          <div><dt>通知标签</dt><dd>${escapeHtml(receipt.notificationTag || "未记录")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法计划提醒回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Plan Reminder Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法计划提醒回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条本机提醒回执。${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatPlanReminderReceiptStatus(status) {
+    return {
+      overdue: "已逾期",
+      due: "已到提醒",
+      snoozed: "已顺延",
+      "review-pending": "待复盘",
+      reviewed: "已复盘",
+      idle: "未到提醒"
+    }[status] || "已到提醒";
+  }
+
+  function formatPlanReminderReceiptChannel(channel) {
+    return {
+      "browser-notification": "浏览器 Notification",
+      "in-page": "页面内提醒"
+    }[channel] || "浏览器 Notification";
+  }
+
+  function formatPlanReminderDeliveryStatus(status) {
+    return {
+      notified: "已请求通知",
+      fallback: "页面内降级",
+      failed: "请求失败"
+    }[status] || "已请求通知";
   }
 
   function buildPlanCycleStatus(plan, progress = getPlanProgress(plan)) {
@@ -17736,6 +17998,8 @@
     getPlanDependencyGraph,
     getPlanCycleStatus,
     getPlanReminderServiceStatus,
+    getPlanReminderAudit,
+    getPlanReminderAuditExport,
     getPlanRepositoryStatus,
     getPlanRepositoryRemoteConfig,
     getPlanRepositoryPackage,
@@ -17803,6 +18067,7 @@
     downloadHistoryRecords,
     downloadHistoryBatchReceiptAudit,
     downloadLocalLinkCopyAudit,
+    downloadPlanReminderAudit,
     downloadHistoryRepository,
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,

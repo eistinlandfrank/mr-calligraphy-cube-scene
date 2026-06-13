@@ -5347,3 +5347,50 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告打印回执审计`
+
+## 130. 2026-06-13 新增计划提醒回执审计
+
+本次继续处理高期望按钮的可追溯问题。学习计划的“启用本机提醒 / 触发本机提醒”此前已经会真实调用浏览器 Notification，但状态层只保存最近一次触发字段，页面也没有回执列表和导出能力。现在计划面板新增“提醒回执审计”，每次本机提醒成功触发都会留下回执，并可导出 HTML 审计。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-plan-reminder-audit-v1` 审计包。
+- `planReminderService` 新增 `receipts` 队列，保存最近 24 条本机提醒回执。
+- `MRAppState.dispatchPlanReminderNotification()` 成功触发 Notification 后写入计划 ID、计划项 ID、提醒状态、渠道、权限、触发时间、通知 tag 和回执摘要。
+- `MRAppState.getPlanReminderAudit()` 返回当前计划或全部计划的提醒回执、渠道统计、状态统计和 64 位 `auditDigest`。
+- `MRAppState.getPlanReminderAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadPlanReminderAudit()` 真实下载 `mr-calligraphy-plan-reminder-audit-*.html`。
+- 前台计划面板新增 `planReminderAudit`、`planReminderAuditStatus`、`planReminderAuditList` 和 `planReminderAuditExport`。
+- Smoke 页面标记检查新增计划提醒回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 33`、`handled 108`、`missingHandler 0`。
+- 状态层脚本覆盖 Notification 调用、提醒回执、回执摘要、渠道统计、边界说明和 HTML 导出。
+- Playwright 前台真实练习用例会模拟 Notification 授权，触发逾期计划项提醒，验证回执面板、localStorage 持久化和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.planReminderService.receipts`。
+- 写入状态：成功触发本机浏览器 Notification 后写入回执，同时保留最近计划 ID、计划项 ID 和提醒 fingerprint。
+- 成功反馈：计划面板显示最近提醒请求、触发渠道、提醒状态、回执摘要和时间。
+- 导出反馈：点击“导出提醒”会下载 HTML；无回执时按钮禁用，不生成空壳审计。
+- 刷新后复现方式：提醒回执随学习状态保存在 localStorage，刷新后仍能读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面发起了本机 Notification 请求，不代表云端推送、系统通知中心送达、跨设备提醒、教师端通知或不可篡改审计链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增计划提醒回执审计`

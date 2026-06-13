@@ -754,6 +754,22 @@ assert(reminderDueStatus.enabled && reminderDueStatus.hasPendingLocalReminder, "
 const dispatchedReminder = window.MRAppState.dispatchPlanReminderNotification(latestPlan.id);
 assert(dispatchedReminder.ok, "逾期计划项应能触发一次本机浏览器提醒。");
 assert(MockNotification.instances.length === 1, "本机提醒应真实调用 Notification 构造器。");
+assert(dispatchedReminder.receipt.itemId === latestPlan.items[0].id, "本机提醒应返回计划项回执。");
+assert(dispatchedReminder.receipt.receiptDigest.match(/^[a-f0-9]{64}$/), "本机提醒回执应包含稳定摘要。");
+assert(dispatchedReminder.receipt.boundary.includes("不是云端推送日志"), "本机提醒回执应说明审计边界。");
+const planReminderAudit = window.MRAppState.getPlanReminderAudit(latestPlan.id, { limit: 5 });
+assert(planReminderAudit.kind === "mr-calligraphy-plan-reminder-audit-v1", "本机提醒审计应返回稳定 kind。");
+assert(planReminderAudit.total === 1, "本机提醒审计应统计当前计划回执。");
+assert(planReminderAudit.channelCounts["browser-notification"] === 1, "本机提醒审计应统计浏览器通知渠道。");
+assert(planReminderAudit.statusCounts.notified === 1, "本机提醒审计应统计通知请求状态。");
+assert(/^[a-f0-9]{64}$/.test(planReminderAudit.auditDigest), "本机提醒审计应包含稳定摘要。");
+assert(planReminderAudit.boundary.includes("不是云端推送日志"), "本机提醒审计应说明本机边界。");
+const planReminderAuditExport = window.MRAppState.getPlanReminderAuditExport(latestPlan.id, { limit: 5 });
+assert(planReminderAuditExport.ok, "本机提醒审计应可导出 HTML。");
+assert(planReminderAuditExport.filename.startsWith("mr-calligraphy-plan-reminder-audit-"), "本机提醒审计文件名应可识别。");
+assert(planReminderAuditExport.html.includes("MR 书法计划提醒回执审计"), "本机提醒审计 HTML 应包含标题。");
+assert(planReminderAuditExport.html.includes("浏览器 Notification"), "本机提醒审计 HTML 应包含提醒渠道。");
+assert(planReminderAuditExport.html.includes(planReminderAuditExport.audit.auditDigest), "本机提醒审计 HTML 应包含审计摘要。");
 const duplicateReminder = window.MRAppState.dispatchPlanReminderNotification(latestPlan.id);
 assert(!duplicateReminder.ok && MockNotification.instances.length === 1, "同一条本机提醒不应重复触发。");
 assert(dispatchedReminder.message.includes("不是云端推送"), "本机提醒结果应明确边界。");
@@ -1143,6 +1159,8 @@ async function runRemoteRepositoryChecks() {
   assert(persistedPlanState.planReminderService.enabled, "本机提醒启用状态应持久化到 localStorage。");
   assert(persistedPlanState.planReminderService.lastPlanId === latestPlan.id, "本机提醒应记录最近计划 ID。");
   assert(persistedPlanState.planReminderService.lastItemId === latestPlan.items[0].id, "本机提醒应记录最近触发的计划项 ID。");
+  assert(persistedPlanState.planReminderService.receipts.length === 1, "本机提醒回执应持久化到 localStorage。");
+  assert(persistedPlanState.planReminderService.receipts[0].receiptDigest.match(/^[a-f0-9]{64}$/), "本机提醒回执摘要应持久化。");
   assert(persistedPlanState.planRepository.mode === "remote-api", "计划 repository 应持久化远端 API 模式。");
   assert(persistedPlanState.planRepository.remoteEndpoint === "https://example.test/plan-repository", "计划 repository 应持久化远端 endpoint。");
   assert(persistedPlanState.planRepository.workspaceId === "class-alpha", "计划 repository 应持久化远端 workspace。");
@@ -1210,7 +1228,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
