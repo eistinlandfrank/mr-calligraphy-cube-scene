@@ -10907,3 +10907,46 @@
 提交：
 
 - 中文 commit message：`新增作品导出回执审计`
+
+### 2026-06-13：补齐作品仓库导出回执
+
+功能名：前台作品仓库 JSON 同步包导出回执。
+
+开发原因：
+
+- “导出仓库”已经会生成真实 `mr-calligraphy-artwork-repository-v1` JSON 包，并带 `packageDigest` 摘要。
+- 但它没有进入“作品导出回执”列表，用户导出迁移包后无法在同一审计页里确认 JSON 文件摘要和包摘要。
+
+完成内容：
+
+- 作品导出回执新增 `artwork-repository-json` 类型。
+- 前台作品导出回执显示“作品仓库 JSON”。
+- `downloadArtworkRepository()` 发起 JSON 下载后写入回执。
+- 回执记录 MIME、作品数量、包 ID、包摘要、文件摘要和回执摘要。
+- `learning-state-check.js` 新增作品仓库 JSON 回执断言。
+- Playwright 作品仓库用例新增 JSON 回执、四类回执总数和审计 HTML 验收。
+
+验收方式：
+
+- 在前台保存或导入作品后点击“导出仓库”。
+- 应下载 `mr-calligraphy-artwork-repository-*.json`。
+- “作品导出回执”面板应出现“作品仓库 JSON”。
+- 点击“导出回执”下载的 HTML 应包含“作品仓库 JSON”、包摘要、文件摘要和回执摘要。
+
+真实边界：
+
+- 这是当前浏览器本机 JSON 下载请求回执，只能证明页面生成并发起了作品仓库包下载，并记录生成内容摘要；它不是云端作品库、账号归档、课堂作品墙或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`补齐作品仓库导出回执`

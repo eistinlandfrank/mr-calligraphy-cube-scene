@@ -53,7 +53,7 @@
   const ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY = "课堂评阅汇总导出会把已导回当前浏览器的作品评阅记录生成可离线打开和打印的 HTML；它不是账号化教师端、班级成绩册、云端批改或服务端不可篡改审计。";
   const ARTWORK_EXPORT_AUDIT_KIND = "mr-calligraphy-artwork-export-audit-v1";
   const ARTWORK_EXPORT_MAX_RECEIPTS = 30;
-  const ARTWORK_EXPORT_AUDIT_BOUNDARY = "作品导出回执保存在当前浏览器 artworkExportReceipts，记录作品集 HTML、课堂评阅表 HTML 和课堂评阅汇总 HTML 下载请求、作品数量、评阅数量、文件摘要和时间；它不是操作系统保存完成证明、云端作品墙、账号下载审计或不可篡改证据链。";
+  const ARTWORK_EXPORT_AUDIT_BOUNDARY = "作品导出回执保存在当前浏览器 artworkExportReceipts，记录作品仓库 JSON、作品集 HTML、课堂评阅表 HTML 和课堂评阅汇总 HTML 下载请求、作品数量、评阅数量、文件摘要和时间；它不是操作系统保存完成证明、云端作品墙、账号下载审计或不可篡改证据链。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -2912,6 +2912,7 @@
 
   function normalizeArtworkExportType(value) {
     const type = String(value || "").trim().toLowerCase();
+    if (["repository", "artwork-repository", "artwork-repository-json", "repository-json"].includes(type)) return "artwork-repository-json";
     if (["collection", "artwork-collection", "artwork-collection-html"].includes(type)) return "artwork-collection";
     if (["review", "classroom-review", "classroom-review-html"].includes(type)) return "classroom-review";
     if (["summary", "classroom-review-summary", "classroom-review-summary-html"].includes(type)) return "classroom-review-summary";
@@ -2920,18 +2921,22 @@
 
   function formatArtworkExportTypeLabel(type) {
     return {
+      "artwork-repository-json": "作品仓库 JSON",
       "artwork-collection": "作品集 HTML",
       "classroom-review": "课堂评阅表",
       "classroom-review-summary": "评阅汇总"
     }[type] || "作品导出";
   }
 
-  function getArtworkExportMimeType() {
-    return "text/html;charset=utf-8";
+  function getArtworkExportMimeType(type) {
+    return type === "artwork-repository-json"
+      ? "application/json;charset=utf-8"
+      : "text/html;charset=utf-8";
   }
 
   function getArtworkExportSource(type) {
     return {
+      "artwork-repository-json": "artwork-repository-json-download",
       "artwork-collection": "artwork-collection-html-download",
       "classroom-review": "artwork-classroom-review-html-download",
       "classroom-review-summary": "artwork-classroom-review-summary-html-download"
@@ -15405,7 +15410,7 @@
       ? sourcePackage.summary
       : {};
     const sourceArtworks = Array.isArray(sourcePackage?.artworks) ? sourcePackage.artworks : [];
-    const content = String(options.content ?? options.html ?? "");
+    const content = String(options.content ?? options.html ?? options.json ?? "");
     const artworkCount = normalizeInteger(
       options.artworkCount,
       sourceArtworks.length || sourceSummary.total || 0,
@@ -15770,15 +15775,27 @@
       lastPackageDigest: result.package.packageDigest,
       lastError: ""
     });
+    const receiptResult = recordArtworkExportReceipt({
+      exportType: "artwork-repository-json",
+      filename: result.filename,
+      json: JSON.stringify(result.package, null, 2),
+      package: result.package,
+      artworkCount: result.package.artworks.length,
+      packageId: result.package.packageId,
+      packageDigest: result.package.packageDigest,
+      exportedAt: now
+    });
     addEvent("artwork-repository-export", `导出作品仓库包：${result.package.artworks.length} 幅作品`);
     saveState();
     return {
       ok: true,
       filename: result.filename,
+      receipt: receiptResult?.receipt || null,
+      audit: receiptResult?.audit || null,
       exportedArtworkCount: result.package.artworks.length,
       exportedSessionCount: result.package.linkedSessions.length,
       status: getArtworkRepositoryStatus(),
-      message: `已下载作品仓库 JSON 包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}。${ARTWORK_REPOSITORY_BOUNDARY}`
+      message: `已下载作品仓库 JSON 包：${result.filename}，摘要 ${result.package.packageDigest.slice(0, 12)}${receiptResult?.ok ? "，并记录作品导出回执" : ""}。${ARTWORK_REPOSITORY_BOUNDARY}`
     };
   }
 

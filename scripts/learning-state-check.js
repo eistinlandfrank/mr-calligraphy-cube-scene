@@ -282,6 +282,21 @@ assert(!sharePackage.html.includes("路径误差热力</h2>"), "旧作品分享�
 
 const artworkCollectionExport = window.MRAppState.getArtworkCollectionExport();
 assert(artworkCollectionExport.ok, "作品集 HTML 应可基于本机作品生成。");
+const artworkRepositoryExport = window.MRAppState.getArtworkRepositoryPackage();
+assert(artworkRepositoryExport.ok, "作品仓库 JSON 应可基于本机作品生成。");
+const artworkRepositoryReceipt = window.MRAppState.recordArtworkExportReceipt({
+  exportType: "artwork-repository-json",
+  filename: artworkRepositoryExport.filename,
+  json: JSON.stringify(artworkRepositoryExport.package, null, 2),
+  package: artworkRepositoryExport.package,
+  packageId: artworkRepositoryExport.package.packageId,
+  packageDigest: artworkRepositoryExport.package.packageDigest
+});
+assert(artworkRepositoryReceipt.ok, "作品仓库 JSON 导出应可写入作品导出回执。");
+assert(artworkRepositoryReceipt.receipt.exportType === "artwork-repository-json", "作品仓库回执应记录 JSON 导出类型。");
+assert(artworkRepositoryReceipt.receipt.mimeType === "application/json;charset=utf-8", "作品仓库回执应记录 JSON MIME。");
+assert(artworkRepositoryReceipt.receipt.packageDigest === artworkRepositoryExport.package.packageDigest, "作品仓库回执应记录包摘要。");
+assert(/^[a-f0-9]{64}$/.test(artworkRepositoryReceipt.receipt.fileDigest), "作品仓库回执应记录 JSON 文件摘要。");
 const artworkCollectionReceipt = window.MRAppState.recordArtworkExportReceipt({
   exportType: "artwork-collection",
   filename: artworkCollectionExport.filename,
@@ -330,7 +345,8 @@ assert(summaryReceipt.receipt.summaryDigest.match(/^[a-f0-9]{64}$/), "课堂评�
 
 const artworkExportAudit = window.MRAppState.getArtworkExportAudit({ limit: 6 });
 assert(artworkExportAudit.kind === "mr-calligraphy-artwork-export-audit-v1", "作品导出审计应返回稳定 kind。");
-assert(artworkExportAudit.total === 3, "作品导出审计应统计三类导出回执。");
+assert(artworkExportAudit.total === 4, "作品导出审计应统计四类导出回执。");
+assert(artworkExportAudit.typeCounts["artwork-repository-json"] === 1, "作品导出审计应统计作品仓库 JSON。");
 assert(artworkExportAudit.typeCounts["artwork-collection"] === 1, "作品导出审计应统计作品集 HTML。");
 assert(artworkExportAudit.typeCounts["classroom-review"] === 1, "作品导出审计应统计课堂评阅表。");
 assert(artworkExportAudit.typeCounts["classroom-review-summary"] === 1, "作品导出审计应统计评阅汇总。");
@@ -340,6 +356,7 @@ const artworkExportAuditExport = window.MRAppState.getArtworkExportAuditExport({
 assert(artworkExportAuditExport.ok, "作品导出审计应可生成 HTML。");
 assert(artworkExportAuditExport.filename.startsWith("mr-calligraphy-artwork-export-audit-"), "作品导出审计文件名应可识别。");
 assert(artworkExportAuditExport.html.includes("MR 书法作品导出回执审计"), "作品导出审计 HTML 应包含标题。");
+assert(artworkExportAuditExport.html.includes("作品仓库 JSON"), "作品导出审计 HTML 应包含作品仓库 JSON 类型。");
 assert(artworkExportAuditExport.html.includes("作品集 HTML"), "作品导出审计 HTML 应包含作品集类型。");
 assert(artworkExportAuditExport.html.includes("课堂评阅表"), "作品导出审计 HTML 应包含评阅表类型。");
 assert(artworkExportAuditExport.html.includes("评阅汇总"), "作品导出审计 HTML 应包含汇总类型。");

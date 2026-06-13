@@ -5204,3 +5204,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增作品导出回执审计`
+
+## 137. 2026-06-13 补齐作品仓库导出回执
+
+本次把“导出仓库”JSON 同步包纳入作品导出回执审计。此前作品仓库 JSON 能迁移和验真，但回执面板只记录作品集、评阅表和评阅汇总；现在用户下载 `mr-calligraphy-artwork-repository-*.json` 后，也能在同一“作品导出回执”里看到文件摘要和包摘要。
+
+完成内容：
+
+- `normalizeArtworkExportType()` 新增 `artwork-repository-json` 类型。
+- `formatArtworkExportTypeLabel()` 新增“作品仓库 JSON”标签。
+- `getArtworkExportMimeType()` 对 JSON 导出返回 `application/json;charset=utf-8`。
+- `downloadArtworkRepository()` 成功下载 JSON 包后写入作品导出回执。
+- 作品导出审计边界更新为覆盖作品仓库 JSON、作品集 HTML、课堂评阅表 HTML 和评阅汇总 HTML。
+- `learning-state-check.js` 新增作品仓库 JSON 回执、MIME、包摘要和文件摘要断言。
+- Playwright 作品仓库用例验证“导出仓库”进入作品导出回执，并在最终审计 HTML 中出现“作品仓库 JSON”。
+
+真实化说明：
+
+- 数据来源：`MRAppState.getArtworkRepositoryPackage()` 生成的真实作品仓库包。
+- 写入状态：下载 JSON 包后写入 `mr-calligraphy-learning-state-v1.artworkExportReceipts`。
+- 成功反馈：作品仓库回执列表显示“作品仓库 JSON”、作品数量、文件摘要、包摘要和回执摘要。
+- 失败反馈：没有作品时原本的“还没有可导出的作品仓库包”继续生效，不写入空回执。
+- 刷新后复现方式：回执随学习状态持久化，可从“导出回执”下载 HTML 审计页。
+
+仍待补：
+
+- 该回执只能证明当前浏览器生成并发起了作品仓库 JSON 下载请求，不代表系统保存成功、账号云端归档、课堂作品墙或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`补齐作品仓库导出回执`

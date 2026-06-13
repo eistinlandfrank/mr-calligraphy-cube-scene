@@ -9442,6 +9442,7 @@ function renderArtworkExportAudit() {
 
 function formatArtworkExportType(type) {
   return {
+    "artwork-repository-json": "作品仓库 JSON",
     "artwork-collection": "作品集 HTML",
     "classroom-review": "课堂评阅表",
     "classroom-review-summary": "评阅汇总"
