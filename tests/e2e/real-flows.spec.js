@@ -2287,7 +2287,14 @@ test("front artwork repository exports and imports local artwork package", async
   expect(reviewSummaryHtml).toContain("Digest");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅汇总");
   await expect(page.locator("#artworkExportAuditStatus")).toContainText("4 条作品导出回执");
+  await expect(page.locator("#artworkExportAuditStatus")).toContainText("本机校验通过 4 条");
   await expect(page.locator("#artworkExportAuditList")).toContainText("评阅汇总");
+  await expect(page.locator("#artworkExportAuditList")).toContainText("本机校验通过");
+  const artworkExportAuditState = await page.evaluate(() => window.MRAppState.getArtworkExportAudit({ limit: 6 }));
+  expect(artworkExportAuditState.verifiedCount).toBe(4);
+  expect(artworkExportAuditState.failedCount).toBe(0);
+  expect(artworkExportAuditState.receipts.every((receipt) => receipt.verificationStatus === "verified")).toBe(true);
+  expect(artworkExportAuditState.receipts.every((receipt) => receipt.verificationExpectedDigest === receipt.receiptDigest)).toBe(true);
   const artworkAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#artworkExportAuditExport").click();
   const artworkAuditDownload = await artworkAuditDownloadPromise;
@@ -2298,6 +2305,8 @@ test("front artwork repository exports and imports local artwork package", async
   expect(artworkAuditHtml).toContain("作品集 HTML");
   expect(artworkAuditHtml).toContain("课堂评阅表");
   expect(artworkAuditHtml).toContain("评阅汇总");
+  expect(artworkAuditHtml).toContain("本机校验通过");
+  expect(artworkAuditHtml).toContain("重算摘要");
   expect(artworkAuditHtml).toContain("审计摘要");
   const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(resolvedState.artworks).toHaveLength(3);
@@ -2305,11 +2314,15 @@ test("front artwork repository exports and imports local artwork package", async
   expect(resolvedState.artworkExportReceipts[0].exportType).toBe("classroom-review-summary");
   expect(resolvedState.artworkExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(resolvedState.artworkExportReceipts[0].summaryDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(resolvedState.artworkExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(resolvedState.artworkExportReceipts[1].exportType).toBe("classroom-review");
+  expect(resolvedState.artworkExportReceipts[1].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(resolvedState.artworkExportReceipts[1].packageId).toMatch(/^classroom-review-/);
   expect(resolvedState.artworkExportReceipts[2].exportType).toBe("artwork-collection");
+  expect(resolvedState.artworkExportReceipts[2].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(resolvedState.artworkExportReceipts[3].exportType).toBe("artwork-repository-json");
   expect(resolvedState.artworkExportReceipts[3].packageDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(resolvedState.artworkExportReceipts[3].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
   expect(resolvedState.artworkRepository.lastCollectionArtworkCount).toBe(3);
   expect(resolvedState.artworkRepository.lastCollectionExportedAt).toBeTruthy();
@@ -2329,6 +2342,26 @@ test("front artwork repository exports and imports local artwork package", async
   expect(resolvedState.artworkRepository.lastClassroomReviewSummaryCount).toBe(1);
   expect(resolvedState.artworkRepository.lastClassroomReviewSummaryExportedAt).toBeTruthy();
   expect(resolvedState.artworkRepository.lastConflictRecords).toHaveLength(0);
+  const originalArtworkExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.artworkExportReceipts || [])[0];
+    if (receipt) {
+      receipt.filename = `${receipt.filename || "artwork-export"}.tampered`;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, LEARNING_KEY);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const tamperedArtworkExportAudit = await page.evaluate(() => window.MRAppState.getArtworkExportAudit({ limit: 6 }));
+  expect(tamperedArtworkExportAudit.failedCount).toBe(1);
+  expect(tamperedArtworkExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedArtworkExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedArtworkExportAudit.receipts[0].receiptDigest);
+  await expect(page.locator("#artworkExportAuditStatus")).toContainText("失败 1 条");
+  await expect(page.locator("#artworkExportAuditList")).toContainText("摘要不匹配");
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalArtworkExportState });
+  await page.reload({ waitUntil: "domcontentloaded" });
 });
 
 test("front share repository shows retryable remote failure recovery", async ({ page }) => {

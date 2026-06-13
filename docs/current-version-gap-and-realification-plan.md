@@ -6705,3 +6705,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增链接复制回执校验`
+
+## 163. 2026-06-13 新增作品导出回执本机校验
+
+本次把前台“作品导出回执审计”从只展示导出类型、文件摘要、包摘要和回执摘要，推进为每条作品导出回执都可本机重算 `receiptDigest` 的真实校验。作品仓库 JSON、离线作品集 HTML、课堂评阅表 HTML 和评阅汇总 HTML 导出后，如果用户手动改动 localStorage 里的文件名、摘要、包 ID、作品数量或导出时间，前台状态层和导出的审计 HTML 都会显示摘要不匹配。
+
+完成内容：
+
+- 新增 `verifyArtworkExportReceiptDigest()`、`addArtworkExportReceiptVerification()` 和 `createArtworkExportReceiptDigestPayload()`。
+- `getArtworkExportAudit()` 返回 `verifiedCount`、`failedCount` 和 `legacyCount`，每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 前台“作品导出回执”列表显示“本机校验通过 / 摘要不匹配 / 旧记录未校验”。
+- 作品导出回执 HTML 审计页新增“本机校验”和“重算摘要”。
+- Playwright 作品仓库流程验证四类真实导出回执均为 `verified`，并临时篡改评阅汇总文件名确认 `digest-mismatch` 被识别。
+
+真实化说明：
+
+- 数据来源：当前浏览器学习状态里的 `artworkExportReceipts`。
+- 校验方式：按 `kind`、`exportType`、`filename`、`mimeType`、`byteLength`、`fileDigest`、`packageId`、`packageDigest`、`summaryDigest`、`artworkCount`、`reviewCount` 和 `exportedAt` 稳定 JSON + SHA-256 重算。
+- 成功反馈：作品导出回执列表和 HTML 审计页显示“本机校验通过”。
+- 失败反馈：回执声明字段被篡改后，读取 API 返回 `digest-mismatch` 和重算摘要。
+
+仍待补：
+
+- 这是本机摘要一致性校验，只能证明作品导出回执与自身 `receiptDigest` 声明字段一致；它不是操作系统保存完成证明、云端下载日志、账号审计、服务端签名、生产证书链或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品导出回执校验`

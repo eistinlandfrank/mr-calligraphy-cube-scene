@@ -12075,3 +12075,48 @@
 提交：
 
 - 中文 commit message：`新增链接复制回执校验`
+
+### 2026-06-13：新增作品导出回执本机校验
+
+功能名：前台作品仓库 JSON、作品集 HTML、课堂评阅表 HTML 和评阅汇总 HTML 导出回执 receiptDigest 本机重算校验。
+
+背景：
+
+- 作品导出回执已经会记录导出类型、文件名、MIME、字节数、文件摘要、包 ID、包摘要、汇总摘要、作品数量、评阅数量和 `receiptDigest`。
+- 但此前前台只展示回执摘要，无法判断 localStorage 里的作品导出回执是否被手动篡改。
+- 作品仓库导出和课堂评阅导出是作品迁移、离线留档和课堂协作的关键入口，至少需要在当前浏览器内明确“回执字段和摘要是否一致”。
+
+本轮完成：
+
+- `getArtworkExportAudit()` 读取回执时会重算 `receiptDigest`。
+- 每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 回执审计摘要新增 `verifiedCount`、`failedCount` 和 `legacyCount`。
+- 前台“作品导出回执”列表显示本机校验状态。
+- 作品导出回执 HTML 新增“本机校验”和“重算摘要”。
+- Playwright 作品仓库用例验证正常四类导出回执校验通过，并临时篡改评阅汇总文件名确认 `digest-mismatch` 被识别。
+
+手工验收：
+
+- 在前台作品仓库依次导出仓库 JSON、作品集 HTML、课堂评阅表和评阅汇总。
+- “作品导出回执”列表应显示“本机校验通过”。
+- 点击“导出回执”下载 HTML，文件中应包含“本机校验通过”和“重算摘要”。
+- 手动篡改 `mr-calligraphy-learning-state-v1.artworkExportReceipts[0]` 任意声明字段后刷新页面并调用 `MRAppState.getArtworkExportAudit()`，应看到 `failedCount: 1` 和 `verificationStatus: "digest-mismatch"`。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front artwork repository exports and imports local artwork package"`
+- `git diff --check`
+
+真实边界：
+
+- 这是当前浏览器本机摘要一致性校验，只能证明作品导出回执与自身 `receiptDigest` 声明字段一致；它不是操作系统保存完成证明、云端下载日志、账号审计、服务端签名、生产证书链、远端不可篡改日志或多人审计链。
+
+提交：
+
+- 中文 commit message：`新增作品导出回执校验`

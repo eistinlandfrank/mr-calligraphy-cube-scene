@@ -9628,10 +9628,18 @@ function renderArtworkExportAudit() {
     const detail = document.createElement("small");
     const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
     const packageDigest = receipt.packageDigest ? `包 ${receipt.packageDigest.slice(0, 12)}` : "包摘要未生成";
-    detail.textContent = `${packageDigest} · ${receiptDigest} · ${Number(receipt.byteLength || 0)} bytes`;
+    detail.textContent = `${packageDigest} · ${receiptDigest} · ${formatArtworkExportReceiptVerificationStatus(receipt.verificationStatus)} · ${Number(receipt.byteLength || 0)} bytes`;
     item.append(title, meta, detail);
     els.artworkExportAuditList.appendChild(item);
   });
+}
+
+function formatArtworkExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function formatArtworkExportType(type) {
