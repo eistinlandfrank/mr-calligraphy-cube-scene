@@ -8664,10 +8664,18 @@ function renderPlanRepositoryExportAudit() {
     const fileDigest = receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "文件摘要未知";
     meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.planCount || 0} 份计划 · 包 ${packageDigest} · 文件 ${fileDigest}`;
     const detail = document.createElement("small");
-    detail.textContent = `${receipt.workspaceId || "local-browser"} / ${receipt.byteLength || 0} bytes / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"}`;
+    detail.textContent = `${receipt.workspaceId || "local-browser"} / ${receipt.byteLength || 0} bytes / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"} / ${formatPlanRepositoryExportReceiptVerificationStatus(receipt.verificationStatus)}`;
     item.append(title, meta, detail);
     els.planRepositoryExportAuditList.appendChild(item);
   });
+}
+
+function formatPlanRepositoryExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function renderPlanRepositoryReceipts() {

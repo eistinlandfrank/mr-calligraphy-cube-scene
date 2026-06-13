@@ -3534,6 +3534,13 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(learningState.planRepositoryExportReceipts[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.planRepositoryExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.planRepositoryExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  const planRepositoryExportAuditState = await page.evaluate(() => window.MRAppState.getPlanRepositoryExportAudit({ limit: 5 }));
+  expect(planRepositoryExportAuditState.verifiedCount).toBe(1);
+  expect(planRepositoryExportAuditState.failedCount).toBe(0);
+  expect(planRepositoryExportAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(planRepositoryExportAuditState.receipts[0].verificationExpectedDigest).toBe(learningState.planRepositoryExportReceipts[0].receiptDigest);
+  await expect(page.locator("#planRepositoryExportAuditStatus")).toContainText("本机校验通过 1 条");
+  await expect(page.locator("#planRepositoryExportAuditList")).toContainText("本机校验通过");
 
   const planRepositoryExportAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#planRepositoryExportAuditExport").click();
@@ -3544,6 +3551,26 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   expect(planRepositoryExportAuditHtml).toContain("MR 书法计划仓库导出回执审计");
   expect(planRepositoryExportAuditHtml).toContain(learningState.planRepositoryExportReceipts[0].packageDigest);
   expect(planRepositoryExportAuditHtml).toContain(learningState.planRepositoryExportReceipts[0].receiptDigest);
+  expect(planRepositoryExportAuditHtml).toContain("本机校验通过");
+  expect(planRepositoryExportAuditHtml).toContain("重算摘要");
+
+  const originalPlanRepositoryExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate(({ storageKey }) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    if (state.planRepositoryExportReceipts?.[0]) {
+      state.planRepositoryExportReceipts[0].planCount += 1;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY });
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const tamperedPlanRepositoryExportAudit = await page.evaluate(() => window.MRAppState.getPlanRepositoryExportAudit({ limit: 5 }));
+  expect(tamperedPlanRepositoryExportAudit.failedCount).toBe(1);
+  expect(tamperedPlanRepositoryExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedPlanRepositoryExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedPlanRepositoryExportAudit.receipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalPlanRepositoryExportState });
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   await page.locator(".plan-repository-remote summary").click();
   await page.locator("#planRepositoryEndpointInput").fill(planEndpoint);
