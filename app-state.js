@@ -1311,6 +1311,64 @@
     return payload;
   }
 
+  function addReviewExportReceiptVerification(record) {
+    const normalized = normalizeReviewExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyReviewExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyReviewExportReceiptDigest(record = {}) {
+    const receipt = normalizeReviewExportReceipt(record);
+    const receiptDigest = normalizeReportTeacherReviewDigest(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧复盘导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createReviewExportReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与复盘导出回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按复盘导出回执声明字段重算匹配。"
+    };
+  }
+
+  function createReviewExportReceiptDigestPayload(record = {}) {
+    const receipt = normalizeReviewExportReceipt(record) || {};
+    return {
+      kind: REVIEW_EXPORT_AUDIT_KIND,
+      exportType: receipt.exportType || "",
+      sourceType: receipt.sourceType || "",
+      sourceId: receipt.sourceId || "",
+      filename: receipt.filename || "",
+      mimeType: receipt.mimeType || "",
+      byteLength: normalizeInteger(receipt.byteLength, 0, 0, 999999999),
+      fileDigest: receipt.fileDigest || "",
+      exportedAt: receipt.exportedAt || ""
+    };
+  }
+
+  function formatReviewExportReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
+  }
+
   function normalizeReviewExportType(value) {
     const type = String(value || "").trim().toLowerCase();
     if (["image", "artwork-image", "jpg", "jpeg"].includes(type)) return "artwork-image";
@@ -13136,7 +13194,9 @@
     const limit = normalizeInteger(options.limit, REVIEW_EXPORT_MAX_RECEIPTS, 1, REVIEW_EXPORT_MAX_RECEIPTS);
     const sourceId = String(options.sourceId || "").trim();
     const exportType = normalizeReviewExportType(options.exportType || "");
-    const allReceipts = normalizeReviewExportReceipts(state.reviewExportReceipts);
+    const allReceipts = normalizeReviewExportReceipts(state.reviewExportReceipts)
+      .map(addReviewExportReceiptVerification)
+      .filter(Boolean);
     const filtered = allReceipts.filter((receipt) => (
       (!sourceId || receipt.sourceId === sourceId || receipt.artworkId === sourceId || receipt.reportId === sourceId || receipt.sessionId === sourceId)
       && (!exportType || receipt.exportType === exportType)
@@ -13147,6 +13207,9 @@
       const type = receipt.exportType || "review-export";
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
+    const verifiedCount = filtered.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = filtered.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = filtered.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: REVIEW_EXPORT_AUDIT_KIND,
@@ -13159,11 +13222,14 @@
       sourceId,
       exportType,
       typeCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: REVIEW_EXPORT_AUDIT_BOUNDARY,
       message: filtered.length
-        ? `已记录 ${filtered.length} 条复盘导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        ? `已记录 ${filtered.length} 条复盘导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
         : "暂无复盘导出回执。"
     };
     audit.auditDigest = sha256StableJson({
@@ -13218,6 +13284,8 @@
           <div><dt>MIME</dt><dd>${escapeHtml(receipt.mimeType)}</dd></div>
           <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
           <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>本机校验</dt><dd>${escapeHtml(formatReviewExportReceiptVerificationStatus(receipt.verificationStatus))}</dd></div>
+          <div><dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd></div>
           <div><dt>评分 / 笔画 / 采样</dt><dd>${escapeHtml(receipt.score || 0)} / ${escapeHtml(receipt.strokeCount || 0)} / ${escapeHtml(receipt.pointCount || 0)}</dd></div>
           <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
         </dl>
@@ -13248,12 +13316,12 @@
   <main>
     <p class="meta">MR Calligraphy Review Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法复盘导出回执审计</h1>
-    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条复盘导出回执。${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条复盘导出回执，本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? `，失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? `，旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}。${escapeHtml(audit.boundary)}</p>
     <div class="badges">${badges}</div>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

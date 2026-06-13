@@ -6590,3 +6590,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增计划仓库导出回执校验`
+
+## 160. 2026-06-13 新增复盘导出回执本机校验
+
+本次把前台“复盘导出回执审计”从只展示作品图片、复盘证据、分享页和学习报告的导出记录，推进为可本机重算 `receiptDigest` 的真实校验。用户如果手动改动 localStorage 里的复盘导出回执声明字段，前台状态层和导出的审计 HTML 都会显示摘要不匹配。
+
+完成内容：
+
+- 新增 `verifyReviewExportReceiptDigest()`、`addReviewExportReceiptVerification()` 和 `createReviewExportReceiptDigestPayload()`。
+- `getReviewExportAudit()` 返回 `verifiedCount`、`failedCount`、`legacyCount`，每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 前台“复盘导出回执”列表显示“本机校验通过 / 摘要不匹配 / 旧记录未校验”。
+- 复盘导出回执 HTML 审计页新增“本机校验”和“重算摘要”。
+- Playwright 前台练习流程验证正常四类复盘导出回执为 `verified`，并临时篡改 `byteLength` 确认 `digest-mismatch` 被识别。
+
+真实化说明：
+
+- 数据来源：当前浏览器学习状态里的 `reviewExportReceipts`。
+- 校验方式：按 `kind`、`exportType`、`sourceType`、`sourceId`、`filename`、`mimeType`、`byteLength`、`fileDigest` 和 `exportedAt` 稳定 JSON + SHA-256 重算。
+- 成功反馈：复盘导出回执列表和 HTML 审计页显示“本机校验通过”。
+- 失败反馈：回执字段被篡改后，读取 API 返回 `digest-mismatch` 和重算摘要。
+
+仍待补：
+
+- 这是本机摘要一致性校验，只能证明复盘导出回执与自身 `receiptDigest` 声明字段一致；它不是操作系统下载完成证明、云端下载日志、账号审计、服务端签名、生产证书链或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增复盘导出回执校验`

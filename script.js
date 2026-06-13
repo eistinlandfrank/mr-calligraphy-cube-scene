@@ -5319,10 +5319,18 @@ function renderReviewExportAudit() {
     const detail = document.createElement("small");
     const fileDigest = receipt.fileDigest ? `文件 ${receipt.fileDigest.slice(0, 12)}` : "文件摘要未生成";
     const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
-    detail.textContent = `${fileDigest} · ${receiptDigest} · ${receipt.score || 0} 分 / ${receipt.strokeCount || 0} 笔 / ${receipt.pointCount || 0} 点`;
+    detail.textContent = `${fileDigest} · ${receiptDigest} · ${formatReviewExportReceiptVerificationStatus(receipt.verificationStatus)} · ${receipt.score || 0} 分 / ${receipt.strokeCount || 0} 笔 / ${receipt.pointCount || 0} 点`;
     item.append(title, meta, detail);
     els.reviewExportAuditList.appendChild(item);
   });
+}
+
+function formatReviewExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function formatReviewExportType(type) {

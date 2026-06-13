@@ -1061,6 +1061,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.reviewExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.reviewExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.reviewExportReceipts[0].boundary).toContain("不是云端下载日志");
+  const reviewExportAuditState = await page.evaluate(() => window.MRAppState.getReviewExportAudit({ limit: 8 }));
+  expect(reviewExportAuditState.verifiedCount).toBe(4);
+  expect(reviewExportAuditState.failedCount).toBe(0);
+  expect(reviewExportAuditState.receipts.every((receipt) => receipt.verificationStatus === "verified")).toBe(true);
+  expect(reviewExportAuditState.receipts.every((receipt) => receipt.verificationExpectedDigest === receipt.receiptDigest)).toBe(true);
+  await expect(page.locator("#reviewExportAuditStatus")).toContainText("本机校验通过 4 条");
+  await expect(page.locator("#reviewExportAuditList")).toContainText("本机校验通过");
   const reviewExportAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#reviewExportAuditExport").click();
   const reviewExportAuditDownload = await reviewExportAuditDownloadPromise;
@@ -1073,6 +1080,29 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reviewExportAuditHtml).toContain("作品分享页 HTML");
   expect(reviewExportAuditHtml).toContain("学习报告 HTML");
   expect(reviewExportAuditHtml).toContain(learningState.reviewExportReceipts[0].receiptDigest);
+  expect(reviewExportAuditHtml).toContain("本机校验通过");
+  expect(reviewExportAuditHtml).toContain("重算摘要");
+  const originalReviewExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.reviewExportReceipts || [])[0];
+    if (receipt) {
+      receipt.byteLength = Number(receipt.byteLength || 0) + 1;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, LEARNING_KEY);
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const tamperedReviewExportAudit = await page.evaluate(() => window.MRAppState.getReviewExportAudit({ limit: 8 }));
+  expect(tamperedReviewExportAudit.failedCount).toBe(1);
+  expect(tamperedReviewExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedReviewExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedReviewExportAudit.receipts[0].receiptDigest);
+  await expect(page.locator("#reviewExportAuditStatus")).toContainText("失败 1 条");
+  await expect(page.locator("#reviewExportAuditList")).toContainText("摘要不匹配");
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalReviewExportState });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   const reportId = learningState.reports[0].id;
   await page.goto(`/?history=${reportId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#historyDetail")).toBeVisible();
