@@ -3943,12 +3943,71 @@
       targetId,
       title: String(record.title || "本机链接").slice(0, 120),
       url,
+      urlDigest: sha256Hex(url),
       copyStatus,
       copySucceeded: copyStatus === "clipboard",
       createdAt,
+      receiptDigest: normalizeReportTeacherReviewDigest(record.receiptDigest) || "",
       message: String(record.message || "").slice(0, 240),
       boundary: String(record.boundary || LOCAL_LINK_COPY_AUDIT_BOUNDARY).slice(0, 260)
     };
+  }
+
+  function addLocalLinkCopyReceiptVerification(record) {
+    const normalized = normalizeLocalLinkCopyReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyLocalLinkCopyReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyLocalLinkCopyReceiptDigest(record = {}) {
+    const receipt = normalizeLocalLinkCopyReceipt(record);
+    const receiptDigest = normalizeReportTeacherReviewDigest(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧本机链接复制回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createLocalLinkCopyReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与本机链接复制回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按本机链接复制回执声明字段重算匹配。"
+    };
+  }
+
+  function createLocalLinkCopyReceiptDigestPayload(record = {}) {
+    const receipt = normalizeLocalLinkCopyReceipt(record) || {};
+    return {
+      kind: LOCAL_LINK_COPY_AUDIT_KIND,
+      targetType: receipt.targetType || "",
+      targetId: receipt.targetId || "",
+      title: receipt.title || "",
+      urlDigest: receipt.urlDigest || "",
+      copyStatus: receipt.copyStatus || "",
+      copySucceeded: Boolean(receipt.copySucceeded),
+      createdAt: receipt.createdAt || ""
+    };
+  }
+
+  function formatLocalLinkCopyReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
   }
 
   function normalizeEvent(record) {
@@ -20956,13 +21015,19 @@
   }
 
   function recordLocalLinkCopyReceipt(record = {}) {
-    const receipt = normalizeLocalLinkCopyReceipt({
+    let receipt = normalizeLocalLinkCopyReceipt({
       ...record,
       id: record.id || makeId("link-copy"),
       createdAt: record.createdAt || new Date().toISOString()
     });
     if (!receipt) {
       return { ok: false, message: "没有可记录的本机链接复制回执。" };
+    }
+    if (!receipt.receiptDigest) {
+      receipt = {
+        ...receipt,
+        receiptDigest: sha256StableJson(createLocalLinkCopyReceiptDigestPayload(receipt))
+      };
     }
     state.localLinkCopyReceipts = [
       receipt,
@@ -20984,6 +21049,8 @@
     const allReceipts = (state.localLinkCopyReceipts || [])
       .map(normalizeLocalLinkCopyReceipt)
       .filter(Boolean)
+      .map(addLocalLinkCopyReceiptVerification)
+      .filter(Boolean)
       .slice(0, MAX_LOCAL_LINK_COPY_RECEIPTS);
     const receipts = allReceipts.slice(0, limit).map(clone);
     const targetCounts = {};
@@ -20994,6 +21061,9 @@
       targetCounts[targetType] = (targetCounts[targetType] || 0) + 1;
       statusCounts[copyStatus] = (statusCounts[copyStatus] || 0) + 1;
     });
+    const verifiedCount = allReceipts.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = allReceipts.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = allReceipts.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       kind: LOCAL_LINK_COPY_AUDIT_KIND,
       generatedAt: new Date().toISOString(),
@@ -21003,8 +21073,15 @@
       limit,
       targetCounts,
       statusCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
+      latestReceipt: receipts[0] || null,
       receipts,
-      boundary: LOCAL_LINK_COPY_AUDIT_BOUNDARY
+      boundary: LOCAL_LINK_COPY_AUDIT_BOUNDARY,
+      message: allReceipts.length
+        ? `已记录 ${allReceipts.length} 条本机链接复制回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(allReceipts[0].createdAt)}。`
+        : "暂无复制回执。"
     };
     audit.auditDigest = sha256StableJson({
       ...audit,
@@ -21061,6 +21138,10 @@
           <div><dt>回执 ID</dt><dd>${escapeHtml(receipt.id)}</dd></div>
           <div><dt>记录时间</dt><dd>${escapeHtml(formatDateTime(receipt.createdAt))}</dd></div>
           <div><dt>链接</dt><dd>${escapeHtml(receipt.url)}</dd></div>
+          <div><dt>链接摘要</dt><dd>${escapeHtml(receipt.urlDigest || "未生成")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>本机校验</dt><dd>${escapeHtml(formatLocalLinkCopyReceiptVerificationStatus(receipt.verificationStatus))}</dd></div>
+          <div><dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd></div>
         </dl>
       </section>`).join("");
     return `<!doctype html>
@@ -21089,12 +21170,12 @@
   <main>
     <p class="meta">MR Calligraphy Local Link Copy Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法本机链接复制审计</h1>
-    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条最近链接复制回执。${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条最近链接复制回执，本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? `，失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? `，旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}。${escapeHtml(audit.boundary)}</p>
     <div class="stats">${targetRows || "<span>暂无目标</span>"}${statusRows || ""}</div>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

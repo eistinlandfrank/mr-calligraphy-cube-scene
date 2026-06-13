@@ -971,12 +971,19 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.locator("#reviewCopyShareLink").click();
   await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);
-  await expect(page.locator("#localLinkCopyAuditStatus")).toContainText("最近");
+  await expect(page.locator("#localLinkCopyAuditStatus")).toContainText("本机校验通过");
   await expect(page.locator("#localLinkCopyAuditList")).toContainText("本机分享链接");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.shareService.records[0].copyCount).toBe(1);
   expect(learningState.localLinkCopyReceipts[0].targetType).toBe("share-link");
   expect(learningState.localLinkCopyReceipts[0].url).toContain(`share=${shareRecordId}`);
+  expect(learningState.localLinkCopyReceipts[0].urlDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.localLinkCopyReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  const shareLocalLinkAuditState = await page.evaluate(() => window.MRAppState.getLocalLinkCopyAudit({ limit: 5 }));
+  expect(shareLocalLinkAuditState.verifiedCount).toBeGreaterThanOrEqual(1);
+  expect(shareLocalLinkAuditState.failedCount).toBe(0);
+  expect(shareLocalLinkAuditState.receipts[0].verificationStatus).toBe("verified");
+  await expect(page.locator("#localLinkCopyAuditList")).toContainText("本机校验通过");
 
   await page.goto(`/?share=${shareRecordId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#historyDetail")).toBeVisible();
@@ -1359,6 +1366,15 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.localLinkCopyReceipts[0].targetType).toBe("report");
   expect(learningState.localLinkCopyReceipts[0].url).toContain(`report=${learningState.reports[0].id}`);
+  expect(learningState.localLinkCopyReceipts[0].urlDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.localLinkCopyReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  const localLinkCopyAuditState = await page.evaluate(() => window.MRAppState.getLocalLinkCopyAudit({ limit: 8 }));
+  expect(localLinkCopyAuditState.verifiedCount).toBeGreaterThanOrEqual(3);
+  expect(localLinkCopyAuditState.failedCount).toBe(0);
+  expect(localLinkCopyAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(localLinkCopyAuditState.receipts[0].verificationExpectedDigest).toBe(learningState.localLinkCopyReceipts[0].receiptDigest);
+  await expect(page.locator("#localLinkCopyAuditStatus")).toContainText("本机校验通过");
+  await expect(page.locator("#localLinkCopyAuditList")).toContainText("本机校验通过");
   const localLinkCopyAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#localLinkCopyAuditExport").click();
   const localLinkCopyAuditDownload = await localLinkCopyAuditDownloadPromise;
@@ -1368,7 +1384,30 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(localLinkCopyAuditHtml).toContain("MR 书法本机链接复制审计");
   expect(localLinkCopyAuditHtml).toContain("站内报告链接");
   expect(localLinkCopyAuditHtml).toContain("本机分享链接");
+  expect(localLinkCopyAuditHtml).toContain("本机校验通过");
+  expect(localLinkCopyAuditHtml).toContain("重算摘要");
   expect(localLinkCopyAuditHtml).toContain("审计摘要");
+  const originalLocalLinkCopyState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.localLinkCopyReceipts || []).find((item) => item.targetType === "report");
+    if (receipt) {
+      receipt.url = `${receipt.url || "http://localhost:41496/"}#tampered`;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, LEARNING_KEY);
+  await page.goto(`/?report=${comparisonSeed.currentId}`, { waitUntil: "domcontentloaded" });
+  const tamperedLocalLinkCopyAudit = await page.evaluate(() => window.MRAppState.getLocalLinkCopyAudit({ limit: 8 }));
+  expect(tamperedLocalLinkCopyAudit.failedCount).toBe(1);
+  expect(tamperedLocalLinkCopyAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedLocalLinkCopyAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedLocalLinkCopyAudit.receipts[0].receiptDigest);
+  await expect(page.locator("#localLinkCopyAuditStatus")).toContainText("失败 1 条");
+  await expect(page.locator("#localLinkCopyAuditList")).toContainText("摘要不匹配");
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalLocalLinkCopyState });
+  await page.goto(`/?report=${comparisonSeed.currentId}`, { waitUntil: "domcontentloaded" });
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
 
   const activeReportId = learningState.reports[0].id;
   await expect(page.locator("#reportComparison")).toContainText("报告对比");

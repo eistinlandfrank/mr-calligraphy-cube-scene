@@ -6195,3 +6195,43 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增详情操作回执校验`
+
+## 162. 2026-06-13 新增本机链接复制回执本机校验
+
+本次把前台“本机链接复制审计”从只展示链接复制记录和整份审计摘要，升级为每条复制回执都可用 `receiptDigest` 本机重算校验。分享链接、学习档案链接和站内报告链接复制后会持久化 `urlDigest` 与回执摘要；如果用户手动改动 localStorage 里的 URL、标题、目标类型或复制状态，前台状态与 HTML 审计页会显示摘要不匹配。
+
+完成内容：
+
+- `recordLocalLinkCopyReceipt()` 为新复制回执写入 `urlDigest` 和 `receiptDigest`。
+- `getLocalLinkCopyAudit()` 会为复制回执附加本机校验结果。
+- 校验结果包含 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 审计摘要新增 `verifiedCount`、`failedCount`、`legacyCount` 和 `latestReceipt`。
+- 前台“本机链接复制审计”列表显示链接摘要、回执摘要和本机校验状态。
+- 本机链接复制审计 HTML 保留同一校验状态和重算摘要。
+- Playwright 前台练习流程验证正常链接复制回执可通过本机校验，并篡改报告链接 URL 确认失败状态。
+
+真实化说明：
+
+- 数据来源：当前浏览器保存的 `localLinkCopyReceipts`。
+- 执行动作：复制时保存链接摘要和回执摘要，读取时重算 `receiptDigest`，旧记录不强行改写。
+- 成功反馈：页面状态统计本机校验通过数量，列表显示校验通过。
+- 失败反馈：摘要不一致时返回 `digest-mismatch`，HTML 审计也保留失败说明和重算摘要。
+
+仍待补：
+
+- 这是本机一致性校验，不是剪贴板系统审计、公网访问日志、账号审计、跨设备分享统计、服务端签名、生产证书链或不可篡改日志。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增链接复制回执校验`

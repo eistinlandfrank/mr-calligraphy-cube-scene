@@ -12029,3 +12029,49 @@
 提交：
 
 - 中文 commit message：`新增详情操作回执校验`
+
+### 2026-06-13：新增本机链接复制回执本机校验
+
+功能名：前台本机分享链接、学习档案链接和站内报告链接复制回执 receiptDigest 本机重算校验。
+
+背景：
+
+- 本机链接复制审计已经会记录链接目标、标题、复制方式、是否成功、复制时间和整份审计摘要。
+- 但此前每条复制回执没有独立的 `receiptDigest` 本机校验，无法判断 localStorage 里的 URL 或复制状态是否被手动篡改。
+- 本机分享链接、学习档案直达链接和报告直达链接是前台真实分享链路的入口，至少需要在当前浏览器内明确“复制回执字段和摘要是否一致”。
+
+本轮完成：
+
+- `recordLocalLinkCopyReceipt()` 复制时写入 `urlDigest` 和 `receiptDigest`。
+- `getLocalLinkCopyAudit()` 读取回执时会重算 `receiptDigest`。
+- 每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 链接复制审计摘要新增 `verifiedCount`、`failedCount`、`legacyCount` 和 `latestReceipt`。
+- 前台“本机链接复制审计”列表显示链接摘要、回执摘要和本机校验状态。
+- 本机链接复制审计 HTML 新增“链接摘要”“回执摘要”“本机校验”和“重算摘要”。
+- Playwright 前台报告用例验证正常分享链接、档案链接和报告链接复制回执校验通过，并临时篡改报告链接 URL 确认 `digest-mismatch` 被识别。
+
+手工验收：
+
+- 在前台生成本机分享链接、打开学习档案详情复制直达链接、打开站内报告复制报告链接。
+- “本机链接复制审计”列表应显示“本机校验通过”。
+- 点击“导出链接”下载 HTML，文件中应包含“本机校验通过”和“重算摘要”。
+- 手动篡改 `mr-calligraphy-learning-state-v1.localLinkCopyReceipts[0].url` 后刷新页面并调用 `MRAppState.getLocalLinkCopyAudit()`，应看到 `failedCount: 1` 和 `verificationStatus: "digest-mismatch"`。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+真实边界：
+
+- 这是当前浏览器本机摘要一致性校验，只能证明链接复制回执与自身 `receiptDigest` 声明字段一致；它不是剪贴板系统审计、公网访问日志、账号审计、跨设备分享统计、服务端签名、生产证书链、远端不可篡改日志或多人审计链。
+
+提交：
+
+- 中文 commit message：`新增链接复制回执校验`

@@ -4551,7 +4551,7 @@ function renderLocalLinkCopyAudit() {
   const audit = window.MRAppState?.getLocalLinkCopyAudit?.({ limit: 5 });
   const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
   els.localLinkCopyAuditStatus.textContent = audit?.total
-    ? `最近 ${receipts.length} / ${audit.total} 条链接`
+    ? audit.message || `最近 ${receipts.length} / ${audit.total} 条链接`
     : "暂无复制回执";
   if (els.localLinkCopyAuditExport) {
     els.localLinkCopyAuditExport.disabled = !audit?.total;
@@ -4575,9 +4575,21 @@ function renderLocalLinkCopyAudit() {
     label.textContent = receipt.title || receipt.targetLabel || "本机链接";
     const detail = document.createElement("span");
     detail.textContent = `${formatLocalLinkCopyTargetLabel(receipt.targetType)} / ${formatLocalLinkCopyStatusLabel(receipt.copyStatus)} / ${formatHistoryTime(receipt.createdAt)}`;
-    item.append(label, detail);
+    const meta = document.createElement("small");
+    const urlDigest = receipt.urlDigest ? `链接 ${receipt.urlDigest.slice(0, 12)}` : "链接摘要未生成";
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    meta.textContent = `${urlDigest} · ${receiptDigest} · ${formatLocalLinkCopyReceiptVerificationStatus(receipt.verificationStatus)}`;
+    item.append(label, detail, meta);
     els.localLinkCopyAuditList.appendChild(item);
   });
+}
+
+function formatLocalLinkCopyReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function downloadLocalLinkCopyAudit() {
