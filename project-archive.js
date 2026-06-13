@@ -4392,26 +4392,33 @@
   function getProjectImpactExportAudit(options = {}) {
     const limit = Math.max(1, Math.min(PROJECT_IMPACT_EXPORT_MAX_RECEIPTS, Number(options.limit) || PROJECT_IMPACT_EXPORT_MAX_RECEIPTS));
     const auditState = readProjectImpactExportAuditState();
-    const records = auditState.records.slice(0, limit).map(cloneJsonValue);
-    const sourceCounts = auditState.records.reduce((counts, record) => {
+    const verifiedRecords = auditState.records.map(addProjectImpactExportVerification).filter(Boolean);
+    const records = verifiedRecords.slice(0, limit).map(cloneJsonValue);
+    const sourceCounts = verifiedRecords.reduce((counts, record) => {
       const sourceType = record.sourceType || "project-archive-file";
       counts[sourceType] = (counts[sourceType] || 0) + 1;
       return counts;
     }, {});
+    const verifiedCount = verifiedRecords.filter((record) => record.verificationStatus === "verified").length;
+    const failedCount = verifiedRecords.filter((record) => record.verificationStatus === "digest-mismatch").length;
+    const legacyCount = verifiedRecords.filter((record) => record.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: PROJECT_IMPACT_EXPORT_AUDIT_KIND,
       generatedAt: new Date().toISOString(),
       storageKey: PROJECT_IMPACT_EXPORT_AUDIT_KEY,
-      total: auditState.records.length,
+      total: verifiedRecords.length,
       exportedCount: records.length,
       limit,
       sourceCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: records[0] || null,
       records,
       boundary: PROJECT_IMPACT_EXPORT_BOUNDARY,
-      message: auditState.records.length
-        ? `已记录 ${auditState.records.length} 条项目档案差异报告导出回执，最近一次：${formatArchiveDate(auditState.records[0].exportedAt || auditState.records[0].createdAt)}。`
+      message: verifiedRecords.length
+        ? `已记录 ${verifiedRecords.length} 条项目档案差异报告导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatArchiveDate(verifiedRecords[0].exportedAt || verifiedRecords[0].createdAt)}。`
         : "暂无项目档案差异报告导出回执。"
     };
     audit.auditDigest = sha256StableJson({
@@ -4419,6 +4426,93 @@
       auditDigest: ""
     });
     return audit;
+  }
+
+  function addProjectImpactExportVerification(record) {
+    const normalized = normalizeProjectImpactExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyProjectImpactExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyProjectImpactExportReceiptDigest(record = {}) {
+    const receiptDigest = normalizeSha256(record.receiptDigest);
+    if (!receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧项目档案差异报告导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createProjectImpactExportReceiptVerificationPayload(record));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    const messages = {
+      verified: "本机一致性校验通过：receiptDigest 与项目档案差异报告导出回执声明字段一致。",
+      "digest-mismatch": "本机一致性校验失败：receiptDigest 无法按项目档案差异报告导出回执声明字段重算匹配。"
+    };
+    return {
+      status,
+      expectedDigest,
+      message: messages[status]
+    };
+  }
+
+  function createProjectImpactExportReceiptVerificationPayload(record = {}) {
+    const normalized = normalizeProjectImpactExportReceipt(record) || {};
+    const createdAt = normalized.createdAt || "";
+    const digestSuffix = normalized.receiptDigest ? `-${normalized.receiptDigest.slice(0, 8)}` : "";
+    const baseId = digestSuffix && normalized.id.endsWith(digestSuffix)
+      ? normalized.id.slice(0, -digestSuffix.length)
+      : normalized.id || `project-impact-export-${createdAt.replace(/[^0-9]/g, "").slice(0, 14)}`;
+    return {
+      id: baseId,
+      kind: PROJECT_IMPACT_EXPORT_AUDIT_KIND,
+      type: "project-archive-impact-export",
+      version: 1,
+      createdAt,
+      exportedAt: normalized.exportedAt || createdAt,
+      filename: normalized.filename || "",
+      mimeType: normalized.mimeType || "text/html;charset=utf-8",
+      byteLength: Number(normalized.byteLength || 0),
+      fileDigest: normalized.fileDigest || "",
+      previewDigest: normalized.previewDigest || "",
+      archiveExportedAt: normalized.archiveExportedAt || "",
+      archiveSource: normalized.archiveSource || "",
+      sourceType: normalized.sourceType || "project-archive-file",
+      remotePackageId: normalized.remotePackageId || "",
+      remoteWorkspaceId: normalized.remoteWorkspaceId || "",
+      remotePackageDigest: normalized.remotePackageDigest || "",
+      remoteRepositoryDigest: normalized.remoteRepositoryDigest || "",
+      riskLevel: normalized.riskLevel || "unknown",
+      riskLabel: normalized.riskLabel || "风险未知",
+      riskText: normalized.riskText || "",
+      migrationCount: Number(normalized.migrationCount || 0),
+      storageTotal: Number(normalized.storageTotal || 0),
+      dbTotal: Number(normalized.dbTotal || 0),
+      storageAdded: Number(normalized.storageAdded || 0),
+      storageUpdated: Number(normalized.storageUpdated || 0),
+      storageRemoved: Number(normalized.storageRemoved || 0),
+      incomingModelCount: Number(normalized.incomingModelCount || 0),
+      assetHashCount: Number(normalized.assetHashCount || 0),
+      missingAssetHashCount: Number(normalized.missingAssetHashCount || 0),
+      importedModelCount: Number(normalized.importedModelCount || 0),
+      textureAssetCount: Number(normalized.textureAssetCount || 0),
+      selectedStorageCount: Number(normalized.selectedStorageCount || 0),
+      selectedDbCount: Number(normalized.selectedDbCount || 0),
+      selectedFieldCount: Number(normalized.selectedFieldCount || 0),
+      selectedModelCount: Number(normalized.selectedModelCount || 0),
+      selectedCount: Number(normalized.selectedCount || 0),
+      selectionDigest: normalized.selectionDigest || "",
+      boundary: normalized.boundary || PROJECT_IMPACT_EXPORT_BOUNDARY,
+      message: normalized.message || ""
+    };
   }
 
   function getProjectImpactExportAuditExport(options = {}) {
@@ -4480,6 +4574,8 @@
         <li>预览摘要：${escapeHtml(record.previewDigest || "未生成")}</li>
         <li>选择摘要：${escapeHtml(record.selectionDigest || "未生成")}</li>
         <li>回执摘要：${escapeHtml(record.receiptDigest || "未生成")}</li>
+        <li>本机校验：${escapeHtml(formatProjectImpactExportVerificationStatus(record.verificationStatus))}</li>
+        <li>重算摘要：${escapeHtml(record.verificationExpectedDigest || "无法重算")}</li>
       </ul>
       <pre>${escapeHtml(JSON.stringify(record, null, 2))}</pre>
     </article>`).join("");
@@ -4516,13 +4612,21 @@
     <header>
       <p class="muted">MR Calligraphy Project Impact Export Audit · ${escapeHtml(formatArchiveDate(exportedAt))}</p>
       <h1>项目档案差异报告导出回执审计</h1>
-      <p class="muted">本报告来自当前浏览器保存的差异报告导出回执；它证明浏览器曾生成恢复前审阅 HTML 及摘要，但不代表已经执行恢复。</p>
+      <p class="muted">本报告来自当前浏览器保存的差异报告导出回执；它证明浏览器曾生成恢复前审阅 HTML 及摘要，并按 receiptDigest 重算本机一致性校验，但不代表已经执行恢复。</p>
     </header>
     <section class="stack">${rows}</section>
-    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
+    <footer>审计数据来源：${escapeHtml(audit.storageKey)}。回执数量：${escapeHtml(audit.total)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。审计摘要：${escapeHtml(audit.auditDigest || "未生成")}。导出时间：${escapeHtml(formatArchiveDate(exportedAt))}。边界：${escapeHtml(audit.boundary)}</footer>
   </main>
 </body>
 </html>`;
+  }
+
+  function formatProjectImpactExportVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
   }
 
   function recordProjectImportPreviewExportReceipt(payload = {}) {
@@ -6471,7 +6575,7 @@
         const sourceText = formatProjectImpactSourceType(record.sourceType);
         detail.textContent = `${sourceText} · ${record.riskLabel || "风险未知"} · 选择 ${record.selectedCount} 项 / 字段 ${record.selectedFieldCount} / 模型 ${record.selectedModelCount}`;
         const digest = document.createElement("span");
-        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"}`;
+        digest.textContent = `${formatArchiveDate(record.exportedAt || record.createdAt)} · 文件 ${record.fileDigest ? record.fileDigest.slice(0, 12) : "未生成"} · 回执 ${record.receiptDigest ? record.receiptDigest.slice(0, 12) : "未生成"} · ${formatProjectImpactExportVerificationStatus(record.verificationStatus)}`;
         item.append(title, detail, digest);
         impactExportAuditList.appendChild(item);
       });

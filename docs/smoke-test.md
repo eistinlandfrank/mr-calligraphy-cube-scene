@@ -93,6 +93,7 @@ node scripts/learning-state-check.js
 本轮新增项目仓库包本机导出验收：主后台项目仓库状态区新增 `projectRepositoryExportButton`、`projectRepositoryExportAudit`、`projectRepositoryExportAuditStatus`、`projectRepositoryExportAuditList` 和 `projectRepositoryExportAuditExport`；Playwright 会真实点击“导出仓库包”，验证下载的 `mr-calligraphy-project-repository-package-v1` JSON 通过结构校验，localStorage 保存包摘要、仓库摘要、文件摘要和回执摘要，HTML 审计页可下载。
 本轮新增项目仓库包导出回执本机校验验收：`getProjectRepositoryExportAudit()` 会按回执声明字段重算 `receiptDigest`，主后台“仓库包导出回执”显示本机校验通过；Playwright 会验证正常回执为 `verified`，并临时篡改回执确认 `digest-mismatch` 能被识别。
 本轮新增项目档案差异报告导出回执验收：主后台项目备份区新增 `projectImpactExportAudit`、`projectImpactExportAuditStatus`、`projectImpactExportAuditList` 和 `projectImpactExportAuditExport`；Playwright 会在远端项目仓库版本预览后真实点击“导出差异报告”，验证 HTML 下载、来源包、风险摘要、恢复选择、文件摘要、预览摘要、选择摘要、回执摘要和 HTML 审计页下载。
+本轮新增项目档案差异报告回执本机校验验收：`getProjectImpactExportAudit()` 会按回执声明字段重算 `receiptDigest`，主后台“差异报告导出回执”显示本机校验通过；Playwright 会验证正常回执为 `verified`，并临时篡改回执确认 `digest-mismatch` 能被识别。
 本轮新增项目档案恢复审计导出回执验收：主后台项目备份区新增 `projectRestoreAuditExportAudit`、`projectRestoreAuditExportAuditStatus`、`projectRestoreAuditExportAuditList` 和 `projectRestoreAuditExportAuditExport`；Playwright 会在远端项目仓库版本恢复后真实点击“导出审计”，验证恢复审计 HTML 下载、文件摘要、审计报告摘要、最近恢复记录摘要、回执摘要和 HTML 回执审计页下载。
 本轮新增项目档案恢复审计本机校验验收：`getRestoreAuditLog()` 会按恢复审计声明字段重算 `recordDigest`，主后台“恢复审计”显示本机校验通过数量；Playwright 会验证正常恢复记录为 `verified`，并临时篡改恢复记录确认 `digest-mismatch` 能被识别。
 本轮新增项目仓库包文件导入预览验收：主后台“导入项目档案”入口可识别本机 `mr-calligraphy-project-repository-package-v1` JSON 包；Playwright 会验证导出的仓库包能重新进入“本机项目仓库包预览”，并验证篡改但未重签的仓库包被 `packageDigest` 校验拒绝。

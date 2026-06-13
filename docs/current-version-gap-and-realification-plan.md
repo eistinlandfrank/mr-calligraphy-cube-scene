@@ -6290,3 +6290,39 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增仓库包导出回执校验`
+
+## 152. 2026-06-13 新增项目档案差异报告回执本机校验
+
+本次补齐“项目档案差异报告导出回执”的本机一致性校验。差异报告 HTML 导出回执已经记录 `receiptDigest`、文件摘要、预览摘要和恢复选择摘要；现在后台读取时会按回执声明字段重算摘要，正常回执显示“本机校验通过”，被手动篡改的回执显示“摘要不匹配”。
+
+完成内容：
+
+- 新增 `verifyProjectImpactExportReceiptDigest()`、`addProjectImpactExportVerification()` 和 `createProjectImpactExportReceiptVerificationPayload()`。
+- `getProjectImpactExportAudit()` 返回 `verifiedCount`、`failedCount`、`legacyCount`，每条回执新增 `verificationStatus`、`verificationMessage` 和 `verificationExpectedDigest`。
+- 主后台“差异报告导出回执”列表显示本机校验状态。
+- 项目档案差异报告导出回执 HTML 审计页新增“本机校验”和“重算摘要”。
+- Playwright 主后台用例验证正常差异报告导出回执为 `verified`，并临时篡改 `selectedCount` 确认 `digest-mismatch` 被识别。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-project-impact-export-audit-v1` 中的本机项目档案差异报告导出回执。
+- 校验方式：去掉 `receiptDigest` 派生字段，恢复生成摘要时的基础 ID，并按稳定 JSON + SHA-256 重算。
+- 成功反馈：后台列表和 HTML 审计页显示“本机校验通过”。
+- 失败反馈：回执字段被篡改后，读取 API 返回 `digest-mismatch` 和重算摘要。
+
+仍待补：
+
+- 这是本机摘要一致性校验，只能证明项目档案差异报告导出回执与自身 `receiptDigest` 声明字段一致；它不是恢复动作证明、服务端签名、账号审批、生产证书链、多人合并审计或服务端不可篡改证据链。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增差异报告回执校验`

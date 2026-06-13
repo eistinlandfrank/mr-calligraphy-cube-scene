@@ -4596,12 +4596,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectImpactExportState.records[0].selectionDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(projectImpactExportState.records[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(projectImpactExportState.records[0].boundary).toContain("恢复前审阅 HTML");
+  const projectImpactExportAuditState = await page.evaluate(() => window.MRProjectArchive.getProjectImpactExportAudit());
+  expect(projectImpactExportAuditState.verifiedCount).toBe(1);
+  expect(projectImpactExportAuditState.failedCount).toBe(0);
+  expect(projectImpactExportAuditState.records[0].verificationStatus).toBe("verified");
+  expect(projectImpactExportAuditState.records[0].verificationExpectedDigest).toBe(projectImpactExportState.records[0].receiptDigest);
   const projectImpactExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectImpactExportAuditExport());
   expect(projectImpactExportAudit.ok).toBe(true);
   expect(projectImpactExportAudit.html).toContain("MR 书法项目档案差异报告导出回执审计");
   expect(projectImpactExportAudit.html).toContain("e2e-project-repository-1");
   expect(projectImpactExportAudit.html).toContain(projectImpactExportState.records[0].fileDigest);
   expect(projectImpactExportAudit.html).toContain(projectImpactExportState.records[0].receiptDigest);
+  expect(projectImpactExportAudit.html).toContain("本机校验通过");
 
   const projectImpactAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#projectImpactExportAuditExport").click();
@@ -4612,6 +4618,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectImpactAuditHtml).toContain("MR 书法项目档案差异报告导出回执审计");
   expect(projectImpactAuditHtml).toContain("e2e-project-repository-1");
   expect(projectImpactAuditHtml).toContain(projectImpactExportState.records[0].receiptDigest);
+  expect(projectImpactAuditHtml).toContain("本机校验通过");
+
+  const tamperedProjectImpactExportAudit = await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    state.records[0].selectedCount = Number(state.records[0].selectedCount || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+    return window.MRProjectArchive.getProjectImpactExportAudit();
+  }, PROJECT_IMPACT_EXPORT_AUDIT_KEY);
+  expect(tamperedProjectImpactExportAudit.failedCount).toBe(1);
+  expect(tamperedProjectImpactExportAudit.records[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedProjectImpactExportAudit.records[0].verificationExpectedDigest).not.toBe(tamperedProjectImpactExportAudit.records[0].receiptDigest);
 
   const restoredNavigation = page.waitForNavigation({ waitUntil: "domcontentloaded" });
   await page.locator("#projectImportConfirm").click();
