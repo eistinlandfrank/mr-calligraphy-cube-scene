@@ -4,6 +4,8 @@
   const MAX_EVENTS = 120;
   const MAX_HISTORY_TRASH = 12;
   const MAX_HISTORY_BATCH_RECEIPTS = 20;
+  const HISTORY_BATCH_RECEIPT_AUDIT_KIND = "mr-calligraphy-history-batch-receipt-audit-v1";
+  const HISTORY_BATCH_RECEIPT_AUDIT_BOUNDARY = "学习档案批量操作回执来自当前浏览器 historyBatchReceipts，记录导出、删除、恢复、永久删除和清空回收站动作；它不是服务端账号审计、跨设备课堂日志或不可篡改证据链。";
   const MAX_ARTWORK_TAGS = 8;
   const MAX_ARTWORK_REPOSITORY_CONFLICTS = 12;
   const MAX_SHARE_RECORDS = 24;
@@ -16965,6 +16967,133 @@
     };
   }
 
+  function getHistoryBatchReceiptAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, MAX_HISTORY_BATCH_RECEIPTS, 1, MAX_HISTORY_BATCH_RECEIPTS);
+    const allRecords = (state.historyBatchReceipts || [])
+      .map(normalizeHistoryBatchReceipt)
+      .filter(Boolean)
+      .slice(0, MAX_HISTORY_BATCH_RECEIPTS);
+    const records = allRecords.slice(0, limit).map(clone);
+    const actionCounts = {};
+    records.forEach((record) => {
+      const action = record.action || "history-action";
+      actionCounts[action] = (actionCounts[action] || 0) + 1;
+    });
+    const audit = {
+      kind: HISTORY_BATCH_RECEIPT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: allRecords.length,
+      exportedCount: records.length,
+      limit,
+      actionCounts,
+      records,
+      boundary: HISTORY_BATCH_RECEIPT_AUDIT_BOUNDARY
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getHistoryBatchReceiptAuditExport(options = {}) {
+    const audit = getHistoryBatchReceiptAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: "当前还没有可导出的学习档案批量操作回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-history-batch-receipts-${exportedAt.slice(0, 10)}.html`,
+      html: renderHistoryBatchReceiptAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条学习档案批量操作回执审计。`
+    };
+  }
+
+  function downloadHistoryBatchReceiptAudit(options = {}) {
+    const result = getHistoryBatchReceiptAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderHistoryBatchReceiptAuditHtml(audit, exportedAt) {
+    const actionRows = Object.entries(audit.actionCounts || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([action, count]) => `<span>${escapeHtml(formatHistoryBatchReceiptAction(action))} ${escapeHtml(count)}</span>`)
+      .join("");
+    const rows = audit.records.map((record) => `
+      <section class="receipt">
+        <h2>${escapeHtml(record.label || formatHistoryBatchReceiptAction(record.action))}</h2>
+        <p>${escapeHtml(record.message || "已记录学习档案批量操作。")}</p>
+        <dl>
+          <div><dt>动作</dt><dd>${escapeHtml(formatHistoryBatchReceiptAction(record.action))}</dd></div>
+          <div><dt>回执 ID</dt><dd>${escapeHtml(record.id)}</dd></div>
+          <div><dt>记录时间</dt><dd>${escapeHtml(formatDateTime(record.createdAt))}</dd></div>
+          <div><dt>总数</dt><dd>${escapeHtml(record.recordCount || 0)} 条</dd></div>
+          <div><dt>练习</dt><dd>${escapeHtml(record.counts?.practice || 0)} 条</dd></div>
+          <div><dt>作品</dt><dd>${escapeHtml(record.counts?.artwork || 0)} 条</dd></div>
+          <div><dt>报告</dt><dd>${escapeHtml(record.counts?.report || 0)} 条</dd></div>
+          <div><dt>阶段</dt><dd>${escapeHtml(record.counts?.stage || 0)} 条</dd></div>
+          ${record.filename ? `<div><dt>文件</dt><dd>${escapeHtml(record.filename)}</dd></div>` : ""}
+          ${record.trashId ? `<div><dt>回收站</dt><dd>${escapeHtml(record.trashId)}</dd></div>` : ""}
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法学习档案批量回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    .stats span { padding: 8px 10px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; font-weight: 700; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy History Batch Receipt Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法学习档案批量回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条最近批量操作回执。${escapeHtml(audit.boundary)}</p>
+    <div class="stats">${actionRows || "<span>暂无分类</span>"}</div>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatHistoryBatchReceiptAction(action) {
+    return {
+      export: "导出所选",
+      delete: "移入回收站",
+      restore: "恢复回收站",
+      "trash-delete": "永久删除",
+      "trash-clear": "清空回收站"
+    }[action] || "学习档案操作";
+  }
+
   function getHistoryRecordCounts(records = {}) {
     return {
       practice: Array.isArray(records.practice)
@@ -17175,6 +17304,8 @@
     getPlanCalendarExport,
     getHistoryRepositoryStatus,
     getHistoryBatchReceipts,
+    getHistoryBatchReceiptAudit,
+    getHistoryBatchReceiptAuditExport,
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,
@@ -17226,6 +17357,7 @@
     clearHistoryTrash,
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
+    downloadHistoryBatchReceiptAudit,
     downloadHistoryRepository,
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,

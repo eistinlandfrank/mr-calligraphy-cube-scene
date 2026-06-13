@@ -1030,6 +1030,18 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.historyTrash).toHaveLength(0);
   expect(learningState.reports).toHaveLength(1);
   expect(learningState.artworks).toHaveLength(1);
+  await expect(page.locator("#historyBatchReceiptExport")).toBeEnabled();
+  await expect(page.locator("#historyBatchReceiptList")).toContainText("批量移入回收站");
+  const batchReceiptAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#historyBatchReceiptExport").click();
+  const batchReceiptAuditDownload = await batchReceiptAuditDownloadPromise;
+  expect(batchReceiptAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-batch-receipts-.*\.html$/);
+  const batchReceiptAuditPath = await batchReceiptAuditDownload.path();
+  const batchReceiptAuditHtml = fs.readFileSync(batchReceiptAuditPath, "utf8");
+  expect(batchReceiptAuditHtml).toContain("MR 书法学习档案批量回执审计");
+  expect(batchReceiptAuditHtml).toContain("恢复回收站学习档案");
+  expect(batchReceiptAuditHtml).toContain("批量移入回收站");
+  expect(batchReceiptAuditHtml).toContain("审计摘要");
 
   for (const stepNumber of [7, 8, 9, 10]) {
     await page.getByRole("button", { name: new RegExp(`切换到步骤 ${stepNumber}`) }).click();

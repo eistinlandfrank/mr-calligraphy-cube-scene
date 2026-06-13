@@ -10408,3 +10408,51 @@
 提交：
 
 - 中文 commit message：`新增学习动作审计面板`
+
+### 2026-06-13：新增学习档案批量回执审计导出
+
+功能名：学习档案批量操作回执审计与 HTML 导出。
+
+开发原因：
+
+- 学习档案的批量导出、删除、恢复和清空回收站已经会写入本机 `historyBatchReceipts`。
+- 但页面此前只展示最近一次回执，用户无法把这些操作作为独立文件留档，仍容易觉得批量按钮只是临时提示。
+
+完成内容：
+
+- 新增 `mr-calligraphy-history-batch-receipt-audit-v1` 审计包。
+- `MRAppState.getHistoryBatchReceiptAudit({ limit })` 读取最近批量操作回执，返回动作统计、回执列表和 `auditDigest`。
+- `MRAppState.getHistoryBatchReceiptAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadHistoryBatchReceiptAudit()` 下载 `mr-calligraphy-history-batch-receipts-*.html`。
+- 前台 `historyBatchReceipt` 区域新增“导出回执”按钮和最近回执列表。
+- Smoke 首页标记检查新增批量回执审计节点。
+- `learning-state-check.js` 覆盖删除、恢复、再次删除、清空回收站、审计摘要和 HTML。
+- Playwright 前台真实练习用例覆盖批量回执 HTML 下载和内容校验。
+
+验收方式：
+
+- 在前台完成练习并进入学习档案，选择本页记录后导出、删除、恢复。
+- 批量回执区应显示最近操作和更早回执。
+- 点击“导出回执”应下载 HTML，文件包含“MR 书法学习档案批量回执审计”、删除/恢复动作和审计摘要。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是浏览器本机 localStorage 批量操作审计，不是服务端账号日志、教师课堂审计、跨设备同步审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案批量回执审计`

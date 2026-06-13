@@ -938,6 +938,11 @@ const els = {
   historyClearTrash: document.getElementById("historyClearTrash"),
   historyTrashStatus: document.getElementById("historyTrashStatus"),
   historyBatchReceipt: document.getElementById("historyBatchReceipt"),
+  historyBatchReceiptTitle: document.getElementById("historyBatchReceiptTitle"),
+  historyBatchReceiptTime: document.getElementById("historyBatchReceiptTime"),
+  historyBatchReceiptLatest: document.getElementById("historyBatchReceiptLatest"),
+  historyBatchReceiptList: document.getElementById("historyBatchReceiptList"),
+  historyBatchReceiptExport: document.getElementById("historyBatchReceiptExport"),
   historyTrashList: document.getElementById("historyTrashList"),
   historyTrend: document.getElementById("historyTrend"),
   historyArtworkCompare: document.getElementById("historyArtworkCompare"),
@@ -4193,6 +4198,7 @@ function bindHistoryControls() {
   els.historyDeleteSelected?.addEventListener("click", deleteSelectedHistoryRecords);
   els.historyRestoreTrash?.addEventListener("click", restoreLatestHistoryTrash);
   els.historyClearTrash?.addEventListener("click", clearHistoryTrash);
+  els.historyBatchReceiptExport?.addEventListener("click", exportHistoryBatchReceiptAudit);
   els.historyTrashList?.addEventListener("click", handleHistoryTrashAction);
   els.historyArtworkCompare?.addEventListener("click", handleArtworkCompareAction);
   els.artworkSearch?.addEventListener("input", () => {
@@ -7430,18 +7436,35 @@ function renderHistoryBatchControls(history) {
 
 function renderHistoryBatchReceipt() {
   if (!els.historyBatchReceipt) return;
-  const receipt = window.MRAppState?.getHistoryBatchReceipts?.()?.latest || null;
+  const audit = window.MRAppState?.getHistoryBatchReceiptAudit?.({ limit: 6 }) || null;
+  const receipt = audit?.records?.[0] || window.MRAppState?.getHistoryBatchReceipts?.()?.latest || null;
   els.historyBatchReceipt.hidden = !receipt;
-  els.historyBatchReceipt.innerHTML = "";
-  if (!receipt) return;
+  if (els.historyBatchReceiptExport) {
+    els.historyBatchReceiptExport.disabled = !receipt;
+  }
+  if (!receipt) {
+    if (els.historyBatchReceiptTitle) {
+      els.historyBatchReceiptTitle.textContent = "暂无批量操作回执";
+    }
+    if (els.historyBatchReceiptTime) {
+      els.historyBatchReceiptTime.textContent = "等待操作";
+    }
+    els.historyBatchReceiptLatest?.replaceChildren();
+    els.historyBatchReceiptList?.replaceChildren();
+    return;
+  }
 
-  const head = document.createElement("div");
-  head.className = "history-batch-receipt-head";
-  const title = document.createElement("strong");
-  title.textContent = receipt.label || "学习档案批量操作";
-  const time = document.createElement("em");
-  time.textContent = formatHistoryTime(receipt.createdAt);
-  head.append(title, time);
+  if (els.historyBatchReceiptTitle) {
+    els.historyBatchReceiptTitle.textContent = receipt.label || "学习档案批量操作";
+  }
+  if (els.historyBatchReceiptTime) {
+    els.historyBatchReceiptTime.textContent = formatHistoryTime(receipt.createdAt);
+  }
+  if (els.historyBatchReceiptExport) {
+    els.historyBatchReceiptExport.title = audit?.auditDigest
+      ? `导出最近 ${audit.exportedCount} 条回执，审计 ${audit.auditDigest.slice(0, 12)}`
+      : "导出学习档案批量操作回执审计";
+  }
 
   const summary = document.createElement("p");
   const fileText = receipt.filename ? ` 文件：${receipt.filename}。` : "";
@@ -7466,7 +7489,26 @@ function renderHistoryBatchReceipt() {
 
   const boundary = document.createElement("p");
   boundary.textContent = receipt.boundary || "学习档案批量操作回执保存在当前浏览器本机状态中。";
-  els.historyBatchReceipt.append(head, summary, metrics, boundary);
+  if (els.historyBatchReceiptLatest) {
+    els.historyBatchReceiptLatest.replaceChildren(summary, metrics, boundary);
+  }
+
+  if (els.historyBatchReceiptList) {
+    els.historyBatchReceiptList.replaceChildren();
+    (audit?.records || []).slice(1, 6).forEach((record) => {
+      const item = document.createElement("li");
+      const title = document.createElement("strong");
+      title.textContent = record.label || "学习档案批量操作";
+      const meta = document.createElement("span");
+      meta.textContent = `${formatHistoryTime(record.createdAt)} / ${record.recordCount || 0} 条 / ${record.action || "history-action"}`;
+      const detail = document.createElement("small");
+      const fileLabel = record.filename ? ` / ${record.filename}` : "";
+      const trashLabel = record.trashId ? ` / 回收站 ${record.trashId}` : "";
+      detail.textContent = `${record.message || "已记录操作。"}${fileLabel}${trashLabel}`;
+      item.append(title, meta, detail);
+      els.historyBatchReceiptList.appendChild(item);
+    });
+  }
 }
 
 function renderHistoryRepositoryStatus(history) {
@@ -9891,6 +9933,12 @@ function exportSelectedHistoryRecords() {
     return;
   }
   showNotice(result?.message || "导出所选档案失败。");
+}
+
+function exportHistoryBatchReceiptAudit() {
+  const result = window.MRAppState?.downloadHistoryBatchReceiptAudit?.({ limit: 20 });
+  showNotice(result?.message || "暂无可导出的学习档案批量操作回执。");
+  renderHistoryPanel(currentIndex);
 }
 
 function deleteSelectedHistoryRecords() {

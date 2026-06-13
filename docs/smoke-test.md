@@ -104,9 +104,10 @@ node scripts/learning-state-check.js
 本轮新增后台服务边界状态验收：主后台新增 `mainAdminBoundaryPanel`，写实后台新增 `realisticAdminBoundaryPanel`；页面静态 smoke 会检查两个后台的边界状态和列表，Playwright 手机视口会确认显示“本机编辑 / 前台或演示发布 / 远端 Adapter / 生产后台”。
 本轮新增本机后台操作者审计验收：新增 `admin-audit.js`，主后台检查 `mainAdminOperatorPanel`、`mainAdminOperatorName`、`mainAdminOperatorRole`、`mainAdminAuditList` 和 `mainAdminAuditExport`，写实后台检查 `realisticAdminOperatorPanel`、`realisticAdminOperatorName`、`realisticAdminOperatorRole`、`realisticAdminAuditList` 和 `realisticAdminAuditExport`；Playwright 发布用例会读取 `mr-calligraphy-admin-operator-audit-v1`，确认 `snapshot` 与 `publish-local` 记录写入保存后的操作者。
 本轮新增本机后台角色权限验收：静态 smoke 会检查 `mainAdminPermissionStatus` 与 `realisticAdminPermissionStatus`；Playwright 新增 `admin reviewer role blocks local write controls`，确认复核角色会禁用主后台和写实后台的坐标编辑、导入、快照、删除、本机发布和远端发布入口，切回编辑角色后写入控件恢复。
-本轮新增静态控件处理器覆盖验收：`node scripts/control-inventory.js --check` 会按入口页面扫描实际加载脚本，要求所有真实状态按钮和导出按钮都有 `click`、`submit`、批量 selector 或初始化参数绑定；当前前台 103 个、主后台 53 个、写实演示 3 个、写实后台 34 个真实控件均为 `missingHandler 0`。
+本轮新增静态控件处理器覆盖验收：`node scripts/control-inventory.js --check` 会按入口页面扫描实际加载脚本，要求所有真实状态按钮和导出按钮都有 `click`、`submit`、批量 selector 或初始化参数绑定；当前前台 105 个、主后台 53 个、写实演示 3 个、写实后台 34 个真实控件均为 `missingHandler 0`。
 本轮新增动态控件处理器覆盖验收：`node scripts/control-inventory.js --check` 会扫描 `script.js`、`main-admin-scene.js`、`realistic-scene.js` 和 `project-archive.js` 中 `document.createElement("button")` 生成的运行时按钮，要求动态按钮有有效状态，并要求真实状态按钮能追踪直接 `click` 或 `data-*` 委托处理器；当前前台 34 个、主后台 8 个、写实场景 4 个运行时按钮均为 `missingHandler 0`。
 本轮新增学习动作审计验收：前台新增 `learningActionAudit`、`learningActionAuditStatus`、`learningActionAuditList` 和 `learningActionAuditExport`；状态层会生成 `mr-calligraphy-learning-event-audit-v1`、类型统计、事件列表和 64 位 `auditDigest`；Playwright 前台练习用例会验证讲解、开始练习、保存作品进入审计列表，并下载 HTML 审计页。
+本轮新增学习档案批量回执审计验收：前台新增 `historyBatchReceiptTitle`、`historyBatchReceiptExport` 和 `historyBatchReceiptList`；状态层会生成 `mr-calligraphy-history-batch-receipt-audit-v1`、动作统计、回执列表和 64 位 `auditDigest`；Playwright 前台练习用例会验证批量导出、删除、恢复后的回执列表，并下载 HTML 审计页。
 
 ## 浏览器级验收
 
@@ -125,7 +126,7 @@ npm run test:e2e
 Playwright 会启动本地静态服务器，并覆盖以下闭环：
 
 - 前台主房间、主后台和写实后台会采样 WebGL canvas 像素，确认画布不是空白 DOM；手机视口还会检查前台服务边界面板、两个后台服务边界面板、本机操作者审计面板和权限摘要，显示本机真实、本机编辑、本机审计、远端 Adapter、生产云端/生产后台未接入状态。
-- 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习，并确认本机学习动作审计列表记录讲解、开始练习和保存作品且可下载 HTML 审计页；随后导出 WebM 回放视频，确认写入本机视频队列、导出记录、生成 PNG 封面并可下载封面；再模拟浏览器不支持录制触发失败任务，恢复录制能力后点击“重试”并确认再次下载 WebM；生成本机分享链接后配置远端分享 API，确认真实 GET/PUT/DELETE、带 `digestAlgorithm` 和 `packageDigest` 的分享包、`lastPackageDigest` 持久化、publicUrl、远端撤销、回执持久化、回执审计列表和 HTML 回执下载。
+- 前台在真实 canvas 书写后点击“保存作品”，确认本机学习状态写入作品和已保存练习，并确认本机学习动作审计列表记录讲解、开始练习和保存作品且可下载 HTML 审计页；进入学习档案后会选择本页记录、导出所选、批量删除、恢复回收站，并下载学习档案批量回执 HTML，确认包含删除、恢复和审计摘要；随后导出 WebM 回放视频，确认写入本机视频队列、导出记录、生成 PNG 封面并可下载封面；再模拟浏览器不支持录制触发失败任务，恢复录制能力后点击“重试”并确认再次下载 WebM；生成本机分享链接后配置远端分享 API，确认真实 GET/PUT/DELETE、带 `digestAlgorithm` 和 `packageDigest` 的分享包、`lastPackageDigest` 持久化、publicUrl、远端撤销、回执持久化、回执审计列表和 HTML 回执下载。
 - 前台远端分享失败恢复用例会模拟 401、非法 JSON、PUT 422、网络中断、页面内超时、恢复发布、DELETE 409 和恢复撤销，确认 `shareService.remoteFailureHistory`、`remoteRetryAfter`、发布/撤销包摘要、失败 PUT 包摘要、按钮“重试发布/重试撤销”和回执本机校验都是真实状态。
 - 前台作品仓库用例会从作品集 UI 点击“导出仓库”下载 `mr-calligraphy-artwork-repository-*.json`，确认包内包含作品、关联练习、评分证据、截图、边界说明、`digestAlgorithm` 和 `packageDigest`；随后篡改作品标题但保留旧摘要，确认“导入仓库”拒绝摘要不匹配包且本机作品仍为空；再通过文件选择器导入原包恢复作品和关联练习，确认 `artworkRepository` 状态、摘要、作品卡片和 localStorage 都真实更新；再次导入同 ID 差异包时会显示作品仓库冲突审计，点击“另存导入副本”后作品集新增副本且原作品不被覆盖；随后点击“导出作品集”下载 `mr-calligraphy-artwork-collection-*.html`，确认 HTML 包含真实作品内容、离线作品集边界和 `ArtworkCollection: yes` 标记；再点击“导出评阅表”下载 `mr-calligraphy-classroom-review-*.html`，确认 HTML 包含教师分数、评阅 JSON 导出、`digestAlgorithm`、`packageDigest`、本机课堂评阅边界和 `ClassroomReview: yes` 标记；最后通过“导入评阅”先选择被篡改但未重算摘要的 `mr-calligraphy-classroom-review-notes-v1` JSON，确认摘要校验失败且作品卡片未回写评阅，再导入原包确认评阅回写到作品卡片和 localStorage，并跳过不存在的作品 ID；导入后点击“评阅汇总”下载 `mr-calligraphy-classroom-review-summary-*.html`，确认汇总包含教师均分、批注、digest 和 `ClassroomReviewSummary: yes` 标记。
 - 前台点击“导出报告”，确认下载 HTML 报告、写入报告记录，并能通过 `?report=报告ID` 打开站内报告。
@@ -167,5 +168,5 @@ Smoke test 通过：26 个脚本，4 个页面。
 ## 当前边界
 
 - 轻量 smoke test 不会打开真实浏览器；WebGL 非空渲染由 Playwright 像素采样覆盖。
-- Playwright 已覆盖首批真实交互闭环、前台学习详情总结、前台服务边界状态、后台服务边界状态、本机后台操作者审计、本机后台角色权限门控、核心入口移动端视口验收、作品仓库本机导入导出、包摘要验真和冲突审计、作品集离线 HTML 导出、课堂评阅表 HTML 导出、课堂评阅 JSON 导入回写和摘要验真、课堂评阅汇总 HTML 导出、远端分享 API adapter、作品分享远端失败恢复、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注角色与本机签名摘要、学习档案远端同步、主后台项目仓库远端版本恢复风险预览、主后台远端发布回执与本机校验、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换/孤立贴图清理、主后台导入模型删除审计和历史文件本机清理、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换/孤立贴图清理、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收、不可篡改服务端审计和完整移动设备矩阵。
+- Playwright 已覆盖首批真实交互闭环、前台学习详情总结、前台服务边界状态、前台学习动作审计导出、学习档案批量回执审计导出、后台服务边界状态、本机后台操作者审计、本机后台角色权限门控、核心入口移动端视口验收、作品仓库本机导入导出、包摘要验真和冲突审计、作品集离线 HTML 导出、课堂评阅表 HTML 导出、课堂评阅 JSON 导入回写和摘要验真、课堂评阅汇总 HTML 导出、远端分享 API adapter、作品分享远端失败恢复、作品分享远端撤销和回执审计导出、书写视频 WebM/PNG 封面导出、本机队列和失败重试、报告教师批注角色与本机签名摘要、学习档案远端同步、主后台项目仓库远端版本恢复风险预览、主后台远端发布回执与本机校验、主后台导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换/孤立贴图清理、主后台导入模型删除审计和历史文件本机清理、写实导入模型主色调/透明度/PBR/发布差异明细/文件替换/贴图替换/孤立贴图清理、写实导入模型软删除审计、写实导入模型已删除文件本机清理和写实发布历史源码；测试仍未覆盖所有下载、服务端资产回收、不可篡改服务端审计和完整移动设备矩阵。
 - 当前本机已经可以运行定向 Playwright 用例；若换到缺少 npm 依赖的新环境，需要先在具备代理认证的环境执行 `npm install`。

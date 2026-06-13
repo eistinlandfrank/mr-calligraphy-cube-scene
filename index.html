@@ -418,7 +418,17 @@
             <button data-feature-state="real-local" id="historyClearTrash" type="button">清空回收站</button>
             <span id="historyTrashStatus">回收站 0 条</span>
           </div>
-          <div id="historyBatchReceipt" class="history-batch-receipt" hidden></div>
+          <div id="historyBatchReceipt" class="history-batch-receipt" aria-label="学习档案批量操作回执审计" hidden>
+            <div class="history-batch-receipt-head">
+              <div>
+                <strong id="historyBatchReceiptTitle">暂无批量操作回执</strong>
+                <em id="historyBatchReceiptTime">等待操作</em>
+              </div>
+              <button data-feature-state="real-export" id="historyBatchReceiptExport" type="button">导出回执</button>
+            </div>
+            <div id="historyBatchReceiptLatest" class="history-batch-receipt-latest"></div>
+            <ol id="historyBatchReceiptList" class="history-batch-receipt-list"></ol>
+          </div>
           <div id="historyTrashList" class="history-trash-list" hidden></div>
           <div id="historyTrend" class="history-trend" aria-label="分数趋势"></div>
           <div id="historyArtworkCompare" class="history-artwork-compare" aria-label="作品对比"></div>

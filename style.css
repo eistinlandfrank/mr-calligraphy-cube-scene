@@ -7048,6 +7048,12 @@ body.is-model-view .notice-panel {
   gap: 8px;
 }
 
+.history-batch-receipt-head > div {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
 .history-batch-receipt-head strong,
 .history-batch-receipt-head em {
   overflow-wrap: anywhere;
@@ -7064,6 +7070,37 @@ body.is-model-view .notice-panel {
   font-size: 10px;
   font-style: normal;
   font-weight: 900;
+}
+
+.history-batch-receipt-head button {
+  flex: 0 0 auto;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(157, 239, 189, 0.28);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(63, 152, 101, 0.32);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.history-batch-receipt-head button:hover,
+.history-batch-receipt-head button:focus-visible {
+  border-color: rgba(157, 239, 189, 0.58);
+  outline: none;
+  background: rgba(63, 152, 101, 0.54);
+}
+
+.history-batch-receipt-head button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.history-batch-receipt-latest {
+  display: grid;
+  gap: 7px;
 }
 
 .history-batch-receipt p {
@@ -7088,6 +7125,46 @@ body.is-model-view .notice-panel {
   font-size: 10px;
   font-weight: 850;
   overflow-wrap: anywhere;
+}
+
+.history-batch-receipt-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history-batch-receipt-list:empty {
+  display: none;
+}
+
+.history-batch-receipt-list li {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.history-batch-receipt-list strong,
+.history-batch-receipt-list span,
+.history-batch-receipt-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.history-batch-receipt-list strong {
+  color: #fffaf1;
+  font-size: 11px;
+}
+
+.history-batch-receipt-list span,
+.history-batch-receipt-list small {
+  color: rgba(255, 250, 241, 0.62);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .history-trash-list {

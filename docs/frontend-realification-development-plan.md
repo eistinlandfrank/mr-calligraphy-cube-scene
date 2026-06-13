@@ -37,11 +37,11 @@ node scripts/control-inventory.js --check
 
 | 来源 | `real-local` | `real-export` | `real-published-local` | `demo-content` | `disabled` | 缺失/非法 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 75 | 28 | 0 | 0 | 0 | 0 |
-| `main-admin.html` | 43 | 7 | 1 | 0 | 0 | 0 |
+| `index.html` | 75 | 30 | 0 | 0 | 0 | 0 |
+| `main-admin.html` | 45 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
-| `realistic-admin.html` | 29 | 3 | 1 | 0 | 0 | 0 |
-| `script.js dynamic` | 29 | 1 | 0 | 0 | 1 | 0 |
+| `realistic-admin.html` | 30 | 3 | 1 | 0 | 0 | 0 |
+| `script.js dynamic` | 31 | 1 | 0 | 0 | 1 | 0 |
 
 结论：入口 HTML 和前台动态控件已经没有明显的 `demo-content` 假按钮。现在要治理的是更深一层的真实度：标为 `real-local` 的按钮，必须清楚说明它只是本机真实，不是云端真实。
 
@@ -4727,3 +4727,48 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增学习动作审计面板`
+
+## 127. 2026-06-13 新增学习档案批量回执审计导出
+
+本次把学习档案批量操作从“最近一次回执提示”推进到“可回看、可导出的本机审计”。用户在学习档案里批量导出、批量删除、恢复回收站、永久删除或清空回收站后，页面会保留最近回执，并可下载 HTML 审计页留档。
+
+完成内容：
+
+- 新增 `HISTORY_BATCH_RECEIPT_AUDIT_KIND = "mr-calligraphy-history-batch-receipt-audit-v1"` 和本机审计边界说明。
+- `MRAppState.getHistoryBatchReceiptAudit({ limit })` 会读取 `historyBatchReceipts`，生成动作统计、最近回执列表和 `auditDigest`。
+- `MRAppState.getHistoryBatchReceiptAuditExport()` 会生成可离线打开的批量回执 HTML。
+- `MRAppState.downloadHistoryBatchReceiptAudit()` 会下载 `mr-calligraphy-history-batch-receipts-*.html`。
+- 前台 `historyBatchReceipt` 区域新增标题、时间、最近回执列表和“导出回执”按钮。
+- `renderHistoryBatchReceipt()` 会显示最近一次回执详情，并列出更早的最近 5 条回执。
+- Smoke 首页标记检查新增批量回执审计节点。
+- `learning-state-check.js` 验证删除、恢复、再次删除、清空回收站后的审计包、动作统计、边界、摘要和 HTML。
+- Playwright 前台真实练习用例验证批量导出、删除、恢复后下载回执 HTML，并确认 HTML 包含删除、恢复和审计摘要。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.historyBatchReceipts`。
+- 写入状态：继续使用现有 `appendHistoryBatchReceipt()`，不复制、不伪造额外回执。
+- 成功反馈：页面显示回执标题、时间、总数、练习/作品/报告/阶段数量、文件名或回收站 ID。
+- 失败反馈：无批量回执时回执区隐藏，导出按钮不可用，不下载空审计。
+- 刷新后复现方式：回执随学习状态写入 localStorage，刷新后可继续查看和导出。
+
+仍待补：
+
+- 该审计是浏览器本机回执，不是服务端账号日志、多人课堂审计、不可篡改审计链或跨设备同步日志。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习档案批量回执审计`

@@ -1128,7 +1128,34 @@ async function runRemoteRepositoryChecks() {
   await runPlanRepositoryMockServerChecks(nativeFetch);
   await runShareRepositoryMockServerChecks(nativeFetch);
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  const historyForBatchAudit = window.MRAppState.getHistory({ limit: 200 });
+  const historyIdsForBatchAudit = historyForBatchAudit.allIds.slice(0, 3);
+  assert(historyIdsForBatchAudit.length >= 3, "批量回执审计验收需要至少 3 条学习档案。");
+  const batchDelete = window.MRAppState.deleteHistoryRecords(historyIdsForBatchAudit);
+  assert(batchDelete.ok && batchDelete.batchReceipt.action === "delete", "批量删除应写入回执。");
+  const batchRestore = window.MRAppState.restoreHistoryTrash(batchDelete.batchReceipt.trashId);
+  assert(batchRestore.ok && batchRestore.batchReceipt.action === "restore", "恢复回收站应写入回执。");
+  const batchDeleteAgain = window.MRAppState.deleteHistoryRecords(historyIdsForBatchAudit);
+  assert(batchDeleteAgain.ok && batchDeleteAgain.batchReceipt.trashId, "再次批量删除应生成回收站 ID。");
+  const batchTrashClear = window.MRAppState.clearHistoryTrash();
+  assert(batchTrashClear.ok && batchTrashClear.batchReceipt.action === "trash-clear", "清空回收站应写入回执。");
+  const batchReceiptAudit = window.MRAppState.getHistoryBatchReceiptAudit({ limit: 6 });
+  assert(batchReceiptAudit.kind === "mr-calligraphy-history-batch-receipt-audit-v1", "批量回执审计应返回稳定 kind。");
+  assert(batchReceiptAudit.total >= 4, "批量回执审计应统计最近批量操作。");
+  assert(batchReceiptAudit.actionCounts.delete >= 2, "批量回执审计应统计删除动作。");
+  assert(batchReceiptAudit.actionCounts.restore >= 1, "批量回执审计应统计恢复动作。");
+  assert(batchReceiptAudit.actionCounts["trash-clear"] >= 1, "批量回执审计应统计清空回收站动作。");
+  assert(/^[a-f0-9]{64}$/.test(batchReceiptAudit.auditDigest), "批量回执审计应包含稳定摘要。");
+  assert(batchReceiptAudit.boundary.includes("不是服务端账号审计"), "批量回执审计应说明本机边界。");
+  const batchReceiptAuditExport = window.MRAppState.getHistoryBatchReceiptAuditExport({ limit: 6 });
+  assert(batchReceiptAuditExport.ok, "批量回执审计应可生成 HTML。");
+  assert(batchReceiptAuditExport.filename.startsWith("mr-calligraphy-history-batch-receipts-"), "批量回执审计文件名应可识别。");
+  assert(batchReceiptAuditExport.html.includes("MR 书法学习档案批量回执审计"), "批量回执审计 HTML 应包含标题。");
+  assert(batchReceiptAuditExport.html.includes("批量移入回收站"), "批量回执审计 HTML 应包含删除回执。");
+  assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
+  assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
+
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、学习计划日历提醒导出、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
