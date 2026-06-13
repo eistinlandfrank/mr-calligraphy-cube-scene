@@ -5109,3 +5109,51 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增报告导出回执审计`
+
+## 135. 2026-06-13 新增报告对比导出回执审计
+
+本次把“导出对比页”从单次 HTML 下载推进到可回看、可导出的本机回执。用户下载相邻两份报告对比页后，报告详情会显示前后报告、平均分差、文件摘要和回执摘要，并可下载 HTML 审计页。
+
+完成内容：
+
+- 新增 `REPORT_COMPARISON_EXPORT_AUDIT_KIND = "mr-calligraphy-report-comparison-export-audit-v1"` 和报告对比导出审计边界说明。
+- 学习状态新增 `reportComparisonExportReceipts`，随状态持久化到 localStorage。
+- `MRAppState.recordReportComparisonExportReceipt()` 提供状态层纯记录入口。
+- `MRAppState.getReportComparisonExportAudit({ reportId, limit })` 返回回执列表、提升/回落统计和 `auditDigest`。
+- `MRAppState.getReportComparisonExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReportComparisonExportAudit()` 下载 `mr-calligraphy-report-comparison-export-audit-*.html`。
+- `MRAppState.downloadReportComparison()` 成功下载对比 HTML 后写入报告对比导出回执。
+- 前台报告详情新增“对比导出回执”面板和“导出回执”按钮。
+- Smoke 首页标记检查新增报告对比导出回执审计节点。
+- 控件清单更新为前台 `real-local 75`、`real-export 38`、`handled 113`、`missingHandler 0`。
+- `learning-state-check.js` 验证报告对比导出回执、前后报告 ID、平均分差、文件摘要、统计、边界和 HTML。
+- Playwright 前台真实练习用例验证点击“导出对比页”、回执面板、localStorage 和 HTML 审计下载。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.reportComparisonExportReceipts`。
+- 写入状态：报告对比离线 HTML 下载请求成功发起后写入回执，并保存前后报告 ID、差值摘要和文件 SHA-256 摘要。
+- 成功反馈：面板显示最近对比导出数量、报告对、平均分变化、文件摘要和回执摘要。
+- 失败反馈：无报告对比或无回执时按钮禁用；只有一份报告时不会伪造对比导出回执。
+- 刷新后复现方式：回执随学习状态持久化，刷新后仍可按报告查看和导出。
+
+仍待补：
+
+- 该审计只证明当前浏览器生成并发起了报告对比 HTML 下载请求，不代表系统保存完成、云端长期报告、跨设备下载日志、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告对比导出回执审计`

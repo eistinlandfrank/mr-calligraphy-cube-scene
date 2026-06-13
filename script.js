@@ -878,6 +878,9 @@ const els = {
   reportMetrics: document.getElementById("reportMetrics"),
   reportTrend: document.getElementById("reportTrend"),
   reportComparison: document.getElementById("reportComparison"),
+  reportComparisonExportAuditStatus: document.getElementById("reportComparisonExportAuditStatus"),
+  reportComparisonExportAuditList: document.getElementById("reportComparisonExportAuditList"),
+  reportComparisonExportAuditExport: document.getElementById("reportComparisonExportAuditExport"),
   reportSeries: document.getElementById("reportSeries"),
   reportLatest: document.getElementById("reportLatest"),
   reportRecommendations: document.getElementById("reportRecommendations"),
@@ -4078,6 +4081,7 @@ function bindReportControls() {
   els.reportDetailPrint?.addEventListener("click", printReportDetail);
   els.reportDetailOpenHistory?.addEventListener("click", openReportHistoryRecord);
   els.reportExportAuditExport?.addEventListener("click", exportReportExportAudit);
+  els.reportComparisonExportAuditExport?.addEventListener("click", exportReportComparisonExportAudit);
   els.reportTeacherReviewSave?.addEventListener("click", saveReportTeacherReview);
   els.reportTeacherReviewClear?.addEventListener("click", clearReportTeacherReview);
   els.reportTeacherReviewAuditExport?.addEventListener("click", exportReportTeacherReviewAudit);
@@ -5810,6 +5814,7 @@ function renderReportPanel(sceneIndex = currentIndex) {
   renderReportMetrics(detail, activeReportMetricKey);
   renderReportTrend(detail, activeReportMetricKey);
   renderReportComparison(window.MRAppState.getReportComparison?.(detail.id));
+  renderReportComparisonExportAudit(detail);
   renderReportSeries(window.MRAppState.getReportSeries?.(detail.id), activeReportMetricKey);
   renderReportLatest(detail);
   renderReportRecommendations(detail.recommendations || []);
@@ -5845,6 +5850,7 @@ function renderReportEmptyState() {
   }
   renderReportTeacherReview(null);
   renderReportRepositoryStatus(null);
+  renderReportComparisonExportAudit(null);
   renderReportExportAudit(null);
   renderReportPrintAudit(null);
 }
@@ -6055,6 +6061,35 @@ function renderReportComparison(comparison) {
   actions.appendChild(exportButton);
 
   els.reportComparison.append(meta, summary, stats, metrics, actions);
+}
+
+function renderReportComparisonExportAudit(detail) {
+  const audit = detail?.id
+    ? window.MRAppState?.getReportComparisonExportAudit?.(detail.id, { limit: 5 })
+    : null;
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.reportComparisonExportAuditStatus) {
+    els.reportComparisonExportAuditStatus.textContent = detail
+      ? audit?.message || "当前报告暂无对比导出回执记录。"
+      : "请选择一份报告查看对比导出回执。";
+    els.reportComparisonExportAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.reportComparisonExportAuditExport) {
+    els.reportComparisonExportAuditExport.disabled = !detail || !receipts.length;
+  }
+  if (!els.reportComparisonExportAuditList) return;
+  els.reportComparisonExportAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${receipt.previousTitle || "上份报告"} → ${receipt.currentTitle || "本份报告"}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · 平均 ${formatSignedDelta(receipt.averageDelta, "分")} · ${receipt.filename || "对比导出"}`;
+    const detailText = document.createElement("small");
+    detailText.textContent = `文件 ${receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "未生成"} · 回执 ${receipt.receiptDigest ? receipt.receiptDigest.slice(0, 12) : "未生成"} · ${receipt.previousReportId || "-"} → ${receipt.currentReportId || "-"}`;
+    item.append(title, meta, detailText);
+    els.reportComparisonExportAuditList.appendChild(item);
+  });
 }
 
 function renderReportSeries(series, metricKey = activeReportMetricKey) {
@@ -10288,11 +10323,28 @@ function exportReportExportAudit() {
   renderReportExportAudit(detail);
 }
 
+function exportReportComparisonExportAudit() {
+  const detail = getActiveReportDetail();
+  if (!detail) {
+    showNotice("请选择一份报告后导出对比导出回执。");
+    renderReportComparisonExportAudit(null);
+    return;
+  }
+  const result = window.MRAppState?.downloadReportComparisonExportAudit?.(detail.id, { limit: 20 });
+  if (result?.message) {
+    showNotice(result.message);
+  } else {
+    showNotice("暂无可导出的报告对比回执。");
+  }
+  renderReportComparisonExportAudit(detail);
+}
+
 function downloadReportComparisonDetail(reportId = activeReportDetailId) {
   const id = reportId || getActiveReportDetail()?.id || null;
   const result = window.MRAppState?.downloadReportComparison?.(id);
   if (result?.message) {
     showNotice(result.message);
+    renderReportComparisonExportAudit(getActiveReportDetail());
     return;
   }
   showNotice("还没有可导出的报告对比。");

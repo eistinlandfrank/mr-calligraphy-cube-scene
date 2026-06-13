@@ -1228,7 +1228,27 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyBatchReceipts[0].counts.stage).toBe(3);
 
-  await page.goto(`/?report=${learningState.reports[0].id}`, { waitUntil: "domcontentloaded" });
+  const comparisonSeed = await page.evaluate((storageKey) => {
+    const state = JSON.parse(localStorage.getItem(storageKey));
+    const current = state.reports[0];
+    const previous = {
+      ...current,
+      id: `${current.id}-baseline`,
+      title: `${current.title || "学习报告"} 对比基线`,
+      createdAt: "2000-01-01T00:00:00.000Z",
+      averageScore: Math.max(1, (current.averageScore || 80) - 8),
+      sessionCount: Math.max(1, (current.sessionCount || 1) - 1),
+      artworkCount: Math.max(1, current.artworkCount || 1),
+      learningMinutes: Math.max(1, (current.learningMinutes || 10) - 3),
+      summary: "E2E 对比基线报告，用于验证本机报告对比导出回执。",
+      scoreBreakdown: Object.fromEntries(Object.entries(current.scoreBreakdown || {}).map(([key, value]) => [key, Math.max(1, Number(value || 70) - 6)]))
+    };
+    state.reports = [current, previous, ...(state.reports || []).slice(1).filter((report) => report.id !== previous.id)];
+    localStorage.setItem(storageKey, JSON.stringify(state));
+    return { currentId: current.id, previousId: previous.id };
+  }, LEARNING_KEY);
+
+  await page.goto(`/?report=${comparisonSeed.currentId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportTitle")).toContainText("学习报告");
   await expect(page.locator("#reportStats")).toContainText("作品1幅");
@@ -1252,6 +1272,42 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(localLinkCopyAuditHtml).toContain("审计摘要");
 
   const activeReportId = learningState.reports[0].id;
+  await expect(page.locator("#reportComparison")).toContainText("报告对比");
+  await expect(page.locator("#reportComparisonExport")).toBeEnabled();
+  await expect(page.locator("#reportComparisonExportAuditStatus")).toContainText("当前报告暂无对比导出回执记录");
+  const reportComparisonDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportComparisonExport").click();
+  const reportComparisonDownload = await reportComparisonDownloadPromise;
+  expect(reportComparisonDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-comparison-.*\.html$/);
+  const reportComparisonPath = await reportComparisonDownload.path();
+  const reportComparisonHtml = fs.readFileSync(reportComparisonPath, "utf8");
+  expect(reportComparisonHtml).toContain("MR 书法报告对比");
+  expect(reportComparisonHtml).toContain("不是云端长期报告");
+  await expect(page.locator("#reportComparisonExportAuditStatus")).toContainText("1 条报告对比导出回执");
+  await expect(page.locator("#reportComparisonExportAuditList")).toContainText("平均");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reportComparisonExportReceipts).toHaveLength(1);
+  expect(learningState.reportComparisonExportReceipts[0].currentReportId).toBe(activeReportId);
+  expect(learningState.reportComparisonExportReceipts[0].previousReportId).toBeTruthy();
+  expect(learningState.reportComparisonExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportComparisonExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(learningState.reportComparisonExportReceipts[0].boundary).toContain("不是云端长期报告");
+  const reportComparisonAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#reportComparisonExportAuditExport").click();
+  const reportComparisonAuditDownload = await reportComparisonAuditDownloadPromise;
+  expect(reportComparisonAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-report-comparison-export-audit-.*\.html$/);
+  const reportComparisonAuditPath = await reportComparisonAuditDownload.path();
+  const reportComparisonAuditHtml = fs.readFileSync(reportComparisonAuditPath, "utf8");
+  expect(reportComparisonAuditHtml).toContain("MR 书法报告对比导出回执审计");
+  expect(reportComparisonAuditHtml).toContain(learningState.reportComparisonExportReceipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, previousId }) => {
+    const state = JSON.parse(localStorage.getItem(storageKey));
+    state.reports = (state.reports || []).filter((report) => report.id !== previousId);
+    localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, previousId: comparisonSeed.previousId });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.reports).toHaveLength(1);
   const reportExportBaselineReceipts = (learningState.reportExportReceipts || []).filter((receipt) => receipt.reportId === activeReportId);
   const reportExportBaselineCount = reportExportBaselineReceipts.length;
   if (reportExportBaselineCount) {

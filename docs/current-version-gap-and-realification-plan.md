@@ -5591,3 +5591,51 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告导出回执审计`
+
+## 135. 2026-06-13 新增报告对比导出回执审计
+
+本次继续补齐站内报告导出类操作的可追溯性。报告对比页此前已经是真实离线 HTML，但下载完成后页面没有留下回执；现在每次导出相邻报告对比页都会在当前报告下留下本机回执，并支持导出审计 HTML。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-report-comparison-export-audit-v1` 审计包。
+- 学习状态新增 `reportComparisonExportReceipts`，保存最近 24 条报告对比导出回执。
+- `MRAppState.recordReportComparisonExportReceipt()` 记录上份报告、本份报告、平均分差、字段差值、文件摘要和回执摘要。
+- `MRAppState.getReportComparisonExportAudit()` 支持按报告 ID 过滤，返回提升/回落统计、回执列表和 64 位 `auditDigest`。
+- `MRAppState.getReportComparisonExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadReportComparisonExportAudit()` 下载 `mr-calligraphy-report-comparison-export-audit-*.html`。
+- `MRAppState.downloadReportComparison()` 成功下载对比 HTML 后写入报告对比导出回执。
+- 前台报告详情新增 `reportComparisonExportAudit`、`reportComparisonExportAuditStatus`、`reportComparisonExportAuditList` 和 `reportComparisonExportAuditExport`。
+- Smoke 页面标记检查新增报告对比导出回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 38`、`handled 113`、`missingHandler 0`。
+- 状态层脚本覆盖前后报告 ID、平均分差、文件摘要、回执摘要、边界说明和 HTML 审计导出。
+- Playwright 前台真实练习用例会在报告详情中点击“导出对比页”和“导出回执”，验证真实下载、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.reportComparisonExportReceipts`。
+- 写入状态：用户发起报告对比 HTML 下载后写入本机回执，并保存当时生成内容的 SHA-256 摘要。
+- 成功反馈：报告详情面板显示前后报告、平均分变化、文件名、文件摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载当前报告相关的 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：报告对比导出回执随学习状态保存在 localStorage，刷新后仍能按报告 ID 读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面生成并发起了报告对比 HTML 下载请求，并记录生成内容摘要；它不代表操作系统保存成功、云端长期报告、跨设备下载日志、账号审计或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增报告对比导出回执审计`

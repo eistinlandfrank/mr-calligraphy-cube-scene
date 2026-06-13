@@ -103,6 +103,9 @@
   const REPORT_EXPORT_AUDIT_KIND = "mr-calligraphy-report-export-audit-v1";
   const REPORT_EXPORT_MAX_RECEIPTS = 30;
   const REPORT_EXPORT_AUDIT_BOUNDARY = "报告导出回执保存在当前浏览器 reportExportReceipts，记录学习报告 HTML 和原生 PDF 下载请求、报告验真摘要、文件摘要和时间；它不是操作系统保存完成证明、云端 PDF 渲染日志、账号下载审计或不可篡改证据链。";
+  const REPORT_COMPARISON_EXPORT_AUDIT_KIND = "mr-calligraphy-report-comparison-export-audit-v1";
+  const REPORT_COMPARISON_EXPORT_MAX_RECEIPTS = 24;
+  const REPORT_COMPARISON_EXPORT_AUDIT_BOUNDARY = "报告对比导出回执保存在当前浏览器 reportComparisonExportReceipts，记录相邻报告对比 HTML 下载请求、前后报告 ID、差值摘要、文件摘要和时间；它不是云端长期报告、跨设备下载日志、账号审计或不可篡改证据链。";
   const REPORT_REPOSITORY_CONFLICT_FIELDS = ["title", "summary", "averageScore", "sessionCount", "artworkCount", "teacherReview", "recommendations", "createdAt"];
   const REPORT_REPOSITORY_CONFLICT_LABELS = {
     title: "标题",
@@ -452,6 +455,7 @@
       reportTeacherReviewAudits: normalizeReportTeacherReviewAudits(source?.reportTeacherReviewAudits),
       reportPrintReceipts: normalizeReportPrintReceipts(source?.reportPrintReceipts),
       reportExportReceipts: normalizeReportExportReceipts(source?.reportExportReceipts),
+      reportComparisonExportReceipts: normalizeReportComparisonExportReceipts(source?.reportComparisonExportReceipts),
       reviewExportReceipts: normalizeReviewExportReceipts(source?.reviewExportReceipts),
       historyDetailActionReceipts: normalizeHistoryDetailActionReceipts(source?.historyDetailActionReceipts),
       videoExportService: normalizeVideoExportService(source?.videoExportService),
@@ -962,6 +966,84 @@
       "report-html": "report-detail-html-download",
       "report-pdf": "report-detail-pdf-download"
     }[type] || "report-detail-export";
+  }
+
+  function normalizeReportComparisonExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeReportComparisonExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizeReportComparisonExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const currentReportId = String(record.currentReportId || record.reportId || "").trim().slice(0, 120);
+    const previousReportId = String(record.previousReportId || "").trim().slice(0, 120);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    if (!currentReportId || !previousReportId || !exportedAt || !filename) return null;
+    const fileDigest = normalizeReportTeacherReviewDigest(record.fileDigest || record.contentDigest || record.digest);
+    const averageDelta = normalizeInteger(record.averageDelta, 0, -1000, 1000);
+    const id = String(record.id || `report-comparison-export-${sha256StableJson({
+      currentReportId,
+      previousReportId,
+      filename,
+      exportedAt,
+      fileDigest,
+      averageDelta
+    }).slice(0, 18)}`).trim();
+    const metricDeltas = Array.isArray(record.metricDeltas)
+      ? record.metricDeltas.map((metric) => ({
+          key: String(metric?.key || "").trim().slice(0, 40),
+          label: String(metric?.label || metric?.key || "字段").trim().slice(0, 40),
+          delta: normalizeInteger(metric?.delta, 0, -1000, 1000)
+        })).filter((metric) => metric.key || metric.label).slice(0, 12)
+      : [];
+    const payload = {
+      kind: REPORT_COMPARISON_EXPORT_AUDIT_KIND,
+      id: id.slice(0, 120),
+      currentReportId,
+      currentTitle: String(record.currentTitle || record.reportTitle || currentReportId || "本份报告").trim().slice(0, 140) || "本份报告",
+      previousReportId,
+      previousTitle: String(record.previousTitle || previousReportId || "上份报告").trim().slice(0, 140) || "上份报告",
+      averageDelta,
+      sessionDelta: normalizeInteger(record.sessionDelta, 0, -1000, 1000),
+      artworkDelta: normalizeInteger(record.artworkDelta, 0, -1000, 1000),
+      learningMinutesDelta: normalizeInteger(record.learningMinutesDelta, 0, -100000, 100000),
+      metricDeltas,
+      filename,
+      mimeType: String(record.mimeType || "text/html;charset=utf-8").trim().slice(0, 120),
+      byteLength: normalizeInteger(record.byteLength, 0, 0, 999999999),
+      fileDigest,
+      exportedAt,
+      source: String(record.source || "report-comparison-download").trim().slice(0, 80),
+      boundary: String(record.boundary || REPORT_COMPARISON_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 320) || REPORT_COMPARISON_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 260)
+    };
+    payload.receiptDigest = normalizeReportTeacherReviewDigest(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      currentReportId: payload.currentReportId,
+      previousReportId: payload.previousReportId,
+      averageDelta: payload.averageDelta,
+      filename: payload.filename,
+      mimeType: payload.mimeType,
+      byteLength: payload.byteLength,
+      fileDigest: payload.fileDigest,
+      exportedAt: payload.exportedAt
+    });
+    if (!payload.message) {
+      payload.message = `已记录“${payload.previousTitle} → ${payload.currentTitle}”报告对比导出回执。`;
+    }
+    return payload;
   }
 
   function normalizeReviewExportReceipts(records) {
@@ -8237,6 +8319,186 @@
 </html>`;
   }
 
+  function recordReportComparisonExportReceipt(reportId = null, options = {}) {
+    const comparison = options.comparison && options.comparison.ok
+      ? options.comparison
+      : getReportComparison(reportId);
+    if (!comparison?.ok) {
+      return { ok: false, message: comparison?.message || "还没有可导出的报告对比。" };
+    }
+    const filename = String(options.filename || "").trim();
+    if (!filename) {
+      return { ok: false, message: "报告对比导出回执缺少文件名。" };
+    }
+    const content = String(options.content ?? options.html ?? "");
+    const byteLength = normalizeInteger(
+      options.byteLength,
+      content ? utf8Bytes(content).length : 0,
+      0,
+      999999999
+    );
+    const receipt = normalizeReportComparisonExportReceipt({
+      id: options.id || makeId("report-comparison-export"),
+      currentReportId: comparison.current?.id || "",
+      currentTitle: comparison.current?.title || "本份报告",
+      previousReportId: comparison.previous?.id || "",
+      previousTitle: comparison.previous?.title || "上份报告",
+      averageDelta: comparison.averageDelta,
+      sessionDelta: comparison.sessionDelta,
+      artworkDelta: comparison.artworkDelta,
+      learningMinutesDelta: comparison.learningMinutesDelta,
+      metricDeltas: comparison.metricDeltas || [],
+      filename,
+      mimeType: options.mimeType || "text/html;charset=utf-8",
+      byteLength,
+      fileDigest: options.fileDigest || (content ? sha256Hex(content) : ""),
+      exportedAt: options.exportedAt || new Date().toISOString(),
+      source: options.source || "report-comparison-download",
+      boundary: REPORT_COMPARISON_EXPORT_AUDIT_BOUNDARY,
+      message: options.message || `已记录“${comparison.previous?.title || "上份报告"} → ${comparison.current?.title || "本份报告"}”报告对比导出回执。`
+    });
+    if (!receipt) {
+      return { ok: false, message: "报告对比导出回执记录失败。" };
+    }
+    state.reportComparisonExportReceipts = [
+      receipt,
+      ...normalizeReportComparisonExportReceipts(state.reportComparisonExportReceipts).filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS);
+    addEvent("report-comparison-export", `${receipt.previousTitle} → ${receipt.currentTitle}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getReportComparisonExportAudit(receipt.currentReportId),
+      message: receipt.message
+    };
+  }
+
+  function getReportComparisonExportAudit(reportId = null, options = {}) {
+    const targetReportId = String(reportId || "").trim();
+    const limit = normalizeInteger(options.limit, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS, 1, REPORT_COMPARISON_EXPORT_MAX_RECEIPTS);
+    const allReceipts = normalizeReportComparisonExportReceipts(state.reportComparisonExportReceipts);
+    const filtered = allReceipts.filter((receipt) => (
+      !targetReportId || receipt.currentReportId === targetReportId || receipt.previousReportId === targetReportId
+    ));
+    const receipts = filtered.slice(0, limit).map(clone);
+    const positiveDeltaCount = filtered.filter((receipt) => receipt.averageDelta > 0).length;
+    const negativeDeltaCount = filtered.filter((receipt) => receipt.averageDelta < 0).length;
+    const audit = {
+      ok: true,
+      kind: REPORT_COMPARISON_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      reportId: targetReportId,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      positiveDeltaCount,
+      negativeDeltaCount,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: REPORT_COMPARISON_EXPORT_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条报告对比导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        : targetReportId
+          ? "当前报告暂无对比导出回执记录。"
+          : "暂无报告对比导出回执记录。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getReportComparisonExportAuditExport(reportId = null, options = {}) {
+    const audit = getReportComparisonExportAudit(reportId, options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的报告对比回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    const reportSlug = audit.reportId ? makeDownloadSlug(audit.reportId) : "all";
+    return {
+      ok: true,
+      filename: `mr-calligraphy-report-comparison-export-audit-${reportSlug}-${exportedAt.slice(0, 10)}.html`,
+      html: renderReportComparisonExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条报告对比导出回执审计导出。`
+    };
+  }
+
+  function downloadReportComparisonExportAudit(reportId = null, options = {}) {
+    const result = getReportComparisonExportAuditExport(reportId, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderReportComparisonExportAuditHtml(audit, exportedAt) {
+    const rows = audit.receipts.map((receipt) => {
+      const metricText = (receipt.metricDeltas || [])
+        .slice(0, 5)
+        .map((metric) => `${metric.label || metric.key} ${formatReportComparisonDelta(metric.delta, "分")}`)
+        .join(" / ") || "暂无字段差值";
+      return `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.previousTitle)} → ${escapeHtml(receipt.currentTitle)}</h2>
+        <p>${escapeHtml(receipt.message || "报告对比导出回执已记录。")}</p>
+        <dl>
+          <div><dt>上份报告</dt><dd>${escapeHtml(receipt.previousReportId)}</dd></div>
+          <div><dt>本份报告</dt><dd>${escapeHtml(receipt.currentReportId)}</dd></div>
+          <div><dt>平均分变化</dt><dd>${escapeHtml(formatReportComparisonDelta(receipt.averageDelta, "分"))}</dd></div>
+          <div><dt>练习变化</dt><dd>${escapeHtml(formatReportComparisonDelta(receipt.sessionDelta, "次"))}</dd></div>
+          <div><dt>字段摘要</dt><dd>${escapeHtml(metricText)}</dd></div>
+          <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd></div>
+          <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd></div>
+          <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
+        </dl>
+      </section>`;
+    }).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法报告对比导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Report Comparison Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法报告对比导出回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条报告对比导出回执。${escapeHtml(audit.boundary)}</p>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getReportRepositoryStatus() {
     const repository = normalizeReportRepository(state.reportRepository);
     const reports = state.reports.map(normalizeReport).filter(Boolean);
@@ -14950,10 +15212,22 @@
     }
 
     downloadHtml(result.html, result.filename);
+    const receiptResult = recordReportComparisonExportReceipt(result.comparison?.current?.id || reportId, {
+      comparison: result.comparison,
+      filename: result.filename,
+      content: result.html,
+      exportedAt: result.exportedAt,
+      source: "report-comparison-download",
+      message: "已记录报告对比离线 HTML 导出回执。"
+    });
     return {
       ok: true,
       filename: result.filename,
-      message: "已下载报告对比离线 HTML，可打开后用浏览器打印保存为 PDF。"
+      receipt: receiptResult?.receipt || null,
+      audit: receiptResult?.audit || null,
+      message: receiptResult?.ok
+        ? "已下载报告对比离线 HTML，并记录对比导出回执。"
+        : "已下载报告对比离线 HTML，可打开后用浏览器打印保存为 PDF。"
     };
   }
 
@@ -19381,6 +19655,8 @@
     getReportPrintAuditExport,
     getReportExportAudit,
     getReportExportAuditExport,
+    getReportComparisonExportAudit,
+    getReportComparisonExportAuditExport,
     getReportComparison,
     getReportComparisonExport,
     getReportSeries,
@@ -19429,6 +19705,7 @@
     downloadReportTeacherReviewAudit,
     downloadReportPrintAudit,
     downloadReportExportAudit,
+    downloadReportComparisonExportAudit,
     downloadPracticeVideoExportAudit,
     downloadArtworkRepository,
     getArtworkCollectionExport,
@@ -19452,6 +19729,7 @@
     recordHistoryDetailActionReceipt,
     recordReportPrintReceipt,
     recordReportExportReceipt,
+    recordReportComparisonExportReceipt,
     recordReviewExportReceipt,
     recordPlanExportReceipt,
     checkRemotePlanRepository,
