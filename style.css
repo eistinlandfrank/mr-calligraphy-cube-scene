@@ -8961,6 +8961,103 @@ body.is-model-view .notice-panel {
   background: rgba(255, 255, 255, 0.05);
 }
 
+.artwork-export-audit {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid rgba(160, 197, 255, 0.24);
+  border-radius: 8px;
+  color: #f6fbff;
+  background: rgba(34, 54, 84, 0.2);
+}
+
+.artwork-export-audit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.artwork-export-audit-head strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.artwork-export-audit-head button {
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid rgba(160, 197, 255, 0.28);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(49, 74, 122, 0.34);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.artwork-export-audit-head button:hover,
+.artwork-export-audit-head button:focus-visible {
+  border-color: rgba(160, 197, 255, 0.56);
+  outline: none;
+  background: rgba(49, 74, 122, 0.54);
+}
+
+.artwork-export-audit-head button:disabled {
+  cursor: not-allowed;
+  color: rgba(255, 250, 241, 0.38);
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.artwork-export-audit p {
+  margin: 0;
+  color: rgba(246, 251, 255, 0.76);
+  font-size: 11px;
+  font-weight: 760;
+  line-height: 1.4;
+}
+
+.artwork-export-audit p[data-audit-tone="ready"] {
+  color: #c8f3db;
+}
+
+.artwork-export-audit-list {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.artwork-export-audit-list li {
+  display: grid;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid rgba(160, 197, 255, 0.18);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.artwork-export-audit-list strong,
+.artwork-export-audit-list span,
+.artwork-export-audit-list small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.artwork-export-audit-list strong {
+  color: #fffaf1;
+  font-size: 12px;
+}
+
+.artwork-export-audit-list span,
+.artwork-export-audit-list small {
+  color: rgba(246, 251, 255, 0.72);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .plan-repository-conflict,
 .history-repository-conflict,
 .report-repository-conflict,

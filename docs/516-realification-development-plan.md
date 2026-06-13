@@ -10856,3 +10856,54 @@
 提交：
 
 - 中文 commit message：`新增报告对比导出回执审计`
+
+### 2026-06-13：新增作品导出回执审计
+
+功能名：前台作品集 / 课堂评阅表 / 评阅汇总导出回执与 HTML 审计导出。
+
+开发原因：
+
+- 作品集、课堂评阅表和课堂评阅汇总已经可以生成真实离线 HTML。
+- 但用户导出后无法在作品仓库区确认“刚才导出了哪种文件、包含多少作品、文件摘要是什么”，也无法把作品导出记录单独留档。
+
+完成内容：
+
+- 新增 `mr-calligraphy-artwork-export-audit-v1` 审计包。
+- 学习状态新增 `artworkExportReceipts`，保存最近作品导出回执。
+- `MRAppState.recordArtworkExportReceipt()` 记录导出类型、文件名、MIME、作品数量、评阅数量、包摘要、文件摘要和回执摘要。
+- `MRAppState.getArtworkExportAudit()` 返回类型统计、最近回执列表和 `auditDigest`。
+- `MRAppState.getArtworkExportAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadArtworkExportAudit()` 下载 `mr-calligraphy-artwork-export-audit-*.html`。
+- `downloadArtworkCollectionPage()`、`downloadArtworkClassroomReviewPage()` 和 `downloadArtworkClassroomReviewSummary()` 写入作品导出回执。
+- 前台作品仓库面板新增“作品导出回执”列表和“导出回执”按钮。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台学习档案里至少保存或导入一幅作品。
+- 点击“导出作品集”应下载 `mr-calligraphy-artwork-collection-*.html`，并在“作品导出回执”面板出现“作品集 HTML”回执。
+- 点击“导出评阅表”应下载 `mr-calligraphy-classroom-review-*.html`，并在同一面板出现“课堂评阅表”回执。
+- 导入评阅 JSON 后点击“评阅汇总”应下载 `mr-calligraphy-classroom-review-summary-*.html`，并在同一面板出现“评阅汇总”回执。
+- 点击“导出回执”应下载 HTML，文件包含“MR 书法作品导出回执审计”、三类导出类型、文件摘要、包摘要、回执摘要和边界说明。
+- 刷新页面后仍可从 localStorage 读取回执。
+
+真实边界：
+
+- 这是当前浏览器本机作品 HTML 导出请求回执，只能证明页面生成并发起了下载，并记录生成内容摘要；它不是操作系统保存完成证明、云端作品墙、账号下载审计、跨设备同步或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "artwork repository exports imports and resolves conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品导出回执审计`

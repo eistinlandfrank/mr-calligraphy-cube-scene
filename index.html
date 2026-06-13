@@ -501,6 +501,14 @@
                 <input id="artworkRepositoryImportInput" type="file" accept="application/json,.json" hidden>
               </div>
             </div>
+            <div id="artworkExportAudit" class="artwork-export-audit" aria-label="作品导出回执审计">
+              <div class="artwork-export-audit-head">
+                <strong>作品导出回执</strong>
+                <button data-feature-state="real-export" id="artworkExportAuditExport" type="button">导出回执</button>
+              </div>
+              <p id="artworkExportAuditStatus">暂无作品导出回执。</p>
+              <ul id="artworkExportAuditList" class="artwork-export-audit-list"></ul>
+            </div>
             <div id="artworkRepositoryConflictPanel" class="artwork-repository-conflict" aria-label="作品仓库冲突审计" hidden>
               <div class="artwork-repository-conflict-head">
                 <strong>作品仓库冲突审计</strong>

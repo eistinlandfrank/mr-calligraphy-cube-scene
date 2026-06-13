@@ -280,6 +280,71 @@ assert(!sharePackage.share.features.scoreEvidence, "旧作品缺少逐笔证据�
 assert(sharePackage.html.includes("不会补造评分依据"), "旧作品分享页应说明不会伪造评分证据。");
 assert(!sharePackage.html.includes("路径误差热力</h2>"), "旧作品分享页缺少真实证据时不应渲染假热力图。");
 
+const artworkCollectionExport = window.MRAppState.getArtworkCollectionExport();
+assert(artworkCollectionExport.ok, "作品集 HTML 应可基于本机作品生成。");
+const artworkCollectionReceipt = window.MRAppState.recordArtworkExportReceipt({
+  exportType: "artwork-collection",
+  filename: artworkCollectionExport.filename,
+  content: artworkCollectionExport.html,
+  collection: artworkCollectionExport.collection
+});
+assert(artworkCollectionReceipt.ok, "作品集导出应可写入作品导出回执。");
+assert(artworkCollectionReceipt.receipt.exportType === "artwork-collection", "作品集回执应记录导出类型。");
+assert(artworkCollectionReceipt.receipt.artworkCount >= 3, "作品集回执应记录作品数量。");
+assert(/^[a-f0-9]{64}$/.test(artworkCollectionReceipt.receipt.fileDigest), "作品集回执应记录文件摘要。");
+
+const classroomReviewExport = window.MRAppState.getArtworkClassroomReviewExport();
+assert(classroomReviewExport.ok, "课堂评阅表 HTML 应可基于本机作品生成。");
+const classroomReviewReceipt = window.MRAppState.recordArtworkExportReceipt({
+  exportType: "classroom-review",
+  filename: classroomReviewExport.filename,
+  content: classroomReviewExport.html,
+  package: classroomReviewExport.package,
+  packageId: classroomReviewExport.package.packageId
+});
+assert(classroomReviewReceipt.ok, "课堂评阅表导出应可写入作品导出回执。");
+assert(classroomReviewReceipt.receipt.packageId === classroomReviewExport.package.packageId, "课堂评阅回执应记录评阅包 ID。");
+assert(classroomReviewReceipt.receipt.artworkCount >= 3, "课堂评阅回执应记录待评阅作品数量。");
+
+const summaryReceipt = window.MRAppState.recordArtworkExportReceipt({
+  exportType: "classroom-review-summary",
+  filename: "mr-calligraphy-classroom-review-summary-check.html",
+  content: "<!doctype html><title>MR 课堂评阅汇总</title>",
+  package: {
+    kind: "mr-calligraphy-classroom-review-summary-v1",
+    packageId: "classroom-summary-check",
+    summary: {
+      total: 2,
+      digest: crypto.createHash("sha256").update("classroom-summary-check").digest("hex")
+    },
+    artworks: [
+      { id: "artwork-1" },
+      { id: "artwork-2" }
+    ]
+  },
+  reviewCount: 2
+});
+assert(summaryReceipt.ok, "课堂评阅汇总导出应可写入作品导出回执。");
+assert(summaryReceipt.receipt.reviewCount === 2, "课堂评阅汇总回执应记录评阅数量。");
+assert(summaryReceipt.receipt.summaryDigest.match(/^[a-f0-9]{64}$/), "课堂评阅汇总回执应记录汇总摘要。");
+
+const artworkExportAudit = window.MRAppState.getArtworkExportAudit({ limit: 6 });
+assert(artworkExportAudit.kind === "mr-calligraphy-artwork-export-audit-v1", "作品导出审计应返回稳定 kind。");
+assert(artworkExportAudit.total === 3, "作品导出审计应统计三类导出回执。");
+assert(artworkExportAudit.typeCounts["artwork-collection"] === 1, "作品导出审计应统计作品集 HTML。");
+assert(artworkExportAudit.typeCounts["classroom-review"] === 1, "作品导出审计应统计课堂评阅表。");
+assert(artworkExportAudit.typeCounts["classroom-review-summary"] === 1, "作品导出审计应统计评阅汇总。");
+assert(/^[a-f0-9]{64}$/.test(artworkExportAudit.auditDigest), "作品导出审计应包含稳定摘要。");
+assert(artworkExportAudit.boundary.includes("不是操作系统保存完成证明"), "作品导出审计应说明本机边界。");
+const artworkExportAuditExport = window.MRAppState.getArtworkExportAuditExport({ limit: 6 });
+assert(artworkExportAuditExport.ok, "作品导出审计应可生成 HTML。");
+assert(artworkExportAuditExport.filename.startsWith("mr-calligraphy-artwork-export-audit-"), "作品导出审计文件名应可识别。");
+assert(artworkExportAuditExport.html.includes("MR 书法作品导出回执审计"), "作品导出审计 HTML 应包含标题。");
+assert(artworkExportAuditExport.html.includes("作品集 HTML"), "作品导出审计 HTML 应包含作品集类型。");
+assert(artworkExportAuditExport.html.includes("课堂评阅表"), "作品导出审计 HTML 应包含评阅表类型。");
+assert(artworkExportAuditExport.html.includes("评阅汇总"), "作品导出审计 HTML 应包含汇总类型。");
+assert(artworkExportAuditExport.html.includes(artworkExportAuditExport.audit.auditDigest), "作品导出审计 HTML 应包含审计摘要。");
+
 const emptyShareStatus = window.MRAppState.getShareServiceStatus("artwork-2");
 assert(emptyShareStatus.total === 0, "初始分享服务不应伪造已有链接。");
 assert(emptyShareStatus.boundary.includes("不是公网 URL"), "分享服务应说明本机链接边界。");
@@ -1449,7 +1514,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计、学习档案详情操作回执审计、同字作品对比、作品集检索、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告对比导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：学习路径服务、基础评分服务、本机讲解服务、本机链接复制审计、复盘导出回执审计、学习档案详情操作回执审计、同字作品对比、作品集检索、作品导出回执审计、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告对比导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计、学习计划日历提醒导出、计划导出回执审计、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {

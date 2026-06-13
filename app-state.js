@@ -51,6 +51,9 @@
   const ARTWORK_CLASSROOM_REVIEW_NOTES_DIGEST_ALGORITHM = "sha256-stable-json";
   const ARTWORK_CLASSROOM_REVIEW_BOUNDARY = "课堂评阅表导出会把当前浏览器里的作品生成可离线打开、填写、打印和导出评阅 JSON 的 HTML；它不是账号化教师端、课堂作品墙、云端批改或生产权限系统。";
   const ARTWORK_CLASSROOM_REVIEW_SUMMARY_BOUNDARY = "课堂评阅汇总导出会把已导回当前浏览器的作品评阅记录生成可离线打开和打印的 HTML；它不是账号化教师端、班级成绩册、云端批改或服务端不可篡改审计。";
+  const ARTWORK_EXPORT_AUDIT_KIND = "mr-calligraphy-artwork-export-audit-v1";
+  const ARTWORK_EXPORT_MAX_RECEIPTS = 30;
+  const ARTWORK_EXPORT_AUDIT_BOUNDARY = "作品导出回执保存在当前浏览器 artworkExportReceipts，记录作品集 HTML、课堂评阅表 HTML 和课堂评阅汇总 HTML 下载请求、作品数量、评阅数量、文件摘要和时间；它不是操作系统保存完成证明、云端作品墙、账号下载审计或不可篡改证据链。";
   const VIDEO_EXPORT_BOUNDARY = "书写回放视频由当前浏览器用真实笔迹和 Canvas 录制生成 WebM，并保存本机封面与导出记录；它不是 MP4/GIF 转码、云端压缩队列或公网分享链路。";
   const VIDEO_EXPORT_AUDIT_KIND = "mr-calligraphy-video-export-audit-v1";
   const VIDEO_EXPORT_AUDIT_BOUNDARY = "视频导出回执审计由当前浏览器的 videoExportService.records 和 jobs 生成，记录 WebM/PNG 产物、队列状态、失败原因和重试来源；它不是云端转码日志、生产签名回执或页面关闭后的后台队列审计。";
@@ -462,6 +465,7 @@
       plans: Array.isArray(source?.plans) ? source.plans.map(normalizePlan).filter(Boolean) : [],
       shareService: normalizeShareService(source?.shareService),
       artworkRepository: normalizeArtworkRepository(source?.artworkRepository),
+      artworkExportReceipts: normalizeArtworkExportReceipts(source?.artworkExportReceipts),
       planReminderService: normalizePlanReminderService(source?.planReminderService),
       planExportReceipts: normalizePlanExportReceipts(source?.planExportReceipts),
       planRepository: normalizePlanRepository(source?.planRepository),
@@ -2824,6 +2828,114 @@
       lastPackageDigest: normalizeArtworkRepositoryHex(source.lastPackageDigest || source.packageDigest || source.repositoryDigest),
       lastError: source.lastError ? String(source.lastError).slice(0, 220) : ""
     };
+  }
+
+  function normalizeArtworkExportReceipts(records) {
+    const source = Array.isArray(records) ? records : [];
+    const seen = new Set();
+    return source
+      .map(normalizeArtworkExportReceipt)
+      .filter(Boolean)
+      .sort((a, b) => Date.parse(b.exportedAt || 0) - Date.parse(a.exportedAt || 0))
+      .filter((receipt) => {
+        const key = receipt.receiptDigest || receipt.id;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(0, ARTWORK_EXPORT_MAX_RECEIPTS);
+  }
+
+  function normalizeArtworkExportReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const exportType = normalizeArtworkExportType(record.exportType || record.type);
+    const exportedAt = normalizePlanDate(record.exportedAt || record.createdAt);
+    const filename = String(record.filename || "").trim().slice(0, 180);
+    if (!exportType || !exportedAt || !filename) return null;
+    const artworkCount = normalizeInteger(record.artworkCount, 0, 0, 99999);
+    const reviewCount = normalizeInteger(record.reviewCount, exportType === "classroom-review-summary" ? artworkCount : 0, 0, 99999);
+    const fileDigest = normalizeArtworkRepositoryHex(record.fileDigest || record.contentDigest || record.digest);
+    const packageDigest = normalizeArtworkRepositoryHex(record.packageDigest);
+    const summaryDigest = normalizeArtworkRepositoryHex(record.summaryDigest || record.reviewSummaryDigest);
+    const byteLength = normalizeInteger(record.byteLength, 0, 0, 999999999);
+    const id = String(record.id || `artwork-export-${sha256StableJson({
+      exportType,
+      filename,
+      exportedAt,
+      artworkCount,
+      reviewCount,
+      fileDigest,
+      packageDigest,
+      summaryDigest
+    }).slice(0, 18)}`).trim();
+    const payload = {
+      kind: ARTWORK_EXPORT_AUDIT_KIND,
+      id: id.slice(0, 120),
+      exportType,
+      exportLabel: formatArtworkExportTypeLabel(exportType),
+      filename,
+      mimeType: String(record.mimeType || getArtworkExportMimeType(exportType)).trim().slice(0, 120),
+      byteLength,
+      fileDigest,
+      packageId: String(record.packageId || "").trim().slice(0, 160),
+      packageDigest,
+      summaryDigest,
+      artworkCount,
+      reviewCount,
+      exportedAt,
+      source: String(record.source || getArtworkExportSource(exportType)).trim().slice(0, 80),
+      boundary: String(record.boundary || ARTWORK_EXPORT_AUDIT_BOUNDARY).trim().slice(0, 320) || ARTWORK_EXPORT_AUDIT_BOUNDARY,
+      message: String(record.message || "").trim().slice(0, 260)
+    };
+    payload.receiptDigest = normalizeArtworkRepositoryHex(record.receiptDigest) || sha256StableJson({
+      kind: payload.kind,
+      exportType: payload.exportType,
+      filename: payload.filename,
+      mimeType: payload.mimeType,
+      byteLength: payload.byteLength,
+      fileDigest: payload.fileDigest,
+      packageId: payload.packageId,
+      packageDigest: payload.packageDigest,
+      summaryDigest: payload.summaryDigest,
+      artworkCount: payload.artworkCount,
+      reviewCount: payload.reviewCount,
+      exportedAt: payload.exportedAt
+    });
+    if (!payload.message) {
+      const countLabel = exportType === "classroom-review-summary"
+        ? `${payload.reviewCount} 条评阅`
+        : `${payload.artworkCount} 幅作品`;
+      payload.message = `已记录${payload.exportLabel}导出回执，包含 ${countLabel}。`;
+    }
+    return payload;
+  }
+
+  function normalizeArtworkExportType(value) {
+    const type = String(value || "").trim().toLowerCase();
+    if (["collection", "artwork-collection", "artwork-collection-html"].includes(type)) return "artwork-collection";
+    if (["review", "classroom-review", "classroom-review-html"].includes(type)) return "classroom-review";
+    if (["summary", "classroom-review-summary", "classroom-review-summary-html"].includes(type)) return "classroom-review-summary";
+    return "";
+  }
+
+  function formatArtworkExportTypeLabel(type) {
+    return {
+      "artwork-collection": "作品集 HTML",
+      "classroom-review": "课堂评阅表",
+      "classroom-review-summary": "评阅汇总"
+    }[type] || "作品导出";
+  }
+
+  function getArtworkExportMimeType() {
+    return "text/html;charset=utf-8";
+  }
+
+  function getArtworkExportSource(type) {
+    return {
+      "artwork-collection": "artwork-collection-html-download",
+      "classroom-review": "artwork-classroom-review-html-download",
+      "classroom-review-summary": "artwork-classroom-review-summary-html-download"
+    }[type] || "artwork-export";
   }
 
   function normalizeArtworkRepositoryHex(value) {
@@ -15275,6 +15387,201 @@
     };
   }
 
+  function recordArtworkExportReceipt(options = {}) {
+    const exportType = normalizeArtworkExportType(options.exportType || options.type);
+    if (!exportType) {
+      return { ok: false, message: "作品导出回执缺少有效导出类型。" };
+    }
+    const filename = String(options.filename || "").trim();
+    if (!filename) {
+      return { ok: false, message: "作品导出回执缺少文件名。" };
+    }
+    const sourcePackage = options.package && typeof options.package === "object"
+      ? options.package
+      : options.collection && typeof options.collection === "object"
+        ? options.collection
+        : null;
+    const sourceSummary = sourcePackage?.summary && typeof sourcePackage.summary === "object"
+      ? sourcePackage.summary
+      : {};
+    const sourceArtworks = Array.isArray(sourcePackage?.artworks) ? sourcePackage.artworks : [];
+    const content = String(options.content ?? options.html ?? "");
+    const artworkCount = normalizeInteger(
+      options.artworkCount,
+      sourceArtworks.length || sourceSummary.total || 0,
+      0,
+      99999
+    );
+    const reviewCount = normalizeInteger(
+      options.reviewCount,
+      exportType === "classroom-review-summary" ? artworkCount : 0,
+      0,
+      99999
+    );
+    const packageDigest = options.packageDigest || (sourcePackage ? sha256StableJson(sourcePackage) : "");
+    const receipt = normalizeArtworkExportReceipt({
+      id: options.id || makeId("artwork-export"),
+      exportType,
+      filename,
+      mimeType: options.mimeType || getArtworkExportMimeType(exportType),
+      byteLength: normalizeInteger(
+        options.byteLength,
+        content ? utf8Bytes(content).length : 0,
+        0,
+        999999999
+      ),
+      fileDigest: options.fileDigest || (content ? sha256Hex(content) : ""),
+      packageId: options.packageId || sourcePackage?.packageId || "",
+      packageDigest,
+      summaryDigest: options.summaryDigest || sourceSummary.digest || "",
+      artworkCount,
+      reviewCount,
+      exportedAt: options.exportedAt || new Date().toISOString(),
+      source: options.source || getArtworkExportSource(exportType),
+      boundary: ARTWORK_EXPORT_AUDIT_BOUNDARY,
+      message: options.message || ""
+    });
+    if (!receipt) {
+      return { ok: false, message: "作品导出回执格式无效。" };
+    }
+    const previous = normalizeArtworkExportReceipts(state.artworkExportReceipts);
+    state.artworkExportReceipts = [
+      receipt,
+      ...previous.filter((item) => item.id !== receipt.id && item.receiptDigest !== receipt.receiptDigest)
+    ].slice(0, ARTWORK_EXPORT_MAX_RECEIPTS);
+    addEvent("artwork-export-receipt", `${formatArtworkExportTypeLabel(exportType)}：${receipt.filename}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      audit: getArtworkExportAudit({ limit: ARTWORK_EXPORT_MAX_RECEIPTS }),
+      message: receipt.message
+    };
+  }
+
+  function getArtworkExportAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, ARTWORK_EXPORT_MAX_RECEIPTS, 1, ARTWORK_EXPORT_MAX_RECEIPTS);
+    const exportType = normalizeArtworkExportType(options.exportType || "");
+    const allReceipts = normalizeArtworkExportReceipts(state.artworkExportReceipts);
+    const filtered = allReceipts.filter((receipt) => !exportType || receipt.exportType === exportType);
+    const receipts = filtered.slice(0, limit).map(clone);
+    const typeCounts = {};
+    filtered.forEach((receipt) => {
+      const type = receipt.exportType || "artwork-export";
+      typeCounts[type] = (typeCounts[type] || 0) + 1;
+    });
+    const audit = {
+      ok: true,
+      kind: ARTWORK_EXPORT_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: filtered.length,
+      allTotal: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      exportType,
+      typeCounts,
+      latestReceipt: receipts[0] || null,
+      receipts,
+      boundary: ARTWORK_EXPORT_AUDIT_BOUNDARY,
+      message: filtered.length
+        ? `已记录 ${filtered.length} 条作品导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        : "暂无作品导出回执。"
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getArtworkExportAuditExport(options = {}) {
+    const audit = getArtworkExportAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: audit.message || "暂无可导出的作品导出回执。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-artwork-export-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderArtworkExportAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条作品导出回执审计导出。`
+    };
+  }
+
+  function downloadArtworkExportAudit(options = {}) {
+    const result = getArtworkExportAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderArtworkExportAuditHtml(audit, exportedAt) {
+    const badges = Object.entries(audit.typeCounts || {})
+      .map(([type, count]) => `<span>${escapeHtml(formatArtworkExportTypeLabel(type))} ${escapeHtml(count)}</span>`)
+      .join("") || "<span>暂无类型统计</span>";
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.exportLabel || formatArtworkExportTypeLabel(receipt.exportType))} · ${escapeHtml(receipt.filename)}</h2>
+        <p>${escapeHtml(receipt.message || "作品导出回执已记录。")}</p>
+        <dl>
+          <div><dt>导出类型</dt><dd>${escapeHtml(receipt.exportLabel || formatArtworkExportTypeLabel(receipt.exportType))}</dd></div>
+          <div><dt>作品 / 评阅</dt><dd>${escapeHtml(receipt.artworkCount || 0)} / ${escapeHtml(receipt.reviewCount || 0)}</dd></div>
+          <div><dt>文件名</dt><dd>${escapeHtml(receipt.filename)}</dd></div>
+          <div><dt>MIME</dt><dd>${escapeHtml(receipt.mimeType)}</dd></div>
+          <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
+          <div><dt>包 ID</dt><dd>${escapeHtml(receipt.packageId || "无")}</dd></div>
+          <div><dt>包摘要</dt><dd>${escapeHtml(receipt.packageDigest || "未生成")}</dd></div>
+          <div><dt>汇总摘要</dt><dd>${escapeHtml(receipt.summaryDigest || "无")}</dd></div>
+          <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>文件大小</dt><dd>${escapeHtml(receipt.byteLength || 0)} bytes</dd></div>
+          <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法作品导出回执审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #18231f; background: #f4f6ee; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 980px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #5d6a64; line-height: 1.7; }
+    .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+    .badges span { padding: 5px 10px; border-radius: 99px; background: #e3eddf; color: #33483e; font-weight: 800; font-size: 12px; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #d4ddcf; border-radius: 8px; background: #fffefa; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; overflow-wrap: anywhere; }
+    .receipt p { margin: 0 0 12px; color: #5d6a64; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 10px; }
+    dt { color: #617068; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #17221f; color: #eef7ef; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Artwork Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法作品导出回执审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条作品导出回执。${escapeHtml(audit.boundary)}</p>
+    <div class="badges">${badges}</div>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
   function getArtworkRepositoryStatus() {
     const repository = normalizeArtworkRepository(state.artworkRepository);
     const artworkCount = state.artworks.length;
@@ -15527,14 +15834,24 @@
       lastCheckedAt: now,
       lastError: ""
     });
+    const receiptResult = recordArtworkExportReceipt({
+      exportType: "artwork-collection",
+      filename: result.filename,
+      content: result.html,
+      collection: result.collection,
+      artworkCount: result.collection.artworks.length,
+      exportedAt: now
+    });
     addEvent("artwork-collection-export", `导出离线作品集：${result.collection.artworks.length} 幅作品`);
     saveState();
     return {
       ok: true,
       filename: result.filename,
+      receipt: receiptResult?.receipt || null,
+      audit: receiptResult?.audit || null,
       exportedArtworkCount: result.collection.artworks.length,
       status: getArtworkRepositoryStatus(),
-      message: `${result.message} 已下载：${result.filename}。`
+      message: `${result.message} 已下载：${result.filename}${receiptResult?.ok ? "，并记录作品导出回执" : ""}。`
     };
   }
 
@@ -15762,14 +16079,25 @@
       lastCheckedAt: now,
       lastError: ""
     });
+    const receiptResult = recordArtworkExportReceipt({
+      exportType: "classroom-review",
+      filename: result.filename,
+      content: result.html,
+      package: result.package,
+      artworkCount: result.package.artworks.length,
+      packageId: result.package.packageId,
+      exportedAt: now
+    });
     addEvent("artwork-classroom-review-export", `导出课堂评阅表：${result.package.artworks.length} 幅作品`);
     saveState();
     return {
       ok: true,
       filename: result.filename,
+      receipt: receiptResult?.receipt || null,
+      audit: receiptResult?.audit || null,
       exportedArtworkCount: result.package.artworks.length,
       status: getArtworkRepositoryStatus(),
-      message: `${result.message} 已下载：${result.filename}。`
+      message: `${result.message} 已下载：${result.filename}${receiptResult?.ok ? "，并记录作品导出回执" : ""}。`
     };
   }
 
@@ -16217,14 +16545,27 @@
       lastCheckedAt: now,
       lastError: ""
     });
+    const receiptResult = recordArtworkExportReceipt({
+      exportType: "classroom-review-summary",
+      filename: result.filename,
+      content: result.html,
+      package: result.package,
+      artworkCount: result.package.artworks.length,
+      reviewCount: result.package.artworks.length,
+      packageId: result.package.packageId,
+      summaryDigest: result.package.summary?.digest || "",
+      exportedAt: now
+    });
     addEvent("artwork-classroom-review-summary-export", `导出课堂评阅汇总：${result.package.artworks.length} 条`);
     saveState();
     return {
       ok: true,
       filename: result.filename,
+      receipt: receiptResult?.receipt || null,
+      audit: receiptResult?.audit || null,
       exportedReviewCount: result.package.artworks.length,
       status: getArtworkRepositoryStatus(),
-      message: `${result.message} 已下载：${result.filename}。`
+      message: `${result.message} 已下载：${result.filename}${receiptResult?.ok ? "，并记录作品导出回执" : ""}。`
     };
   }
 
@@ -19676,6 +20017,8 @@
     getArtworkRepositoryStatus,
     getArtworkRepositoryPackage,
     getArtworkRepositoryConflicts,
+    getArtworkExportAudit,
+    getArtworkExportAuditExport,
     getLatestReview,
     getReviewEvidenceExport,
     getHistory,
@@ -19708,6 +20051,7 @@
     downloadReportComparisonExportAudit,
     downloadPracticeVideoExportAudit,
     downloadArtworkRepository,
+    downloadArtworkExportAudit,
     getArtworkCollectionExport,
     downloadArtworkCollectionPage,
     getArtworkClassroomReviewExport,
@@ -19732,6 +20076,7 @@
     recordReportComparisonExportReceipt,
     recordReviewExportReceipt,
     recordPlanExportReceipt,
+    recordArtworkExportReceipt,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
     checkRemoteReportRepository,

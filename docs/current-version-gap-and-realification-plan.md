@@ -5639,3 +5639,51 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增报告对比导出回执审计`
+
+## 136. 2026-06-13 新增作品导出回执审计
+
+本次补齐作品导出类操作的可追溯性。作品集、课堂评阅表和课堂评阅汇总此前已经能生成真实离线 HTML，但下载后页面没有留下统一回执；现在每次导出都会在作品仓库区记录文件摘要、作品/评阅数量和回执摘要，并支持导出审计 HTML。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-artwork-export-audit-v1` 审计包。
+- 学习状态新增 `artworkExportReceipts`，保存最近 30 条作品导出回执。
+- `MRAppState.recordArtworkExportReceipt()` 记录作品集 HTML、课堂评阅表和评阅汇总三类导出。
+- `MRAppState.getArtworkExportAudit()` 返回类型统计、回执列表和 64 位 `auditDigest`。
+- `MRAppState.getArtworkExportAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadArtworkExportAudit()` 下载 `mr-calligraphy-artwork-export-audit-*.html`。
+- 三个作品 HTML 下载入口成功发起下载后写入作品导出回执。
+- 前台作品仓库新增 `artworkExportAudit`、`artworkExportAuditStatus`、`artworkExportAuditList` 和 `artworkExportAuditExport`。
+- Smoke 页面标记检查新增作品导出回执审计节点。
+- 控件清单更新后，前台为 `real-local 75`、`real-export 39`、`handled 114`、`missingHandler 0`。
+- 状态层脚本覆盖作品数量、评阅数量、文件摘要、包摘要、汇总摘要、边界说明和 HTML 审计导出。
+- Playwright 作品仓库用例会点击“导出作品集”“导出评阅表”“评阅汇总”和“导出回执”，验证真实下载、回执面板、localStorage 持久化和 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.artworkExportReceipts`。
+- 写入状态：用户发起作品相关 HTML 下载后写入本机回执，并保存生成内容 SHA-256 摘要。
+- 成功反馈：作品仓库区域显示导出类型、文件名、作品/评阅数量、文件摘要、包摘要和回执摘要。
+- 导出反馈：点击“导出回执”会下载作品导出 HTML 审计页；无回执时按钮禁用。
+- 刷新后复现方式：作品导出回执随学习状态保存在 localStorage，刷新后仍能读取并导出。
+
+仍待补：
+
+- 当前只证明当前页面生成并发起了作品 HTML 下载请求，并记录生成内容摘要；它不代表操作系统保存成功、云端作品墙、账号下载审计、跨设备同步、长期班级作品库或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "artwork repository exports imports and resolves conflicts"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增作品导出回执审计`

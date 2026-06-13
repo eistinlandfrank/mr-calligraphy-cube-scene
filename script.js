@@ -973,6 +973,9 @@ const els = {
   artworkRepositoryExportButton: document.getElementById("artworkRepositoryExportButton"),
   artworkRepositoryImportButton: document.getElementById("artworkRepositoryImportButton"),
   artworkRepositoryImportInput: document.getElementById("artworkRepositoryImportInput"),
+  artworkExportAuditStatus: document.getElementById("artworkExportAuditStatus"),
+  artworkExportAuditList: document.getElementById("artworkExportAuditList"),
+  artworkExportAuditExport: document.getElementById("artworkExportAuditExport"),
   artworkRepositoryConflictPanel: document.getElementById("artworkRepositoryConflictPanel"),
   artworkRepositoryConflictStatus: document.getElementById("artworkRepositoryConflictStatus"),
   artworkRepositoryConflictList: document.getElementById("artworkRepositoryConflictList"),
@@ -4242,6 +4245,7 @@ function bindHistoryControls() {
   els.artworkRepositoryExportButton?.addEventListener("click", exportArtworkRepository);
   els.artworkRepositoryImportButton?.addEventListener("click", openArtworkRepositoryImport);
   els.artworkRepositoryImportInput?.addEventListener("change", importArtworkRepository);
+  els.artworkExportAuditExport?.addEventListener("click", exportArtworkExportAudit);
   els.artworkRepositoryConflictList?.addEventListener("click", handleArtworkRepositoryConflictAction);
   els.artworkTagList?.addEventListener("click", handleArtworkTagClick);
   els.artworkGalleryGrid?.addEventListener("click", handleArtworkGalleryAction);
@@ -9404,7 +9408,44 @@ function renderArtworkRepositoryStatus() {
   if (els.artworkClassroomReviewSummaryExportButton) {
     els.artworkClassroomReviewSummaryExportButton.disabled = !status.classroomReviewCount;
   }
+  renderArtworkExportAudit();
   renderArtworkRepositoryConflictPanel(status);
+}
+
+function renderArtworkExportAudit() {
+  const audit = window.MRAppState?.getArtworkExportAudit?.({ limit: 5 });
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  if (els.artworkExportAuditStatus) {
+    els.artworkExportAuditStatus.textContent = audit?.message || "暂无作品导出回执。";
+    els.artworkExportAuditStatus.dataset.auditTone = receipts.length ? "ready" : "idle";
+  }
+  if (els.artworkExportAuditExport) {
+    els.artworkExportAuditExport.disabled = !receipts.length;
+  }
+  if (!els.artworkExportAuditList) return;
+  els.artworkExportAuditList.replaceChildren();
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = `${formatArtworkExportType(receipt.exportType)} · ${receipt.filename || "导出文件"}`;
+    const meta = document.createElement("span");
+    const fileDigest = receipt.fileDigest ? `文件 ${receipt.fileDigest.slice(0, 12)}` : "文件摘要未生成";
+    meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.artworkCount || 0} 幅作品 / ${receipt.reviewCount || 0} 条评阅 · ${fileDigest}`;
+    const detail = document.createElement("small");
+    const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
+    const packageDigest = receipt.packageDigest ? `包 ${receipt.packageDigest.slice(0, 12)}` : "包摘要未生成";
+    detail.textContent = `${packageDigest} · ${receiptDigest} · ${Number(receipt.byteLength || 0)} bytes`;
+    item.append(title, meta, detail);
+    els.artworkExportAuditList.appendChild(item);
+  });
+}
+
+function formatArtworkExportType(type) {
+  return {
+    "artwork-collection": "作品集 HTML",
+    "classroom-review": "课堂评阅表",
+    "classroom-review-summary": "评阅汇总"
+  }[type] || "作品导出";
 }
 
 function renderArtworkRepositoryConflictPanel(status) {
@@ -10615,6 +10656,12 @@ function exportArtworkClassroomReviewSummary() {
   const result = window.MRAppState?.downloadArtworkClassroomReviewSummary?.();
   renderHistoryArtworkGallery();
   showNotice(result?.message || "当前没有可导出的课堂评阅汇总。");
+}
+
+function exportArtworkExportAudit() {
+  const result = window.MRAppState?.downloadArtworkExportAudit?.({ limit: 12 });
+  renderArtworkRepositoryStatus();
+  showNotice(result?.message || "暂无可导出的作品导出回执。");
 }
 
 function openArtworkRepositoryImport() {

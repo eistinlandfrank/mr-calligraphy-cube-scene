@@ -1912,6 +1912,8 @@ test("front artwork repository exports and imports local artwork package", async
   await page.locator("#artworkRepositoryConflictList [data-artwork-conflict-action='copy-incoming']").click();
   await expect(page.locator("#artworkRepositoryConflictPanel")).toBeHidden();
   await expect(page.locator("#artworkGalleryStatus")).toContainText("3/3 幅作品");
+  await expect(page.locator("#artworkExportAuditStatus")).toContainText("暂无作品导出回执");
+  await expect(page.locator("#artworkExportAuditExport")).toBeDisabled();
   await expect(page.locator("#artworkCollectionExportButton")).toBeEnabled();
   const collectionDownloadPromise = page.waitForEvent("download");
   await page.locator("#artworkCollectionExportButton").click();
@@ -1924,6 +1926,9 @@ test("front artwork repository exports and imports local artwork package", async
   expect(collectionHtml).toContain("E2E 作品仓库冲突版本");
   expect(collectionHtml).toContain("导入副本");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("离线 HTML 作品集");
+  await expect(page.locator("#artworkExportAuditStatus")).toContainText("1 条作品导出回执");
+  await expect(page.locator("#artworkExportAuditList")).toContainText("作品集 HTML");
+  await expect(page.locator("#artworkExportAuditExport")).toBeEnabled();
   await expect(page.locator("#artworkClassroomReviewExportButton")).toBeEnabled();
   const reviewDownloadPromise = page.waitForEvent("download");
   await page.locator("#artworkClassroomReviewExportButton").click();
@@ -1939,6 +1944,8 @@ test("front artwork repository exports and imports local artwork package", async
   expect(reviewHtml).toContain("不是账号化教师端");
   expect(reviewHtml).toContain("E2E 作品仓库冲突版本");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅表");
+  await expect(page.locator("#artworkExportAuditStatus")).toContainText("2 条作品导出回执");
+  await expect(page.locator("#artworkExportAuditList")).toContainText("课堂评阅表");
   const reviewNotesPackage = withPackageDigest({
     kind: "mr-calligraphy-classroom-review-notes-v1",
     packageId: "e2e-classroom-review-notes",
@@ -2002,8 +2009,27 @@ test("front artwork repository exports and imports local artwork package", async
   expect(reviewSummaryHtml).toContain("课堂评阅回写成功");
   expect(reviewSummaryHtml).toContain("Digest");
   await expect(page.locator("#artworkRepositoryStatus")).toContainText("课堂评阅汇总");
+  await expect(page.locator("#artworkExportAuditStatus")).toContainText("3 条作品导出回执");
+  await expect(page.locator("#artworkExportAuditList")).toContainText("评阅汇总");
+  const artworkAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#artworkExportAuditExport").click();
+  const artworkAuditDownload = await artworkAuditDownloadPromise;
+  expect(artworkAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-artwork-export-audit-.*\.html$/);
+  const artworkAuditHtml = fs.readFileSync(await artworkAuditDownload.path(), "utf8");
+  expect(artworkAuditHtml).toContain("MR 书法作品导出回执审计");
+  expect(artworkAuditHtml).toContain("作品集 HTML");
+  expect(artworkAuditHtml).toContain("课堂评阅表");
+  expect(artworkAuditHtml).toContain("评阅汇总");
+  expect(artworkAuditHtml).toContain("审计摘要");
   const resolvedState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(resolvedState.artworks).toHaveLength(3);
+  expect(resolvedState.artworkExportReceipts).toHaveLength(3);
+  expect(resolvedState.artworkExportReceipts[0].exportType).toBe("classroom-review-summary");
+  expect(resolvedState.artworkExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(resolvedState.artworkExportReceipts[0].summaryDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(resolvedState.artworkExportReceipts[1].exportType).toBe("classroom-review");
+  expect(resolvedState.artworkExportReceipts[1].packageId).toMatch(/^classroom-review-/);
+  expect(resolvedState.artworkExportReceipts[2].exportType).toBe("artwork-collection");
   expect(resolvedState.artworks.some((artwork) => artwork.title.includes("导入副本") && artwork.feedback.includes("E2E 作品仓库冲突版本"))).toBe(true);
   expect(resolvedState.artworkRepository.lastCollectionArtworkCount).toBe(3);
   expect(resolvedState.artworkRepository.lastCollectionExportedAt).toBeTruthy();
