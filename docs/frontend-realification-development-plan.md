@@ -5585,3 +5585,40 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增恢复审计本机校验`
+
+## 146. 2026-06-13 新增项目仓库包文件导入预览
+
+本次把主后台“导出仓库包”补成可回流的真实闭环。此前用户可以下载与远端推送同结构的 `mr-calligraphy-project-repository-package-v1` JSON，但“导入项目档案”入口只认项目档案 JSON；现在该入口会识别项目仓库包文件，校验 `packageDigest` 后把包内 archive 转成恢复预览。
+
+完成内容：
+
+- 新增 `readProjectImportFile()`，自动识别项目档案 JSON 与项目仓库包 JSON。
+- 本机项目仓库包导入会执行 kind/version/archive/packageDigest 校验。
+- `prepareImportProject()` 在导入项目仓库包时保留 packageId、Workspace、packageDigest、repositoryDigest、文件名和文件摘要。
+- 主后台恢复预览会把来源显示为“本机项目仓库包预览”，并提示“本机仓库包导入只生成恢复预览，不会自动覆盖本机数据”。
+- 差异报告导出回执新增 `project-repository-file` 来源类型，显示为“本机项目仓库包预览”。
+- Playwright 主后台用例验证刚导出的项目仓库包可以通过文件入口重新导入预览，并验证篡改但未重签的包会被摘要校验拒绝。
+
+真实化说明：
+
+- 数据来源：用户选择的本机 `mr-calligraphy-project-repository-package-v1` JSON 文件。
+- 执行动作：先重算 `packageDigest`，通过后读取包内 `archive` 并复用项目档案恢复预览、字段选择和资产选择流程。
+- 成功反馈：主后台显示 packageId、Workspace、包摘要、文件来源和恢复风险预览。
+- 失败反馈：缺包、kind/version/archive 不匹配或 `packageDigest` 不一致时，导入入口会报错且不进入恢复预览。
+
+仍待补：
+
+- 这是本机文件导入和摘要验真，不是账号化项目空间、多人合并、服务端资产补齐或远端不可篡改审计。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增仓库包文件导入预览`

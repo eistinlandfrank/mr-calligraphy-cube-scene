@@ -1101,33 +1101,36 @@
     }
   }
 
-  function extractProjectRepositoryPackage(payload) {
+  function extractProjectRepositoryPackage(payload, options = {}) {
+    const sourceLabel = String(options.sourceLabel || "远端项目仓库包").slice(0, 80);
+    const containerLabel = String(options.containerLabel || "远端响应").slice(0, 80);
     const candidate = payload?.kind === PROJECT_REPOSITORY_PACKAGE_KIND ? payload : payload?.package;
     if (!candidate || typeof candidate !== "object") {
-      throw new Error("远端响应中没有项目仓库包。");
+      throw new Error(`${containerLabel}中没有项目仓库包。`);
     }
     if (candidate.kind !== PROJECT_REPOSITORY_PACKAGE_KIND) {
-      throw new Error("远端项目仓库包 kind 不匹配。");
+      throw new Error(`${sourceLabel} kind 不匹配。`);
     }
     if (Number(candidate.version) !== PROJECT_REPOSITORY_REMOTE_VERSION) {
-      throw new Error("远端项目仓库包版本不匹配。");
+      throw new Error(`${sourceLabel}版本不匹配。`);
     }
     if (!candidate.archive || typeof candidate.archive !== "object") {
-      throw new Error("远端项目仓库包缺少 archive。");
+      throw new Error(`${sourceLabel}缺少 archive。`);
     }
     return candidate;
   }
 
-  async function assertProjectRepositoryPackageDigest(repositoryPackage) {
+  async function assertProjectRepositoryPackageDigest(repositoryPackage, options = {}) {
+    const sourceLabel = String(options.sourceLabel || "远端项目仓库包").slice(0, 80);
     const expectedDigest = normalizeSha256(repositoryPackage.packageDigest);
     if (!expectedDigest) {
-      throw new Error("远端项目仓库包缺少 packageDigest。");
+      throw new Error(`${sourceLabel}缺少 packageDigest。`);
     }
     const comparable = cloneJsonValue(repositoryPackage);
     delete comparable.packageDigest;
     const actualDigest = await createStableJsonSha256(comparable);
     if (actualDigest !== expectedDigest) {
-      throw new Error("远端项目仓库包摘要不匹配，已拒绝进入恢复预览。");
+      throw new Error(`${sourceLabel}摘要不匹配，已拒绝进入恢复预览。`);
     }
   }
 
@@ -1273,12 +1276,43 @@
   }
 
   async function prepareImportProject(file) {
-    const archive = await readArchiveFile(file);
+    const source = await readProjectImportFile(file);
+    const archive = source.archive;
+    const preview = await createArchivePreview(archive);
+    if (source.repositoryPackage) {
+      const packageVersion = createProjectRepositoryVersionFromPackage(source.repositoryPackage, {
+        packageId: source.repositoryPackage.packageId,
+        workspaceId: source.repositoryPackage.workspaceId,
+        remoteVersion: "本机项目仓库包文件",
+        acceptedAt: source.repositoryPackage.exportedAt
+      });
+      preview.remoteRepository = createProjectRepositoryPreviewSource({
+        sourceType: "project-repository-file",
+        fileName: source.fileName,
+        fileDigest: source.fileDigest,
+        payload: {
+          packageId: source.repositoryPackage.packageId,
+          workspaceId: source.repositoryPackage.workspaceId,
+          remoteVersion: "本机项目仓库包文件",
+          packageDigest: source.repositoryPackage.packageDigest,
+          repositoryDigest: source.repositoryPackage.repositoryDigest,
+          message: source.message
+        },
+        repositoryPackage: source.repositoryPackage,
+        pulledVersion: packageVersion,
+        remoteVersions: packageVersion ? [packageVersion] : [],
+        preview
+      });
+    }
     return {
       ok: true,
       archive,
-      preview: await createArchivePreview(archive),
-      message: "项目档案已校验，请确认差异后恢复。"
+      preview,
+      repositoryPackage: source.repositoryPackage || null,
+      sourceType: source.sourceType,
+      fileName: source.fileName,
+      fileDigest: source.fileDigest,
+      message: source.message || "项目档案已校验，请确认差异后恢复。"
     };
   }
 
@@ -1317,18 +1351,52 @@
   }
 
   async function readArchiveFile(file) {
+    const result = await readProjectImportFile(file);
+    return result.archive;
+  }
+
+  async function readProjectImportFile(file) {
     if (!file) {
       throw new Error("请选择项目档案 JSON 文件。");
     }
 
-    let archive;
+    let payload;
+    let text = "";
     try {
-      archive = JSON.parse(await file.text());
+      text = await file.text();
+      payload = JSON.parse(text);
     } catch (error) {
       throw new Error("项目档案 JSON 格式不正确，无法读取。");
     }
 
-    return migrateProjectArchive(archive);
+    if (payload?.kind === PROJECT_REPOSITORY_PACKAGE_KIND || payload?.package?.kind === PROJECT_REPOSITORY_PACKAGE_KIND) {
+      const repositoryPackage = extractProjectRepositoryPackage(payload, {
+        sourceLabel: "本机项目仓库包文件",
+        containerLabel: "本机项目仓库包文件"
+      });
+      await assertProjectRepositoryPackageDigest(repositoryPackage, { sourceLabel: "本机项目仓库包文件" });
+      const archive = migrateProjectArchive(repositoryPackage.archive);
+      validateArchive(archive);
+      return {
+        ok: true,
+        sourceType: "project-repository-file",
+        archive,
+        repositoryPackage,
+        fileName: String(file.name || "").slice(0, 180),
+        fileDigest: sha256Hex(text),
+        message: `项目仓库包已校验：${repositoryPackage.packageId || file.name || "未命名包"}。请确认差异后恢复。`
+      };
+    }
+
+    return {
+      ok: true,
+      sourceType: "project-archive-file",
+      archive: migrateProjectArchive(payload),
+      repositoryPackage: null,
+      fileName: String(file.name || "").slice(0, 180),
+      fileDigest: sha256Hex(text),
+      message: "项目档案已校验，请确认差异后恢复。"
+    };
   }
 
   async function createArchivePreview(archive) {
@@ -1369,10 +1437,15 @@
     const packageDigest = normalizeSha256(repositoryPackage.packageDigest || payload.packageDigest || pulledVersion.packageDigest);
     const repositoryDigest = normalizeSha256(payload.repositoryDigest || pulledVersion.repositoryDigest || repositoryPackage.repositoryDigest);
     const riskSummary = preview.riskSummary || createArchivePreviewRiskSummary(preview);
+    const sourceType = ["remote-project-repository", "project-repository-file"].includes(context.sourceType)
+      ? context.sourceType
+      : "remote-project-repository";
     return {
       kind: "mr-calligraphy-project-repository-preview-source-v1",
-      sourceType: "remote-project-repository",
+      sourceType,
       endpoint: String(state.endpoint || "").slice(0, 420),
+      fileName: String(context.fileName || "").slice(0, 180),
+      fileDigest: normalizeSha256(context.fileDigest),
       workspaceId: normalizeProjectRepositoryWorkspaceId(state.workspaceId || repositoryPackage.workspaceId || payload.workspaceId),
       packageId: String(payload.packageId || pulledVersion.packageId || repositoryPackage.packageId || "").slice(0, 160),
       sourcePackageId: String(pulledVersion.sourcePackageId || repositoryPackage.packageId || "").slice(0, 160),
@@ -1391,7 +1464,9 @@
       riskLabel: riskSummary.label,
       riskText: riskSummary.text,
       riskReasons: riskSummary.reasons,
-      boundary: PROJECT_REPOSITORY_REMOTE_BOUNDARY
+      boundary: sourceType === "project-repository-file"
+        ? `${PROJECT_REPOSITORY_EXPORT_BOUNDARY} 本机文件导入只会生成恢复预览，仍需手动勾选并确认恢复。`
+        : PROJECT_REPOSITORY_REMOTE_BOUNDARY
     };
   }
 
@@ -3929,7 +4004,7 @@
       previewDigest: sha256StableJson(createImpactPreviewDigestPayload(preview, selectedPayload)),
       archiveExportedAt: normalizeIsoDate(preview.exportedAt),
       archiveSource: String(preview.source || "").slice(0, 420),
-      sourceType: remote ? "remote-project-repository" : "project-archive-file",
+      sourceType: remote?.sourceType || (remote ? "remote-project-repository" : "project-archive-file"),
       remotePackageId: String(remote?.packageId || remote?.sourcePackageId || "").slice(0, 160),
       remoteWorkspaceId: remote ? normalizeProjectRepositoryWorkspaceId(remote.workspaceId) : "",
       remotePackageDigest: normalizeSha256(remote?.packageDigest),
@@ -4092,7 +4167,7 @@
       previewDigest,
       archiveExportedAt: normalizeIsoDate(record.archiveExportedAt),
       archiveSource: String(record.archiveSource || "").slice(0, 420),
-      sourceType: ["remote-project-repository", "project-archive-file"].includes(record.sourceType) ? record.sourceType : "project-archive-file",
+      sourceType: ["remote-project-repository", "project-repository-file", "project-archive-file"].includes(record.sourceType) ? record.sourceType : "project-archive-file",
       remotePackageId: String(record.remotePackageId || "").slice(0, 160),
       remoteWorkspaceId: record.remoteWorkspaceId ? normalizeProjectRepositoryWorkspaceId(record.remoteWorkspaceId) : "",
       remotePackageDigest: normalizeSha256(record.remotePackageDigest),
@@ -4260,7 +4335,9 @@
   }
 
   function formatProjectImpactSourceType(sourceType) {
-    return sourceType === "remote-project-repository" ? "远端项目仓库预览" : "本机项目档案预览";
+    if (sourceType === "remote-project-repository") return "远端项目仓库预览";
+    if (sourceType === "project-repository-file") return "本机项目仓库包预览";
+    return "本机项目档案预览";
   }
 
   async function appendRestoreAuditRecord(archive, restoreOptions, hashValidation = {}) {
@@ -6098,14 +6175,19 @@
       previewSource.hidden = false;
       previewSource.dataset.riskLevel = risk?.level || "low";
       const title = document.createElement("strong");
+      const repositorySourceType = remote?.sourceType || "remote-project-repository";
       title.textContent = remote
-        ? `远端项目仓库版本：${remote.packageId || remote.sourcePackageId || "未命名包"}`
+        ? repositorySourceType === "project-repository-file"
+          ? `本机项目仓库包：${remote.packageId || remote.sourcePackageId || remote.fileName || "未命名包"}`
+          : `远端项目仓库版本：${remote.packageId || remote.sourcePackageId || "未命名包"}`
         : "项目档案恢复风险";
       const detail = document.createElement("span");
       if (remote) {
         const digestText = remote.packageDigest ? ` · 包摘要 ${remote.packageDigest.slice(0, 12)}` : "";
         const repositoryText = remote.repositoryDigest ? ` · 仓库摘要 ${remote.repositoryDigest.slice(0, 12)}` : "";
-        detail.textContent = `Workspace ${remote.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE} · ${remote.remoteVersion || "远端版本未知"} · 历史版本 ${remote.versionCount || 0}${digestText}${repositoryText}`;
+        const fileText = repositorySourceType === "project-repository-file" && remote.fileName ? ` · 文件 ${remote.fileName}` : "";
+        const versionText = repositorySourceType === "project-repository-file" ? "本机仓库包文件" : remote.remoteVersion || "远端版本未知";
+        detail.textContent = `Workspace ${remote.workspaceId || PROJECT_REPOSITORY_DEFAULT_WORKSPACE} · ${versionText} · 历史版本 ${remote.versionCount || 0}${fileText}${digestText}${repositoryText}`;
       } else {
         detail.textContent = "本机项目档案导入前风险摘要。";
       }
@@ -6115,7 +6197,9 @@
       const boundary = document.createElement("span");
       boundary.className = "main-project-preview-boundary";
       boundary.textContent = remote
-        ? "拉取只生成恢复预览，不会自动覆盖本机数据；恢复仍需手动勾选并确认。"
+        ? repositorySourceType === "project-repository-file"
+          ? "本机仓库包导入只生成恢复预览，不会自动覆盖本机数据；恢复仍需手动勾选并确认。"
+          : "拉取只生成恢复预览，不会自动覆盖本机数据；恢复仍需手动勾选并确认。"
         : "恢复前请确认勾选范围，未勾选内容会保持当前本机状态。";
       previewSource.append(title, detail, riskText, boundary);
     };
@@ -6124,7 +6208,13 @@
       if (!previewBox || !previewList) return;
 
       previewBox.hidden = false;
-      if (previewTitle) previewTitle.textContent = preview.remoteRepository ? "远端项目仓库版本预览" : "待导入项目档案";
+      if (previewTitle) {
+        previewTitle.textContent = preview.remoteRepository
+          ? preview.remoteRepository.sourceType === "project-repository-file"
+            ? "本机项目仓库包预览"
+            : "远端项目仓库版本预览"
+          : "待导入项目档案";
+      }
       if (previewMeta) {
         const summary = preview.summary;
         const schema = preview.schemaSummary;

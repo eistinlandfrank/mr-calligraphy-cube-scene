@@ -6067,3 +6067,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增恢复审计本机校验`
+
+## 146. 2026-06-13 新增项目仓库包文件导入预览
+
+本次补齐项目仓库包的本机导入闭环。主后台已经能导出 `mr-calligraphy-project-repository-package-v1`，也能从远端拉取同结构包；现在“导入项目档案”文件入口也能识别这个包，校验摘要后进入恢复预览。
+
+完成内容：
+
+- 新增 `readProjectImportFile()`，统一解析项目档案 JSON 和项目仓库包 JSON。
+- 本机项目仓库包文件会校验 kind、version、archive 和 `packageDigest`。
+- `prepareImportProject()` 会把项目仓库包内的 `archive` 转成恢复预览，并保留 packageId、Workspace、packageDigest、repositoryDigest、文件名和文件摘要。
+- 主后台导入预览标题新增“本机项目仓库包预览”。
+- 预览来源区显示 packageId、Workspace、包摘要、仓库摘要和“本机仓库包导入只生成恢复预览”的边界。
+- 差异报告导出回执新增 `project-repository-file` 来源类型。
+- Playwright 主后台用例验证导出的项目仓库包可以重新导入预览，篡改包会被摘要校验拒绝。
+
+真实化说明：
+
+- 数据来源：用户选择的本机项目仓库包 JSON。
+- 执行动作：重算 `packageDigest`，通过后使用包内 `archive` 进入原有项目档案恢复预览。
+- 成功反馈：主后台显示本机项目仓库包预览、包摘要和恢复影响。
+- 失败反馈：摘要不匹配会提示“本机项目仓库包文件摘要不匹配，已拒绝进入恢复预览”。
+
+仍待补：
+
+- 这是本机 JSON 包回流，不是账号化项目仓库、多人合并、服务端资产补齐或不可篡改审计。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增仓库包文件导入预览`

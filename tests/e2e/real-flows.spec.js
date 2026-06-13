@@ -4315,6 +4315,31 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectRepositoryAuditHtml).toContain(projectRepositoryPackageJson.packageDigest);
   expect(projectRepositoryAuditHtml).toContain("与远端推送同结构的 JSON 同步包");
 
+  await page.locator("#projectImportFile").setInputFiles(projectRepositoryPackagePath);
+  await expect(page.locator("#projectArchiveStatus")).toContainText("项目仓库包已校验");
+  await expect(page.locator("#projectImportPreview")).toBeVisible();
+  await expect(page.locator("#projectImportPreviewTitle")).toContainText("本机项目仓库包预览");
+  await expect(page.locator("#projectImportPreviewSource")).toContainText(projectRepositoryPackageJson.packageId);
+  await expect(page.locator("#projectImportPreviewSource")).toContainText("Workspace local-browser");
+  await expect(page.locator("#projectImportPreviewSource")).toContainText(projectRepositoryPackageJson.packageDigest.slice(0, 12));
+  await expect(page.locator("#projectImportPreviewSource")).toContainText("本机仓库包导入只生成恢复预览");
+  await expect(page.locator("#projectImportPreviewList")).toContainText("主场景布局");
+
+  const tamperedProjectRepositoryPackageMessage = await page.evaluate(async ({ repositoryPackage }) => {
+    const tampered = JSON.parse(JSON.stringify(repositoryPackage));
+    tampered.summary.sceneCount = Number(tampered.summary.sceneCount || 0) + 1;
+    const file = new File([JSON.stringify(tampered)], "tampered-project-repository-package.json", { type: "application/json" });
+    try {
+      await window.MRProjectArchive.prepareImportProject(file);
+      return "ok";
+    } catch (error) {
+      return error?.message || "";
+    }
+  }, { repositoryPackage: projectRepositoryPackageJson });
+  expect(tamperedProjectRepositoryPackageMessage).toContain("本机项目仓库包文件摘要不匹配");
+  await page.locator("#projectImportCancel").click();
+  await expect(page.locator("#projectImportPreview")).toBeHidden();
+
   await page.locator(".project-repository-remote summary").click();
   await expect(page.locator("#projectRepositoryEndpoint")).toBeVisible();
   await page.locator("#projectRepositoryEndpoint").fill(projectRepositoryEndpoint);
