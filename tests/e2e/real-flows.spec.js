@@ -4250,12 +4250,18 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectArchiveExportState.records[0].storageCount).toBeGreaterThan(0);
   expect(projectArchiveExportState.records[0].sceneCount).toBe(2);
   expect(projectArchiveExportState.records[0].boundary).toContain("不是云端备份完成证明");
+  const projectArchiveExportAuditState = await page.evaluate(() => window.MRProjectArchive.getProjectArchiveExportAudit());
+  expect(projectArchiveExportAuditState.verifiedCount).toBe(1);
+  expect(projectArchiveExportAuditState.failedCount).toBe(0);
+  expect(projectArchiveExportAuditState.records[0].verificationStatus).toBe("verified");
+  expect(projectArchiveExportAuditState.records[0].verificationExpectedDigest).toBe(projectArchiveExportState.records[0].receiptDigest);
   const projectArchiveExportAudit = await page.evaluate(() => window.MRProjectArchive.getProjectArchiveExportAuditExport());
   expect(projectArchiveExportAudit.ok).toBe(true);
   expect(projectArchiveExportAudit.html).toContain("MR 书法项目档案导出回执审计");
   expect(projectArchiveExportAudit.html).toContain(projectArchiveDownload.suggestedFilename());
   expect(projectArchiveExportAudit.html).toContain(projectArchiveExportState.records[0].fileDigest);
   expect(projectArchiveExportAudit.html).toContain(projectArchiveExportState.records[0].receiptDigest);
+  expect(projectArchiveExportAudit.html).toContain("本机校验通过");
 
   const projectArchiveAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#projectArchiveExportAuditExport").click();
@@ -4267,6 +4273,17 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(projectArchiveAuditHtml).toContain(projectArchiveDownload.suggestedFilename());
   expect(projectArchiveAuditHtml).toContain(projectArchiveExportState.records[0].fileDigest);
   expect(projectArchiveAuditHtml).toContain("当前浏览器保存的项目档案导出回执");
+  expect(projectArchiveAuditHtml).toContain("本机校验通过");
+
+  const tamperedProjectArchiveExportAudit = await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    state.records[0].storageCount = Number(state.records[0].storageCount || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+    return window.MRProjectArchive.getProjectArchiveExportAudit();
+  }, PROJECT_ARCHIVE_EXPORT_AUDIT_KEY);
+  expect(tamperedProjectArchiveExportAudit.failedCount).toBe(1);
+  expect(tamperedProjectArchiveExportAudit.records[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedProjectArchiveExportAudit.records[0].verificationExpectedDigest).not.toBe(tamperedProjectArchiveExportAudit.records[0].receiptDigest);
 
   const projectRepositoryPackageDownloadPromise = page.waitForEvent("download");
   await page.locator("#projectRepositoryExportButton").click();
