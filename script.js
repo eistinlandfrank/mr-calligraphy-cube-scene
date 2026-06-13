@@ -8552,10 +8552,18 @@ function renderPlanExportAudit(plan) {
     const detail = document.createElement("small");
     const fileDigest = receipt.fileDigest ? `文件 ${receipt.fileDigest.slice(0, 12)}` : "文件摘要未生成";
     const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
-    detail.textContent = `${fileDigest} · ${receiptDigest} · 仅证明当前浏览器发起本机导出`;
+    detail.textContent = `${fileDigest} · ${receiptDigest} · ${formatPlanExportReceiptVerificationStatus(receipt.verificationStatus)} · 仅证明当前浏览器发起本机导出`;
     item.append(title, meta, detail);
     els.planExportAuditList.appendChild(item);
   });
+}
+
+function formatPlanExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function formatPlanExportType(type) {

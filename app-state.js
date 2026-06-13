@@ -2241,6 +2241,65 @@
       .slice(0, PLAN_EXPORT_MAX_RECEIPTS);
   }
 
+  function addPlanExportReceiptVerification(record) {
+    const normalized = normalizePlanExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyPlanExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyPlanExportReceiptDigest(record = {}) {
+    const receipt = normalizePlanExportReceipt(record);
+    const receiptDigest = normalizeReportTeacherReviewDigest(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧计划导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createPlanExportReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与计划导出回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按计划导出回执声明字段重算匹配。"
+    };
+  }
+
+  function createPlanExportReceiptDigestPayload(record = {}) {
+    const receipt = normalizePlanExportReceipt(record) || {};
+    return {
+      kind: PLAN_EXPORT_AUDIT_KIND,
+      planId: receipt.planId || "",
+      exportType: receipt.exportType || "html",
+      filename: receipt.filename || "",
+      itemCount: normalizeInteger(receipt.itemCount, 0, 0, 999),
+      completedCount: normalizeInteger(receipt.completedCount, 0, 0, 999),
+      progressPercent: normalizeInteger(receipt.progressPercent, 0, 0, 100),
+      eventCount: normalizeInteger(receipt.eventCount, receipt.exportType === "calendar-ics" ? receipt.itemCount : 0, 0, 999),
+      exportedAt: receipt.exportedAt || "",
+      fileDigest: receipt.fileDigest || ""
+    };
+  }
+
+  function formatPlanExportReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
+  }
+
   function normalizePlanExportReceipt(record) {
     if (!record || typeof record !== "object") return null;
     const planId = String(record.planId || "").trim().slice(0, 120);
@@ -6012,7 +6071,9 @@
   function getPlanExportAudit(planId = null, options = {}) {
     const targetPlanId = String(planId || "").trim();
     const limit = normalizeInteger(options.limit, PLAN_EXPORT_MAX_RECEIPTS, 1, PLAN_EXPORT_MAX_RECEIPTS);
-    const allReceipts = normalizePlanExportReceipts(state.planExportReceipts);
+    const allReceipts = normalizePlanExportReceipts(state.planExportReceipts)
+      .map(addPlanExportReceiptVerification)
+      .filter(Boolean);
     const filtered = targetPlanId
       ? allReceipts.filter((receipt) => receipt.planId === targetPlanId)
       : allReceipts;
@@ -6022,6 +6083,9 @@
       const type = receipt.exportType || "html";
       typeCounts[type] = (typeCounts[type] || 0) + 1;
     });
+    const verifiedCount = filtered.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = filtered.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = filtered.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: PLAN_EXPORT_AUDIT_KIND,
@@ -6033,11 +6097,14 @@
       exportedCount: receipts.length,
       limit,
       typeCounts,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: PLAN_EXPORT_AUDIT_BOUNDARY,
       message: filtered.length
-        ? `已记录 ${filtered.length} 条计划导出回执，最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
+        ? `已记录 ${filtered.length} 条计划导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(filtered[0].exportedAt)}。`
         : targetPlanId
           ? "当前计划暂无导出回执。"
           : "暂无计划导出回执。"
@@ -6094,6 +6161,8 @@
           <div><dt>日历事件</dt><dd>${escapeHtml(receipt.eventCount || 0)}</dd></div>
           <div><dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd></div>
           <div><dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd></div>
+          <div><dt>本机校验</dt><dd>${escapeHtml(formatPlanExportReceiptVerificationStatus(receipt.verificationStatus))}</dd></div>
+          <div><dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd></div>
           <div><dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd></div>
         </dl>
       </section>`).join("");
@@ -6121,11 +6190,11 @@
   <main>
     <p class="meta">MR Calligraphy Plan Export Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
     <h1>MR 书法计划导出回执审计</h1>
-    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条计划导出回执。${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条计划导出回执，本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? `，失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? `，旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}。${escapeHtml(audit.boundary)}</p>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

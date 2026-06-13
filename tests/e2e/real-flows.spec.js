@@ -1804,6 +1804,14 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.planExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.planExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.planExportReceipts[0].boundary).toContain("不是云端下载日志");
+  const planExportPlanId = learningState.planExportReceipts[0].planId;
+  const planExportAuditState = await page.evaluate((planId) => window.MRAppState.getPlanExportAudit(planId, { limit: 5 }), planExportPlanId);
+  expect(planExportAuditState.verifiedCount).toBe(2);
+  expect(planExportAuditState.failedCount).toBe(0);
+  expect(planExportAuditState.receipts.every((receipt) => receipt.verificationStatus === "verified")).toBe(true);
+  expect(planExportAuditState.receipts.every((receipt) => receipt.verificationExpectedDigest === receipt.receiptDigest)).toBe(true);
+  await expect(page.locator("#planExportAuditStatus")).toContainText("本机校验通过 2 条");
+  await expect(page.locator("#planExportAuditList")).toContainText("本机校验通过");
   const planExportAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#planExportAuditExport").click();
   const planExportAuditDownload = await planExportAuditDownloadPromise;
@@ -1814,6 +1822,26 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(planExportAuditHtml).toContain("学习计划 HTML");
   expect(planExportAuditHtml).toContain("日历 ICS");
   expect(planExportAuditHtml).toContain(learningState.planExportReceipts[0].receiptDigest);
+  expect(planExportAuditHtml).toContain("本机校验通过");
+  expect(planExportAuditHtml).toContain("重算摘要");
+
+  const originalPlanExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate(({ storageKey, planId }) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.planExportReceipts || []).find((item) => item.planId === planId && item.exportType === "calendar-ics");
+    if (receipt) {
+      receipt.eventCount += 1;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, planId: planExportPlanId });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const tamperedPlanExportAudit = await page.evaluate((planId) => window.MRAppState.getPlanExportAudit(planId, { limit: 5 }), planExportPlanId);
+  expect(tamperedPlanExportAudit.failedCount).toBe(1);
+  expect(tamperedPlanExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedPlanExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedPlanExportAudit.receipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalPlanExportState });
 });
 
 test("front report repository imports a local JSON package", async ({ page }) => {
