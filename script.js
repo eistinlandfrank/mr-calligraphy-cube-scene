@@ -6880,10 +6880,18 @@ function renderReportExportAudit(detail) {
     meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.filename || "导出文件"} · ${fileDigest}`;
     const detailText = document.createElement("small");
     const receiptDigest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
-    detailText.textContent = `${reportDigest} · ${receiptDigest} · ${Number(receipt.byteLength || 0)} bytes`;
+    detailText.textContent = `${reportDigest} · ${receiptDigest} · ${formatReportExportReceiptVerificationStatus(receipt.verificationStatus)} · ${Number(receipt.byteLength || 0)} bytes`;
     item.append(title, meta, detailText);
     els.reportExportAuditList.appendChild(item);
   });
+}
+
+function formatReportExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function formatReportExportType(type) {

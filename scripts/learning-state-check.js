@@ -694,6 +694,10 @@ assert(reportExportAudit.kind === "mr-calligraphy-report-export-audit-v1", "报�
 assert(reportExportAudit.total === 2, "报告导出审计应统计 HTML 和 PDF 两条回执。");
 assert(reportExportAudit.typeCounts["report-html"] === 1, "报告导出审计应统计 HTML。");
 assert(reportExportAudit.typeCounts["report-pdf"] === 1, "报告导出审计应统计 PDF。");
+assert(reportExportAudit.verifiedCount === 2, "报告导出审计应统计本机校验通过数量。");
+assert(reportExportAudit.failedCount === 0, "报告导出审计正常回执不应出现摘要失败。");
+assert(reportExportAudit.receipts[0].verificationStatus === "verified", "报告导出回执应通过本机 receiptDigest 重算校验。");
+assert(reportExportAudit.receipts[0].verificationExpectedDigest === reportExportAudit.receipts[0].receiptDigest, "报告导出回执重算摘要应匹配 receiptDigest。");
 assert(/^[a-f0-9]{64}$/.test(reportExportAudit.auditDigest), "报告导出审计应包含稳定摘要。");
 assert(reportExportAudit.boundary.includes("不是操作系统保存完成证明"), "报告导出审计应说明本机边界。");
 const reportExportAuditExport = window.MRAppState.getReportExportAuditExport("report-2", { limit: 5 });
@@ -703,6 +707,8 @@ assert(reportExportAuditExport.html.includes("MR 书法报告导出回执审计"
 assert(reportExportAuditExport.html.includes("报告 HTML"), "报告导出审计 HTML 应包含 HTML 类型。");
 assert(reportExportAuditExport.html.includes("原生 PDF"), "报告导出审计 HTML 应包含 PDF 类型。");
 assert(reportExportAuditExport.html.includes(reportExportAuditExport.audit.auditDigest), "报告导出审计 HTML 应包含审计摘要。");
+assert(reportExportAuditExport.html.includes("本机校验通过"), "报告导出审计 HTML 应包含本机校验结果。");
+assert(reportExportAuditExport.html.includes("重算摘要"), "报告导出审计 HTML 应包含重算摘要。");
 
 const reportRepositoryStatus = window.MRAppState.getReportRepositoryStatus();
 assert(reportRepositoryStatus.ok && reportRepositoryStatus.reportCount >= 3, "报告 repository 应统计本机报告数量。");

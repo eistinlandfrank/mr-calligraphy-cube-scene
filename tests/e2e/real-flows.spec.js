@@ -1441,6 +1441,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(currentReportExportReceipts[0].reportId).toBe(activeReportId);
   expect(currentReportExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(currentReportExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  const reportExportAuditState = await page.evaluate((reportId) => window.MRAppState.getReportExportAudit(reportId, { limit: 5 }), activeReportId);
+  expect(reportExportAuditState.verifiedCount).toBe(reportPdfExportCount);
+  expect(reportExportAuditState.failedCount).toBe(0);
+  expect(reportExportAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(reportExportAuditState.receipts[0].verificationExpectedDigest).toBe(currentReportExportReceipts[0].receiptDigest);
+  await expect(page.locator("#reportExportAuditStatus")).toContainText(`本机校验通过 ${reportPdfExportCount} 条`);
+  await expect(page.locator("#reportExportAuditList")).toContainText("本机校验通过");
   const reportExportAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportExportAuditExport").click();
   const reportExportAuditDownload = await reportExportAuditDownloadPromise;
@@ -1451,6 +1458,25 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(reportExportAuditHtml).toContain("报告 HTML");
   expect(reportExportAuditHtml).toContain("原生 PDF");
   expect(reportExportAuditHtml).toContain(currentReportExportReceipts[0].receiptDigest);
+  expect(reportExportAuditHtml).toContain("本机校验通过");
+  expect(reportExportAuditHtml).toContain("重算摘要");
+
+  const originalReportExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate(({ storageKey, reportId }) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.reportExportReceipts || []).find((item) => item.reportId === reportId);
+    receipt.byteLength = Number(receipt.byteLength || 0) + 1;
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, reportId: activeReportId });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
+  const tamperedReportExportAudit = await page.evaluate((reportId) => window.MRAppState.getReportExportAudit(reportId, { limit: 5 }), activeReportId);
+  expect(tamperedReportExportAudit.failedCount).toBe(1);
+  expect(tamperedReportExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedReportExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedReportExportAudit.receipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalReportExportState });
+  await page.goto(`/?report=${activeReportId}`, { waitUntil: "domcontentloaded" });
 
   const reportRepositoryDownloadPromise = page.waitForEvent("download");
   await page.locator("#reportRepositoryExportButton").click();
