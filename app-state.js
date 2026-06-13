@@ -19423,6 +19423,68 @@
     return payload;
   }
 
+  function addHistoryRepositoryExportReceiptVerification(record) {
+    const normalized = normalizeHistoryRepositoryExportReceipt(record);
+    if (!normalized) {
+      return null;
+    }
+    const verification = verifyHistoryRepositoryExportReceiptDigest(normalized);
+    return {
+      ...normalized,
+      verificationStatus: verification.status,
+      verificationMessage: verification.message,
+      verificationExpectedDigest: verification.expectedDigest
+    };
+  }
+
+  function verifyHistoryRepositoryExportReceiptDigest(record = {}) {
+    const receipt = normalizeHistoryRepositoryExportReceipt(record);
+    const receiptDigest = normalizeHistoryRepositoryHex(receipt?.receiptDigest);
+    if (!receipt || !receiptDigest) {
+      return {
+        status: "legacy",
+        expectedDigest: "",
+        message: "旧学习档案仓库导出回执未生成 receiptDigest，无法执行本机一致性校验。"
+      };
+    }
+    const expectedDigest = sha256StableJson(createHistoryRepositoryExportReceiptDigestPayload(receipt));
+    const status = expectedDigest === receiptDigest ? "verified" : "digest-mismatch";
+    return {
+      status,
+      expectedDigest,
+      message: status === "verified"
+        ? "本机一致性校验通过：receiptDigest 与学习档案仓库导出回执声明字段一致。"
+        : "本机一致性校验失败：receiptDigest 无法按学习档案仓库导出回执声明字段重算匹配。"
+    };
+  }
+
+  function createHistoryRepositoryExportReceiptDigestPayload(record = {}) {
+    const receipt = normalizeHistoryRepositoryExportReceipt(record) || {};
+    return {
+      kind: HISTORY_REPOSITORY_EXPORT_AUDIT_KIND,
+      filename: receipt.filename || "",
+      byteLength: normalizeInteger(receipt.byteLength, 0, 0, 300000000),
+      fileDigest: receipt.fileDigest || "",
+      packageId: receipt.packageId || "",
+      packageDigest: receipt.packageDigest || "",
+      recordCount: normalizeInteger(receipt.recordCount, 0, 0, 999999),
+      practiceCount: normalizeInteger(receipt.practiceCount, 0, 0, 99999),
+      artworkCount: normalizeInteger(receipt.artworkCount, 0, 0, 99999),
+      reportCount: normalizeInteger(receipt.reportCount, 0, 0, 99999),
+      stageCount: normalizeInteger(receipt.stageCount, 0, 0, 99999),
+      workspaceId: receipt.workspaceId || HISTORY_REPOSITORY_DEFAULT_WORKSPACE,
+      exportedAt: receipt.exportedAt || ""
+    };
+  }
+
+  function formatHistoryRepositoryExportReceiptVerificationStatus(status) {
+    return {
+      verified: "本机校验通过",
+      "digest-mismatch": "摘要不匹配",
+      legacy: "旧记录未校验"
+    }[status] || "未校验";
+  }
+
   function recordHistoryRepositoryExportReceipt(payload = {}) {
     const packageRecord = payload.package && typeof payload.package === "object"
       ? payload.package
@@ -19491,7 +19553,9 @@
 
   function getHistoryRepositoryExportAudit(options = {}) {
     const limit = normalizeInteger(options.limit, HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS, 1, HISTORY_REPOSITORY_EXPORT_MAX_RECEIPTS);
-    const allReceipts = normalizeHistoryRepositoryExportReceipts(state.historyRepositoryExportReceipts);
+    const allReceipts = normalizeHistoryRepositoryExportReceipts(state.historyRepositoryExportReceipts)
+      .map(addHistoryRepositoryExportReceiptVerification)
+      .filter(Boolean);
     const receipts = allReceipts.slice(0, limit).map(clone);
     const workspaceCounts = {};
     allReceipts.forEach((receipt) => {
@@ -19511,6 +19575,9 @@
       reportCount: 0,
       stageCount: 0
     });
+    const verifiedCount = allReceipts.filter((receipt) => receipt.verificationStatus === "verified").length;
+    const failedCount = allReceipts.filter((receipt) => receipt.verificationStatus === "digest-mismatch").length;
+    const legacyCount = allReceipts.filter((receipt) => receipt.verificationStatus === "legacy").length;
     const audit = {
       ok: true,
       kind: HISTORY_REPOSITORY_EXPORT_AUDIT_KIND,
@@ -19521,11 +19588,14 @@
       limit,
       workspaceCounts,
       totals,
+      verifiedCount,
+      failedCount,
+      legacyCount,
       latestReceipt: receipts[0] || null,
       receipts,
       boundary: HISTORY_REPOSITORY_EXPORT_AUDIT_BOUNDARY,
       message: allReceipts.length
-        ? `已记录 ${allReceipts.length} 条学习档案仓库导出回执，最近一次：${formatPlanDate(allReceipts[0].exportedAt)}。`
+        ? `已记录 ${allReceipts.length} 条学习档案仓库导出回执，本机校验通过 ${verifiedCount} 条${failedCount ? `，失败 ${failedCount} 条` : ""}${legacyCount ? `，旧记录 ${legacyCount} 条` : ""}。最近一次：${formatPlanDate(allReceipts[0].exportedAt)}。`
         : "暂无学习档案仓库导出回执。"
     };
     audit.auditDigest = sha256StableJson({
@@ -19580,6 +19650,8 @@
           <dt>包摘要</dt><dd>${escapeHtml(receipt.packageDigest || "未生成")}</dd>
           <dt>文件摘要</dt><dd>${escapeHtml(receipt.fileDigest || "未生成")}</dd>
           <dt>回执摘要</dt><dd>${escapeHtml(receipt.receiptDigest || "未生成")}</dd>
+          <dt>本机校验</dt><dd>${escapeHtml(formatHistoryRepositoryExportReceiptVerificationStatus(receipt.verificationStatus))}</dd>
+          <dt>重算摘要</dt><dd>${escapeHtml(receipt.verificationExpectedDigest || "无法重算")}</dd>
           <dt>导出时间</dt><dd>${escapeHtml(formatDateTime(receipt.exportedAt))}</dd>
         </dl>
       </section>`).join("");
@@ -19605,11 +19677,11 @@
 <body>
   <main>
     <h1>MR 书法学习档案仓库导出回执审计</h1>
-    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total} · 展示 ${audit.exportedCount}<br>${escapeHtml(audit.boundary)}</p>
+    <p class="meta">导出时间：${escapeHtml(formatDateTime(exportedAt))} · 回执数量：${audit.total} · 展示 ${audit.exportedCount} · 本机校验通过 ${escapeHtml(audit.verifiedCount || 0)} 条${audit.failedCount ? ` · 失败 ${escapeHtml(audit.failedCount)} 条` : ""}${audit.legacyCount ? ` · 旧记录 ${escapeHtml(audit.legacyCount)} 条` : ""}<br>${escapeHtml(audit.boundary)}</p>
     ${rows}
     <h2>原始审计 JSON</h2>
     <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
-    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。本机校验通过：${escapeHtml(audit.verifiedCount || 0)}，失败：${escapeHtml(audit.failedCount || 0)}，旧记录：${escapeHtml(audit.legacyCount || 0)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
   </main>
 </body>
 </html>`;

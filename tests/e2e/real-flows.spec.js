@@ -3478,8 +3478,10 @@ test("front history repository handles network, paged pull, and id conflicts", a
   expect(historyRepositoryDownload.suggestedFilename()).toMatch(/^mr-calligraphy-history-repository-.*\.json$/);
   await expect(page.locator("#noticeState")).toContainText("并记录导出回执");
   await expect(page.locator("#historyRepositoryExportAuditStatus")).toContainText("已记录 1 条学习档案仓库导出回执");
+  await expect(page.locator("#historyRepositoryExportAuditStatus")).toContainText("本机校验通过 1 条");
   await expect(page.locator("#historyRepositoryExportAuditList")).toContainText("2 条");
   await expect(page.locator("#historyRepositoryExportAuditList")).toContainText(historyRepositoryDownload.suggestedFilename());
+  await expect(page.locator("#historyRepositoryExportAuditList")).toContainText("本机校验通过");
 
   let learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.historyRepositoryExportReceipts).toHaveLength(1);
@@ -3490,6 +3492,11 @@ test("front history repository handles network, paged pull, and id conflicts", a
   expect(learningState.historyRepositoryExportReceipts[0].packageDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.historyRepositoryExportReceipts[0].fileDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.historyRepositoryExportReceipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
+  const historyRepositoryExportAuditState = await page.evaluate(() => window.MRAppState.getHistoryRepositoryExportAudit({ limit: 5 }));
+  expect(historyRepositoryExportAuditState.verifiedCount).toBe(1);
+  expect(historyRepositoryExportAuditState.failedCount).toBe(0);
+  expect(historyRepositoryExportAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(historyRepositoryExportAuditState.receipts[0].verificationExpectedDigest).toBe(learningState.historyRepositoryExportReceipts[0].receiptDigest);
 
   const historyRepositoryExportAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#historyRepositoryExportAuditExport").click();
@@ -3500,6 +3507,28 @@ test("front history repository handles network, paged pull, and id conflicts", a
   expect(historyRepositoryExportAuditHtml).toContain("MR 书法学习档案仓库导出回执审计");
   expect(historyRepositoryExportAuditHtml).toContain(learningState.historyRepositoryExportReceipts[0].packageDigest);
   expect(historyRepositoryExportAuditHtml).toContain(learningState.historyRepositoryExportReceipts[0].receiptDigest);
+  expect(historyRepositoryExportAuditHtml).toContain("本机校验通过");
+  expect(historyRepositoryExportAuditHtml).toContain("重算摘要");
+  const originalHistoryRepositoryExportState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate((storageKey) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.historyRepositoryExportReceipts || [])[0];
+    if (receipt) {
+      receipt.filename = `${receipt.filename || "history-repository"}.tampered`;
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, LEARNING_KEY);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const tamperedHistoryRepositoryExportAudit = await page.evaluate(() => window.MRAppState.getHistoryRepositoryExportAudit({ limit: 5 }));
+  expect(tamperedHistoryRepositoryExportAudit.failedCount).toBe(1);
+  expect(tamperedHistoryRepositoryExportAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedHistoryRepositoryExportAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedHistoryRepositoryExportAudit.receipts[0].receiptDigest);
+  await expect(page.locator("#historyRepositoryExportAuditStatus")).toContainText("失败 1 条");
+  await expect(page.locator("#historyRepositoryExportAuditList")).toContainText("摘要不匹配");
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalHistoryRepositoryExportState });
+  await page.reload({ waitUntil: "domcontentloaded" });
 
   await page.locator(".history-repository-remote summary").click();
 

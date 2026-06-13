@@ -7992,10 +7992,18 @@ function renderHistoryRepositoryExportAudit() {
     const fileDigest = receipt.fileDigest ? receipt.fileDigest.slice(0, 12) : "文件摘要未知";
     meta.textContent = `${formatHistoryTime(receipt.exportedAt)} · ${receipt.recordCount || 0} 条 · 练习 ${receipt.practiceCount || 0} / 作品 ${receipt.artworkCount || 0} / 报告 ${receipt.reportCount || 0} / 阶段 ${receipt.stageCount || 0}`;
     const detail = document.createElement("small");
-    detail.textContent = `${receipt.workspaceId || "local-browser"} / 包 ${packageDigest} / 文件 ${fileDigest} / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"}`;
+    detail.textContent = `${receipt.workspaceId || "local-browser"} / 包 ${packageDigest} / 文件 ${fileDigest} / 回执 ${(receipt.receiptDigest || "").slice(0, 12) || "未生成"} / ${formatHistoryRepositoryExportReceiptVerificationStatus(receipt.verificationStatus)}`;
     item.append(title, meta, detail);
     els.historyRepositoryExportAuditList.appendChild(item);
   });
+}
+
+function formatHistoryRepositoryExportReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function renderHistoryRepositoryReceipts() {
