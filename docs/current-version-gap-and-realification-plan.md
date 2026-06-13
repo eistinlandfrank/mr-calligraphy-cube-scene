@@ -30,7 +30,7 @@ node scripts/control-inventory.js
 
 | 页面 | 本机真实 | 文件导出 | 本机发布 | 演示内容 | 暂不可用 | 缺失标记 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| `index.html` | 75 | 30 | 0 | 0 | 0 | 0 |
+| `index.html` | 75 | 31 | 0 | 0 | 0 | 0 |
 | `main-admin.html` | 45 | 7 | 1 | 0 | 0 | 0 |
 | `realistic-demo.html` | 3 | 0 | 0 | 0 | 0 | 0 |
 | `realistic-admin.html` | 30 | 3 | 1 | 0 | 0 | 0 |
@@ -5253,3 +5253,49 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增学习档案批量回执审计`
+
+## 128. 2026-06-13 新增本机链接复制审计
+
+本次继续治理“复制链接类按钮像假的”的体验问题。报告、学习档案、作品集、本机分享和远端分享的复制按钮此前主要依赖剪贴板成功提示，部分路径会降级为地址栏或手动复制，但缺少统一的本机回执与可导出证据。现在前台新增“本机链接审计”，每次复制站内链接都会留下本机回执，并可导出 HTML 审计。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-local-link-copy-audit-v1` 审计包。
+- `MRAppState.recordLocalLinkCopyReceipt()` 记录链接类型、目标 ID、标题、URL、复制状态、时间和本机边界。
+- `MRAppState.getLocalLinkCopyAudit()` 返回最近复制回执、目标类型统计、复制状态统计和 64 位 `auditDigest`。
+- `MRAppState.getLocalLinkCopyAuditExport()` 生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadLocalLinkCopyAudit()` 真实下载 `mr-calligraphy-local-link-copy-audit-*.html`。
+- 前台学习操作区新增 `localLinkCopyAuditStatus`、`localLinkCopyAuditList` 和 `localLinkCopyAuditExport`。
+- 本机分享链接、远端分享链接、站内报告链接、学习档案链接和作品集链接复制后都会写入同一份本机审计。
+- Smoke 页面标记检查新增本机链接审计面板。
+- 状态层脚本覆盖报告链接、档案链接、剪贴板成功、地址栏降级、摘要和 HTML 导出。
+- Playwright 前台真实练习用例覆盖本机分享链接和站内报告链接复制后显示审计列表，并下载 HTML 审计页。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.localLinkCopyReceipts`。
+- 写入状态：复制动作完成后写入本机回执，同时写入学习动作事件队列。
+- 成功反馈：前台面板显示最近复制数量、链接标题、目标类型、复制状态和时间。
+- 失败/降级反馈：剪贴板不可用时记录 `route-fallback` 或 `manual` 状态，不伪造剪贴板成功。
+- 刷新后复现方式：复制回执保存在 localStorage，刷新后面板仍能读取并导出。
+
+仍待补：
+
+- 当前是浏览器本机复制回执，不是公网访问日志、账号审计、跨设备分享统计、教师端课堂日志或不可篡改证据链。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机链接复制审计`

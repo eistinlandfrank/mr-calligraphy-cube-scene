@@ -6,6 +6,9 @@
   const MAX_HISTORY_BATCH_RECEIPTS = 20;
   const HISTORY_BATCH_RECEIPT_AUDIT_KIND = "mr-calligraphy-history-batch-receipt-audit-v1";
   const HISTORY_BATCH_RECEIPT_AUDIT_BOUNDARY = "学习档案批量操作回执来自当前浏览器 historyBatchReceipts，记录导出、删除、恢复、永久删除和清空回收站动作；它不是服务端账号审计、跨设备课堂日志或不可篡改证据链。";
+  const MAX_LOCAL_LINK_COPY_RECEIPTS = 30;
+  const LOCAL_LINK_COPY_AUDIT_KIND = "mr-calligraphy-local-link-copy-audit-v1";
+  const LOCAL_LINK_COPY_AUDIT_BOUNDARY = "本机链接复制审计来自当前浏览器 localLinkCopyReceipts，记录站内报告、学习档案、作品集、本机分享和远端分享 URL 的复制结果；它不是公网访问日志、账号审计、跨设备分享统计或不可篡改证据链。";
   const MAX_ARTWORK_TAGS = 8;
   const MAX_ARTWORK_REPOSITORY_CONFLICTS = 12;
   const MAX_SHARE_RECORDS = 24;
@@ -440,6 +443,7 @@
       stageRecords: Array.isArray(source?.stageRecords) ? source.stageRecords.map(normalizeStageRecord).filter(Boolean).slice(-MAX_STAGE_RECORDS) : [],
       historyTrash: Array.isArray(source?.historyTrash) ? source.historyTrash.map(normalizeHistoryTrashEntry).filter(Boolean).slice(0, MAX_HISTORY_TRASH) : [],
       historyBatchReceipts: Array.isArray(source?.historyBatchReceipts) ? source.historyBatchReceipts.map(normalizeHistoryBatchReceipt).filter(Boolean).slice(0, MAX_HISTORY_BATCH_RECEIPTS) : [],
+      localLinkCopyReceipts: Array.isArray(source?.localLinkCopyReceipts) ? source.localLinkCopyReceipts.map(normalizeLocalLinkCopyReceipt).filter(Boolean).slice(0, MAX_LOCAL_LINK_COPY_RECEIPTS) : [],
       events: Array.isArray(source?.events) ? source.events.map(normalizeEvent).filter(Boolean).slice(-MAX_EVENTS) : [],
       updatedAt: typeof source?.updatedAt === "string" ? source.updatedAt : new Date().toISOString()
     };
@@ -2691,6 +2695,35 @@
       "trash-delete": "永久删除",
       "trash-clear": "清空回收站"
     }[action] || "学习档案操作";
+  }
+
+  function normalizeLocalLinkCopyReceipt(record) {
+    if (!record || typeof record !== "object") return null;
+    const targetType = String(record.targetType || "local-link").slice(0, 48);
+    const targetId = String(record.targetId || "").trim().slice(0, 160);
+    const url = String(record.url || "").trim().slice(0, 2048);
+    if (!url) return null;
+    const createdAt = Number.isFinite(Date.parse(record.createdAt))
+      ? String(record.createdAt)
+      : new Date().toISOString();
+    const copyStatus = ["clipboard", "route-fallback", "manual"].includes(record.copyStatus)
+      ? record.copyStatus
+      : record.copySucceeded === false
+        ? "route-fallback"
+        : "clipboard";
+    return {
+      id: String(record.id || makeId("link-copy")),
+      targetType,
+      targetLabel: String(record.targetLabel || formatLocalLinkCopyTarget(targetType)).slice(0, 80),
+      targetId,
+      title: String(record.title || "本机链接").slice(0, 120),
+      url,
+      copyStatus,
+      copySucceeded: copyStatus === "clipboard",
+      createdAt,
+      message: String(record.message || "").slice(0, 240),
+      boundary: String(record.boundary || LOCAL_LINK_COPY_AUDIT_BOUNDARY).slice(0, 260)
+    };
   }
 
   function normalizeEvent(record) {
@@ -17094,6 +17127,170 @@
     }[action] || "学习档案操作";
   }
 
+  function recordLocalLinkCopyReceipt(record = {}) {
+    const receipt = normalizeLocalLinkCopyReceipt({
+      ...record,
+      id: record.id || makeId("link-copy"),
+      createdAt: record.createdAt || new Date().toISOString()
+    });
+    if (!receipt) {
+      return { ok: false, message: "没有可记录的本机链接复制回执。" };
+    }
+    state.localLinkCopyReceipts = [
+      receipt,
+      ...state.localLinkCopyReceipts.filter((item) => item.id !== receipt.id)
+    ].slice(0, MAX_LOCAL_LINK_COPY_RECEIPTS);
+    addEvent("link-copy", `${receipt.targetLabel}：${receipt.title}`);
+    saveState();
+    return {
+      ok: true,
+      receipt: clone(receipt),
+      message: receipt.copySucceeded
+        ? `已记录${receipt.targetLabel}复制回执。`
+        : `已记录${receipt.targetLabel}降级复制回执。`
+    };
+  }
+
+  function getLocalLinkCopyAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, MAX_LOCAL_LINK_COPY_RECEIPTS, 1, MAX_LOCAL_LINK_COPY_RECEIPTS);
+    const allReceipts = (state.localLinkCopyReceipts || [])
+      .map(normalizeLocalLinkCopyReceipt)
+      .filter(Boolean)
+      .slice(0, MAX_LOCAL_LINK_COPY_RECEIPTS);
+    const receipts = allReceipts.slice(0, limit).map(clone);
+    const targetCounts = {};
+    const statusCounts = {};
+    receipts.forEach((receipt) => {
+      const targetType = receipt.targetType || "local-link";
+      const copyStatus = receipt.copyStatus || "clipboard";
+      targetCounts[targetType] = (targetCounts[targetType] || 0) + 1;
+      statusCounts[copyStatus] = (statusCounts[copyStatus] || 0) + 1;
+    });
+    const audit = {
+      kind: LOCAL_LINK_COPY_AUDIT_KIND,
+      generatedAt: new Date().toISOString(),
+      storageKey: STORAGE_KEY,
+      total: allReceipts.length,
+      exportedCount: receipts.length,
+      limit,
+      targetCounts,
+      statusCounts,
+      receipts,
+      boundary: LOCAL_LINK_COPY_AUDIT_BOUNDARY
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getLocalLinkCopyAuditExport(options = {}) {
+    const audit = getLocalLinkCopyAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: "当前还没有可导出的本机链接复制审计。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-local-link-copy-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderLocalLinkCopyAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条本机链接复制审计导出。`
+    };
+  }
+
+  function downloadLocalLinkCopyAudit(options = {}) {
+    const result = getLocalLinkCopyAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderLocalLinkCopyAuditHtml(audit, exportedAt) {
+    const targetRows = Object.entries(audit.targetCounts || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([targetType, count]) => `<span>${escapeHtml(formatLocalLinkCopyTarget(targetType))} ${escapeHtml(count)}</span>`)
+      .join("");
+    const statusRows = Object.entries(audit.statusCounts || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([status, count]) => `<span>${escapeHtml(formatLocalLinkCopyStatus(status))} ${escapeHtml(count)}</span>`)
+      .join("");
+    const rows = audit.receipts.map((receipt) => `
+      <section class="receipt">
+        <h2>${escapeHtml(receipt.title || "本机链接")}</h2>
+        <p>${escapeHtml(receipt.message || `${receipt.targetLabel}复制回执。`)}</p>
+        <dl>
+          <div><dt>类型</dt><dd>${escapeHtml(formatLocalLinkCopyTarget(receipt.targetType))}</dd></div>
+          <div><dt>状态</dt><dd>${escapeHtml(formatLocalLinkCopyStatus(receipt.copyStatus))}</dd></div>
+          <div><dt>目标 ID</dt><dd>${escapeHtml(receipt.targetId || "-")}</dd></div>
+          <div><dt>回执 ID</dt><dd>${escapeHtml(receipt.id)}</dd></div>
+          <div><dt>记录时间</dt><dd>${escapeHtml(formatDateTime(receipt.createdAt))}</dd></div>
+          <div><dt>链接</dt><dd>${escapeHtml(receipt.url)}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法本机链接复制审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    .stats span { padding: 8px 10px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; font-weight: 700; }
+    .receipt { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .receipt h2 { margin: 0 0 8px; font-size: 18px; }
+    .receipt p { margin: 0 0 12px; color: #69594c; line-height: 1.6; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Local Link Copy Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法本机链接复制审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条最近链接复制回执。${escapeHtml(audit.boundary)}</p>
+    <div class="stats">${targetRows || "<span>暂无目标</span>"}${statusRows || ""}</div>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatLocalLinkCopyTarget(targetType) {
+    return {
+      "share-link": "本机分享链接",
+      "remote-share": "远端分享链接",
+      report: "站内报告链接",
+      history: "学习档案链接",
+      artwork: "作品集链接",
+      "report-series": "报告趋势提示"
+    }[targetType] || "本机链接";
+  }
+
+  function formatLocalLinkCopyStatus(status) {
+    return {
+      clipboard: "剪贴板成功",
+      "route-fallback": "地址栏降级",
+      manual: "手动复制"
+    }[status] || "复制回执";
+  }
+
   function getHistoryRecordCounts(records = {}) {
     return {
       practice: Array.isArray(records.practice)
@@ -17306,6 +17503,8 @@
     getHistoryBatchReceipts,
     getHistoryBatchReceiptAudit,
     getHistoryBatchReceiptAuditExport,
+    getLocalLinkCopyAudit,
+    getLocalLinkCopyAuditExport,
     getHistoryRepositoryRemoteConfig,
     getHistoryRepositoryConflicts,
     getHistoryRepositoryPackage,
@@ -17358,6 +17557,7 @@
     deleteHistoryTrashEntry,
     downloadHistoryRecords,
     downloadHistoryBatchReceiptAudit,
+    downloadLocalLinkCopyAudit,
     downloadHistoryRepository,
     downloadHistoryRepositoryReceiptAudit,
     downloadPlanRepositoryReceiptAudit,
@@ -17383,6 +17583,7 @@
     importReportRepositoryPackage,
     importArtworkRepositoryPackage,
     resolveArtworkRepositoryConflict,
+    recordLocalLinkCopyReceipt,
     checkRemotePlanRepository,
     checkRemoteHistoryRepository,
     checkRemoteReportRepository,

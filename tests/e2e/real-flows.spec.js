@@ -947,8 +947,12 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.locator("#reviewCopyShareLink").click();
   await expect(page.locator("#noticeState")).toContainText(/已复制本机分享链接|写入地址栏/);
+  await expect(page.locator("#localLinkCopyAuditStatus")).toContainText("最近");
+  await expect(page.locator("#localLinkCopyAuditList")).toContainText("本机分享链接");
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.shareService.records[0].copyCount).toBe(1);
+  expect(learningState.localLinkCopyReceipts[0].targetType).toBe("share-link");
+  expect(learningState.localLinkCopyReceipts[0].url).toContain(`share=${shareRecordId}`);
 
   await page.goto(`/?share=${shareRecordId}`, { waitUntil: "domcontentloaded" });
   await expect(page.locator("#historyDetail")).toBeVisible();
@@ -1098,6 +1102,22 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#reportStats")).toContainText("作品1幅");
   await expect(page.locator("#reportLatest")).toContainText("基础评分证据");
   await expect(page.locator("#reportLatest")).toContainText("路径贴合");
+  await page.locator("#reportDetailCopyLink").click();
+  await expect(page.locator("#noticeState")).toContainText(/已复制这份站内报告的直达链接|写入地址栏/);
+  await expect(page.locator("#localLinkCopyAuditList")).toContainText("站内报告链接");
+  learningState = await readJsonLocalStorage(page, LEARNING_KEY);
+  expect(learningState.localLinkCopyReceipts[0].targetType).toBe("report");
+  expect(learningState.localLinkCopyReceipts[0].url).toContain(`report=${learningState.reports[0].id}`);
+  const localLinkCopyAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#localLinkCopyAuditExport").click();
+  const localLinkCopyAuditDownload = await localLinkCopyAuditDownloadPromise;
+  expect(localLinkCopyAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-local-link-copy-audit-.*\.html$/);
+  const localLinkCopyAuditPath = await localLinkCopyAuditDownload.path();
+  const localLinkCopyAuditHtml = fs.readFileSync(localLinkCopyAuditPath, "utf8");
+  expect(localLinkCopyAuditHtml).toContain("MR 书法本机链接复制审计");
+  expect(localLinkCopyAuditHtml).toContain("站内报告链接");
+  expect(localLinkCopyAuditHtml).toContain("本机分享链接");
+  expect(localLinkCopyAuditHtml).toContain("审计摘要");
 
   await page.locator("#reportTeacherReviewerInput").fill("王老师");
   await page.locator("#reportTeacherReviewRoleInput").selectOption("local-reviewer");

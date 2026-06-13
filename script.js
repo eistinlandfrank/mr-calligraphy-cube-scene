@@ -819,6 +819,9 @@ const els = {
   learningActionAuditStatus: document.getElementById("learningActionAuditStatus"),
   learningActionAuditList: document.getElementById("learningActionAuditList"),
   learningActionAuditExport: document.getElementById("learningActionAuditExport"),
+  localLinkCopyAuditStatus: document.getElementById("localLinkCopyAuditStatus"),
+  localLinkCopyAuditList: document.getElementById("localLinkCopyAuditList"),
+  localLinkCopyAuditExport: document.getElementById("localLinkCopyAuditExport"),
   glyphValue: document.getElementById("practiceGlyphGuide"),
   practiceCanvas: document.getElementById("practiceCanvas"),
   practiceUndo: document.getElementById("practiceUndo"),
@@ -3994,6 +3997,7 @@ function bindLearningControls() {
     });
   });
   els.learningActionAuditExport?.addEventListener("click", downloadLearningActionAudit);
+  els.localLinkCopyAuditExport?.addEventListener("click", downloadLocalLinkCopyAudit);
 }
 
 function bindTaskControls() {
@@ -4394,6 +4398,7 @@ function renderLearningStateSummary() {
   }
   renderServiceBoundaryPanel(stats);
   renderLearningActionAudit();
+  renderLocalLinkCopyAudit();
 }
 
 function renderServiceBoundaryPanel(stats = window.MRAppState?.getStats?.()) {
@@ -4493,6 +4498,89 @@ function downloadLearningActionAudit() {
   }
   showNotice(result.message || "已导出学习动作审计。");
   renderLearningActionAudit();
+}
+
+function renderLocalLinkCopyAudit() {
+  if (!els.localLinkCopyAuditList || !els.localLinkCopyAuditStatus) {
+    return;
+  }
+  const audit = window.MRAppState?.getLocalLinkCopyAudit?.({ limit: 5 });
+  const receipts = Array.isArray(audit?.receipts) ? audit.receipts : [];
+  els.localLinkCopyAuditStatus.textContent = audit?.total
+    ? `最近 ${receipts.length} / ${audit.total} 条链接`
+    : "暂无复制回执";
+  if (els.localLinkCopyAuditExport) {
+    els.localLinkCopyAuditExport.disabled = !audit?.total;
+  }
+
+  els.localLinkCopyAuditList.replaceChildren();
+  if (!receipts.length) {
+    const item = document.createElement("li");
+    const label = document.createElement("strong");
+    label.textContent = "等待复制链接";
+    const detail = document.createElement("span");
+    detail.textContent = "复制报告、档案、作品或分享链接后，会在这里留下本机回执。";
+    item.append(label, detail);
+    els.localLinkCopyAuditList.appendChild(item);
+    return;
+  }
+
+  receipts.forEach((receipt) => {
+    const item = document.createElement("li");
+    const label = document.createElement("strong");
+    label.textContent = receipt.title || receipt.targetLabel || "本机链接";
+    const detail = document.createElement("span");
+    detail.textContent = `${formatLocalLinkCopyTargetLabel(receipt.targetType)} / ${formatLocalLinkCopyStatusLabel(receipt.copyStatus)} / ${formatHistoryTime(receipt.createdAt)}`;
+    item.append(label, detail);
+    els.localLinkCopyAuditList.appendChild(item);
+  });
+}
+
+function downloadLocalLinkCopyAudit() {
+  const result = window.MRAppState?.downloadLocalLinkCopyAudit?.({ limit: 50 });
+  if (!result?.ok) {
+    showNotice(result?.message || "当前还没有可导出的本机链接复制审计。");
+    return;
+  }
+  showNotice(result.message || "已导出本机链接复制审计。");
+  renderLocalLinkCopyAudit();
+}
+
+function recordLocalLinkCopyReceipt({ targetType, targetId = "", title = "", url = "", ok = false, fallbackStatus = "route-fallback" }) {
+  const copyStatus = ok ? "clipboard" : fallbackStatus;
+  const result = window.MRAppState?.recordLocalLinkCopyReceipt?.({
+    targetType,
+    targetId,
+    title,
+    url,
+    copyStatus,
+    copySucceeded: ok,
+    message: ok
+      ? `已复制${formatLocalLinkCopyTargetLabel(targetType)}。`
+      : `未能写入剪贴板，已提供${formatLocalLinkCopyTargetLabel(targetType)}的降级复制方式。`
+  });
+  renderLocalLinkCopyAudit();
+  renderLearningActionAudit();
+  return result;
+}
+
+function formatLocalLinkCopyTargetLabel(type) {
+  return {
+    "share-link": "本机分享链接",
+    "remote-share": "远端分享链接",
+    report: "站内报告链接",
+    history: "学习档案链接",
+    artwork: "作品集链接",
+    "report-series": "报告趋势提示"
+  }[type] || "本机链接";
+}
+
+function formatLocalLinkCopyStatusLabel(status) {
+  return {
+    clipboard: "剪贴板",
+    "route-fallback": "地址栏",
+    manual: "手动"
+  }[status] || "回执";
 }
 
 function formatLearningEventTypeLabel(type) {
@@ -5428,6 +5516,13 @@ function copyActiveArtworkShareLink(shareId = activeArtworkShareId) {
   setArtworkShareRoute(record.id);
   copyText(url).then((ok) => {
     const result = window.MRAppState?.markArtworkShareLinkCopied?.(record.id);
+    recordLocalLinkCopyReceipt({
+      targetType: "share-link",
+      targetId: record.id,
+      title: record.artworkTitle || record.title || "本机分享链接",
+      url,
+      ok
+    });
     showNotice(ok
       ? `已复制本机分享链接：${record.artworkTitle || record.title}`
       : result?.message || "已把本机分享链接写入地址栏，可手动复制。");
@@ -5527,9 +5622,18 @@ function copyRemoteShareUrl() {
     return;
   }
   copyText(publicUrl).then((ok) => {
+    recordLocalLinkCopyReceipt({
+      targetType: "remote-share",
+      targetId: status?.lastRemoteShareId || status?.lastRemotePackageId || "",
+      title: "远端分享链接",
+      url: publicUrl,
+      ok,
+      fallbackStatus: "manual"
+    });
     showNotice(ok
       ? "已复制远端分享链接。"
       : `远端分享链接：${publicUrl}`);
+    renderLearningState();
   });
 }
 
@@ -9679,6 +9783,13 @@ function copyHistoryDetailLink() {
   setHistoryDetailRoute(detail.id);
   copyText(url)
     .then((ok) => {
+      recordLocalLinkCopyReceipt({
+        targetType: "history",
+        targetId: detail.id,
+        title: detail.title || detail.label || "学习档案链接",
+        url,
+        ok
+      });
       showNotice(ok
         ? "已复制这条学习档案的直达链接。"
         : "已把这条学习档案的直达链接写入地址栏，可手动复制。");
@@ -9807,6 +9918,13 @@ function copyReportDetailLink() {
   setReportDetailRoute(detail.id);
   copyText(url)
     .then((ok) => {
+      recordLocalLinkCopyReceipt({
+        targetType: "report",
+        targetId: detail.id,
+        title: detail.title || "站内报告链接",
+        url,
+        ok
+      });
       showNotice(ok
         ? "已复制这份站内报告的直达链接。"
         : "已把这份站内报告的直达链接写入地址栏，可手动复制。");
@@ -10158,6 +10276,13 @@ function copyArtworkLink(artworkId) {
   setArtworkDetailRoute(detail.id);
   copyText(url)
     .then((ok) => {
+      recordLocalLinkCopyReceipt({
+        targetType: "artwork",
+        targetId: detail.id,
+        title: detail.title || "作品集链接",
+        url,
+        ok
+      });
       showNotice(ok
         ? "已复制这幅作品的作品集直达链接。"
         : "已把这幅作品的直达链接写入地址栏，可手动复制。");

@@ -10456,3 +10456,52 @@
 提交：
 
 - 中文 commit message：`新增学习档案批量回执审计`
+
+### 2026-06-13：新增本机链接复制审计
+
+功能名：前台本机链接复制回执与 HTML 导出。
+
+开发原因：
+
+- 前台有多处“复制链接”按钮，包括本机分享、远端分享、站内报告、学习档案和作品集直达链接。
+- 这些按钮此前主要依赖剪贴板结果和瞬时提示，缺少统一的本机复制回执；剪贴板失败时也难以确认是否只是降级复制。
+
+完成内容：
+
+- 新增 `mr-calligraphy-local-link-copy-audit-v1` 审计包。
+- 新增 `localLinkCopyReceipts` 本机回执队列，保存最近复制动作。
+- `MRAppState.recordLocalLinkCopyReceipt()` 写入链接类型、目标 ID、标题、URL、复制状态和时间。
+- `MRAppState.getLocalLinkCopyAudit()` 返回类型统计、状态统计、回执列表和 `auditDigest`。
+- `MRAppState.getLocalLinkCopyAuditExport()` 生成 HTML 审计页。
+- `MRAppState.downloadLocalLinkCopyAudit()` 下载 `mr-calligraphy-local-link-copy-audit-*.html`。
+- 前台新增“本机链接审计”面板和“导出链接”按钮。
+- 本机分享、远端分享、报告、档案和作品集复制动作接入同一审计。
+- Smoke、状态层脚本和 Playwright 均新增覆盖。
+
+验收方式：
+
+- 在前台复制本机分享链接或站内报告链接。
+- “本机链接审计”面板应显示最近复制回执。
+- 点击“导出链接”应下载 HTML，文件包含“MR 书法本机链接复制审计”、链接类型、URL 和审计摘要。
+- 剪贴板不可用时，回执应记录为地址栏降级或手动复制，而不是伪造剪贴板成功。
+
+真实边界：
+
+- 这是浏览器本机 localStorage 复制回执，不是公网访问日志、账号审计、跨设备分享统计、教师端课堂日志或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增本机链接复制审计`
