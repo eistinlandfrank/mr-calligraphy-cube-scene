@@ -1134,6 +1134,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.planReminderService.receipts[0].itemId).toBe(reminderSetup.itemId);
   expect(learningState.planReminderService.receipts[0].receiptDigest).toMatch(/^[a-f0-9]{64}$/);
   expect(learningState.planReminderService.receipts[0].boundary).toContain("不是云端推送日志");
+  const planReminderAuditState = await page.evaluate((planId) => window.MRAppState.getPlanReminderAudit(planId, { limit: 5 }), reminderSetup.planId);
+  expect(planReminderAuditState.verifiedCount).toBe(1);
+  expect(planReminderAuditState.failedCount).toBe(0);
+  expect(planReminderAuditState.receipts[0].verificationStatus).toBe("verified");
+  expect(planReminderAuditState.receipts[0].verificationExpectedDigest).toBe(learningState.planReminderService.receipts[0].receiptDigest);
+  await expect(page.locator("#planReminderAuditStatus")).toContainText("本机校验通过 1 条");
+  await expect(page.locator("#planReminderAuditList")).toContainText("本机校验通过");
   const planReminderAuditDownloadPromise = page.waitForEvent("download");
   await page.locator("#planReminderAuditExport").click();
   const planReminderAuditDownload = await planReminderAuditDownloadPromise;
@@ -1144,6 +1151,27 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(planReminderAuditHtml).toContain("浏览器 Notification");
   expect(planReminderAuditHtml).toContain("不是云端推送日志");
   expect(planReminderAuditHtml).toContain(learningState.planReminderService.receipts[0].receiptDigest);
+  expect(planReminderAuditHtml).toContain("本机校验通过");
+  expect(planReminderAuditHtml).toContain("重算摘要");
+
+  const originalPlanReminderState = await readJsonLocalStorage(page, LEARNING_KEY);
+  await page.evaluate(({ storageKey, planId }) => {
+    const state = JSON.parse(window.localStorage.getItem(storageKey) || "{}");
+    const receipt = (state.planReminderService?.receipts || []).find((item) => item.planId === planId);
+    if (receipt) {
+      receipt.deliveryStatus = "failed";
+    }
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, planId: reminderSetup.planId });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  const tamperedPlanReminderAudit = await page.evaluate((planId) => window.MRAppState.getPlanReminderAudit(planId, { limit: 5 }), reminderSetup.planId);
+  expect(tamperedPlanReminderAudit.failedCount).toBe(1);
+  expect(tamperedPlanReminderAudit.receipts[0].verificationStatus).toBe("digest-mismatch");
+  expect(tamperedPlanReminderAudit.receipts[0].verificationExpectedDigest).not.toBe(tamperedPlanReminderAudit.receipts[0].receiptDigest);
+  await page.evaluate(({ storageKey, state }) => {
+    window.localStorage.setItem(storageKey, JSON.stringify(state));
+  }, { storageKey: LEARNING_KEY, state: originalPlanReminderState });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
 
   await page.getByRole("button", { name: /切换到步骤 7/ }).click();
   await page.locator(".history-filters").getByRole("button", { name: "全部" }).click();

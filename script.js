@@ -8513,10 +8513,18 @@ function renderPlanReminderAudit(plan) {
     meta.textContent = `${formatHistoryTime(receipt.dispatchedAt)} · ${formatPlanReminderDelivery(receipt.deliveryStatus)} · ${formatPlanReminderStatus(receipt.reminderStatus)}`;
     const detail = document.createElement("small");
     const digest = receipt.receiptDigest ? `回执 ${receipt.receiptDigest.slice(0, 12)}` : "回执摘要未生成";
-    detail.textContent = `${digest} · 仅证明当前页面发起本机提醒请求`;
+    detail.textContent = `${digest} · ${formatPlanReminderReceiptVerificationStatus(receipt.verificationStatus)} · 仅证明当前页面发起本机提醒请求`;
     item.append(title, meta, detail);
     els.planReminderAuditList.appendChild(item);
   });
+}
+
+function formatPlanReminderReceiptVerificationStatus(status) {
+  return {
+    verified: "本机校验通过",
+    "digest-mismatch": "摘要不匹配",
+    legacy: "旧记录未校验"
+  }[status] || "未校验";
 }
 
 function renderPlanExportAudit(plan) {
