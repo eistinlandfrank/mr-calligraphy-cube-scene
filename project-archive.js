@@ -16,6 +16,8 @@
   const PROJECT_IMPACT_EXPORT_AUDIT_KIND = "mr-calligraphy-project-impact-export-audit-v1";
   const PROJECT_IMPACT_EXPORT_MAX_RECEIPTS = 24;
   const PROJECT_IMPACT_EXPORT_BOUNDARY = "项目档案差异报告导出回执记录当前浏览器生成恢复前审阅 HTML 的时间、摘要、风险和选择范围；它不是恢复动作证明，也不能替代多人合并审计或服务端不可篡改日志。";
+  const IMPORT_PREVIEW_EXPORT_KIND = "mr-calligraphy-project-import-preview-v1";
+  const IMPORT_PREVIEW_EXPORT_BOUNDARY = "项目档案导入预览 JSON 只记录当前浏览器生成的恢复前审阅数据和勾选方案；它不会恢复或覆盖本机数据，也不能替代服务端审批、多人合并或不可篡改审计。";
   const PROJECT_REPOSITORY_REMOTE_KEY = "mr-calligraphy-project-repository-remote-v1";
   const PROJECT_REPOSITORY_PACKAGE_KIND = "mr-calligraphy-project-repository-package-v1";
   const PROJECT_REPOSITORY_EXPORT_AUDIT_KEY = "mr-calligraphy-project-repository-export-audit-v1";
@@ -5056,6 +5058,73 @@
     };
   }
 
+  function getImportPreviewJsonExport(preview, options = {}) {
+    if (!preview || typeof preview !== "object" || !preview.summary || !Array.isArray(preview.storage)) {
+      return {
+        ok: false,
+        message: "还没有可导出的项目档案导入预览 JSON。请先选择并校验项目档案。"
+      };
+    }
+    const exportedAt = options.exportedAt || new Date().toISOString();
+    const restorePlan = createImpactRestorePlan(preview, options.restoreOptions || null);
+    const selectionPayload = createImpactRestorePlanDigestPayload(restorePlan);
+    const previewDigestPayload = createImpactPreviewDigestPayload(preview, selectionPayload);
+    const previewDigest = sha256StableJson(previewDigestPayload);
+    const selectionDigest = sha256StableJson(selectionPayload);
+    const sourceType = preview.remoteRepository?.sourceType || (preview.remoteRepository ? "remote-project-repository" : "project-archive-file");
+    const payload = {
+      kind: IMPORT_PREVIEW_EXPORT_KIND,
+      version: 1,
+      exportedAt,
+      sourceType,
+      archiveExportedAt: normalizeIsoDate(preview.exportedAt),
+      archiveSource: String(preview.source || "").slice(0, 420),
+      remoteRepository: preview.remoteRepository || null,
+      projectSchema: preview.projectSchema || null,
+      schemaSummary: preview.schemaSummary || {},
+      summary: preview.summary || {},
+      riskSummary: preview.riskSummary || {},
+      restoreSelection: selectionPayload,
+      previewDigest,
+      selectionDigest,
+      digestAlgorithm: "sha256-stable-json",
+      boundary: IMPORT_PREVIEW_EXPORT_BOUNDARY,
+      preview: cloneJsonValue(preview)
+    };
+    payload.exportDigest = sha256StableJson(payload);
+    const filename = options.filename || `mr-calligraphy-import-preview-${formatTimestamp(new Date(exportedAt))}.json`;
+    const json = JSON.stringify(payload, null, 2);
+    return {
+      ok: true,
+      filename,
+      mimeType: "application/json;charset=utf-8",
+      json,
+      payload,
+      byteLength: utf8Bytes(json).length,
+      previewDigest,
+      selectionDigest,
+      exportDigest: payload.exportDigest,
+      message: `已生成项目档案导入预览 JSON：${filename}。`
+    };
+  }
+
+  function downloadImportPreviewJson(preview, options = {}) {
+    const result = getImportPreviewJsonExport(preview, options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadJsonPayload(result.json, result.filename);
+    return {
+      ok: true,
+      filename: result.filename,
+      byteLength: result.byteLength,
+      previewDigest: result.previewDigest,
+      selectionDigest: result.selectionDigest,
+      exportDigest: result.exportDigest,
+      message: `已下载项目档案导入预览 JSON：${result.filename}。`
+    };
+  }
+
   function createImportImpactReportHtml(preview, options = {}) {
     const exportedAt = options.exportedAt || new Date().toISOString();
     const summary = preview.summary || {};
@@ -5363,6 +5432,7 @@
     const selectionStatus = document.getElementById("projectImportSelectionStatus");
     const confirmButton = document.getElementById("projectImportConfirm");
     const impactButton = document.getElementById("projectImportExportImpact");
+    const previewJsonButton = document.getElementById("projectImportExportPreviewJson");
     const cancelButton = document.getElementById("projectImportCancel");
     const auditStatus = document.getElementById("projectAuditStatus");
     const auditList = document.getElementById("projectAuditList");
@@ -5411,6 +5481,7 @@
       if (importFile) importFile.disabled = isBusy;
       if (exportAuditButton) exportAuditButton.disabled = isBusy || !getProjectArchiveExportAudit({ limit: 1 }).total;
       if (impactButton) impactButton.disabled = isBusy || !pendingPreview;
+      if (previewJsonButton) previewJsonButton.disabled = isBusy || !pendingPreview;
       if (auditExportButton) auditExportButton.disabled = isBusy || !getRestoreAuditLog(1).records.length;
       if (restoreAuditExportAuditButton) restoreAuditExportAuditButton.disabled = isBusy || !getProjectRestoreAuditExportAudit({ limit: 1 }).total;
       if (impactExportAuditButton) impactExportAuditButton.disabled = isBusy || !getProjectImpactExportAudit({ limit: 1 }).total;
@@ -5576,6 +5647,9 @@
       }
       if (impactButton) {
         impactButton.disabled = isBusy || !pendingPreview;
+      }
+      if (previewJsonButton) {
+        previewJsonButton.disabled = isBusy || !pendingPreview;
       }
     };
 
@@ -6317,6 +6391,17 @@
       renderProjectImpactExportAudit();
     });
 
+    previewJsonButton?.addEventListener("click", () => {
+      if (!pendingPreview) {
+        setStatus("请先选择项目档案并生成导入预览。", "error");
+        return;
+      }
+      const result = downloadImportPreviewJson(pendingPreview, {
+        restoreOptions: getSelectedRestoreOptions()
+      });
+      setStatus(result.message || "项目档案导入预览 JSON 导出失败。", result.ok ? "success" : "error");
+    });
+
     auditExportButton?.addEventListener("click", () => {
       const result = downloadRestoreAuditLog();
       setStatus(result.message || "项目档案恢复审计导出失败。", result.ok ? "success" : "error");
@@ -6526,6 +6611,8 @@
     pullProjectRepositoryFromRemote,
     getImportImpactReport,
     downloadImportImpactReport,
+    getImportPreviewJsonExport,
+    downloadImportPreviewJson,
     getRestoreAuditLog,
     getRestoreAuditExport,
     downloadRestoreAuditLog,

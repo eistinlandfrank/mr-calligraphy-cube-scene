@@ -6105,3 +6105,41 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增仓库包文件导入预览`
+
+## 147. 2026-06-13 新增项目档案导入预览 JSON 导出
+
+本次补齐恢复前审阅的机器可读导出。此前导入预览可在页面查看，也能导出 HTML 差异报告；现在可以直接下载 JSON，保留来源、风险、字段/模型差异和当前恢复勾选方案。
+
+完成内容：
+
+- 主后台恢复预览操作区新增“导出预览 JSON”按钮。
+- 新增 `getImportPreviewJsonExport()` 和 `downloadImportPreviewJson()`。
+- 导出文件为 `mr-calligraphy-import-preview-*.json`。
+- JSON kind 为 `mr-calligraphy-project-import-preview-v1`，包含来源类型、远端/本机仓库包来源、schema 摘要、风险摘要、恢复选择、previewDigest、selectionDigest 和 exportDigest。
+- 无导入预览时按钮禁用，有预览后可下载。
+- Playwright 主后台用例验证本机项目仓库包预览后下载 JSON，并校验来源、packageId、Workspace、包摘要、恢复选择和摘要字段。
+
+真实化说明：
+
+- 数据来源：当前导入预览对象和页面恢复勾选状态。
+- 执行动作：下载 JSON 证据包，不恢复、不覆盖、不写入项目状态。
+- 成功反馈：主后台显示已下载项目档案导入预览 JSON。
+- 失败反馈：没有预览时 API 返回明确错误，按钮保持禁用。
+
+仍待补：
+
+- 这是本机恢复前审阅 JSON，不是服务端审批单、多人合并请求、账号签名、生产证书链或不可篡改审计。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增导入预览JSON导出`

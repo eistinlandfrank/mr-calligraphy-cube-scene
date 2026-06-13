@@ -5622,3 +5622,41 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增仓库包文件导入预览`
+
+## 147. 2026-06-13 新增项目档案导入预览 JSON 导出
+
+本次把恢复前预览从只可在页面查看 / 导出 HTML 差异报告，补成可机器读取的 JSON 证据包。用户在导入项目档案、导入项目仓库包文件或拉取远端项目仓库版本后，可以导出当前预览、风险、差异和恢复勾选方案。
+
+完成内容：
+
+- 主后台恢复预览操作区新增“导出预览 JSON”按钮。
+- 新增 `getImportPreviewJsonExport()` 和 `downloadImportPreviewJson()`。
+- 导出的 JSON 使用 `mr-calligraphy-project-import-preview-v1`，包含来源类型、档案时间、远端/本机仓库包来源、项目 schema 摘要、风险摘要、恢复选择、previewDigest、selectionDigest 和 exportDigest。
+- JSON 预览导出复用差异报告的选择摘要逻辑，当前勾选的字段/模型恢复方案会进入 `restoreSelection`。
+- 按钮无预览时禁用，有预览后才能下载，不会执行恢复或覆盖本机数据。
+- Playwright 主后台用例验证本机项目仓库包预览后真实下载 JSON，校验 kind、sourceType、packageId、Workspace、包摘要、恢复选择数量和三类摘要。
+
+真实化说明：
+
+- 数据来源：当前 `createArchivePreview()` 生成的导入预览和页面勾选的恢复选择。
+- 执行动作：生成并下载 `mr-calligraphy-import-preview-*.json`，不写入本机项目状态。
+- 成功反馈：主后台状态显示已下载预览 JSON；文件内包含 previewDigest、selectionDigest 和 exportDigest。
+- 失败反馈：未生成导入预览时按钮禁用，直接调用 API 会返回“还没有可导出的项目档案导入预览 JSON”。
+
+仍待补：
+
+- 这是本机恢复前审阅 JSON，不是服务端审批单、多人合并请求、账号签名、生产证书链或不可篡改审计。
+
+验收：
+
+- `node --check project-archive.js`
+- `node --check scripts/smoke-test.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "main admin publishes a local draft that the front page reads"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增导入预览JSON导出`

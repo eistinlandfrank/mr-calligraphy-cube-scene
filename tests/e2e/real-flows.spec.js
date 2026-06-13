@@ -4325,6 +4325,24 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   await expect(page.locator("#projectImportPreviewSource")).toContainText("本机仓库包导入只生成恢复预览");
   await expect(page.locator("#projectImportPreviewList")).toContainText("主场景布局");
 
+  const projectImportPreviewJsonDownloadPromise = page.waitForEvent("download");
+  await page.locator("#projectImportExportPreviewJson").click();
+  const projectImportPreviewJsonDownload = await projectImportPreviewJsonDownloadPromise;
+  expect(projectImportPreviewJsonDownload.suggestedFilename()).toMatch(/^mr-calligraphy-import-preview-.*\.json$/);
+  const projectImportPreviewJsonPath = await projectImportPreviewJsonDownload.path();
+  const projectImportPreviewJson = JSON.parse(fs.readFileSync(projectImportPreviewJsonPath, "utf8"));
+  expect(projectImportPreviewJson.kind).toBe("mr-calligraphy-project-import-preview-v1");
+  expect(projectImportPreviewJson.sourceType).toBe("project-repository-file");
+  expect(projectImportPreviewJson.remoteRepository.packageId).toBe(projectRepositoryPackageJson.packageId);
+  expect(projectImportPreviewJson.remoteRepository.workspaceId).toBe("local-browser");
+  expect(projectImportPreviewJson.remoteRepository.packageDigest).toBe(projectRepositoryPackageJson.packageDigest);
+  expect(projectImportPreviewJson.previewDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImportPreviewJson.selectionDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImportPreviewJson.exportDigest).toMatch(/^[a-f0-9]{64}$/);
+  expect(projectImportPreviewJson.restoreSelection.selectedCount).toBeGreaterThan(0);
+  expect(projectImportPreviewJson.boundary).toContain("不会恢复或覆盖本机数据");
+  await expect(page.locator("#projectArchiveStatus")).toContainText("已下载项目档案导入预览 JSON");
+
   const tamperedProjectRepositoryPackageMessage = await page.evaluate(async ({ repositoryPackage }) => {
     const tampered = JSON.parse(JSON.stringify(repositoryPackage));
     tampered.summary.sceneCount = Number(tampered.summary.sceneCount || 0) + 1;
