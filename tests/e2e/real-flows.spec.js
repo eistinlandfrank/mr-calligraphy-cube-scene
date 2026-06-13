@@ -697,6 +697,9 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.lectureService.voiceName).toBe("E2E 中文语音");
   expect(learningState.lectureService.spokenStepCount).toBeGreaterThanOrEqual(5);
   expect(learningState.lectureService.status).toBe("complete");
+  await expect(page.locator("#learningActionAuditStatus")).toContainText("最近");
+  await expect(page.locator("#learningActionAuditList")).toContainText("讲解");
+  await expect(page.locator("#learningActionAuditExport")).toBeEnabled();
 
   await page.locator("#actionList .action-button").filter({ hasText: /^开始临摹$/ }).click();
   await expect(page.locator("#sceneTitle")).toContainText("真实临摹");
@@ -704,6 +707,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toBeVisible();
   await expect(page.locator("#actionDetail")).toContainText("本机练习会话");
   await expect(page.locator("#actionDetail")).toContainText("会话 ID");
+  await expect(page.locator("#learningActionAuditList")).toContainText("开始练习");
 
   await page.locator("#actionList .action-button").filter({ hasText: /^对比模式$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("对比模式");
@@ -752,6 +756,16 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(learningState.scoreService.lastEvidenceSummary).toContain("路径贴合");
   expect(learningState.scoreService.lastEvidenceSummary).toContain("压感");
   expect(learningState.stageRecords.map((record) => record.stage)).toEqual(expect.arrayContaining(["strokeBreakdown", "creation"]));
+  await expect(page.locator("#learningActionAuditList")).toContainText("保存作品");
+  const learningAuditDownloadPromise = page.waitForEvent("download");
+  await page.locator("#learningActionAuditExport").click();
+  const learningAuditDownload = await learningAuditDownloadPromise;
+  expect(learningAuditDownload.suggestedFilename()).toMatch(/^mr-calligraphy-learning-action-audit-.*\.html$/);
+  const learningAuditPath = await learningAuditDownload.path();
+  const learningAuditHtml = fs.readFileSync(learningAuditPath, "utf8");
+  expect(learningAuditHtml).toContain("MR 书法学习动作审计");
+  expect(learningAuditHtml).toContain("保存作品");
+  expect(learningAuditHtml).toContain("审计摘要");
   await expect(page.locator("#reviewEvidenceMap")).toContainText("路径误差热力");
   await expect(page.locator("#reviewEvidenceMap")).toContainText("路径贴合");
   await expect(page.locator("#reviewEvidenceMap")).toContainText("最高误差");

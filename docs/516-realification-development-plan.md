@@ -10361,3 +10361,50 @@
 提交：
 
 - 中文 commit message：`新增动态控件处理器覆盖验收`
+
+### 2026-06-13：新增学习动作审计面板
+
+功能名：前台本机学习动作审计与 HTML 导出。
+
+开发原因：
+
+- 用户反馈前端按钮像假的，除处理器覆盖外，还需要让点击后的真实本机动作可回看。
+- 状态层已经通过 `events` 队列记录学习模式、任务、讲解、练习、作品、报告和计划等动作，但前台缺少直观审计面板和导出能力。
+
+完成内容：
+
+- 新增 `LEARNING_EVENT_AUDIT_KIND = "mr-calligraphy-learning-event-audit-v1"` 和本机审计边界说明。
+- `MRAppState.getLearningEventAudit({ limit })` 会读取本机 `events`，生成事件总数、导出数量、类型统计、事件列表和 `auditDigest`。
+- `MRAppState.getLearningEventAuditExport()` 会生成可离线打开的 HTML 审计页。
+- `MRAppState.downloadLearningEventAudit()` 会下载 `mr-calligraphy-learning-action-audit-*.html`。
+- 前台新增 `learningActionAudit` 面板，显示最近动作数量和最近 5 条动作。
+- 前台新增 `learningActionAuditExport` 真实导出按钮，无事件时禁用。
+- Smoke 首页标记检查新增审计面板、状态、列表和导出按钮。
+- `learning-state-check.js` 验证审计包 kind、事件内容、边界、摘要和 HTML。
+- Playwright 前台真实练习用例验证点击讲解、开始练习、保存作品后审计列表更新，并验证 HTML 下载包含动作与审计摘要。
+
+验收方式：
+
+- 打开前台，点击“播放讲解 / 开始临摹 / 保存作品”等动作，动作审计面板应显示最近动作。
+- 有动作记录时“导出审计”可用；下载 HTML 后应包含“MR 书法学习动作审计”、动作名称、事件 ID 和审计摘要。
+- 刷新页面后，审计面板仍可从 localStorage 读取最近事件。
+
+真实边界：
+
+- 这是浏览器本机 localStorage 动作审计，不是服务端账号日志、教师课堂审计、跨设备同步审计或不可篡改证据链。
+
+验收命令：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习动作审计面板`

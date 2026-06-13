@@ -4685,3 +4685,45 @@ git diff --check
 提交：
 
 - 中文 commit message：`新增动态控件处理器覆盖验收`
+
+## 126. 2026-06-13 新增学习动作审计面板
+
+本次把前台学习动作从“点击后显示反馈”推进到“点击后可回看、可导出证据”。学习路径动作已经写入本机 `events` 队列，但用户界面此前没有直接展示这条证据链，容易误以为按钮只是临时提示。
+
+完成内容：
+
+- 状态层新增 `getLearningEventAudit()`，按最近动作生成 `mr-calligraphy-learning-event-audit-v1` 审计包。
+- 审计包包含事件总数、导出数量、类型统计、事件 ID、事件类型、时间、边界说明和 64 位 `auditDigest`。
+- 状态层新增 `getLearningEventAuditExport()` 和 `downloadLearningEventAudit()`，可下载离线 HTML 审计页。
+- 前台 `action-zone` 新增“本机动作审计”面板，展示最近 5 条动作。
+- 新增 `learningActionAuditExport` 按钮，存在本机事件时才启用。
+- 面板会在学习状态刷新、模式切换、任务切换和动作执行后自动更新。
+- Smoke 页面标记检查新增审计面板和导出按钮。
+- Node 状态层脚本验证审计包和 HTML 导出；Playwright 验证用户点击动作后列表和下载都真实可用。
+
+真实化说明：
+
+- 数据来源：`mr-calligraphy-learning-state-v1.events`。
+- 写入状态：沿用已有 `addEvent()`，动作包括学习模式、任务、讲解、练习、阶段、笔画、作品、报告、计划和远端分享。
+- 成功反馈：面板显示“最近 N / 总数”以及动作标题、类型、时间和事件 ID。
+- 失败反馈：无事件时导出按钮禁用，不生成空壳成功反馈。
+
+仍待补：
+
+- 该审计是浏览器本机队列，不是服务端账号日志、多人课堂审计、不可篡改审计链或跨设备同步日志。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习动作审计面板`

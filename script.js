@@ -815,6 +815,10 @@ const els = {
   lectureVoiceStatus: document.getElementById("lectureVoiceStatus"),
   lectureServiceSummary: document.getElementById("lectureServiceSummary"),
   lectureStepList: document.getElementById("lectureStepList"),
+  learningActionAudit: document.getElementById("learningActionAudit"),
+  learningActionAuditStatus: document.getElementById("learningActionAuditStatus"),
+  learningActionAuditList: document.getElementById("learningActionAuditList"),
+  learningActionAuditExport: document.getElementById("learningActionAuditExport"),
   glyphValue: document.getElementById("practiceGlyphGuide"),
   practiceCanvas: document.getElementById("practiceCanvas"),
   practiceUndo: document.getElementById("practiceUndo"),
@@ -3984,6 +3988,7 @@ function bindLearningControls() {
       loadScene(0);
     });
   });
+  els.learningActionAuditExport?.addEventListener("click", downloadLearningActionAudit);
 }
 
 function bindTaskControls() {
@@ -4382,6 +4387,7 @@ function renderLearningStateSummary() {
     els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.taskTitle} / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${stageLabel} / ${trainingLabel}模式`;
   }
   renderServiceBoundaryPanel(stats);
+  renderLearningActionAudit();
 }
 
 function renderServiceBoundaryPanel(stats = window.MRAppState?.getStats?.()) {
@@ -4434,6 +4440,75 @@ function renderServiceBoundaryPanel(stats = window.MRAppState?.getStats?.()) {
     }
   ];
   els.serviceBoundaryList.replaceChildren(...rows.map(createServiceBoundaryItem));
+}
+
+function renderLearningActionAudit() {
+  if (!els.learningActionAuditList || !els.learningActionAuditStatus) {
+    return;
+  }
+
+  const audit = window.MRAppState?.getLearningEventAudit?.({ limit: 5 });
+  const events = Array.isArray(audit?.events) ? audit.events : [];
+  els.learningActionAuditStatus.textContent = audit?.total
+    ? `最近 ${events.length} / ${audit.total} 条动作`
+    : "暂无动作记录";
+  if (els.learningActionAuditExport) {
+    els.learningActionAuditExport.disabled = !audit?.total;
+  }
+
+  els.learningActionAuditList.replaceChildren();
+  if (!events.length) {
+    const item = document.createElement("li");
+    const label = document.createElement("strong");
+    label.textContent = "等待学习动作";
+    const detail = document.createElement("span");
+    detail.textContent = "点击学习按钮后，会在这里保留本机事件记录。";
+    item.append(label, detail);
+    els.learningActionAuditList.appendChild(item);
+    return;
+  }
+
+  events.forEach((event) => {
+    const item = document.createElement("li");
+    const label = document.createElement("strong");
+    label.textContent = event.label || "学习动作";
+    const detail = document.createElement("span");
+    detail.textContent = `${formatLearningEventTypeLabel(event.type)} / ${formatHistoryTime(event.createdAt)} / ${event.id || "event"}`;
+    item.append(label, detail);
+    els.learningActionAuditList.appendChild(item);
+  });
+}
+
+function downloadLearningActionAudit() {
+  const result = window.MRAppState?.downloadLearningEventAudit?.({ limit: 50 });
+  if (!result?.ok) {
+    showNotice(result?.message || "当前还没有可导出的学习动作审计记录。");
+    return;
+  }
+  showNotice(result.message || "已导出学习动作审计。");
+  renderLearningActionAudit();
+}
+
+function formatLearningEventTypeLabel(type) {
+  return {
+    mode: "学习模式",
+    task: "学习任务",
+    copybook: "碑帖",
+    stage: "阶段",
+    lecture: "讲解",
+    practice: "练习",
+    "training-mode": "训练模式",
+    stroke: "笔画",
+    style: "风格",
+    "practice-score": "评分",
+    artwork: "作品",
+    report: "报告",
+    plan: "计划",
+    "share-remote": "远端分享",
+    "share-remote-check": "远端分享检查",
+    "share-remote-push": "远端分享发布",
+    "share-remote-revoke": "远端分享撤销"
+  }[type] || String(type || "学习动作");
 }
 
 function getServiceBoundaryRepositoryStates() {

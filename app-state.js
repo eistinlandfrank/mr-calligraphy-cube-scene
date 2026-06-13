@@ -13,6 +13,8 @@
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
   const LEARNING_PATH_BOUNDARY = "学习路径服务由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是云端课程编排、教师下发任务或跨设备学习进度。";
+  const LEARNING_EVENT_AUDIT_KIND = "mr-calligraphy-learning-event-audit-v1";
+  const LEARNING_EVENT_AUDIT_BOUNDARY = "学习动作审计来自当前浏览器本机 events 队列，记录学习模式、任务、讲解、练习、作品、报告、计划和同步动作；它不是云端行为日志、账号审计或不可篡改服务端证据链。";
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
   const DEFAULT_SCORE_ALGORITHM_VERSION = "local-heuristic-v2.2.0";
   const LECTURE_SERVICE_BOUNDARY = "本机讲解服务使用当前浏览器的 Web Speech 或文本计时推进；它不是云端 AI 音频、真人录音、视频流或按实时笔迹生成的动态讲解。";
@@ -5196,6 +5198,143 @@
     if (state.events.length > MAX_EVENTS) {
       state.events = state.events.slice(-MAX_EVENTS);
     }
+  }
+
+  function getLearningEventAudit(options = {}) {
+    const limit = normalizeInteger(options.limit, 24, 1, MAX_EVENTS);
+    const events = state.events.map(normalizeEvent).filter(Boolean);
+    const selectedEvents = events.slice(-limit).reverse();
+    const typeCounts = selectedEvents.reduce((counts, event) => {
+      counts[event.type] = (counts[event.type] || 0) + 1;
+      return counts;
+    }, {});
+    const generatedAt = new Date().toISOString();
+    const audit = {
+      kind: LEARNING_EVENT_AUDIT_KIND,
+      generatedAt,
+      storageKey: STORAGE_KEY,
+      total: events.length,
+      exportedCount: selectedEvents.length,
+      maxEvents: MAX_EVENTS,
+      limit,
+      typeCounts,
+      events: selectedEvents,
+      boundary: LEARNING_EVENT_AUDIT_BOUNDARY
+    };
+    audit.auditDigest = sha256StableJson({
+      ...audit,
+      auditDigest: ""
+    });
+    return audit;
+  }
+
+  function getLearningEventAuditExport(options = {}) {
+    const audit = getLearningEventAudit(options);
+    if (!audit.total) {
+      return {
+        ok: false,
+        audit,
+        message: "当前还没有可导出的学习动作审计记录。"
+      };
+    }
+    const exportedAt = new Date().toISOString();
+    return {
+      ok: true,
+      filename: `mr-calligraphy-learning-action-audit-${exportedAt.slice(0, 10)}.html`,
+      html: renderLearningEventAuditHtml(audit, exportedAt),
+      audit,
+      message: `已生成 ${audit.exportedCount} 条学习动作审计导出。`
+    };
+  }
+
+  function downloadLearningEventAudit(options = {}) {
+    const result = getLearningEventAuditExport(options);
+    if (!result.ok) {
+      return result;
+    }
+    downloadHtml(result.html, result.filename);
+    return result;
+  }
+
+  function renderLearningEventAuditHtml(audit, exportedAt) {
+    const typeRows = Object.entries(audit.typeCounts || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([type, count]) => `<span>${escapeHtml(formatLearningEventType(type))} ${escapeHtml(count)}</span>`)
+      .join("");
+    const rows = audit.events.map((event) => `
+      <section class="event">
+        <h2>${escapeHtml(event.label || "学习动作")}</h2>
+        <dl>
+          <div><dt>类型</dt><dd>${escapeHtml(formatLearningEventType(event.type))}</dd></div>
+          <div><dt>事件 ID</dt><dd>${escapeHtml(event.id)}</dd></div>
+          <div><dt>记录时间</dt><dd>${escapeHtml(formatDateTime(event.createdAt))}</dd></div>
+        </dl>
+      </section>`).join("");
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MR 书法学习动作审计</title>
+  <style>
+    body { margin: 0; padding: 32px; color: #241812; background: #f8f1e5; font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin: 0 0 10px; font-size: 28px; }
+    .meta, footer { color: #69594c; line-height: 1.7; }
+    .stats { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0; }
+    .stats span { padding: 8px 10px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; font-weight: 700; }
+    .event { margin: 14px 0; padding: 16px; border: 1px solid #dfd1be; border-radius: 8px; background: #fffaf2; }
+    .event h2 { margin: 0 0 10px; font-size: 18px; }
+    dl { display: grid; gap: 8px; margin: 0; }
+    dl div { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; }
+    dt { color: #7b6b5c; font-weight: 700; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    pre { padding: 16px; overflow: auto; border-radius: 8px; background: #1f1b16; color: #f6ead7; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="meta">MR Calligraphy Learning Action Audit · ${escapeHtml(formatDateTime(exportedAt))}</p>
+    <h1>MR 书法学习动作审计</h1>
+    <p class="meta">导出 ${escapeHtml(audit.exportedCount)} / ${escapeHtml(audit.total)} 条最近动作。${escapeHtml(audit.boundary)}</p>
+    <div class="stats">${typeRows || "<span>暂无分类</span>"}</div>
+    ${rows}
+    <h2>原始审计 JSON</h2>
+    <pre>${escapeHtml(JSON.stringify(audit, null, 2))}</pre>
+    <footer>审计摘要：${escapeHtml(audit.auditDigest)}。数据来源：${escapeHtml(audit.storageKey)}。导出时间：${escapeHtml(formatDateTime(exportedAt))}。</footer>
+  </main>
+</body>
+</html>`;
+  }
+
+  function formatLearningEventType(type) {
+    const labels = {
+      mode: "学习模式",
+      task: "学习任务",
+      copybook: "碑帖",
+      stage: "学习阶段",
+      lecture: "本机讲解",
+      practice: "练习会话",
+      "training-mode": "训练模式",
+      stroke: "笔画索引",
+      style: "创作风格",
+      "practice-score": "笔迹评分",
+      artwork: "作品保存",
+      report: "学习报告",
+      plan: "学习计划",
+      "plan-item": "计划项",
+      "plan-item-edit": "计划项编辑",
+      "plan-item-add": "计划项新增",
+      "plan-item-move": "计划项排序",
+      "plan-item-delete": "计划项删除",
+      "plan-cycle": "计划周期",
+      "plan-item-snooze": "计划顺延",
+      "plan-item-review": "计划复盘",
+      "share-remote": "远端分享",
+      "share-remote-check": "远端分享检查",
+      "share-remote-push": "远端分享发布",
+      "share-remote-revoke": "远端分享撤销"
+    };
+    return labels[type] || String(type || "学习动作");
   }
 
   function setMode(mode) {
@@ -17018,6 +17157,8 @@
     getStageProgress,
     getLectureProgress,
     getLearningPathStatus,
+    getLearningEventAudit,
+    getLearningEventAuditExport,
     getScoreServiceStatus,
     getLectureServiceStatus,
     getPlan,
@@ -17170,6 +17311,7 @@
     downloadPlan,
     downloadPlanCalendar,
     downloadPlanRepository,
+    downloadLearningEventAudit,
     downloadReport,
     downloadReportPdf,
     downloadReportComparison,

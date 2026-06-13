@@ -5165,3 +5165,47 @@ GitHub 状态：
 提交：
 
 - 中文 commit message：`新增动态控件处理器覆盖验收`
+
+## 126. 2026-06-13 新增学习动作审计面板
+
+本次继续处理“按钮像假的”的体验问题：即使学习路径动作已经有真实处理器，用户点击后此前主要看到一条即时反馈和详情卡，缺少一个可回看的本机证据列表。现在前台学习操作区新增“本机动作审计”，每次模式、任务、讲解、练习、笔画、作品、报告、计划等动作都会从状态层 `events` 队列读取并展示，且可导出 HTML 审计。
+
+完成内容：
+
+- `app-state.js` 新增 `mr-calligraphy-learning-event-audit-v1` 审计包。
+- `MRAppState.getLearningEventAudit()` 返回最近动作、类型统计、总数、边界说明和稳定 `auditDigest`。
+- `MRAppState.getLearningEventAuditExport()` 生成可离线打开的 HTML 审计页，包含动作列表、类型、事件 ID、时间和原始 JSON。
+- `MRAppState.downloadLearningEventAudit()` 真实下载 `mr-calligraphy-learning-action-audit-*.html`。
+- `index.html` 在学习操作区新增 `learningActionAuditStatus`、`learningActionAuditList` 和 `learningActionAuditExport`。
+- `script.js` 渲染最近 5 条动作，导出按钮按是否存在事件自动启用/禁用。
+- `scripts/smoke-test.js` 将新增审计面板纳入首页页面标记检查。
+- `scripts/learning-state-check.js` 覆盖审计 kind、事件内容、摘要、边界和 HTML 导出。
+- Playwright 前台真实练习用例覆盖动作列表显示“讲解 / 开始练习 / 保存作品”，并下载审计 HTML 验证标题、动作和审计摘要。
+
+真实化说明：
+
+- 数据来源：当前浏览器 `mr-calligraphy-learning-state-v1.events` 本机事件队列。
+- 写入状态：沿用现有 `addEvent()`，不新增第二套事件存储。
+- 成功反馈：前台面板显示最近动作数量、动作名称、类型、时间和事件 ID。
+- 导出反馈：点击“导出审计”会下载 HTML；无事件时按钮禁用且不会伪造记录。
+- 刷新后复现方式：事件队列随学习状态持久化到 localStorage，刷新后面板仍能读取最近动作。
+
+仍待补：
+
+- 当前是本机浏览器事件审计，不是账号化行为日志、服务端不可篡改审计、跨设备同步日志或教师端课堂审计。
+
+验收：
+
+- `node --check app-state.js`
+- `node --check script.js`
+- `node --check scripts/learning-state-check.js`
+- `node --check tests/e2e/real-flows.spec.js`
+- `node scripts/learning-state-check.js`
+- `node scripts/control-inventory.js --check`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js -g "front practice saves real strokes and exports a report"`
+- `git diff --check`
+
+提交：
+
+- 中文 commit message：`新增学习动作审计面板`

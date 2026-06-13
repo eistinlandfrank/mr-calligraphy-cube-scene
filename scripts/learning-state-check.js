@@ -163,6 +163,19 @@ assert(persistedLectureService.spokenStepCount === 1, "讲解服务朗读次数�
 assert(persistedLectureService.fallbackStepCount === 1, "讲解服务降级次数应持久化。");
 assert(persistedLectureService.lastCompletedAt, "讲解服务完成时间应持久化。");
 
+const learningEventAudit = window.MRAppState.getLearningEventAudit({ limit: 12 });
+assert(learningEventAudit.kind === "mr-calligraphy-learning-event-audit-v1", "学习动作审计应返回稳定 kind。");
+assert(learningEventAudit.total >= 2, "学习动作审计应统计本机事件。");
+assert(learningEventAudit.events.some((event) => event.type === "lecture"), "学习动作审计应包含讲解事件。");
+assert(/^[a-f0-9]{64}$/.test(learningEventAudit.auditDigest), "学习动作审计应包含稳定摘要。");
+assert(learningEventAudit.boundary.includes("不是云端行为日志"), "学习动作审计应说明本机边界。");
+const learningEventAuditExport = window.MRAppState.getLearningEventAuditExport({ limit: 12 });
+assert(learningEventAuditExport.ok, "学习动作审计应可导出 HTML。");
+assert(learningEventAuditExport.filename.startsWith("mr-calligraphy-learning-action-audit-"), "学习动作审计文件名应可识别。");
+assert(learningEventAuditExport.html.includes("MR 书法学习动作审计"), "学习动作审计 HTML 应包含标题。");
+assert(learningEventAuditExport.html.includes("本机讲解"), "学习动作审计 HTML 应包含事件类型。");
+assert(learningEventAuditExport.html.includes(learningEventAuditExport.audit.auditDigest), "学习动作审计 HTML 应包含审计摘要。");
+
 const comparison = window.MRAppState.getArtworkComparison("永");
 assert(comparison.ok, "同字两幅作品应生成作品对比。");
 assert(comparison.glyph === "永", "作品对比应保留请求的字。");

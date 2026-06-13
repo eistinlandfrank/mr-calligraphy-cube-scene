@@ -158,6 +158,16 @@
           <div id="actionList" class="action-list"></div>
           <p id="actionFeedback" class="action-feedback">点击场景热点或下方按钮，可执行学习操作并写入本机记录。</p>
           <div id="actionDetail" class="action-detail" hidden></div>
+          <div id="learningActionAudit" class="learning-action-audit" aria-label="本机学习动作审计">
+            <div class="learning-action-audit-head">
+              <div>
+                <div class="panel-eyebrow">本机动作审计</div>
+                <strong id="learningActionAuditStatus">暂无动作记录</strong>
+              </div>
+              <button data-feature-state="real-export" id="learningActionAuditExport" type="button">导出审计</button>
+            </div>
+            <ol id="learningActionAuditList" class="learning-action-audit-list"></ol>
+          </div>
         </section>
 
         <section id="reviewPanel" class="review-panel" aria-label="作品与报告预览" hidden>
@@ -710,8 +720,8 @@
 
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
-  <script src="app-state.js?v=video-export-audit-20260613"></script>
+  <script src="app-state.js?v=learning-action-audit-20260613"></script>
   <script src="practice-canvas.js?v=share-revoke-20260612"></script>
-  <script src="script.js?v=video-export-audit-20260613"></script>
+  <script src="script.js?v=learning-action-audit-20260613"></script>
 </body>
 </html>
