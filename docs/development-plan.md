@@ -523,3 +523,24 @@ MR / AR / 屏幕通用书法交互前台
 - 可在普通屏幕和 MR / AR 环境中运行。
 
 其它复杂 B 端设备、护工、养老院管理、健康报告、舱门设备接口全部移出当前版本。
+
+---
+
+## 16. 开发记录
+
+### 2026-06-14：完成 S0 旧版整理
+
+本轮按远端最新 v2.0 计划完成 S0 阶段的主线收束：
+
+- 确认 legacy 旧版 `index.html` 可通过本地服务器访问，`http://localhost:41496/` 返回 `HTTP/1.0 200 OK`。
+- 确认 legacy 主场景管理页 `main-admin.html` 可通过本地服务器访问，`http://localhost:41496/main-admin.html` 返回 `HTTP/1.0 200 OK`。
+- README 顶部已明确旧版 10 步学习路径和旧报告/审计界面属于 legacy demo。
+- 后续新增功能以 Front Stage 和 Scene Console 为主线，不再围绕固定 1-10 步骤页面、护工端、设备通信、健康报告、养老院管理后台或旧报告系统继续扩展。
+- `docs/implementation-checklist.md` 已勾选 S0-01 到 S0-05，并保留本轮验收记录。
+
+验收命令：
+
+- `curl -I --max-time 5 http://localhost:41496/`
+- `curl -I --max-time 5 http://localhost:41496/main-admin.html`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
