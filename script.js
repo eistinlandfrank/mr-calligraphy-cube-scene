@@ -2,8 +2,8 @@ const SCENES = [
   {
     title: "进入系统 / 沉浸准备",
     image: "assets/scenes/scene-01.png",
-    description: "进入 MR 书法教练主界面，确认学习路径、当前任务和实时反馈。",
-    focus: "系统首页把学习路径、单字练习、实时反馈和历史记录集中在同一空间。",
+    description: "进入 MR 书法教练主界面，确认交互工作流、当前任务和实时反馈。",
+    focus: "系统首页把交互工作流、单字练习、实时反馈和历史记录集中在同一空间。",
     metrics: [
       ["综合评分", "未评分"],
       ["结构", "88"],
@@ -25,7 +25,7 @@ const SCENES = [
         tags: ["单字学习", "结构评分", "笔画分析"]
       },
       {
-        label: "学习路径",
+        label: "交互工作流",
         pitch: 0,
         yaw: -38,
         body: "左侧路径用于组织学习阶段：碑帖讲解、笔画练习、结构训练、章法学习和创作实践。",
@@ -65,7 +65,7 @@ const SCENES = [
         tags: ["今日任务", "永字", "目标确认"]
       },
       {
-        label: "学习路径",
+        label: "交互工作流",
         pitch: 2,
         yaw: -35,
         body: "左侧列出单字学习、集字练习、结构训练、章法学习和创作实践，已完成项带有勾选状态。",
@@ -92,7 +92,7 @@ const SCENES = [
       ["讲解模式", "AI + 教师"]
     ],
     actions: [
-      { label: "播放讲解", response: "将按讲解步骤推进，并保存当前进度。" },
+      { label: "播放讲解", response: "将按讲解流程推进，并保存当前进度。" },
       { label: "切换碑帖", response: "碑帖列表可切换不同范本，当前保持“永”字讲解。" },
       { label: "开始临摹", target: 3, response: "进入空间临摹与实时引导。" }
     ],
@@ -423,10 +423,10 @@ const LEARNING_ACTION_FEATURES = {
   开始临摹: ["real-local", "创建或继续本机 PracticeSession。"],
   示范模式: ["real-local", "切换当前练习会话的训练模式。"],
   对比模式: ["real-local", "切换当前练习会话的训练模式。"],
-  进入笔画拆解: ["real-local", "写入本机笔画拆解阶段记录，并跳转到拆解步骤。"],
+  进入笔画拆解: ["real-local", "写入本机笔画拆解阶段记录，并跳转到拆解流程。"],
   上一个笔画: ["real-local", "切换本机当前笔画索引。"],
   下一个笔画: ["real-local", "切换本机当前笔画索引。"],
-  进入创作: ["real-local", "写入本机创作实践阶段记录，并跳转到创作步骤。"],
+  进入创作: ["real-local", "写入本机创作实践阶段记录，并跳转到创作流程。"],
   切换行书: ["real-local", "切换作品风格，保存作品时会写入本机记录。"],
   保存作品: ["real-local", "保存真实书写轨迹和截图到本机作品记录。"],
   查看学习记录: ["real-local", "打开本机学习档案面板。"],
@@ -1094,6 +1094,9 @@ const els = {
   pathProgressBar: document.getElementById("pathProgressBar"),
   pathList: document.getElementById("pathList"),
   learningPathServiceSummary: document.getElementById("learningPathServiceSummary"),
+  spatialModeButtons: Array.from(document.querySelectorAll("[data-spatial-mode]")),
+  spatialModeStatus: document.getElementById("spatialModeStatus"),
+  spatialModeSummary: document.getElementById("spatialModeSummary"),
   quickPrev: document.getElementById("quickPrev"),
   quickHome: document.getElementById("quickHome"),
   quickModels: document.getElementById("quickModels"),
@@ -1141,6 +1144,7 @@ let activeReportSeriesPointId = null;
 let activeHistoryLimit = 8;
 const selectedHistoryIds = new Set();
 const HISTORY_PAGE_SIZE = 8;
+const FLOW_ROUTE_QUERY_KEY = "flow";
 const STEP_ROUTE_QUERY_KEY = "step";
 const POINT_ROUTE_QUERY_KEY = "point";
 const MODEL_VIEW_QUERY_KEY = "modelView";
@@ -1149,6 +1153,32 @@ const REPORT_DETAIL_QUERY_KEY = "report";
 const ARTWORK_DETAIL_QUERY_KEY = "artwork";
 const SHARE_LINK_QUERY_KEY = "share";
 const REPORT_DETAIL_SCENE_INDEX = 8;
+const WORKFLOW_ROUTE_IDS = [
+  "entry",
+  "task",
+  "lecture",
+  "practice",
+  "stroke",
+  "creation",
+  "history",
+  "review",
+  "report",
+  "plan"
+];
+const SPATIAL_MODES = {
+  mr: {
+    label: "MR 交互层",
+    summary: "MR 交互层已开启：热点、教练面板、书写证据和空间反馈同时可见。"
+  },
+  ar: {
+    label: "AR 锚点层",
+    summary: "AR 锚点层已开启：突出场景热点、路径锚点和本机任务证据。"
+  },
+  vr: {
+    label: "VR 环视层",
+    summary: "VR 环视层已开启：弱化面板干扰，强化旧版书房空间的沉浸浏览。"
+  }
+};
 const REPORT_METRIC_LABELS = [
   ["structure", "结构"],
   ["stroke", "笔画"],
@@ -1786,6 +1816,7 @@ function init() {
   buildStepNavigation();
   buildPathList();
   bindQuickControls();
+  bindSpatialModeControls();
   bindLearningControls();
   bindTaskControls();
   bindReviewControls();
@@ -3999,8 +4030,8 @@ function buildStepNavigation() {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.featureState = "real-local";
-    button.textContent = String(index + 1);
-    button.setAttribute("aria-label", `切换到步骤 ${index + 1}: ${sceneView.title}`);
+    button.textContent = sceneView.shortName;
+    button.setAttribute("aria-label", `切换交互任务：${sceneView.title}`);
     button.addEventListener("click", () => loadScene(index));
     fragment.appendChild(button);
   });
@@ -4013,6 +4044,32 @@ function bindQuickControls() {
   els.quickHome.addEventListener("click", () => loadScene(0));
   els.quickModels.addEventListener("click", focusModelView);
   els.quickNext.addEventListener("click", goNext);
+}
+
+function bindSpatialModeControls() {
+  els.spatialModeButtons.forEach((button) => {
+    button.addEventListener("click", () => setSpatialMode(button.dataset.spatialMode || "mr"));
+  });
+  setSpatialMode("mr", { silent: true });
+}
+
+function setSpatialMode(mode, options = {}) {
+  const nextMode = SPATIAL_MODES[mode] ? mode : "mr";
+  document.body.dataset.spatialMode = nextMode;
+  els.spatialModeButtons.forEach((button) => {
+    const active = button.dataset.spatialMode === nextMode;
+    button.classList.toggle("is-active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+  });
+  if (els.spatialModeStatus) {
+    els.spatialModeStatus.textContent = SPATIAL_MODES[nextMode].label;
+  }
+  if (els.spatialModeSummary) {
+    els.spatialModeSummary.textContent = SPATIAL_MODES[nextMode].summary;
+  }
+  if (!options.silent) {
+    showNotice(SPATIAL_MODES[nextMode].summary);
+  }
 }
 
 function bindLearningControls() {
@@ -10027,6 +10084,7 @@ function getArtworkShareUrl(shareId) {
   url.searchParams.delete(HISTORY_DETAIL_QUERY_KEY);
   url.searchParams.delete(REPORT_DETAIL_QUERY_KEY);
   url.searchParams.delete(ARTWORK_DETAIL_QUERY_KEY);
+  url.searchParams.delete(FLOW_ROUTE_QUERY_KEY);
   url.searchParams.delete(STEP_ROUTE_QUERY_KEY);
   url.searchParams.delete(POINT_ROUTE_QUERY_KEY);
   url.searchParams.set(SHARE_LINK_QUERY_KEY, String(shareId || "").trim());
@@ -10097,7 +10155,19 @@ function getHistoryDetailRouteId() {
 
 function getLearningStepRouteIndex() {
   try {
-    const raw = new URLSearchParams(window.location.search).get(STEP_ROUTE_QUERY_KEY);
+    const params = new URLSearchParams(window.location.search);
+    const flow = params.get(FLOW_ROUTE_QUERY_KEY);
+    if (flow) {
+      const routeIndex = WORKFLOW_ROUTE_IDS.indexOf(flow);
+      if (routeIndex >= 0) {
+        return routeIndex;
+      }
+      const labelIndex = SCENES.findIndex((_, index) => getLearningSceneView(index).shortName === flow);
+      if (labelIndex >= 0) {
+        return labelIndex;
+      }
+    }
+    const raw = params.get(STEP_ROUTE_QUERY_KEY);
     if (!raw) return null;
     const value = Number.parseInt(raw, 10);
     if (!Number.isFinite(value)) return null;
@@ -10132,7 +10202,8 @@ function setLearningStepRoute(index, options = {}) {
 
   const url = new URL(window.location.href);
   url.searchParams.delete(SHARE_LINK_QUERY_KEY);
-  url.searchParams.set(STEP_ROUTE_QUERY_KEY, String(index + 1));
+  url.searchParams.delete(STEP_ROUTE_QUERY_KEY);
+  url.searchParams.set(FLOW_ROUTE_QUERY_KEY, WORKFLOW_ROUTE_IDS[index] || String(index + 1));
   const pointIndex = Number.isInteger(options.pointIndex)
     ? clampScenePointIndex(index, options.pointIndex)
     : 0;
@@ -11121,7 +11192,7 @@ function getHistoryDetailStats(detail) {
     return [
       ["阶段", detail.status || "-"],
       ["字", detail.glyph || "-"],
-      ["步骤", `${Number(detail.targetStep || 0) + 1}`],
+      ["目标流程", getLearningSceneView(Number(detail.targetStep || 0))?.shortName || "当前流程"],
       ["进度", detail.stageProgress ? `${detail.stageProgress.done}/${detail.stageProgress.total}` : "-"]
     ];
   }
@@ -11229,7 +11300,7 @@ function renameHistoryDetail() {
     return;
   }
   if (detail.type === "stage") {
-    showNotice("阶段记录是学习路径日志，暂不支持重命名。");
+    showNotice("阶段记录是交互工作流日志，暂不支持重命名。");
     return;
   }
 
@@ -11461,9 +11532,9 @@ function buildPathList() {
     button.type = "button";
     button.className = "path-item";
     button.dataset.featureState = "real-local";
-    button.setAttribute("aria-label", `跳转到步骤 ${index + 1}: ${sceneView.title}`);
+    button.setAttribute("aria-label", `打开交互任务：${sceneView.title}`);
     button.innerHTML = `
-      <span class="path-item-index">${index + 1}</span>
+      <span class="path-item-index">${sceneView.shortName}</span>
       <span class="path-item-name">${sceneView.shortName}</span>
       <span class="path-item-state">待学习</span>
     `;
@@ -11798,20 +11869,20 @@ function getLearningSceneView(index) {
 function renderLearningPathServiceSummary(pathStatus = getLearningPathStatus()) {
   if (!els.learningPathServiceSummary) return;
   if (!pathStatus) {
-    els.learningPathServiceSummary.textContent = "学习路径服务尚未初始化。";
+    els.learningPathServiceSummary.textContent = "交互工作流服务尚未初始化。";
     els.learningPathServiceSummary.dataset.serviceTone = "active";
     return;
   }
 
   const next = pathStatus.nextStep?.shortName || "继续学习";
-  els.learningPathServiceSummary.textContent = `${pathStatus.doneCount}/${pathStatus.total} 步完成，下一步：${next}。数据来自本机任务、练习、作品、报告和计划。`;
+  els.learningPathServiceSummary.textContent = `已完成 ${pathStatus.doneCount} 项交互任务，下一项：${next}。数据来自本机任务、练习、作品、报告和计划。`;
   els.learningPathServiceSummary.dataset.serviceTone = pathStatus.doneCount >= pathStatus.total ? "done" : "active";
 }
 
 function updateSceneText(index) {
   const sceneView = getLearningSceneView(index);
   const metrics = getLearningSceneMetrics(index);
-  els.stepLabel.textContent = `步骤 ${String(index + 1).padStart(2, "0")}`;
+  els.stepLabel.textContent = sceneView.statusLabel ? `工作流 · ${sceneView.statusLabel}` : "交互工作流";
   els.sceneTitle.textContent = sceneView.title;
   els.sceneDescription.textContent = sceneView.description;
   els.coachScore.textContent = metrics[0][1];
@@ -12476,7 +12547,7 @@ function buildCompletionDetail() {
   const planProgress = latestPlan?.progress || null;
   const scoreLabel = formatAverageScore(stats);
   const stepBadges = steps.slice(0, 10).map((step) => ({
-    label: step.shortName || step.title || "学习步骤",
+    label: step.shortName || step.title || "交互任务",
     done: Boolean(step.done),
     detail: step.done
       ? step.doneLabel || "已完成"
@@ -12495,21 +12566,21 @@ function buildCompletionDetail() {
       ? `学习计划：${latestPlan.title || "未命名计划"}，进度 ${planProgress?.done || 0}/${planProgress?.total || 0}。`
       : "尚未制定计划，可根据本机评分生成下一轮练习计划。",
     nextStep
-      ? `下一步：${nextStep.title || nextStep.shortName}。${nextStep.focus || nextStep.description || "继续补齐当前学习路径。"}`
-      : "当前学习路径已完成，可选择新的日课字或继续巩固薄弱项。",
+      ? `下一项：${nextStep.title || nextStep.shortName}。${nextStep.focus || nextStep.description || "继续补齐当前交互工作流。"}`
+      : "当前交互工作流已完成，可选择新的日课字或继续巩固薄弱项。",
     "本详情只读取浏览器本机学习记录，不伪装成云端学情报告。"
   ];
 
   return {
     type: "completion",
-    eyebrow: "学习总结",
-    title: `${stats?.taskTitle || "当前任务"}真实学习详情`,
-    status: `${doneCount}/${total}步`,
+    eyebrow: "交互总结",
+    title: `${stats?.taskTitle || "当前任务"}真实交互详情`,
+    status: `${doneCount}项完成`,
     summary: taskProgress.complete
       ? `当前任务已满足完成规则：${taskProgress.ruleSummary || "阶段、练习、作品和报告"}。`
       : `当前任务完成度 ${taskProgress.percent || 0}%，仍需继续完成本机练习、作品、报告或复习计划。`,
     metrics: [
-      { label: "路径", value: `${doneCount}/${total}` },
+      { label: "工作流", value: `${doneCount}/${total}` },
       { label: "任务完成", value: taskProgress.complete ? "是" : "否" },
       { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
       { label: "作品", value: `${stats?.artworkCount || 0}幅` },
@@ -12642,20 +12713,20 @@ function buildNavigationActionDetail(action = {}, result = {}) {
 
   return {
     type: "navigation",
-    eyebrow: "学习路径跳转",
+    eyebrow: "工作流跳转",
     title: action.label || "页面跳转",
-    status: typeof target === "number" ? `步骤 ${target + 1}` : "本页",
+    status: typeof target === "number" ? getLearningSceneView(target)?.shortName || "目标流程" : "本页",
     summary: targetScene
       ? `将打开“${targetScene.title}”。跳转后仍保留这次动作反馈，避免真实处理结果被页面刷新清空。`
-      : "已完成本次学习路径动作。",
+      : "已完成本次交互工作流动作。",
     metrics: [
       { label: "当前任务", value: stats?.taskTitle || "未选择" },
       { label: "当前字", value: stats?.glyph || "未选择" },
       { label: "路径进度", value: pathStatus ? `${pathStatus.doneCount}/${pathStatus.total}` : "未初始化" },
-      { label: "目标步骤", value: targetScene?.shortName || "当前页" }
+      { label: "目标流程", value: targetScene?.shortName || "当前页" }
     ],
     items: [
-      result.message || "学习路径动作已处理。",
+      result.message || "交互工作流动作已处理。",
       targetScene?.focus ? `目标重点：${targetScene.focus}` : "",
       "跳转动作只修改当前前台路径，不会伪造练习、报告或云端同步记录。"
     ].filter(Boolean)
@@ -12689,7 +12760,7 @@ function buildTaskActionDetail(result = {}, actionLabel = "学习任务") {
     items: [
       task?.id ? `任务 ID：${task.id}。` : "",
       task?.focus || stats?.taskFocus ? `练习重点：${task?.focus || stats.taskFocus}。` : "",
-      strokePlan.length ? `步骤计划：${strokePlan.slice(0, 5).join("、")}。` : "",
+      strokePlan.length ? `流程计划：${strokePlan.slice(0, 5).join("、")}。` : "",
       progress?.dependencyStatus?.label ? `依赖状态：${progress.dependencyStatus.label}。` : "",
       "任务切换只使用本机任务库和完成规则，不伪造解锁状态。"
     ].filter(Boolean)
@@ -13226,7 +13297,7 @@ function updateStepNavigation(index) {
   buttons.forEach((button, buttonIndex) => {
     const isActive = buttonIndex === index;
     button.classList.toggle("is-active", isActive);
-    button.setAttribute("aria-current", isActive ? "step" : "false");
+    button.setAttribute("aria-current", isActive ? "true" : "false");
   });
 
   updatePathPanel(index);
@@ -13251,8 +13322,8 @@ function updatePathPanel(index) {
     : Math.round(((index + 1) / SCENES.length) * 100);
 
   els.pathProgress.textContent = pathStatus?.total
-    ? `${pathStatus.doneCount} / ${pathStatus.total}`
-    : `${index + 1} / ${SCENES.length}`;
+    ? `${pathStatus.doneCount} 项完成`
+    : getLearningSceneView(index).shortName;
   els.pathProgressBar.style.width = `${progress}%`;
   renderLearningPathServiceSummary(pathStatus);
 
@@ -13267,8 +13338,8 @@ function updatePathPanel(index) {
     button.classList.toggle("is-done", isDone);
     button.classList.toggle("is-active", isActive);
     button.classList.toggle("is-locked", Boolean(realState.locked));
-    button.setAttribute("aria-current", isActive ? "step" : "false");
-    button.setAttribute("aria-label", `跳转到步骤 ${buttonIndex + 1}: ${sceneView.title}`);
+    button.setAttribute("aria-current", isActive ? "true" : "false");
+    button.setAttribute("aria-label", `打开交互任务：${sceneView.title}`);
 
     if (name) {
       name.textContent = sceneView.shortName;
@@ -13404,7 +13475,7 @@ function createPlaceholderPanorama(index) {
       <path d="M0 1368C480 1240 820 1512 1270 1360C1740 1202 2048 1390 2540 1265C3040 1138 3430 1334 4096 1208V2048H0Z" fill="rgba(0,0,0,0.26)"/>
       <path d="M0 1528C590 1352 980 1670 1530 1500C2090 1328 2460 1610 3090 1408C3510 1274 3810 1354 4096 1288V2048H0Z" fill="rgba(0,0,0,0.34)"/>
       <g fill="rgba(255,255,255,0.88)" font-family="Microsoft YaHei, PingFang SC, Arial, sans-serif" text-anchor="middle">
-        <text x="2048" y="905" font-size="126" font-weight="700">步骤 ${step}</text>
+        <text x="2048" y="905" font-size="126" font-weight="700">流程 ${step}</text>
         <text x="2048" y="1064" font-size="86">${title}</text>
         <text x="2048" y="1210" font-size="44" fill="rgba(255,255,255,0.72)">请替换 assets/scenes/scene-${step}.png</text>
       </g>

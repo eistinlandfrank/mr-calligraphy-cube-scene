@@ -107,6 +107,10 @@ async function unlockRealisticAdmin(page) {
   await expect(accessStatus).toContainText("已解锁");
 }
 
+async function clickWorkflow(page, name) {
+  await page.locator("#stepNav button").filter({ hasText: new RegExp(`^${name}$`) }).click();
+}
+
 test("mobile viewports keep core panels usable without overlap", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
 
@@ -688,7 +692,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
-  await expect(page.locator("#learningPathServiceSummary")).toContainText("2/10 步完成");
+  await expect(page.locator("#learningPathServiceSummary")).toContainText("已完成 2 项交互任务");
   await expect(page.locator("#learningPathServiceSummary")).toContainText("数据来自本机任务");
   await expect(page.locator("#serviceBoundaryStatus")).toContainText("生产云端");
   await expect(page.locator("#serviceBoundaryList")).toContainText("本机真实");
@@ -698,7 +702,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);
   const reportEndpoint = await getSameOriginEndpoint(page, reportEndpointPath);
 
-  await page.getByRole("button", { name: /切换到步骤 3/ }).click();
+  await clickWorkflow(page, "讲解");
   await page.getByRole("button", { name: "播放讲解" }).click();
   await expect(page.locator("#lectureStatusLabel")).toContainText("已完成");
   await expect(page.locator("#lectureServiceSummary")).toContainText("本机语音");
@@ -731,7 +735,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionFeedback")).toContainText("笔画拆解已写入本机学习阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("阶段记录 ID");
-  await expect(page.locator("#actionDetail")).toContainText("目标步骤");
+  await expect(page.locator("#actionDetail")).toContainText("目标流程");
 
   await page.locator("#actionList .action-button").filter({ hasText: /^下一个笔画$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("当前笔画已切换");
@@ -1053,7 +1057,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.shareService.records[0].revokedAt).toBeTruthy();
 
-  await page.getByRole("button", { name: /切换到步骤 9/ }).click();
+  await clickWorkflow(page, "报告");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "导出报告" }).click();
   const download = await downloadPromise;
@@ -1161,7 +1165,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const historyReportActionAuditHtml = fs.readFileSync(historyReportActionAuditPath, "utf8");
   expect(historyReportActionAuditHtml).toContain("详情报告 HTML 下载");
   expect(historyReportActionAuditHtml).toContain(learningState.historyDetailActionReceipts[0].receiptDigest);
-  await page.getByRole("button", { name: /切换到步骤 9/ }).click();
+  await clickWorkflow(page, "报告");
 
   await page.getByRole("button", { name: "制定计划" }).click();
   await expect(page.locator("#actionFeedback")).toContainText("已生成并保存下一阶段练习计划");
@@ -1239,7 +1243,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   }, { storageKey: LEARNING_KEY, state: originalPlanReminderState });
   await page.goto("/", { waitUntil: "domcontentloaded" });
 
-  await page.getByRole("button", { name: /切换到步骤 7/ }).click();
+  await clickWorkflow(page, "档案");
   await page.locator(".history-filters").getByRole("button", { name: "全部" }).click();
   await page.locator("#historySelectVisible").check();
   await expect(page.locator("#historySelectionStatus")).toContainText("已选");
@@ -1285,18 +1289,18 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(batchReceiptAuditHtml).toContain("批量移入回收站");
   expect(batchReceiptAuditHtml).toContain("审计摘要");
 
-  for (const stepNumber of [7, 8, 9, 10]) {
-    await page.getByRole("button", { name: new RegExp(`切换到步骤 ${stepNumber}`) }).click();
+  for (const workflowName of ["档案", "复盘", "报告", "巩固"]) {
+    await clickWorkflow(page, workflowName);
     await expect(page.locator("#contentBody")).toContainText("路径状态");
     await expect(page.locator("#contentBody")).toContainText("本机证据");
   }
 
-  await page.getByRole("button", { name: /切换到步骤 10/ }).click();
+  await clickWorkflow(page, "巩固");
   await page.getByRole("button", { name: "查看详情" }).click();
   await expect(page.locator("#actionFeedback")).toContainText("已读取本机学习详情");
   await expect(page.locator("#actionDetail")).toBeVisible();
-  await expect(page.locator("#actionDetail")).toContainText("真实学习详情");
-  await expect(page.locator("#actionDetail")).toContainText("路径");
+  await expect(page.locator("#actionDetail")).toContainText("真实交互详情");
+  await expect(page.locator("#actionDetail")).toContainText("工作流");
   await expect(page.locator("#actionDetail")).toContainText("真实练习");
   await expect(page.locator("#actionDetail")).toContainText("最近报告");
   await page.locator("#actionList .action-button").filter({ hasText: /^复习巩固$/ }).click();
@@ -1309,7 +1313,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.stageRecords.at(-1).stage).toBe("review");
 
-  await page.getByRole("button", { name: /切换到步骤 7/ }).click();
+  await clickWorkflow(page, "档案");
   await page.locator(".history-filters").getByRole("button", { name: "阶段" }).click();
   await expect(page.locator("#historySummary")).toContainText("3 条阶段");
   await expect(page.locator("#historyList")).toContainText("复习巩固");
@@ -2002,7 +2006,7 @@ test("front report repository imports a local JSON package", async ({ page }) =>
     verifications: []
   };
 
-  await page.goto("/?step=9", { waitUntil: "domcontentloaded" });
+  await page.goto("/?flow=report", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#reportPanel")).toBeVisible();
   await expect(page.locator("#reportRepositoryImportButton")).toBeEnabled();
 
@@ -2095,7 +2099,7 @@ test("front artwork repository exports and imports local artwork package", async
   await page.evaluate((key) => {
     window.localStorage.removeItem(key);
   }, LEARNING_KEY);
-  await page.goto("/?step=7", { waitUntil: "domcontentloaded" });
+  await page.goto("/?flow=history", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#historyPanel")).toBeVisible();
   await expect(page.locator("#artworkGalleryStatus")).toContainText("暂无作品");
 

@@ -1,657 +1,247 @@
-# MR / AR 书法交互系统软件开发计划书
+# 旧版主线恢复与 MR / VR 真实交互开发计划
 
-> 版本：v2.0  
-> 项目性质：单体式 MR / AR / 屏幕通用书法交互应用  
-> 核心修正：本项目不再做多终端系统、不再做护工端、不再做设备通信、不再做养老院管理后台、不再做健康报告系统。  
-> 最终目标：做一个可以在普通屏幕、MR/AR 设备或 WebXR 环境中运行的书法交互系统，并提供一个后台控制台用于摆放、编辑和保存 3D 物件。
-
----
-
-## 1. 项目重新定位
-
-本项目从原来的“复杂 B 端康养舱系统”收缩为一个更清晰、更容易落地的软件项目：
-
-# MR / AR 书法交互系统
-
-系统只保留两个核心部分：
-
-1. **前台显示端 Front Stage**  
-   用于展示和体验书法交互场景。它可以运行在普通浏览器屏幕中，也可以在支持 WebXR 的 MR / AR 设备中进入沉浸或空间模式。
-
-2. **后台控制台 Scene Console**  
-   用于摆放和编辑 3D 物件，包括书桌、椅子、毛笔、宣纸、屏幕、灯光、装饰物、文字面板、热点等。后台修改后的场景配置可以保存，并被前台读取。
-
-项目不再围绕“1-10 阶段展示页”开发，也不再围绕多角色、多设备、多端控制开发。所有功能都服务于一个目标：
-
-```text
-搭建一个可交互的 3D / MR 书法空间，并允许通过后台控制台编辑这个空间。
-```
+> 版本：v3.0
+> 日期：2026-06-14
+> 当前结论：项目主线恢复为旧版静态 3D / MR 项目。Vite / React 新项目已删除，不再作为开发方向。
 
 ---
 
-## 2. 必须砍掉的功能
+## 1. 当前项目定位
 
-为避免项目继续发散，以下功能全部移出当前开发范围：
+本项目继续以旧版根目录静态页面为核心开发对象：
 
-- 护工端。
-- 老人档案。
-- 养老院管理后台。
-- 多设备联动。
-- 舱门控制。
-- 通风控制。
-- 紧急按钮真实接口。
-- 健康数据。
-- 心率、呼吸、专注度等模拟数据。
-- 复杂 Session 状态机。
-- 报告系统。
-- 清洁复位流程。
-- 课程排期。
-- 多用户账号系统。
-- 真实硬件接口。
-- 医疗或康养数据记录。
+```text
+/
+├── index.html              前台 MR / VR 书法交互工作台
+├── main-admin.html         主场景后台控制页面
+├── realistic-demo.html     写实 3D 样张页面
+├── realistic-admin.html    写实场景后台控制页面
+├── script.js               前台 3D 场景与交互工作流
+├── app-state.js            本机学习、作品、报告、计划状态
+├── main-admin-scene.js     主后台 3D 场景控制
+├── realistic-scene.js      写实场景控制
+└── room-config.js          旧版房间贴图与角色配置
+```
 
-旧版 1-10 步骤展示可以保留为 legacy demo，但不再作为主线继续开发。
+当前不再维护以下新项目入口：
+
+```text
+app/
+vite.config.mts
+tsconfig.json
+tests/e2e/vite-app.spec.js
+```
+
+它们已经从仓库删除。后续不要再围绕 Vite 5173、`/editor`、`/preview` 或 React 单应用继续开发。
 
 ---
 
-## 3. 当前项目目标
+## 2. 产品目标
 
-### 3.1 前台显示端目标
+目标不是重新做一个平面后台，也不是保留演示用步骤页，而是在旧版布局上做真实可用的 MR / VR 书法交互：
 
-前台需要做到：
+```text
+保持旧版场景布局一致
+  ↓
+把演示步骤改成真实交互工作流
+  ↓
+保留并增强旧版主后台
+  ↓
+让普通浏览器也具备 AR / VR 的空间感
+  ↓
+逐步接入可验证的真实能力
+```
 
-- 能加载一个 3D 书法空间。
-- 能在屏幕上拖拽、缩放、观察场景。
-- 能显示书法主题内容，例如“永”字、笔画路径、毛笔、宣纸、书桌、背景屏。
-- 能响应基本交互，例如点击热点、切换视角、触发笔画动画、显示或隐藏 UI 面板。
-- 能读取后台保存的场景配置。
-- 能在支持 WebXR 的环境中进入 MR / AR / VR 模式。
-- 在不支持 WebXR 的普通浏览器中也能正常使用。
+当前项目必须满足：
 
-### 3.2 后台控制台目标
-
-后台需要做到：
-
-- 显示同一个 3D 场景。
-- 列出场景中的所有物件。
-- 选中物件后编辑位置、旋转、缩放。
-- 编辑物件的颜色、透明度、材质参数。
-- 添加基础 3D 物件。
-- 删除物件。
-- 复制物件。
-- 编辑灯光。
-- 编辑相机视角。
-- 编辑热点。
-- 保存场景配置。
-- 导入 / 导出 JSON。
-- 一键切换到前台预览。
+- 前台仍然打开 `index.html`。
+- 后台控制页面仍然是 `main-admin.html`。
+- 旧版 3D 房间布局、物件位置和视觉结构不能被新平面页面替换。
+- 可见 UI 不再使用演示用数字步骤作为主导航。
+- 所有按钮应尽量连接真实状态、真实画布、真实导出、真实本机记录或明确的 Adapter 边界。
+- 任何暂不可用能力都必须标注边界，不能伪装成线上生产功能。
 
 ---
 
-## 4. 软件形态
+## 3. 技术路线
 
-本项目采用**单应用、双模式**结构，而不是多终端系统。
-
-```text
-MR / AR 书法交互系统
-├── Front Stage     前台显示模式
-└── Scene Console   后台编辑模式
-```
-
-建议使用路由区分：
-
-```text
-/               前台显示端
-/editor         后台控制台
-/preview        只读预览模式
-```
-
-也可以保留旧版入口：
-
-```text
-/legacy         旧版 1-10 展示原型
-```
-
----
-
-## 5. 核心使用流程
-
-### 5.1 体验者流程
-
-```text
-打开前台页面
-  ↓
-进入 3D 书法空间
-  ↓
-观察书法场景
-  ↓
-点击书法热点或按钮
-  ↓
-观看笔画动画 / 场景变化 / UI 提示
-  ↓
-切换视角或进入 MR / AR 模式
-```
-
-### 5.2 编辑者流程
-
-```text
-打开后台控制台
-  ↓
-加载当前场景
-  ↓
-选择一个 3D 物件
-  ↓
-调整位置、旋转、缩放、材质
-  ↓
-添加或删除物件
-  ↓
-保存场景配置
-  ↓
-回到前台预览
-```
-
----
-
-## 6. 技术路线
-
-### 6.1 推荐技术栈
-
-| 模块 | 技术 |
+| 模块 | 当前方案 |
 |---|---|
-| 项目构建 | Vite |
-| UI 框架 | React + TypeScript |
-| 3D 渲染 | Three.js / @react-three/fiber |
-| 3D 控制 | OrbitControls / TransformControls |
-| 状态管理 | Zustand |
-| 本地存储 | localStorage / IndexedDB |
-| 配置格式 | JSON |
-| MR / AR 支持 | WebXR |
-| 导入导出 | Blob / File API |
-
-### 6.2 为什么不需要复杂后端
-
-当前目标是一个可交互的 MR / AR 书法空间和一个场景编辑控制台，不需要账号系统、多设备同步、机构管理或长期数据分析。因此第一阶段不需要后端服务。
-
-如果后续需要多人协作或云端保存，再单独扩展后端。
+| 项目形态 | 纯静态 HTML / CSS / JavaScript |
+| 本地服务 | `python3 -m http.server 41496 --bind 0.0.0.0` |
+| 3D 渲染 | Three.js + 旧版 WebGL 立方体房间 |
+| 场景配置 | `room-config.js` + localStorage |
+| 本机状态 | `app-state.js` |
+| 写字画布 | `practice-canvas.js` |
+| 后台控制 | `main-admin.html` / `main-admin-scene.js` |
+| 写实样张 | `realistic-demo.html` / `realistic-admin.html` |
+| 验收 | `scripts/smoke-test.js` + Playwright `real-flows.spec.js` |
 
 ---
 
-## 7. 系统架构
+## 4. 主入口与访问地址
+
+本机启动：
+
+```bash
+npm install
+npm run dev
+```
+
+访问：
 
 ```text
-┌────────────────────────────────────────────┐
-│                  App Shell                 │
-│       路由 / 主题 / 全局状态 / 错误处理       │
-└───────────────────┬────────────────────────┘
-                    │
-       ┌────────────┴────────────┐
-       │                         │
-┌──────▼──────┐           ┌──────▼──────┐
-│ Front Stage │           │Scene Console│
-│ 前台显示端   │           │ 后台控制台   │
-└──────┬──────┘           └──────┬──────┘
-       │                         │
-       └────────────┬────────────┘
-                    │
-┌───────────────────▼────────────────────────┐
-│                Scene Core                  │
-│ SceneRenderer / ObjectFactory / Controls   │
-└───────────────────┬────────────────────────┘
-                    │
-┌───────────────────▼────────────────────────┐
-│               Scene Config                 │
-│        JSON / localStorage / IndexedDB     │
-└────────────────────────────────────────────┘
+http://localhost:41496/
+http://localhost:41496/main-admin.html
 ```
 
----
-
-## 8. 前台显示端功能设计
-
-### 8.1 3D 场景展示
-
-前台应渲染完整书法空间，包含：
-
-- 与旧版主场景一致的书法空间房间布局。
-- 黑色展示屏。
-- 左右窗户。
-- 左右书架。
-- 主写字桌。
-- 左右椅子。
-- 地面织毯。
-- 右侧边柜。
-- 前后墙卷轴与左右墙卷轴。
-- AI 书法教练、练习者和观摩同学角色。
-- 盆栽、壁灯、桌灯、衣帽架、茶席圆毯等旧版陈设。
-- 书桌或书写平台。
-- 宣纸。
-- 毛笔。
-- 砚台。
-- 灯光。
-- 文字面板。
-- 书法动画面板。
-
-当前默认场景必须沿用旧版主场景坐标系：
+局域网访问：
 
 ```text
-地面 y = -3.12
-前墙 z = -8
-后墙 z = 8
-左墙 x = -8
-右墙 x = 8
-天花板 y = 5.05
-默认相机 position = [0.2, 0.6, 6.6]
-默认相机 target = [0, -0.35, -3.6]
+http://192.168.193.233:41496/
+http://192.168.193.233:41496/main-admin.html
 ```
 
-### 8.2 交互内容
+如果浏览器提示拒绝访问，优先确认：
 
-第一阶段前台只保留必要交互：
-
-- 视角拖拽。
-- 缩放。
-- 点击热点。
-- 切换相机预设。
-- 播放 / 暂停书法笔画动画。
-- 显示 / 隐藏 UI 面板。
-- 进入 / 退出 WebXR 模式。
-
-1-10 步不再作为旧版固定展示页继续开发，但它们的学习逻辑保留为新前台的空间交互流程：
-
-1. 进入系统 / 沉浸准备。
-2. 选择碑帖 / 学习路径。
-3. AI 讲解 / 永字八法。
-4. 空间临摹 / 实时引导。
-5. 笔画拆解 / 细节学习。
-6. 创作实践 / 作品生成。
-7. 学习记录 / 成长轨迹。
-8. 作品展示 / 空间分享。
-9. 学习计划 / 下一课。
-10. 总结复盘 / 完成。
-
-每一步需要对应一个 3D 空间热点，并写入共享 SceneConfig 的 `activeStepIndex`，保证前台、后台和预览读取同一交互状态。
-
-### 8.3 书法动画
-
-书法动画优先实现为可控动画，而不是复杂评分系统：
-
-- “永”字笔画路径。
-- 毛笔沿路径移动。
-- 墨迹逐渐显现。
-- 可播放、暂停、重播。
+- 服务是否运行在 `0.0.0.0:41496`。
+- 访问的是否是 `41496`，不是已删除新项目的 `5173`。
+- 防火墙或虚拟网络是否允许局域网访问该端口。
 
 ---
 
-## 9. 后台控制台功能设计
+## 5. 旧版布局约束
 
-### 9.1 页面布局
+旧版布局是当前产品基础，后续改动必须沿用：
+
+- 六面立方体房间。
+- 前墙展示区域。
+- 主写字桌、宣纸、毛笔、砚台。
+- 左右书架、窗户、卷轴、灯光、装饰物。
+- 三维角色与热点。
+- 左侧工作流/任务面板。
+- 右侧反馈/服务边界/操作审计面板。
+- 底部导航。
+- 主场景后台 `main-admin.html`。
+
+可以替换交互内容、任务名称和空间表现，但不能把页面变成与旧版无关的平面控制台。
+
+---
+
+## 6. 交互工作流
+
+旧版演示数字步骤不再作为产品文案。它们的交互逻辑被映射为真实工作流：
+
+| 路由 | 工作流 | 真实能力方向 |
+|---|---|---|
+| `entry` | 沉浸准备 | 加载日课字、本机任务状态、空间模式 |
+| `task` | 任务确认 | 确认目标、查看完成规则 |
+| `lecture` | 空间讲解 | 本机 TTS / 文本讲解 / 讲解记录 |
+| `practice` | 真实临摹 | 打开书写画布并保存真实笔迹 |
+| `stroke` | 笔画拆解 | 查看结构、笔顺、薄弱点 |
+| `creation` | 作品生成 | 保存作品、生成证据 |
+| `history` | 作品档案 | 查看历史作品和评分记录 |
+| `review` | 空间复盘 | 复盘反馈、比对作品 |
+| `report` | 本机报告 | 导出 HTML / PDF 报告 |
+| `plan` | 巩固计划 | 生成下一轮练习计划 |
+
+前台 URL 使用 `?flow=`：
 
 ```text
-┌────────────────────────────────────────────┐
-│ 顶部工具栏：保存 / 导入 / 导出 / 预览 / 重置 │
-├──────────────┬───────────────┬─────────────┤
-│ 对象列表      │ 3D 编辑视窗     │ 属性面板     │
-├──────────────┴───────────────┴─────────────┤
-│ 底部：相机预设 / 热点列表 / 动画控制          │
-└────────────────────────────────────────────┘
+/?flow=practice
+/?flow=report
 ```
 
-### 9.2 对象列表
-
-对象列表显示场景内所有物件：
-
-- screen
-- chair
-- desk
-- paper
-- brush
-- cup-holder
-- vent
-- emergency-button
-- light-strip
-- text-panel
-- hotspot
-- decoration
-
-### 9.3 属性面板
-
-选中物件后可以编辑：
-
-- 名称。
-- 类型。
-- 显示 / 隐藏。
-- 锁定 / 解锁。
-- position x / y / z。
-- rotation x / y / z。
-- scale x / y / z。
-- color。
-- opacity。
-- roughness。
-- metalness。
-- emissive。
-- texture。
-
-### 9.4 物件操作
-
-后台需要支持：
-
-- 添加基础几何体。
-- 添加 3D 模型引用。
-- 删除物件。
-- 复制物件。
-- 重命名物件。
-- 聚焦物件。
-- 隐藏物件。
-- 锁定物件。
-
-### 9.5 保存与导出
-
-后台保存规则：
-
-- 保存到本机：写入 localStorage / IndexedDB。
-- 导出 JSON：生成 `.json` 文件。
-- 导入 JSON：读取并恢复场景。
-- 恢复默认：加载默认场景配置。
+历史 `?step=` 只保留兼容，不作为新功能文档或导航文案。
 
 ---
 
-## 10. 场景配置数据结构
+## 7. AR / VR 空间表现
 
-### 10.1 SceneConfig
+普通浏览器阶段先完成可见、可验收的空间表现：
 
-```json
-{
-  "id": "calligraphy-space-001",
-  "name": "MR 书法交互空间",
-  "version": "2.1.0-legacy-layout",
-  "camera": {
-    "position": [0.2, 0.6, 6.6],
-    "target": [0, -0.35, -3.6],
-    "fov": 48
-  },
-  "environment": {
-    "background": "#11100e",
-    "ambientLight": "#f8ead4"
-  },
-  "objects": [],
-  "hotspots": [],
-  "animations": [],
-  "steps": [],
-  "activeStepIndex": 0,
-  "updatedAt": "2026-06-14T00:00:00.000Z"
-}
-```
+- **MR 交互**：完整显示旧版工作台、热点、面板和空间提示。
+- **AR 锚点**：强化地面锚点、热点光圈、对象定位和空间扫描感。
+- **VR 环视**：降低面板遮挡，突出沉浸环视、场景深度和空间导航。
 
-### 10.2 SceneObject
+本阶段不宣称已经接入真实 WebXR 设备。若后续接入真实 AR / VR：
 
-```json
-{
-  "id": "main-writing-table",
-  "name": "主写字桌",
-  "type": "model",
-  "visible": true,
-  "locked": false,
-  "position": [0, -3.12, -3.45],
-  "rotation": [0, 0, 0],
-  "scale": [1, 1, 1],
-  "material": {
-    "color": "#75431f",
-    "opacity": 1,
-    "roughness": 0.58,
-    "metalness": 0.03
-  }
-}
-```
-
-### 10.3 Hotspot
-
-```json
-{
-  "id": "hotspot-screen",
-  "name": "黑色展示屏",
-  "position": [0, -0.25, -7.35],
-  "label": "播放 AI 讲解",
-  "action": {
-    "type": "playAnimation",
-    "target": "yong-stroke-animation"
-  }
-}
-```
-
-### 10.4 AnimationConfig
-
-```json
-{
-  "id": "yong-stroke-animation",
-  "name": "永字笔画动画",
-  "type": "strokePath",
-  "character": "永",
-  "loop": false,
-  "duration": 6000,
-  "strokes": []
-}
-```
-
-### 10.5 SceneStep
-
-```json
-{
-  "id": "step-03",
-  "title": "AI 讲解 / 永字八法",
-  "shortName": "讲解",
-  "description": "在展示屏观看 AI 讲解，理解点、横、竖、钩、撇、捺。",
-  "focus": "展示屏是讲解核心，热点会触发笔画动画。",
-  "hotspotId": "hotspot-screen",
-  "actionLabel": "播放讲解动画"
-}
-```
+- 必须检测 `navigator.xr` 能力。
+- 必须提供普通浏览器降级方案。
+- 必须用真实设备或浏览器能力记录验收结果。
+- 必须在本文档追加设备、测试日期、失败边界和回退策略。
 
 ---
 
-## 11. WebXR / MR / AR 支持
+## 8. 后台控制页面
 
-第一阶段必须保证普通屏幕可用。WebXR 是增强模式，不影响桌面运行。
-
-### 11.1 屏幕模式
-
-- OrbitControls。
-- 鼠标点击热点。
-- 键盘切换视角。
-- 后台 TransformControls 编辑。
-
-### 11.2 MR / AR 模式
-
-- 检测浏览器是否支持 WebXR。
-- 支持进入 XR 模式。
-- 使用控制器射线选择热点。
-- 使用凝视或准星触发简单按钮。
-- 不支持 WebXR 时显示降级提示。
-
----
-
-## 12. 开发阶段
-
-### S0：旧版整理
-
-目标：把旧 1-10 展示项目标记为 legacy，停止作为主线开发。
-
-### S1：建立单应用工程
-
-目标：建立 Vite + React + TypeScript 项目结构，包含前台和后台两个路由。
-
-### S2：建立 Scene Core
-
-目标：实现可被前台和后台复用的 3D 场景渲染核心。
-
-### S3：实现前台显示端
-
-目标：前台能读取配置并展示 3D 书法空间，支持热点和书法动画。
-
-### S4：实现后台控制台
-
-目标：后台能摆放、编辑、保存 3D 物件。
-
-### S5：配置导入导出
-
-目标：完成 JSON 导入、导出、恢复默认和本地保存。
-
-### S6：WebXR 增强
-
-目标：在支持设备上进入 MR / AR 模式。
-
-### S7：优化与稳定
-
-目标：优化 UI、性能、模型加载、错误提示和发布流程。
-
----
-
-## 13. MVP 标准
-
-第一版 MVP 必须满足：
-
-- 普通屏幕可打开前台。
-- 前台能显示 3D 书法空间。
-- 前台能点击热点。
-- 前台能播放“永”字书法动画。
-- 后台能打开同一个场景。
-- 后台能选中物件。
-- 后台能移动、旋转、缩放物件。
-- 后台能修改物件颜色和透明度。
-- 后台能添加和删除物件。
-- 后台能保存配置。
-- 前台能读取后台保存后的配置。
-- 能导入 / 导出 JSON。
-- WebXR 不支持时系统仍可使用。
-
-不需要：
-
-- 用户档案。
-- 护工监护。
-- 健康报告。
-- 设备通信。
-- 舱门接口。
-- 通风接口。
-- 多人系统。
-- 复杂后台管理。
-
----
-
-## 14. 长期开发管理
-
-执行清单放在：
+后台控制页面是：
 
 ```text
-docs/implementation-checklist.md
+main-admin.html
 ```
 
-清单应改为 S0-S7，不再使用 R0-R9 真实设备系统路线。
+后台后续重点：
 
-执行规则：
+- 保留旧版主场景对象列表。
+- 继续支持物件增删改、本机保存、恢复默认。
+- 继续支持材质、透明度、粗糙度、金属度、贴图清理。
+- 继续保留本机审计、发布记录、远端 Adapter 配置。
+- 明确标注哪些能力是本机真实，哪些只是 Adapter 或待接入。
 
-1. 每个任务有唯一编号。
-2. 完成后将 `- [ ]` 改成 `- [x]`。
-3. 部分完成不得勾选。
-4. 不再新增护工端、设备端、健康数据相关任务。
-5. 所有任务围绕前台显示和后台 3D 编辑控制台推进。
+不能用新平面页面替代旧后台。
 
 ---
 
-## 15. 结论
+## 9. 真实化原则
 
-项目应收束为一个清晰的软件产品：
+每个前端操作必须归入以下之一：
 
-```text
-MR / AR / 屏幕通用书法交互前台
-+
-可摆放 3D 物件的后台控制台
-```
+- 本机真实：会读写 localStorage、IndexedDB、文件导出、书写画布、报告或项目档案。
+- 本机预览：只影响当前浏览器会话，但有明确状态反馈。
+- 远端 Adapter：有 endpoint、token、workspace 等配置，并能产出请求/回执记录。
+- 暂不可用：必须禁用或明确说明边界。
 
-这是当前最合理、最可执行的开发方向。它保留了项目最核心的价值：
+禁止：
 
-- 书法交互。
-- 3D / MR 空间展示。
-- 后台可编辑。
-- 可在普通屏幕和 MR / AR 环境中运行。
-
-其它复杂 B 端设备、护工、养老院管理、健康报告、舱门设备接口全部移出当前版本。
+- 只弹一个 toast 却不改变任何状态。
+- 用固定假数据冒充真实报告。
+- 用演示编号冒充正式学习流程。
+- 用新入口替代用户要求保留的旧版项目。
 
 ---
 
-## 16. 开发记录
+## 10. 当前完成记录
 
-### 2026-06-14：完成 S0 旧版整理
+### 2026-06-14：恢复旧版主线并删除新项目
 
-本轮按远端最新 v2.0 计划完成 S0 阶段的主线收束：
+- 删除 Vite / React 新项目文件：`app/`、`vite.config.mts`、`tsconfig.json`、`tests/e2e/vite-app.spec.js`。
+- `package.json` 恢复为静态服务器脚本，`npm run dev` 启动 `0.0.0.0:41496`。
+- README、开发计划和执行清单恢复为旧版项目主线。
+- 前台标题改为 `MR / VR 书法交互工作台`。
+- 前台导航从演示数字步骤改为交互工作流名称。
+- 新增 `?flow=` 路由，保留 `?step=` 旧链接兼容。
+- 新增 MR / AR / VR 空间模式面板。
+- 更新冒烟测试和 Playwright 测试，验证旧版静态入口与真实工作流。
+- 已归档前台截图 `/tmp/mr-calligraphy-old-workflow-front.png` 和主后台截图 `/tmp/mr-calligraphy-old-workflow-admin.png`。
+- 验收通过：`npm run build`、`npm audit --audit-level=high`、`git diff --check`、`PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js`。
 
-- 确认 legacy 旧版 `index.html` 可通过本地服务器访问，`http://localhost:41496/` 返回 `HTTP/1.0 200 OK`。
-- 确认 legacy 主场景管理页 `main-admin.html` 可通过本地服务器访问，`http://localhost:41496/main-admin.html` 返回 `HTTP/1.0 200 OK`。
-- README 顶部已明确旧版 10 步学习路径和旧报告/审计界面属于 legacy demo。
-- 后续新增功能以 Front Stage 和 Scene Console 为主线，不再围绕固定 1-10 步骤页面、护工端、设备通信、健康报告、养老院管理后台或旧报告系统继续扩展。
-- `docs/implementation-checklist.md` 已勾选 S0-01 到 S0-05，并保留本轮验收记录。
+---
 
-验收命令：
+## 11. 验收命令
 
-- `curl -I --max-time 5 http://localhost:41496/`
-- `curl -I --max-time 5 http://localhost:41496/main-admin.html`
-- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `git diff --check`
+每次完成一个功能后运行：
 
-### 2026-06-14：建立 S1 Vite / React / TypeScript 单应用骨架
+```bash
+npm run build
+PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js
+```
 
-本轮按 v2.0 计划推进 S1 单应用工程骨架，完成 S1-01 到 S1-08：
+提交前还需要：
 
-- 新增 Vite 6 + React 18 + TypeScript 工程入口，开发脚本为 `npm run dev`，生产构建脚本为 `npm run build`。
-- 新增 `vite.config.mts`、`tsconfig.json` 和 `app/` 应用目录。
-- `/` 渲染 Front Stage 前台入口，显示默认 MR 书法空间概览。
-- `/editor` 渲染 Scene Console 后台三栏骨架，包含对象列表、编辑视窗和属性面板。
-- `/preview` 渲染只读预览页面。
-- 新增 `app/src/scene-config.ts`，定义 SceneConfig、SceneObject、Hotspot 和 AnimationConfig 类型，并通过 `localStorage` 建立前后台共享状态。
-- 后台编辑对象名称、可见性、颜色和透明度会写入同一份 SceneConfig，前台和预览会同步读取。
-- 新增 `tests/e2e/vite-app.spec.js`，验证三个路由和共享 SceneConfig 读写链路。
+```bash
+git diff --check
+npm audit --audit-level=high
+```
 
-边界：
-
-- 本轮还没有把 legacy 旧版并入 Vite `/legacy` 路由，因此 `S1-09` 暂不勾选。
-- 本轮只建立应用骨架和状态互通，还没有完成 Three.js SceneRenderer、ObjectFactory、TransformControls 或 WebXR。
-
-验收命令：
-
-- `npm run build`
-- `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy npm audit --audit-level=high`
-- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
-- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `git diff --check`
-
-### 2026-06-14：接入真实 Three.js 3D / VR-MR 基础交互
-
-用户反馈上一版 Vite 页面只是平面骨架，没有达到“VR/MR 的交互，还得是 3D”的要求。本轮把新主线从示意 UI 改为真实 WebGL 3D 交互：
-
-- 新增 `app/src/SceneCanvas.tsx`，使用 Three.js WebGLRenderer 渲染 3D 书法空间。
-- 前台 `/` 已使用 OrbitControls，支持拖拽旋转视角和滚轮缩放。
-- 3D 场景包含房间、地板、展示屏、书写平台、宣纸、毛笔、座椅、灯光、热点和“永”字笔画路径。
-- 点击热点或前台按钮可播放 / 暂停“永”字笔画动画，笔尖标记会沿路径移动。
-- 后台 `/editor` 使用同一个 SceneCanvas，并接入 TransformControls，可在 3D 视窗中选择物件和平移拖动。
-- 属性面板的 position、rotation、scale、color、opacity 已从只读展示改为真实输入，修改后会写入 `mr-calligraphy-scene-config-v2`，前台和预览同步读取。
-- 已接入 WebXR 能力检测：支持设备可尝试进入 AR / VR，不支持时保留屏幕 3D 模式。
-- Playwright 验收新增 WebGL canvas 像素差异检测，避免只验证文字存在。
-
-本轮对应清单进度：
-
-- 完成 S2-01、S2-02、S2-03、S2-05、S2-06、S2-07、S2-08。
-- 完成 S3-01、S3-03、S3-05、S3-06、S3-08、S3-09。
-- 完成 S4-01、S4-02、S4-03、S4-05、S4-06、S4-07、S4-08、S4-09。
-
-边界：
-
-- GLB 模型加载仍未接入新 SceneConfig，`S2-04` 未完成。
-- TransformControls 目前只开放平移拖动，旋转 / 缩放拖拽模式还没有 UI，`S4-04` 未完成。
-- WebXR 已做能力检测和会话入口，但没有真实 MR 设备验收，S6 暂不勾选。
-
-验收命令：
-
-- `npm run build`
-- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
-- `npx playwright screenshot --viewport-size=1366,900 http://localhost:5173/ /tmp/mr-calligraphy-three-front.png`
-- `npx playwright screenshot --viewport-size=1366,900 http://localhost:5173/editor /tmp/mr-calligraphy-three-editor.png`
-- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
-- `git diff --check`
+每次功能完成后，用中文提交并推送到 GitHub，同时在本文档或执行清单中追加完成记录。

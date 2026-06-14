@@ -23,7 +23,7 @@
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
-  const LEARNING_PATH_BOUNDARY = "学习路径服务由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是云端课程编排、教师下发任务或跨设备学习进度。";
+  const LEARNING_PATH_BOUNDARY = "交互工作流由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是旧版演示步骤、云端课程编排、教师下发任务或跨设备学习进度。";
   const LEARNING_EVENT_AUDIT_KIND = "mr-calligraphy-learning-event-audit-v1";
   const LEARNING_EVENT_AUDIT_BOUNDARY = "学习动作审计来自当前浏览器本机 events 队列，记录学习模式、任务、讲解、练习、作品、报告、计划和同步动作；它不是云端行为日志、账号审计或不可篡改服务端证据链。";
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
@@ -148,7 +148,7 @@
     label: "阶段",
     glyph: "字",
     copybook: "碑帖",
-    targetStep: "目标步骤",
+    targetStep: "目标流程",
     note: "说明",
     completedAt: "完成时间",
     score: "评分",
@@ -178,7 +178,7 @@
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
-    task: { label: "复盘任务步骤", targetStep: 2 },
+    task: { label: "复盘任务流程", targetStep: 2 },
     weakness: { label: "专项补强", targetStep: 3 },
     artwork: { label: "复盘作品", targetStep: 5 },
     report: { label: "查看报告", targetStep: 8 },
@@ -7004,7 +7004,7 @@
       progressPercent,
       nextStep: nextStep ? clone(nextStep) : null,
       steps: clone(steps),
-      message: `${stats.taskTitle}：学习路径已完成 ${doneCount}/${steps.length} 步，下一步 ${nextStep?.shortName || "继续学习"}。${LEARNING_PATH_BOUNDARY}`
+      message: `${stats.taskTitle}：交互工作流已完成 ${doneCount} 项任务，下一项 ${nextStep?.shortName || "继续学习"}。${LEARNING_PATH_BOUNDARY}`
     };
   }
 
@@ -7543,7 +7543,7 @@
         { label: "阶段记录 ID", value: record.id || "未保存" },
         { label: "任务", value: task?.taskTitle || `${record.glyph}字学习` },
         { label: "字帖", value: record.copybook },
-        { label: "目标步骤", value: `第 ${normalizeInteger(record.targetStep, config.targetStep, 0, 9) + 1} 步` },
+        { label: "目标流程", value: config.label || record.label || "当前流程" },
         { label: "阶段进度", value: `${stageProgress.percent}%` }
       ],
       items: [
@@ -7793,7 +7793,7 @@
     const hasReport = taskProgress.reportCount > 0;
     const planItems = [
       makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`, { dueDays: 1, reviewAction: "practice" }),
-      makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务步骤完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task", dependsOn: ["plan-practice"] }),
+      makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务流程完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task", dependsOn: ["plan-practice"] }),
       makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice, { dueDays: 3, reviewAction: "weakness", dependsOn: ["plan-task-focus"] }),
       makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。", { dueDays: 4, reviewAction: "artwork", dependsOn: ["plan-weakness"] }),
       makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。", { dueDays: 5, reviewAction: "report", dependsOn: ["plan-artwork"] })
@@ -13949,7 +13949,7 @@
       ? createArtworkShareEvidenceBlock(scoreEvidence, evidence, evidenceSourceText)
       : `<section class="box score-evidence score-evidence-empty">
           <h2>评分证据</h2>
-          <p class="muted">这幅作品没有可嵌入的路径热力、逐笔路径或压感证据；分享页不会补造评分依据。请用新版画布完成一次真实书写并保存作品后重新导出。</p>
+          <p class="muted">这幅作品没有可嵌入的路径热力、逐笔路径或压感证据；分享页不会补造评分依据。请用当前书写画布完成一次真实书写并保存作品后重新导出。</p>
         </section>`;
     const watermarkText = `MR 书法本机作品分享 · ${artwork.id} · ${formatDateTime(share.exportedAt)}`;
 
@@ -18749,7 +18749,7 @@
       shortLabel: "阶段",
       createdAt: record.completedAt || record.createdAt,
       score: 0,
-      meta: `${record.copybook} / 步骤 ${record.targetStep + 1}`,
+      meta: `${record.copybook} / ${record.label || config.label || "交互流程"}`,
       status: record.label || config.label || "已记录",
       stage: record.stage,
       targetStep: record.targetStep
@@ -18850,9 +18850,9 @@
         stageProgress: clone(stageProgress),
         feedback: [
           `阶段记录 ID：${record.id}。`,
-          `目标步骤：${record.targetStep + 1}。`,
+          `目标流程：${record.label || config.label || "交互流程"}。`,
           `阶段进度：${stageProgress.done}/${stageProgress.total}。`,
-          "阶段记录来自用户点击学习路径按钮，不是静态演示条目。"
+          "阶段记录来自用户点击交互工作流按钮，不是静态演示条目。"
         ]
       };
     }

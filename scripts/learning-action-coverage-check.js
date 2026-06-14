@@ -19,21 +19,21 @@ const featureLabels = new Set(featureEntries.map((item) => item.label));
 const handlerLabels = new Set(handlerCases);
 
 if (!sceneActions.length) {
-  failures.push("未能从 SCENES 中解析到学习路径动作。");
+  failures.push("未能从 SCENES 中解析到交互工作流动作。");
 }
 
 actionLabels.forEach((label) => {
   if (!featureLabels.has(label)) {
-    failures.push(`学习路径动作缺少 LEARNING_ACTION_FEATURES 标记：${label}`);
+    failures.push(`交互工作流动作缺少 LEARNING_ACTION_FEATURES 标记：${label}`);
   }
   if (!handlerLabels.has(label)) {
-    failures.push(`学习路径动作缺少 runLearningAction 处理分支：${label}`);
+    failures.push(`交互工作流动作缺少 runLearningAction 处理分支：${label}`);
   }
 });
 
 featureEntries.forEach((entry) => {
   if (!VALID_STATES.has(entry.state)) {
-    failures.push(`学习路径动作状态不应为 ${entry.state}：${entry.label}`);
+    failures.push(`交互工作流动作状态不应为 ${entry.state}：${entry.label}`);
   }
 });
 
@@ -44,12 +44,12 @@ handlerCases.forEach((label) => {
 });
 
 if (failures.length) {
-  console.error("学习路径动作覆盖检查失败：");
+  console.error("交互工作流动作覆盖检查失败：");
   failures.forEach((failure) => console.error(`- ${failure}`));
   process.exit(1);
 }
 
-console.log(`学习路径动作覆盖检查通过：${countScenes(source)} 个场景，${actionLabels.length} 个动作，${featureEntries.length} 个状态标记，${handlerCases.length} 个处理分支。`);
+console.log(`交互工作流动作覆盖检查通过：${countScenes(source)} 个场景，${actionLabels.length} 个动作，${featureEntries.length} 个状态标记，${handlerCases.length} 个处理分支。`);
 
 function extractSceneActions(text) {
   const actions = [];
