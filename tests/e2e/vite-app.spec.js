@@ -13,13 +13,23 @@ test.describe("Vite app shell", () => {
 
     await expect(page.getByRole("heading", { name: "MR 书法交互空间" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Front Stage" })).toHaveClass(/is-active/);
-    await expect(page.getByText("真实 3D 书法空间")).toBeVisible();
+    await expect(page.getByText("进入系统 / 沉浸准备")).toBeVisible();
+    await expect(page.locator(".step-strip button")).toHaveCount(10);
     await expect(page.locator("canvas.scene-canvas")).toBeVisible();
     expect(await getCanvasPixelVariance(page)).toBeGreaterThan(8);
 
+    await page.locator(".step-strip button").nth(2).click();
+    await expect(page.getByText("AI 讲解 / 永字八法")).toBeVisible();
+    const activeStepSceneConfig = await page.evaluate((key) => {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    }, SCENE_CONFIG_STORAGE_KEY);
+    expect(activeStepSceneConfig.activeStepIndex).toBe(2);
+
     await page.goto("/editor");
     await expect(page.getByRole("link", { name: "Scene Console" })).toHaveClass(/is-active/);
-    await expect(page.getByText("6 个物件")).toBeVisible();
+    await expect(page.getByText(/\d+ 个物件/)).toBeVisible();
+    await expect(page.locator(".object-list-panel .step-strip button")).toHaveCount(10);
     await expect(page.locator("canvas.scene-canvas")).toBeVisible();
     expect(await getCanvasPixelVariance(page)).toBeGreaterThan(8);
 

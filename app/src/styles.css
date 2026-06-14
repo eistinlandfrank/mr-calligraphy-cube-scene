@@ -223,6 +223,13 @@ a {
   background: var(--surface);
 }
 
+.stage-panel,
+.preview-panel,
+.object-list-panel,
+.property-panel {
+  min-width: 0;
+}
+
 .scene-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -255,6 +262,12 @@ a {
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+.object-list {
+  max-height: calc(100vh - 245px);
+  overflow: auto;
+  padding-right: 4px;
 }
 
 .object-summary-list li {
@@ -349,7 +362,7 @@ a {
   position: relative;
   min-height: 520px;
   overflow: hidden;
-  background: #dfe7e2;
+  background: #14120f;
 }
 
 .scene-canvas {
@@ -413,6 +426,110 @@ a {
   grid-template-columns: 1fr 1fr;
   gap: 10px;
   margin: 0 0 18px;
+}
+
+.active-step-card {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 14px;
+  border: 1px solid rgba(22, 107, 93, 0.2);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(22, 107, 93, 0.08), rgba(240, 185, 84, 0.12)),
+    var(--surface-muted);
+}
+
+.active-step-card strong {
+  color: var(--accent-strong);
+  font-size: 18px;
+}
+
+.active-step-card p,
+.active-step-card small {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.active-step-card span {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(22, 107, 93, 0.2);
+  border-radius: 999px;
+  color: var(--accent-strong);
+  background: white;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.step-strip {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.object-list-panel .step-strip {
+  grid-template-columns: 1fr;
+  margin-top: 16px;
+}
+
+.step-strip button {
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--surface-muted);
+  cursor: pointer;
+}
+
+.step-strip button span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: #5f6f69;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.step-strip button.is-active {
+  border-color: #d6a15a;
+  background: #fff4dd;
+}
+
+.step-strip button.is-active span {
+  background: #b1701e;
+}
+
+.spatial-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.spatial-badges span {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  padding: 0 9px;
+  border: 1px solid rgba(18, 183, 154, 0.22);
+  border-radius: 999px;
+  color: #07564d;
+  background: #e8fff9;
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .stage-actions button,
@@ -523,7 +640,23 @@ a {
 
   .scene-viewport,
   .preview-scene,
-  .editor-viewport {
+  .editor-viewport,
+  .scene-canvas-shell {
     min-height: 430px;
+  }
+
+  .stage-panel,
+  .preview-panel,
+  .object-list-panel,
+  .property-panel {
+    padding: 16px;
+  }
+
+  .object-list {
+    max-height: 340px;
+  }
+
+  .step-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

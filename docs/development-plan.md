@@ -212,17 +212,37 @@ MR / AR 书法交互系统
 
 前台应渲染完整书法空间，包含：
 
-- 胶囊舱或书法空间外壳。
+- 与旧版主场景一致的书法空间房间布局。
 - 黑色展示屏。
-- 棕色沙发椅。
+- 左右窗户。
+- 左右书架。
+- 主写字桌。
+- 左右椅子。
+- 地面织毯。
+- 右侧边柜。
+- 前后墙卷轴与左右墙卷轴。
+- AI 书法教练、练习者和观摩同学角色。
+- 盆栽、壁灯、桌灯、衣帽架、茶席圆毯等旧版陈设。
 - 书桌或书写平台。
 - 宣纸。
 - 毛笔。
 - 砚台。
-- 水杯槽。
 - 灯光。
 - 文字面板。
 - 书法动画面板。
+
+当前默认场景必须沿用旧版主场景坐标系：
+
+```text
+地面 y = -3.12
+前墙 z = -8
+后墙 z = 8
+左墙 x = -8
+右墙 x = 8
+天花板 y = 5.05
+默认相机 position = [0.2, 0.6, 6.6]
+默认相机 target = [0, -0.35, -3.6]
+```
 
 ### 8.2 交互内容
 
@@ -235,6 +255,21 @@ MR / AR 书法交互系统
 - 播放 / 暂停书法笔画动画。
 - 显示 / 隐藏 UI 面板。
 - 进入 / 退出 WebXR 模式。
+
+1-10 步不再作为旧版固定展示页继续开发，但它们的学习逻辑保留为新前台的空间交互流程：
+
+1. 进入系统 / 沉浸准备。
+2. 选择碑帖 / 学习路径。
+3. AI 讲解 / 永字八法。
+4. 空间临摹 / 实时引导。
+5. 笔画拆解 / 细节学习。
+6. 创作实践 / 作品生成。
+7. 学习记录 / 成长轨迹。
+8. 作品展示 / 空间分享。
+9. 学习计划 / 下一课。
+10. 总结复盘 / 完成。
+
+每一步需要对应一个 3D 空间热点，并写入共享 SceneConfig 的 `activeStepIndex`，保证前台、后台和预览读取同一交互状态。
 
 ### 8.3 书法动画
 
@@ -327,20 +362,23 @@ MR / AR 书法交互系统
 ```json
 {
   "id": "calligraphy-space-001",
-  "name": "MR书法交互空间",
-  "version": "1.0.0",
+  "name": "MR 书法交互空间",
+  "version": "2.1.0-legacy-layout",
   "camera": {
-    "position": [0, 1.5, 5],
-    "target": [0, 1, 0],
-    "fov": 50
+    "position": [0.2, 0.6, 6.6],
+    "target": [0, -0.35, -3.6],
+    "fov": 48
   },
   "environment": {
-    "background": "#f4efe7",
-    "ambientLight": "#ffffff"
+    "background": "#11100e",
+    "ambientLight": "#f8ead4"
   },
   "objects": [],
   "hotspots": [],
-  "animations": []
+  "animations": [],
+  "steps": [],
+  "activeStepIndex": 0,
+  "updatedAt": "2026-06-14T00:00:00.000Z"
 }
 ```
 
@@ -348,20 +386,19 @@ MR / AR 书法交互系统
 
 ```json
 {
-  "id": "chair-001",
-  "name": "棕色沙发椅",
+  "id": "main-writing-table",
+  "name": "主写字桌",
   "type": "model",
-  "src": "assets/models/chair.glb",
   "visible": true,
   "locked": false,
-  "position": [0, 0, 0],
+  "position": [0, -3.12, -3.45],
   "rotation": [0, 0, 0],
   "scale": [1, 1, 1],
   "material": {
-    "color": "#9b6338",
+    "color": "#75431f",
     "opacity": 1,
-    "roughness": 0.6,
-    "metalness": 0
+    "roughness": 0.58,
+    "metalness": 0.03
   }
 }
 ```
@@ -370,10 +407,10 @@ MR / AR 书法交互系统
 
 ```json
 {
-  "id": "screen-hotspot",
-  "name": "展示屏热点",
-  "position": [0, 1.4, -2.5],
-  "label": "播放书法动画",
+  "id": "hotspot-screen",
+  "name": "黑色展示屏",
+  "position": [0, -0.25, -7.35],
+  "label": "播放 AI 讲解",
   "action": {
     "type": "playAnimation",
     "target": "yong-stroke-animation"
@@ -392,6 +429,20 @@ MR / AR 书法交互系统
   "loop": false,
   "duration": 6000,
   "strokes": []
+}
+```
+
+### 10.5 SceneStep
+
+```json
+{
+  "id": "step-03",
+  "title": "AI 讲解 / 永字八法",
+  "shortName": "讲解",
+  "description": "在展示屏观看 AI 讲解，理解点、横、竖、钩、撇、捺。",
+  "focus": "展示屏是讲解核心，热点会触发笔画动画。",
+  "hotspotId": "hotspot-screen",
+  "actionLabel": "播放讲解动画"
 }
 ```
 

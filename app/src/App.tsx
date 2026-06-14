@@ -52,6 +52,28 @@ function AppHeader({ routeMode, sceneConfig }: { routeMode: RouteMode; sceneConf
 function FrontStage({ sceneConfig }: { sceneConfig: SceneConfig }) {
   const visibleObjects = useMemo(() => sceneConfig.objects.filter((object) => object.visible), [sceneConfig.objects]);
   const [animationPlaying, setAnimationPlaying] = useState(false);
+  const activeStep = sceneConfig.steps[sceneConfig.activeStepIndex] ?? sceneConfig.steps[0];
+  const activeHotspot = sceneConfig.hotspots.find((hotspot) => hotspot.id === activeStep?.hotspotId);
+
+  const activateStep = (index: number) => {
+    setActiveStepIndex(index);
+    const nextStep = sceneConfig.steps[index];
+    const hotspot = sceneConfig.hotspots.find((item) => item.id === nextStep?.hotspotId);
+    if (hotspot?.action.type === "playAnimation") {
+      setAnimationPlaying(true);
+    }
+  };
+
+  const handleHotspotActivate = (hotspotId: string) => {
+    const hotspot = sceneConfig.hotspots.find((item) => item.id === hotspotId);
+    const stepIndex = findStepIndexByHotspot(sceneConfig, hotspotId);
+    if (stepIndex >= 0) {
+      setActiveStepIndex(stepIndex);
+    }
+    if (hotspot?.action.type === "playAnimation") {
+      setAnimationPlaying(true);
+    }
+  };
 
   return (
     <main className="front-stage">
@@ -59,30 +81,46 @@ function FrontStage({ sceneConfig }: { sceneConfig: SceneConfig }) {
         mode="front"
         sceneConfig={sceneConfig}
         animationPlaying={animationPlaying}
-        onHotspotActivate={() => setAnimationPlaying((playing) => !playing)}
+        onHotspotActivate={handleHotspotActivate}
       />
       <aside className="stage-panel">
         <p className="eyebrow">Front Stage</p>
-        <h2>真实 3D 书法空间</h2>
+        <h2>{activeStep?.title ?? "真实 3D 书法空间"}</h2>
         <dl className="scene-stats">
           <div>
-            <dt>对象</dt>
-            <dd>{visibleObjects.length} / {sceneConfig.objects.length}</dd>
+            <dt>步骤</dt>
+            <dd>{sceneConfig.activeStepIndex + 1} / {sceneConfig.steps.length}</dd>
           </div>
           <div>
             <dt>热点</dt>
             <dd>{sceneConfig.hotspots.length}</dd>
           </div>
           <div>
-            <dt>动画</dt>
-            <dd>{sceneConfig.animations.length}</dd>
+            <dt>对象</dt>
+            <dd>{visibleObjects.length}</dd>
           </div>
         </dl>
+        <section className="active-step-card" aria-label="当前交互步骤">
+          <strong>{activeStep?.shortName}</strong>
+          <p>{activeStep?.description}</p>
+          <small>{activeStep?.focus}</small>
+          <span>{activeHotspot?.name ?? "空间热点"}</span>
+        </section>
+        <StepStrip
+          steps={sceneConfig.steps}
+          activeIndex={sceneConfig.activeStepIndex}
+          onActivate={activateStep}
+        />
         <div className="stage-actions">
           <button type="button" onClick={() => setAnimationPlaying((playing) => !playing)}>
-            {animationPlaying ? "暂停永字动画" : "播放永字动画"}
+            {animationPlaying ? "暂停笔画" : activeStep?.actionLabel ?? "播放笔画"}
           </button>
           <a href="/editor">进入后台编辑</a>
+        </div>
+        <div className="spatial-badges" aria-label="空间模式">
+          <span>AR Anchors</span>
+          <span>VR Room</span>
+          <span>MR Hotspots</span>
         </div>
         <ObjectSummaryList objects={visibleObjects} />
       </aside>
@@ -114,6 +152,11 @@ function SceneConsole({ sceneConfig }: { sceneConfig: SceneConfig }) {
             </button>
           ))}
         </div>
+        <StepStrip
+          steps={sceneConfig.steps}
+          activeIndex={sceneConfig.activeStepIndex}
+          onActivate={setActiveStepIndex}
+        />
       </aside>
 
       <SceneCanvas
@@ -246,15 +289,48 @@ function VectorInputs({
 }
 
 function PreviewStage({ sceneConfig }: { sceneConfig: SceneConfig }) {
+  const activeStep = sceneConfig.steps[sceneConfig.activeStepIndex] ?? sceneConfig.steps[0];
+
   return (
     <main className="preview-layout">
       <SceneCanvas mode="preview" sceneConfig={sceneConfig} />
       <section className="preview-panel">
         <p className="eyebrow">Read Only Preview</p>
-        <h2>{sceneConfig.name}</h2>
+        <h2>{activeStep?.title ?? sceneConfig.name}</h2>
+        <section className="active-step-card">
+          <strong>{activeStep?.shortName}</strong>
+          <p>{activeStep?.description}</p>
+          <small>{activeStep?.focus}</small>
+        </section>
         <ObjectSummaryList objects={sceneConfig.objects} />
       </section>
     </main>
+  );
+}
+
+function StepStrip({
+  steps,
+  activeIndex,
+  onActivate
+}: {
+  steps: SceneConfig["steps"];
+  activeIndex: number;
+  onActivate: (index: number) => void;
+}) {
+  return (
+    <div className="step-strip" aria-label="1-10 空间交互流程">
+      {steps.map((step, index) => (
+        <button
+          key={step.id}
+          className={index === activeIndex ? "is-active" : ""}
+          type="button"
+          onClick={() => onActivate(index)}
+        >
+          <span>{String(index + 1).padStart(2, "0")}</span>
+          {step.shortName}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -286,6 +362,18 @@ function persistUpdatedAt() {
     ...config,
     updatedAt: new Date().toISOString()
   }));
+}
+
+function setActiveStepIndex(index: number) {
+  updateSceneConfig((config) => ({
+    ...config,
+    activeStepIndex: Math.max(0, Math.min(index, config.steps.length - 1)),
+    updatedAt: new Date().toISOString()
+  }));
+}
+
+function findStepIndexByHotspot(sceneConfig: SceneConfig, hotspotId: string): number {
+  return sceneConfig.steps.findIndex((step) => step.hotspotId === hotspotId);
 }
 
 function readRouteMode(pathname: string): RouteMode {
