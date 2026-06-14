@@ -41,6 +41,33 @@ legacy demo 核心亮点：
 
 ## 运行方式
 
+### v2.0 新应用
+
+安装依赖后启动 Vite 开发服务器：
+
+```bash
+npm install
+npm run dev
+```
+
+默认访问：
+
+```text
+http://localhost:5173/
+http://localhost:5173/editor
+http://localhost:5173/preview
+```
+
+当前 Vite 应用已经建立 Front Stage、Scene Console 和 Preview 三个基础入口，后台控制台会把场景配置保存到浏览器 `localStorage`，前台和预览会读取同一份 SceneConfig。
+
+生产构建：
+
+```bash
+npm run build
+```
+
+### legacy 旧版原型
+
 当前 legacy 入口推荐在项目目录运行本地服务器：
 
 ```bash

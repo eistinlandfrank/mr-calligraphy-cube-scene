@@ -3,6 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
+    "dev": "vite --host 0.0.0.0 --config vite.config.mts",
+    "build": "tsc --noEmit && vite build --config vite.config.mts",
+    "preview": "vite preview --host 0.0.0.0 --config vite.config.mts",
     "smoke": "node scripts/smoke-test.js",
     "smoke:running": "node scripts/smoke-test.js --base-url=http://localhost:41496/",
     "test:e2e": "playwright test",
@@ -10,6 +13,18 @@
     "test": "npm run smoke && npm run test:e2e"
   },
   "devDependencies": {
-    "@playwright/test": "^1.53.0"
+    "@playwright/test": "^1.53.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.4.2"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
   }
 }

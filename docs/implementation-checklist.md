@@ -67,32 +67,52 @@
 
 目标：建立一个 MR / AR / 屏幕通用的单体应用，包含前台显示端和后台控制台。
 
-- [ ] **S1-01：新增 package.json**  
+- [x] **S1-01：新增 package.json**
   验收：根目录存在 `package.json`，包含 `dev`、`build`、`preview` 基础脚本。
 
-- [ ] **S1-02：引入 TypeScript**  
+- [x] **S1-02：引入 TypeScript**
   验收：项目可编译 TS / TSX 文件，并启用基础类型检查。
 
-- [ ] **S1-03：建立 Vite 项目入口**  
+- [x] **S1-03：建立 Vite 项目入口**
   验收：可通过 `npm run dev` 启动新应用。
 
-- [ ] **S1-04：建立基础路由**  
+- [x] **S1-04：建立基础路由**
   验收：存在 `/`、`/editor`、`/preview` 三个入口。
 
-- [ ] **S1-05：建立 Front Stage 页面**  
+- [x] **S1-05：建立 Front Stage 页面**
   验收：`/` 显示前台书法空间入口。
 
-- [ ] **S1-06：建立 Scene Console 页面**  
+- [x] **S1-06：建立 Scene Console 页面**
   验收：`/editor` 显示后台控制台基础布局。
 
-- [ ] **S1-07：建立共享状态管理**  
+- [x] **S1-07：建立共享状态管理**
   验收：前台和后台可以读取同一份场景配置状态。
 
-- [ ] **S1-08：建立统一样式变量**  
+- [x] **S1-08：建立统一样式变量**
   验收：项目有统一的颜色、字号、按钮和面板样式变量。
 
 - [ ] **S1-09：保留旧版入口**  
   验收：新增工程后，旧版原型仍可打开或可在 `/legacy` 访问。
+
+完成记录（2026-06-14）：
+
+- `package.json` 已新增 `dev`、`build`、`preview` 脚本，Vite 配置位于 `vite.config.mts`。
+- 已新增 `tsconfig.json`，`npm run build` 会先执行 `tsc --noEmit` 类型检查，再执行 Vite 生产构建。
+- 已新增 `app/index.html`、`app/src/main.tsx`、`app/src/App.tsx`、`app/src/scene-config.ts` 和 `app/src/styles.css`。
+- Vite 开发服务器 `npm run dev` 已启动并可访问 `http://localhost:5173/`、`http://localhost:5173/editor`、`http://localhost:5173/preview`。
+- `/editor` 后台控制台可修改对象名称、可见性、颜色和透明度，并写入 `mr-calligraphy-scene-config-v2`。
+- `/` 前台和 `/preview` 只读预览会读取同一份 SceneConfig；Playwright 已验证后台修改对象名称后，前台和预览同步显示。
+- 样式变量集中在 `app/src/styles.css` 的 `:root` 中，包含颜色、字号相关基础变量和面板/按钮风格。
+- `S1-09` 暂不勾选：legacy 旧版仍可通过现有静态服务器访问，但还没有并入 Vite `/legacy` 路由。
+
+验收命令：
+
+- `npm run build`
+- `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy npm audit --audit-level=high`
+- `curl -I --max-time 5 http://localhost:5173/`
+- `curl -I --max-time 5 http://localhost:5173/editor`
+- `curl -I --max-time 5 http://localhost:5173/preview`
+- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
 
 ---
 

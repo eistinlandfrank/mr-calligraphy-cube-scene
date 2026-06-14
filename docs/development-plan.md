@@ -544,3 +544,29 @@ MR / AR / 屏幕通用书法交互前台
 - `curl -I --max-time 5 http://localhost:41496/main-admin.html`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 - `git diff --check`
+
+### 2026-06-14：建立 S1 Vite / React / TypeScript 单应用骨架
+
+本轮按 v2.0 计划推进 S1 单应用工程骨架，完成 S1-01 到 S1-08：
+
+- 新增 Vite 6 + React 18 + TypeScript 工程入口，开发脚本为 `npm run dev`，生产构建脚本为 `npm run build`。
+- 新增 `vite.config.mts`、`tsconfig.json` 和 `app/` 应用目录。
+- `/` 渲染 Front Stage 前台入口，显示默认 MR 书法空间概览。
+- `/editor` 渲染 Scene Console 后台三栏骨架，包含对象列表、编辑视窗和属性面板。
+- `/preview` 渲染只读预览页面。
+- 新增 `app/src/scene-config.ts`，定义 SceneConfig、SceneObject、Hotspot 和 AnimationConfig 类型，并通过 `localStorage` 建立前后台共享状态。
+- 后台编辑对象名称、可见性、颜色和透明度会写入同一份 SceneConfig，前台和预览会同步读取。
+- 新增 `tests/e2e/vite-app.spec.js`，验证三个路由和共享 SceneConfig 读写链路。
+
+边界：
+
+- 本轮还没有把 legacy 旧版并入 Vite `/legacy` 路由，因此 `S1-09` 暂不勾选。
+- 本轮只建立应用骨架和状态互通，还没有完成 Three.js SceneRenderer、ObjectFactory、TransformControls 或 WebXR。
+
+验收命令：
+
+- `npm run build`
+- `env -u HTTP_PROXY -u HTTPS_PROXY -u http_proxy -u https_proxy -u ALL_PROXY -u all_proxy npm audit --audit-level=high`
+- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`
