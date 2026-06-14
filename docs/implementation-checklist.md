@@ -120,28 +120,28 @@
 
 目标：建立前台和后台都能复用的 3D 场景渲染核心。
 
-- [ ] **S2-01：建立 SceneRenderer**  
+- [x] **S2-01：建立 SceneRenderer**
   验收：SceneRenderer 能根据 SceneConfig 渲染基础 3D 场景。
 
-- [ ] **S2-02：建立 ObjectFactory**  
+- [x] **S2-02：建立 ObjectFactory**
   验收：可以根据配置创建 box、sphere、plane、model、light、ui-panel、hotspot 等对象。
 
-- [ ] **S2-03：支持基础几何体**  
+- [x] **S2-03：支持基础几何体**
   验收：能渲染 box、sphere、plane、cylinder 等基础物件。
 
 - [ ] **S2-04：支持 GLB 模型加载**  
   验收：能通过配置加载 `.glb` 模型。
 
-- [ ] **S2-05：支持灯光对象**  
+- [x] **S2-05：支持灯光对象**
   验收：能通过配置创建 ambient、directional、point、spot light。
 
-- [ ] **S2-06：支持相机配置**  
+- [x] **S2-06：支持相机配置**
   验收：相机初始位置、目标点和 FOV 可以从配置读取。
 
-- [ ] **S2-07：支持材质配置**  
+- [x] **S2-07：支持材质配置**
   验收：颜色、透明度、roughness、metalness、emissive 可从配置读取。
 
-- [ ] **S2-08：支持对象显示隐藏**  
+- [x] **S2-08：支持对象显示隐藏**
   验收：配置 `visible: false` 的对象不会显示。
 
 - [ ] **S2-09：支持对象锁定标记**  
@@ -150,37 +150,50 @@
 - [ ] **S2-10：建立错误提示**  
   验收：模型加载失败或配置错误时有明确提示，不白屏。
 
+完成记录（2026-06-14）：
+
+- 新增 `app/src/SceneCanvas.tsx`，使用 Three.js WebGLRenderer 渲染真实 3D 书法空间。
+- SceneCanvas 会读取 SceneConfig 的 camera、environment、objects、hotspots 和 animations。
+- ObjectFactory 可按配置创建 box、sphere、plane、cylinder、model、light、ui-panel 和 hotspot；其中 `model` 目前是内置几何组合模型，`S2-04` 的 GLB 加载仍未完成。
+- 已支持 ambient / directional / point light、材质颜色、透明度、roughness、metalness、emissive 和对象 visible。
+- Playwright 已通过 WebGL canvas 像素差异确认画布非空，不再只看 DOM 文案。
+
+验收命令：
+
+- `npm run build`
+- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
+
 ---
 
 # S3 前台显示端 Front Stage
 
 目标：前台可以作为真正可交互的书法空间使用，不再只是静态图。
 
-- [ ] **S3-01：前台加载默认场景**  
+- [x] **S3-01：前台加载默认场景**
   验收：打开 `/` 后能显示默认 3D 书法空间。
 
 - [ ] **S3-02：前台读取保存配置**  
   验收：后台保存配置后，前台能显示保存后的场景。
 
-- [ ] **S3-03：实现视角拖拽与缩放**  
+- [x] **S3-03：实现视角拖拽与缩放**
   验收：用户可以拖拽旋转视角、滚轮缩放。
 
 - [ ] **S3-04：实现相机预设切换**  
   验收：前台可切换正视、侧视、内部视角、书写视角等预设镜头。
 
-- [ ] **S3-05：实现热点显示**  
+- [x] **S3-05：实现热点显示**
   验收：场景中能显示可点击热点。
 
-- [ ] **S3-06：实现热点点击反馈**  
+- [x] **S3-06：实现热点点击反馈**
   验收：点击热点后能显示对应内容、切换视角或触发动画。
 
 - [ ] **S3-07：实现黑色展示屏内容区域**  
   验收：展示屏上可以显示书法动画、文字说明或水墨背景。
 
-- [ ] **S3-08：实现“永”字笔画动画**  
+- [x] **S3-08：实现“永”字笔画动画**
   验收：点击播放后，“永”字笔画按顺序出现。
 
-- [ ] **S3-09：实现毛笔沿路径移动**  
+- [x] **S3-09：实现毛笔沿路径移动**
   验收：毛笔对象或笔尖标记能沿笔画路径移动。
 
 - [ ] **S3-10：实现动画播放 / 暂停 / 重播**  
@@ -192,37 +205,50 @@
 - [ ] **S3-12：实现全屏展示模式**  
   验收：前台可进入全屏，隐藏无关开发控件。
 
+完成记录（2026-06-14）：
+
+- `/` 已接入真实 Three.js 3D 书法空间，不再是 CSS 平面示意图。
+- OrbitControls 支持拖拽旋转和滚轮缩放。
+- 场景显示展示屏、书桌、宣纸、毛笔、座椅、灯光和热点。
+- 点击热点或右侧按钮会播放 / 暂停“永”字笔画动画，笔尖标记随笔画段移动。
+- WebXR 支持以运行时检测方式接入；不支持 WebXR 的普通浏览器会保留屏幕 3D 模式。
+
+验收命令：
+
+- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
+- `npx playwright screenshot --viewport-size=1366,900 http://localhost:5173/ /tmp/mr-calligraphy-three-front.png`
+
 ---
 
 # S4 后台 3D 控制台 Scene Console
 
 目标：后台可以真实摆放和编辑 3D 物件。
 
-- [ ] **S4-01：建立后台三栏布局**  
+- [x] **S4-01：建立后台三栏布局**
   验收：后台包含对象列表、3D 编辑视窗、属性面板。
 
-- [ ] **S4-02：建立对象列表**  
+- [x] **S4-02：建立对象列表**
   验收：对象列表显示当前场景所有物件。
 
-- [ ] **S4-03：实现对象选择**  
+- [x] **S4-03：实现对象选择**
   验收：点击对象列表或 3D 物件后，属性面板显示选中对象。
 
 - [ ] **S4-04：实现 TransformControls**  
   验收：可以在 3D 视窗中拖拽物件移动、旋转、缩放。
 
-- [ ] **S4-05：编辑 position**  
+- [x] **S4-05：编辑 position**
   验收：在属性面板修改 x/y/z 后，物件位置实时变化。
 
-- [ ] **S4-06：编辑 rotation**  
+- [x] **S4-06：编辑 rotation**
   验收：在属性面板修改旋转值后，物件角度实时变化。
 
-- [ ] **S4-07：编辑 scale**  
+- [x] **S4-07：编辑 scale**
   验收：在属性面板修改缩放后，物件大小实时变化。
 
-- [ ] **S4-08：编辑颜色**  
+- [x] **S4-08：编辑颜色**
   验收：修改颜色后，物件材质立即更新。
 
-- [ ] **S4-09：编辑透明度**  
+- [x] **S4-09：编辑透明度**
   验收：修改 opacity 后，物件透明度立即更新。
 
 - [ ] **S4-10：编辑 emissive 发光色**  
@@ -257,6 +283,19 @@
 
 - [ ] **S4-20：编辑热点**  
   验收：可新增热点、修改热点位置、名称和触发动作。
+
+完成记录（2026-06-14）：
+
+- `/editor` 已从平面示意图改为真实 Three.js 3D 编辑视窗。
+- 后台三栏包含对象列表、3D 编辑视窗和属性面板。
+- 点击对象列表或 3D 物件可选中对象，视窗中显示 TransformControls 辅助器。
+- 属性面板可真实修改 position、rotation、scale、color 和 opacity，并写入 `mr-calligraphy-scene-config-v2`。
+- TransformControls 当前已支持选中对象和平移拖动；旋转 / 缩放拖拽模式按钮还未实现，因此 `S4-04` 暂不勾选。
+
+验收命令：
+
+- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
+- `npx playwright screenshot --viewport-size=1366,900 http://localhost:5173/editor /tmp/mr-calligraphy-three-editor.png`
 
 ---
 

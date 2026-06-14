@@ -570,3 +570,37 @@ MR / AR / 屏幕通用书法交互前台
 - `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
 - `node scripts/smoke-test.js --base-url=http://localhost:41496/`
 - `git diff --check`
+
+### 2026-06-14：接入真实 Three.js 3D / VR-MR 基础交互
+
+用户反馈上一版 Vite 页面只是平面骨架，没有达到“VR/MR 的交互，还得是 3D”的要求。本轮把新主线从示意 UI 改为真实 WebGL 3D 交互：
+
+- 新增 `app/src/SceneCanvas.tsx`，使用 Three.js WebGLRenderer 渲染 3D 书法空间。
+- 前台 `/` 已使用 OrbitControls，支持拖拽旋转视角和滚轮缩放。
+- 3D 场景包含房间、地板、展示屏、书写平台、宣纸、毛笔、座椅、灯光、热点和“永”字笔画路径。
+- 点击热点或前台按钮可播放 / 暂停“永”字笔画动画，笔尖标记会沿路径移动。
+- 后台 `/editor` 使用同一个 SceneCanvas，并接入 TransformControls，可在 3D 视窗中选择物件和平移拖动。
+- 属性面板的 position、rotation、scale、color、opacity 已从只读展示改为真实输入，修改后会写入 `mr-calligraphy-scene-config-v2`，前台和预览同步读取。
+- 已接入 WebXR 能力检测：支持设备可尝试进入 AR / VR，不支持时保留屏幕 3D 模式。
+- Playwright 验收新增 WebGL canvas 像素差异检测，避免只验证文字存在。
+
+本轮对应清单进度：
+
+- 完成 S2-01、S2-02、S2-03、S2-05、S2-06、S2-07、S2-08。
+- 完成 S3-01、S3-03、S3-05、S3-06、S3-08、S3-09。
+- 完成 S4-01、S4-02、S4-03、S4-05、S4-06、S4-07、S4-08、S4-09。
+
+边界：
+
+- GLB 模型加载仍未接入新 SceneConfig，`S2-04` 未完成。
+- TransformControls 目前只开放平移拖动，旋转 / 缩放拖拽模式还没有 UI，`S4-04` 未完成。
+- WebXR 已做能力检测和会话入口，但没有真实 MR 设备验收，S6 暂不勾选。
+
+验收命令：
+
+- `npm run build`
+- `PLAYWRIGHT_BASE_URL=http://localhost:5173/ npx playwright test tests/e2e/vite-app.spec.js`
+- `npx playwright screenshot --viewport-size=1366,900 http://localhost:5173/ /tmp/mr-calligraphy-three-front.png`
+- `npx playwright screenshot --viewport-size=1366,900 http://localhost:5173/editor /tmp/mr-calligraphy-three-editor.png`
+- `node scripts/smoke-test.js --base-url=http://localhost:41496/`
+- `git diff --check`

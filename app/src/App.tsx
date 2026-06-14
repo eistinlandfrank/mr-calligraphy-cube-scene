@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
+import { SceneCanvas } from "./SceneCanvas";
 import {
-  DEFAULT_SCENE_CONFIG,
   SceneConfig,
   SceneObject,
+  Vector3,
   resetSceneConfig,
   updateSceneConfig,
   useSceneConfig
@@ -50,23 +51,19 @@ function AppHeader({ routeMode, sceneConfig }: { routeMode: RouteMode; sceneConf
 
 function FrontStage({ sceneConfig }: { sceneConfig: SceneConfig }) {
   const visibleObjects = useMemo(() => sceneConfig.objects.filter((object) => object.visible), [sceneConfig.objects]);
+  const [animationPlaying, setAnimationPlaying] = useState(false);
 
   return (
     <main className="front-stage">
-      <section className="scene-viewport" aria-label="前台书法空间概览">
-        <div className="stage-screen">
-          <span>{sceneConfig.animations[0]?.character ?? "永"}</span>
-        </div>
-        <div className="stage-desk">
-          <div className="stage-paper">{sceneConfig.animations[0]?.character ?? "永"}</div>
-          <div className="stage-brush" />
-        </div>
-        <div className="stage-chair" />
-        <div className="stage-hotspot">{sceneConfig.hotspots[0]?.label ?? "热点"}</div>
-      </section>
+      <SceneCanvas
+        mode="front"
+        sceneConfig={sceneConfig}
+        animationPlaying={animationPlaying}
+        onHotspotActivate={() => setAnimationPlaying((playing) => !playing)}
+      />
       <aside className="stage-panel">
         <p className="eyebrow">Front Stage</p>
-        <h2>默认 3D 书法空间入口</h2>
+        <h2>真实 3D 书法空间</h2>
         <dl className="scene-stats">
           <div>
             <dt>对象</dt>
@@ -81,6 +78,12 @@ function FrontStage({ sceneConfig }: { sceneConfig: SceneConfig }) {
             <dd>{sceneConfig.animations.length}</dd>
           </div>
         </dl>
+        <div className="stage-actions">
+          <button type="button" onClick={() => setAnimationPlaying((playing) => !playing)}>
+            {animationPlaying ? "暂停永字动画" : "播放永字动画"}
+          </button>
+          <a href="/editor">进入后台编辑</a>
+        </div>
         <ObjectSummaryList objects={visibleObjects} />
       </aside>
     </main>
@@ -113,14 +116,13 @@ function SceneConsole({ sceneConfig }: { sceneConfig: SceneConfig }) {
         </div>
       </aside>
 
-      <section className="editor-viewport" aria-label="后台 3D 编辑视窗">
-        <div className="grid-floor" />
-        <div className="editor-screen" />
-        <div className="editor-desk" />
-        <div className="editor-selection">
-          {selectedObject?.name ?? "未选择"}
-        </div>
-      </section>
+      <SceneCanvas
+        mode="editor"
+        sceneConfig={sceneConfig}
+        selectedObjectId={selectedObject?.id}
+        onSelectObject={setSelectedObjectId}
+        onObjectTransform={(objectId, patch) => updateObject(objectId, patch)}
+      />
 
       <aside className="property-panel">
         <div className="panel-head">
@@ -163,9 +165,25 @@ function ObjectProperties({ object }: { object: SceneObject }) {
           onChange={(event) => updateObject(object.id, { visible: event.target.checked })}
         />
       </label>
-      <VectorRows title="位置" values={object.position} />
-      <VectorRows title="旋转" values={object.rotation} />
-      <VectorRows title="缩放" values={object.scale} />
+      <VectorInputs
+        title="位置"
+        values={object.position}
+        step={0.05}
+        onChange={(next) => updateObject(object.id, { position: next })}
+      />
+      <VectorInputs
+        title="旋转"
+        values={object.rotation}
+        step={1}
+        onChange={(next) => updateObject(object.id, { rotation: next })}
+      />
+      <VectorInputs
+        title="缩放"
+        values={object.scale}
+        step={0.05}
+        min={0.02}
+        onChange={(next) => updateObject(object.id, { scale: next })}
+      />
       <label>
         <span>颜色</span>
         <input
@@ -191,21 +209,46 @@ function ObjectProperties({ object }: { object: SceneObject }) {
   );
 }
 
-function VectorRows({ title, values }: { title: string; values: [number, number, number] }) {
+function VectorInputs({
+  title,
+  values,
+  step,
+  min,
+  onChange
+}: {
+  title: string;
+  values: Vector3;
+  step: number;
+  min?: number;
+  onChange: (values: Vector3) => void;
+}) {
   return (
-    <div className="vector-row">
-      <span>{title}</span>
-      <code>{values.map((value) => value.toFixed(2)).join(" / ")}</code>
-    </div>
+    <fieldset className="vector-inputs">
+      <legend>{title}</legend>
+      {(["X", "Y", "Z"] as const).map((axis, index) => (
+        <label key={axis}>
+          <span>{axis}</span>
+          <input
+            type="number"
+            min={min}
+            step={step}
+            value={values[index]}
+            onChange={(event) => {
+              const next = [...values] as Vector3;
+              next[index] = Number(event.target.value);
+              onChange(next);
+            }}
+          />
+        </label>
+      ))}
+    </fieldset>
   );
 }
 
 function PreviewStage({ sceneConfig }: { sceneConfig: SceneConfig }) {
   return (
     <main className="preview-layout">
-      <section className="preview-scene">
-        <div className="preview-character">{sceneConfig.animations[0]?.character ?? "永"}</div>
-      </section>
+      <SceneCanvas mode="preview" sceneConfig={sceneConfig} />
       <section className="preview-panel">
         <p className="eyebrow">Read Only Preview</p>
         <h2>{sceneConfig.name}</h2>

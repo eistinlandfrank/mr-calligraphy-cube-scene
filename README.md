@@ -58,7 +58,14 @@ http://localhost:5173/editor
 http://localhost:5173/preview
 ```
 
-当前 Vite 应用已经建立 Front Stage、Scene Console 和 Preview 三个基础入口，后台控制台会把场景配置保存到浏览器 `localStorage`，前台和预览会读取同一份 SceneConfig。
+当前 Vite 应用已经建立 Front Stage、Scene Console 和 Preview 三个入口。前台和后台都使用 Three.js 渲染真实 WebGL 3D 书法空间，包含房间、书桌、宣纸、毛笔、座椅、展示屏、灯光、热点和“永”字笔画动画。后台控制台会把场景配置保存到浏览器 `localStorage`，前台和预览会读取同一份 SceneConfig。
+
+当前新主线交互：
+
+- 前台 `/`：OrbitControls 拖拽旋转视角、滚轮缩放，点击热点或按钮播放 / 暂停“永”字笔画动画。
+- 后台 `/editor`：对象列表选择 3D 物件，TransformControls 可在视窗内拖动物件，属性面板可编辑位置、旋转、缩放、颜色、透明度并实时保存。
+- 预览 `/preview`：只读加载同一份 SceneConfig。
+- WebXR：页面会检测 `navigator.xr`，支持设备可尝试进入 AR / VR；不支持时自动保留屏幕 3D 模式。
 
 生产构建：
 

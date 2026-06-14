@@ -9,6 +9,14 @@ export default defineConfig({
     host: "0.0.0.0",
     port: 5173
   },
+  optimizeDeps: {
+    esbuildOptions: {
+      target: "esnext"
+    }
+  },
+  esbuild: {
+    target: "esnext"
+  },
   preview: {
     host: "0.0.0.0",
     port: 4173
