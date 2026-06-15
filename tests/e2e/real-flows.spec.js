@@ -115,6 +115,7 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await page.setViewportSize({ width: 390, height: 844 });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.waitForFunction(() => window.MR_FRONT_RENDERER_KIND === "front-three-admin-renderer");
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   await expect(page.locator("#taskPanel")).toBeVisible();
   await expect(page.locator("#serviceBoundaryPanel")).toBeVisible();

@@ -40,7 +40,7 @@
 ## S1 旧版布局一致性
 
 - [x] **S1-01：保留旧版前台场景布局**
-  验收：前台仍使用旧版 WebGL 立方体房间和旧版空间布局。
+  验收：前台仍使用旧版立方体房间、旧版空间布局和旧版物体坐标体系。
 
 - [x] **S1-02：保留旧版主后台**
   验收：`main-admin.html` 可访问，主场景对象控制和本机审计仍存在。
@@ -141,7 +141,7 @@
   验收：后台保存草稿、发布前台、回滚发布版本时优先写入 `server-data/main-scene-*.json`。
 
 - [x] **S6-03：前台读取后台服务器布局**
-  验收：前台优先读取服务器发布布局，`?mainScenePreview=draft` 优先读取服务器草稿布局。
+  验收：前台优先读取服务器发布布局；尚未发布时读取服务器草稿布局；`?mainScenePreview=draft` 直接读取服务器草稿布局。
 
 - [x] **S6-04：浏览器缓存降级**
   验收：API 不可用时仍能用 localStorage 缓存打开，不把 cookie 当作布局存储。
@@ -153,6 +153,27 @@
 - 已验证 Node 本地服务器 API 可写入和读取主场景布局 JSON。
 - 已验证 `main admin publishes a local draft that the front page reads` E2E：后台发布后前台读取同一份布局。
 - 当前 `41496` 已切换为 Node 本地服务器，`/api/main-scene/layout` 可访问。
+
+## S7 前后台主场景渲染统一
+
+- [x] **S7-01：前台改用后台同风格 Three.js 渲染**
+  验收：前台进入 `front-three-admin-renderer`，不再使用旧前台自绘 WebGL 家具渲染作为 HTTP 模式主路径。
+
+- [x] **S7-02：迁移后台灯光与环境**
+  验收：前台使用 RoomEnvironment、半球光、主聚光灯、边缘方向光、ACES 曝光、阴影和环境强度。
+
+- [x] **S7-03：物体位置与后台布局一致**
+  验收：前台使用后台同一份模型默认坐标、旋转、缩放、大型 GLB 缩放因子和服务器本地布局状态。
+
+- [x] **S7-04：前台保留模型加载可观测性**
+  验收：前台继续写入 `MR_LOADED_MODEL_COUNT`、`MR_LOADED_MODEL_VERTICES`、`MR_LOADED_TEXTURED_MODEL_COUNT`。
+
+完成记录（2026-06-15）：
+
+- 已新增 `front-main-scene-renderer.js`。
+- 已为 `index.html` 补齐 Three.js import map。
+- 已验证前台从 `server-local` 读取主场景布局，加载 19 个 GLB 模型，并进入 `front-three-admin-renderer`。
+- 已验证移动端核心面板用例等待新渲染器启动后通过。
 
 ---
 

@@ -1274,11 +1274,7 @@ async function hydrateMainSceneLayoutFromServer() {
     ? await store.readLayout()
     : await store.readPublished();
 
-  if (!result?.ok || !result.data) {
-    return;
-  }
-
-  if (isDraftPreview) {
+  if (isDraftPreview && result?.ok && result.data) {
     mainSceneLayout = normalizeMainSceneLayout(result.data);
     cacheStoredJson(MAIN_SCENE_STORAGE_KEY, mainSceneLayout);
     window.MR_MAIN_SCENE_SOURCE = "draft-preview";
@@ -1286,12 +1282,23 @@ async function hydrateMainSceneLayoutFromServer() {
     return;
   }
 
-  if (result.data.layout) {
+  if (!isDraftPreview && result?.ok && result.data?.layout) {
     mainSceneLayout = normalizeMainSceneLayout(result.data.layout);
     cacheStoredJson(MAIN_SCENE_PUBLISHED_KEY, result.data);
     window.MR_MAIN_SCENE_SOURCE = "published";
     window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
     window.MR_MAIN_SCENE_PUBLISHED_AT = result.data.publishedAt || result.updatedAt || "";
+    return;
+  }
+
+  if (!isDraftPreview) {
+    const draftResult = await store.readLayout();
+    if (draftResult?.ok && draftResult.data) {
+      mainSceneLayout = normalizeMainSceneLayout(draftResult.data);
+      cacheStoredJson(MAIN_SCENE_STORAGE_KEY, mainSceneLayout);
+      window.MR_MAIN_SCENE_SOURCE = "draft-fallback";
+      window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
+    }
   }
 }
 
@@ -2610,6 +2617,9 @@ function cloneConfig(value) {
 const ROOM_VERTEX_STRIDE = 14;
 
 function createRoomRenderer(canvas) {
+  if (!IS_FILE_MODE) {
+    return createBackendStyleRoomRenderer(canvas);
+  }
   if (!canvas) {
     return null;
   }
@@ -2762,6 +2772,69 @@ function createRoomRenderer(canvas) {
   }
 
   return { render, setTextures, setRoles, setMainSceneLayout };
+}
+
+function createBackendStyleRoomRenderer(canvas) {
+  if (!canvas) {
+    return null;
+  }
+
+  let activeRenderer = null;
+  let lastView = { yaw: cubeYaw, pitch: cubePitch, scale: cubeScale };
+  let failed = false;
+
+  canvas.hidden = false;
+  if (els.cubeScene) {
+    els.cubeScene.style.display = "none";
+  }
+  window.MR_FRONT_RENDERER_KIND = "three-admin-loading";
+
+  import("./front-main-scene-renderer.js")
+    .then(({ createFrontMainSceneRenderer }) => createFrontMainSceneRenderer(canvas, {
+      layout: mainSceneLayout,
+      textures: roomConfig.textures,
+      modelSpecs: EXTERNAL_ROOM_MODELS.map((spec) => ({
+        ...spec,
+        label: MAIN_MODEL_LABELS[spec.id] || spec.id
+      })),
+      decorSpecs: MAIN_DECOR_OBJECTS,
+      importDbName: MAIN_IMPORT_DB_NAME,
+      importDbStore: MAIN_IMPORT_DB_STORE,
+      yaw: lastView.yaw,
+      pitch: lastView.pitch,
+      scale: lastView.scale,
+      onNotice: showNotice
+    }))
+    .then((renderer) => {
+      activeRenderer = renderer;
+      window.MR_FRONT_RENDERER_KIND = renderer.kind || "front-three-admin-renderer";
+      activeRenderer.render(lastView.yaw, lastView.pitch, lastView.scale);
+    })
+    .catch((error) => {
+      failed = true;
+      window.MR_FRONT_RENDERER_KIND = "three-admin-failed";
+      console.error("后台风格 Three.js 前台渲染器加载失败。", error);
+      showNotice("后台风格 Three.js 渲染器加载失败，前台场景暂不可用。");
+    });
+
+  return {
+    render(yaw, pitch, scale) {
+      lastView = { yaw, pitch, scale };
+      activeRenderer?.render(yaw, pitch, scale);
+    },
+    setTextures(nextTextures) {
+      activeRenderer?.setTextures(nextTextures);
+    },
+    setRoles(roles) {
+      activeRenderer?.setRoles(roles);
+    },
+    setMainSceneLayout() {
+      activeRenderer?.setMainSceneLayout(mainSceneLayout);
+    },
+    get failed() {
+      return failed;
+    }
+  };
 }
 
 const ROOM_VERTEX_SHADER = `

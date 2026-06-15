@@ -69,7 +69,7 @@ tests/e2e/vite-app.spec.js
 |---|---|
 | 项目形态 | 纯静态 HTML / CSS / JavaScript |
 | 本地服务 | `node scripts/local-server.js`，监听 `0.0.0.0:41496` |
-| 3D 渲染 | Three.js + 旧版 WebGL 立方体房间 |
+| 3D 渲染 | 前台主场景与 `main-admin.html` 共用 Three.js 风格渲染：RoomEnvironment、灯光、阴影、GLB 模型和服务器布局 |
 | 场景配置 | `room-config.js` + `server-data/main-scene-*.json`，localStorage 仅作离线兜底 |
 | 本机状态 | `app-state.js` |
 | 写字画布 | `practice-canvas.js` |
@@ -220,6 +220,16 @@ main-admin.html
 - 后台保存、恢复快照、发布、回滚和删除发布版本会写服务器本地 JSON；浏览器缓存只作为兜底。
 - 已用临时数据目录验证 API 会生成 `main-scene-layout.json` 和 `main-scene-published.json`。
 - 已用 Playwright 验证后台发布后前台读取同一份布局。
+
+### 2026-06-15：前后台主场景渲染统一
+
+- 新增 `front-main-scene-renderer.js`，前台主场景改用后台同风格 Three.js 渲染管线。
+- 前台入口补齐 Three.js import map，动态加载 `RoomEnvironment`、`GLTFLoader` 和 `OBJLoader`。
+- 前台主场景复用后台光照参数：半球光、主聚光灯、边缘方向光、PMREM 环境贴图、ACES 曝光、阴影和材质环境强度。
+- 前台物体状态复用后台布局数据、默认坐标、旋转、缩放、隐藏/删除状态和大型 GLB 缩放因子，避免保存后前后台位置不一致。
+- 普通前台会优先读取服务器本地发布布局；如果尚未发布，则自动读取服务器本地草稿布局。
+- 保留 `MR_LOADED_MODEL_COUNT`、`MR_LOADED_MODEL_VERTICES`、`MR_LOADED_TEXTURED_MODEL_COUNT` 运行时信号，便于 E2E 与调试确认真实模型加载。
+- 已验证前台进入 `front-three-admin-renderer`，从 `server-local` 读取布局并加载 19 个 GLB 模型。
 
 ---
 

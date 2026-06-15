@@ -35,6 +35,7 @@ const SCRIPT_CHECKS = [
   { file: "main-scene-local-store.js", parser: "script" },
   { file: "room-config.js", parser: "script" },
   { file: "model-import-utils.js", parser: "module" },
+  { file: "front-main-scene-renderer.js", parser: "module" },
   { file: "script.js", parser: "module" },
   { file: "main-admin-scene.js", parser: "module" },
   { file: "realistic-scene.js", parser: "module" }
