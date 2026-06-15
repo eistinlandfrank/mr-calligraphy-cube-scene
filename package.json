@@ -3,9 +3,9 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "python3 -m http.server 41496 --bind 0.0.0.0",
+    "dev": "node scripts/local-server.js",
     "build": "npm run smoke",
-    "preview": "python3 -m http.server 41496 --bind 0.0.0.0",
+    "preview": "node scripts/local-server.js",
     "smoke": "node scripts/smoke-test.js",
     "smoke:running": "node scripts/smoke-test.js --base-url=http://localhost:41496/",
     "test:e2e": "playwright test",

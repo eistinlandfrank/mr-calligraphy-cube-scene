@@ -38,13 +38,22 @@ npm install
 npm run dev
 ```
 
-默认会在 `0.0.0.0:41496` 启动本地静态服务器。浏览器访问：
+默认会在 `0.0.0.0:41496` 启动 Node 本地服务器。浏览器访问：
 
 ```text
 http://localhost:41496/
 ```
 
 如果 41496 端口已经有服务在运行，可以直接使用现有服务；不要再启动旧的 Vite 5173 项目。
+
+后台保存主场景布局时会优先写到部署目录的：
+
+```text
+server-data/main-scene-layout.json
+server-data/main-scene-published.json
+```
+
+浏览器 `localStorage` 只作为离线兜底缓存，不再作为主场景布局的唯一保存位置。
 
 ## 当前交互方向
 
@@ -113,7 +122,7 @@ assets/cube/ceiling.png
 assets/cube/floor.png
 ```
 
-建议每张保持正方形，例如 `2048x2048` 或 `4096x4096`。如果直接双击 `index.html`，浏览器可能限制本地纹理加载；推荐始终通过 `npm run dev` 或 `python3 -m http.server 41496 --bind 0.0.0.0` 访问。
+建议每张保持正方形，例如 `2048x2048` 或 `4096x4096`。如果直接双击 `index.html`，浏览器可能限制本地纹理加载，也无法使用服务器本地布局保存；推荐始终通过 `npm run dev` 访问。
 
 ## 配置接口
 

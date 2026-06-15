@@ -1225,7 +1225,12 @@ let lecturePlaybackToken = 0;
 const LECTURE_PLAYBACK_STEP_MS = 1200;
 const mainSceneUndoStack = [];
 
-document.addEventListener("DOMContentLoaded", init);
+document.addEventListener("DOMContentLoaded", () => {
+  init().catch((error) => {
+    console.error("前台初始化失败", error);
+    showNotice("前台初始化失败，已尝试保留本机缓存场景。");
+  });
+});
 
 function loadMainSceneLayout() {
   try {
@@ -1257,9 +1262,50 @@ function readMainSceneLayoutSource() {
   return draft;
 }
 
+async function hydrateMainSceneLayoutFromServer() {
+  const store = window.MRMainSceneLocalStore;
+  if (!store) {
+    return;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const isDraftPreview = params.get("mainScenePreview") === "draft";
+  const result = isDraftPreview
+    ? await store.readLayout()
+    : await store.readPublished();
+
+  if (!result?.ok || !result.data) {
+    return;
+  }
+
+  if (isDraftPreview) {
+    mainSceneLayout = normalizeMainSceneLayout(result.data);
+    cacheStoredJson(MAIN_SCENE_STORAGE_KEY, mainSceneLayout);
+    window.MR_MAIN_SCENE_SOURCE = "draft-preview";
+    window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
+    return;
+  }
+
+  if (result.data.layout) {
+    mainSceneLayout = normalizeMainSceneLayout(result.data.layout);
+    cacheStoredJson(MAIN_SCENE_PUBLISHED_KEY, result.data);
+    window.MR_MAIN_SCENE_SOURCE = "published";
+    window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
+    window.MR_MAIN_SCENE_PUBLISHED_AT = result.data.publishedAt || result.updatedAt || "";
+  }
+}
+
 function readStoredJson(key) {
   const raw = window.localStorage.getItem(key);
   return raw ? JSON.parse(raw) : null;
+}
+
+function cacheStoredJson(key, value) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch (error) {
+    console.warn("无法写入浏览器缓存", error);
+  }
 }
 
 function normalizeMainSceneLayout(layout) {
@@ -1448,6 +1494,11 @@ function stripMainModelExtension(fileName) {
 function saveMainSceneLayoutToStorage() {
   try {
     window.localStorage.setItem(MAIN_SCENE_STORAGE_KEY, JSON.stringify(mainSceneLayout));
+    window.MRMainSceneLocalStore?.writeLayout?.(mainSceneLayout).then((result) => {
+      if (result?.ok === false) {
+        console.warn("无法保存主场景物体布局到服务器本地", result);
+      }
+    });
   } catch (error) {
     console.warn("无法保存主场景物体布局", error);
   }
@@ -1812,7 +1863,8 @@ function normalizeRole(role, index) {
   };
 }
 
-function init() {
+async function init() {
+  await hydrateMainSceneLayoutFromServer();
   buildStepNavigation();
   buildPathList();
   bindQuickControls();

@@ -185,6 +185,10 @@ const DEFAULT_LIGHTING = {
   rim: 0.45,
   exposure: 0.82
 };
+const serverDraftLayout = await readServerMainSceneRecord("layout");
+let serverPublishedRecord = await readServerMainSceneRecord("published");
+let layoutServerSaveTimer = 0;
+let layoutServerSaveVersion = 0;
 const CUSTOM_TYPE_LABELS = {
   box: "方块",
   cylinder: "圆柱",
@@ -239,7 +243,7 @@ const DECOR_SPECS = [
   { id: "ceiling-beam-back", label: "后侧横梁", position: [0, 5.02, 3.2], scale: 1, create: () => createBoxObject(16, 0.18, 0.24, materials.darkWood) }
 ];
 
-const layout = loadLayout();
+const layout = loadLayout(serverDraftLayout);
 let layoutHistory = loadLayoutHistory();
 let importTextureCleanupRefreshToken = 0;
 let lighting = normalizeLighting(layout.lighting);
@@ -1131,10 +1135,10 @@ function canTransformEntry(entry) {
   return entry && !isEntryHidden(entry) && !isEntryLocked(entry);
 }
 
-function loadLayout() {
+function loadLayout(serverLayout = null) {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : {};
+    const raw = serverLayout ? "" : window.localStorage.getItem(STORAGE_KEY);
+    const parsed = serverLayout || (raw ? JSON.parse(raw) : {});
     return {
       objects: parsed && typeof parsed.objects === "object" && parsed.objects ? parsed.objects : {},
       layerOrder: normalizeLayerOrder(parsed?.layerOrder),
@@ -1155,10 +1159,40 @@ function loadLayout() {
 function saveLayout() {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+    queueServerLayoutSave(layout);
     renderPublishDiff();
   } catch (error) {
     console.warn("Main scene layout could not be saved.", error);
   }
+}
+
+async function readServerMainSceneRecord(kind) {
+  const store = window.MRMainSceneLocalStore;
+  const reader = kind === "published" ? store?.readPublished : store?.readLayout;
+  if (!reader) {
+    return null;
+  }
+
+  const result = await reader();
+  return result?.ok && result.data ? result.data : null;
+}
+
+function queueServerLayoutSave(nextLayout) {
+  const store = window.MRMainSceneLocalStore;
+  if (!store?.writeLayout) {
+    return;
+  }
+
+  const snapshot = clonePlain(nextLayout);
+  const version = ++layoutServerSaveVersion;
+  window.clearTimeout(layoutServerSaveTimer);
+  layoutServerSaveTimer = window.setTimeout(async () => {
+    const result = await store.writeLayout(snapshot);
+    if (!result?.ok && version === layoutServerSaveVersion) {
+      console.warn("Main scene layout could not be saved to server-local JSON.", result);
+      showNotice("服务器本地布局保存失败，已保留浏览器缓存兜底。");
+    }
+  }, 240);
 }
 
 function loadLayoutHistory() {
@@ -1379,11 +1413,13 @@ function handleSnapshotListClick(event) {
   }
 }
 
-function restoreLayoutSnapshot(snapshot) {
+async function restoreLayoutSnapshot(snapshot) {
   const autoSnapshot = createLayoutSnapshot("恢复前自动快照", { notice: false, status: false });
+  const restoredLayout = normalizeSnapshotLayout(snapshot.layout);
 
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeSnapshotLayout(snapshot.layout)));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(restoredLayout));
+    await window.MRMainSceneLocalStore?.writeLayout?.(restoredLayout);
     recordAdminOperation("snapshot-restore", snapshot.label, `恢复主场景快照：${snapshot.label}`, "ok", {
       snapshotId: snapshot.id,
       autoSnapshotId: autoSnapshot?.id || "",
@@ -1448,6 +1484,9 @@ function clonePlain(value) {
 
 function loadPublishedLayoutRecord() {
   try {
+    if (serverPublishedRecord) {
+      return normalizePublishedRecord(serverPublishedRecord);
+    }
     const raw = window.localStorage.getItem(PUBLISHED_KEY);
     return normalizePublishedRecord(raw ? JSON.parse(raw) : null);
   } catch (error) {
@@ -1456,7 +1495,7 @@ function loadPublishedLayoutRecord() {
   }
 }
 
-function publishLayoutToFront() {
+async function publishLayoutToFront() {
   if (!ensureAdminPermission("publish", "发布到前台")) {
     return;
   }
@@ -1471,7 +1510,7 @@ function publishLayoutToFront() {
 
   try {
     createLayoutSnapshot("发布前快照", { notice: false, status: false });
-    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(record));
+    await persistPublishedLayoutRecord(record);
     if (publishNoteInput) publishNoteInput.value = "";
     renderPublishPanel();
     recordAdminOperation("publish-local", "主场景前台", `发布主场景到前台：v${release.releaseNumber}。`, "ok", {
@@ -1487,6 +1526,16 @@ function publishLayoutToFront() {
     });
     setPublishStatus("发布失败，可能是浏览器本机存储空间不足。", "error");
   }
+}
+
+async function persistPublishedLayoutRecord(record) {
+  window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(record));
+  const result = await window.MRMainSceneLocalStore?.writePublished?.(record);
+  if (result && result.ok === false) {
+    console.warn("Published main scene layout could not be saved to server-local JSON.", result);
+    showNotice("服务器本地发布布局保存失败，已保留浏览器缓存兜底。");
+  }
+  serverPublishedRecord = record;
 }
 
 function renderPublishPanel() {
@@ -1625,13 +1674,13 @@ function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
     {
       label: "本机编辑",
       state: draftStats.objectCount ? "ready" : "idle",
-      detail: `${draftStats.objectCount} 个主场景对象，含 ${draftStats.customCount} 个基础物体、${draftStats.importedCount} 个导入模型；草稿写入本机 localStorage/IndexedDB。`
+      detail: `${draftStats.objectCount} 个主场景对象，含 ${draftStats.customCount} 个基础物体、${draftStats.importedCount} 个导入模型；草稿优先写入部署服务器 server-data，本机缓存仅作离线兜底。`
     },
     {
       label: "前台发布",
       state: hasLocalRelease ? "ready" : "idle",
       detail: hasLocalRelease
-        ? `已发布本机前台 v${record.releaseNumber || 1}，发布历史 ${releaseCount} 个版本。`
+        ? `已发布服务器本地前台 v${record.releaseNumber || 1}，发布历史 ${releaseCount} 个版本。`
         : "尚未生成本机前台发布版本，前台会临时读取当前草稿。"
     },
     {
@@ -2665,7 +2714,7 @@ function handlePublishHistoryClick(event) {
   }
 }
 
-function restorePublishedRelease(record, release) {
+async function restorePublishedRelease(record, release) {
   const rollbackRelease = createPublishRelease({
     note: `回滚到 v${release.releaseNumber}：${release.note || "无说明"}`,
     sourceLayout: release.layout,
@@ -2676,7 +2725,7 @@ function restorePublishedRelease(record, release) {
   const nextRecord = buildPublishedRecord(rollbackRelease, [rollbackRelease, ...record.releases]);
 
   try {
-    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(nextRecord));
+    await persistPublishedLayoutRecord(nextRecord);
     renderPublishPanel();
     showNotice(`已回滚发布到 v${release.releaseNumber}，生成新版本 v${rollbackRelease.releaseNumber}。`);
   } catch (error) {
@@ -2685,7 +2734,7 @@ function restorePublishedRelease(record, release) {
   }
 }
 
-function deletePublishedRelease(record, releaseId) {
+async function deletePublishedRelease(record, releaseId) {
   if (record.currentReleaseId === releaseId) {
     setPublishStatus("当前发布版本不能删除。请先恢复到其他版本。", "error");
     return;
@@ -2696,7 +2745,7 @@ function deletePublishedRelease(record, releaseId) {
   const nextRecord = buildPublishedRecord(current, nextReleases);
 
   try {
-    window.localStorage.setItem(PUBLISHED_KEY, JSON.stringify(nextRecord));
+    await persistPublishedLayoutRecord(nextRecord);
     renderPublishPanel();
     setPublishStatus("已删除发布历史记录。", "success");
   } catch (error) {

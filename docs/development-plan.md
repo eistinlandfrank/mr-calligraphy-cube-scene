@@ -68,9 +68,9 @@ tests/e2e/vite-app.spec.js
 | 模块 | 当前方案 |
 |---|---|
 | 项目形态 | 纯静态 HTML / CSS / JavaScript |
-| 本地服务 | `python3 -m http.server 41496 --bind 0.0.0.0` |
+| 本地服务 | `node scripts/local-server.js`，监听 `0.0.0.0:41496` |
 | 3D 渲染 | Three.js + 旧版 WebGL 立方体房间 |
-| 场景配置 | `room-config.js` + localStorage |
+| 场景配置 | `room-config.js` + `server-data/main-scene-*.json`，localStorage 仅作离线兜底 |
 | 本机状态 | `app-state.js` |
 | 写字画布 | `practice-canvas.js` |
 | 后台控制 | `main-admin.html` / `main-admin-scene.js` |
@@ -197,7 +197,7 @@ main-admin.html
 
 每个前端操作必须归入以下之一：
 
-- 本机真实：会读写 localStorage、IndexedDB、文件导出、书写画布、报告或项目档案。
+- 本机真实：会读写部署服务器本地 JSON、localStorage、IndexedDB、文件导出、书写画布、报告或项目档案。
 - 本机预览：只影响当前浏览器会话，但有明确状态反馈。
 - 远端 Adapter：有 endpoint、token、workspace 等配置，并能产出请求/回执记录。
 - 暂不可用：必须禁用或明确说明边界。
@@ -208,6 +208,18 @@ main-admin.html
 - 用固定假数据冒充真实报告。
 - 用演示编号冒充正式学习流程。
 - 用新入口替代用户要求保留的旧版项目。
+
+---
+
+### 2026-06-15：主场景布局改为服务器本地保存
+
+- `npm run dev` 改为启动 `scripts/local-server.js`，继续监听 `0.0.0.0:41496`。
+- 新增 `/api/main-scene/layout` 和 `/api/main-scene/published`，分别保存后台草稿布局和前台发布布局。
+- 新增 `server-data/main-scene-layout.json` 与 `server-data/main-scene-published.json` 作为部署本地保存文件；该目录不提交到 Git。
+- 前台初始化优先读取服务器本地发布布局，`?mainScenePreview=draft` 优先读取服务器本地草稿布局。
+- 后台保存、恢复快照、发布、回滚和删除发布版本会写服务器本地 JSON；浏览器缓存只作为兜底。
+- 已用临时数据目录验证 API 会生成 `main-scene-layout.json` 和 `main-scene-published.json`。
+- 已用 Playwright 验证后台发布后前台读取同一份布局。
 
 ---
 

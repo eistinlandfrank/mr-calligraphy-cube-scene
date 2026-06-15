@@ -3,4 +3,5 @@ dist/
 playwright-report/
 test-results/
 blob-report/
+server-data/
 .DS_Store

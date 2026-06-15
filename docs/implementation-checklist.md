@@ -132,6 +132,30 @@
 
 ---
 
+## S6 服务器本地布局保存
+
+- [x] **S6-01：新增本地部署服务器 API**
+  验收：`npm run dev` 启动 Node 服务器，提供 `/api/main-scene/layout` 和 `/api/main-scene/published`。
+
+- [x] **S6-02：后台保存写入服务器本地**
+  验收：后台保存草稿、发布前台、回滚发布版本时优先写入 `server-data/main-scene-*.json`。
+
+- [x] **S6-03：前台读取后台服务器布局**
+  验收：前台优先读取服务器发布布局，`?mainScenePreview=draft` 优先读取服务器草稿布局。
+
+- [x] **S6-04：浏览器缓存降级**
+  验收：API 不可用时仍能用 localStorage 缓存打开，不把 cookie 当作布局存储。
+
+完成记录（2026-06-15）：
+
+- 已新增 `scripts/local-server.js` 和 `main-scene-local-store.js`。
+- `server-data/` 已加入 `.gitignore`，部署本地保存文件不会误提交。
+- 已验证 Node 本地服务器 API 可写入和读取主场景布局 JSON。
+- 已验证 `main admin publishes a local draft that the front page reads` E2E：后台发布后前台读取同一份布局。
+- 当前 `41496` 已切换为 Node 本地服务器，`/api/main-scene/layout` 可访问。
+
+---
+
 ## 当前验收命令
 
 ```bash
