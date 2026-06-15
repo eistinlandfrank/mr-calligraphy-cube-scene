@@ -91,10 +91,6 @@ const snapshotList = document.getElementById("realisticSnapshotList");
 const adminRiskBanner = document.getElementById("realisticAdminRiskBanner");
 const adminRiskAcknowledgeButton = document.getElementById("realisticAdminRiskAcknowledge");
 const adminRiskStatus = document.getElementById("realisticAdminRiskStatus");
-const adminAccessStatus = document.getElementById("realisticAdminAccessStatus");
-const adminAccessCodeInput = document.getElementById("realisticAdminAccessCode");
-const adminAccessUnlockButton = document.getElementById("realisticAdminAccessUnlock");
-const adminAccessLockButton = document.getElementById("realisticAdminAccessLock");
 const adminBoundaryStatus = document.getElementById("realisticAdminBoundaryStatus");
 const adminBoundaryList = document.getElementById("realisticAdminBoundaryList");
 const adminOperatorStatus = document.getElementById("realisticAdminOperatorStatus");
@@ -135,8 +131,6 @@ const ADMIN_AUDIT_ACTION_LABELS = {
   "remote-review-approve": "通过远端审核",
   "remote-review-reject": "退回远端审核",
   "remote-review-unlock": "解除发布锁",
-  "access-unlock": "解锁后台",
-  "access-lock": "锁定后台",
   "operator-save": "保存操作者",
   "snapshot-restore": "恢复快照",
   "snapshot-delete": "删除快照",
@@ -1886,7 +1880,6 @@ function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
   const remoteStatus = adapter?.getStatus?.("realisticScene", { ...context, hasLocalRelease });
   const receiptAudit = adapter?.getReceiptAudit?.("realisticScene");
   const operatorAudit = window.MRAdminAudit?.getStatus?.(ADMIN_AUDIT_SCOPE);
-  const accessStatus = window.MRAdminAudit?.getAccessStatus?.(ADMIN_AUDIT_SCOPE);
   const draftStats = getLayoutStats(savedSceneLayout);
   const releaseCount = Array.isArray(record?.releases) ? record.releases.length : 0;
   const receiptCount = Number(receiptAudit?.total || 0);
@@ -1912,13 +1905,6 @@ function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
         : "远端发布 API 尚未配置；当前只保留本机草稿、快照和演示发布版本。"
     },
     {
-      label: "本机门禁",
-      state: accessStatus?.unlocked ? "ready" : "idle",
-      detail: accessStatus
-        ? `${accessStatus.unlocked ? "已解锁" : "已锁定"}；会话保存在 ${accessStatus.storage}，${accessStatus.durationMinutes} 分钟后过期。`
-        : "本机后台访问门禁脚本未载入。"
-    },
-    {
       label: "本机审计",
       state: operatorAudit ? (operatorAudit.count ? "ready" : "idle") : "missing",
       detail: operatorAudit
@@ -1928,7 +1914,7 @@ function renderAdminBoundaryPanel(record = loadPublishedLayoutRecord()) {
     {
       label: "生产后台",
       state: "missing",
-      detail: "未接入账号登录、角色权限、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计。"
+      detail: "未接入账号登录、多人协作 CMS、生产 CDN、服务端资产回收和不可篡改审计。"
     }
   ];
 
@@ -1951,21 +1937,6 @@ function createAdminBoundaryItem(item) {
   return li;
 }
 
-function renderAdminAccessPanel() {
-  const access = window.MRAdminAudit?.getAccessStatus?.(ADMIN_AUDIT_SCOPE);
-  if (!adminAccessStatus || !access) {
-    return;
-  }
-  adminAccessStatus.textContent = access.message;
-  adminAccessStatus.dataset.accessState = access.unlocked ? "unlocked" : "locked";
-  if (adminAccessUnlockButton) {
-    adminAccessUnlockButton.disabled = Boolean(access.unlocked);
-  }
-  if (adminAccessLockButton) {
-    adminAccessLockButton.disabled = !access.unlocked;
-  }
-}
-
 function renderAdminOperatorPanel() {
   if (!adminOperatorStatus || !adminAuditList) {
     return;
@@ -1985,8 +1956,6 @@ function renderAdminOperatorPanel() {
   }
   adminOperatorStatus.textContent = `${audit.operator.name} / ${audit.operator.roleLabel} · ${audit.count} 条本机审计`;
   adminAuditList.innerHTML = "";
-  renderAdminAccessPanel();
-
   const records = audit.records.slice(0, 3);
   if (!records.length) {
     const item = document.createElement("li");
@@ -2100,7 +2069,6 @@ function applyAdminPermissionState(audit = window.MRAdminAudit?.getStatus?.(ADMI
     setAdminPermissionState(element, permission, audit);
   });
   applySnapshotPermissionState(audit);
-  renderAdminAccessPanel();
   renderImportAuditPanel();
 }
 
@@ -2142,43 +2110,6 @@ function saveAdminOperator() {
     setImportStatus(result.message || "保存本机后台操作者失败。");
   }
   renderAdminOperatorPanel();
-  updateDeletedUi();
-  renderAdminBoundaryPanel();
-}
-
-function unlockAdminAccess() {
-  const audit = window.MRAdminAudit;
-  if (!audit) {
-    setImportStatus("后台访问门禁脚本未载入。");
-    return;
-  }
-  const result = audit.unlockAccess(ADMIN_AUDIT_SCOPE, adminAccessCodeInput?.value || "");
-  if (result.ok && result.unlocked) {
-    recordAdminOperation("access-unlock", "写实后台", "解锁写实后台本机会话。", "ok", {
-      expiresAt: result.expiresAt
-    });
-    if (adminAccessCodeInput) {
-      adminAccessCodeInput.value = "";
-    }
-  }
-  setImportStatus(result.message || "本机后台会话解锁失败。");
-  renderAdminAccessPanel();
-  applyAdminPermissionState();
-  updateDeletedUi();
-  renderAdminBoundaryPanel();
-}
-
-function lockAdminAccess() {
-  const audit = window.MRAdminAudit;
-  if (!audit) {
-    setImportStatus("后台访问门禁脚本未载入。");
-    return;
-  }
-  const result = audit.lockAccess(ADMIN_AUDIT_SCOPE);
-  recordAdminOperation("access-lock", "写实后台", result.message || "锁定写实后台本机会话。", result.ok ? "ok" : "failed");
-  setImportStatus(result.message || "本机后台会话锁定失败。");
-  renderAdminAccessPanel();
-  applyAdminPermissionState();
   updateDeletedUi();
   renderAdminBoundaryPanel();
 }
@@ -3960,17 +3891,8 @@ function acknowledgeAdminRisk() {
 
 function bindUi() {
   renderAdminRiskBanner();
-  renderAdminAccessPanel();
   renderAdminOperatorPanel();
   adminRiskAcknowledgeButton?.addEventListener("click", acknowledgeAdminRisk);
-  adminAccessUnlockButton?.addEventListener("click", unlockAdminAccess);
-  adminAccessLockButton?.addEventListener("click", lockAdminAccess);
-  adminAccessCodeInput?.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      unlockAdminAccess();
-    }
-  });
   adminOperatorSaveButton?.addEventListener("click", saveAdminOperator);
   adminAuditExportButton?.addEventListener("click", exportAdminOperationAudit);
 

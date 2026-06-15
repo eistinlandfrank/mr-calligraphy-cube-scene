@@ -10,7 +10,6 @@ const MAIN_HISTORY_KEY = "mr-calligraphy-main-scene-history-v1";
 const MAIN_IMPORT_AUDIT_KEY = "mr-calligraphy-main-import-audit-v1";
 const MAIN_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
 const ADMIN_AUDIT_KEY = "mr-calligraphy-admin-operator-audit-v1";
-const ADMIN_ACCESS_SESSION_KEY = "mr-calligraphy-admin-access-session-v1";
 const REMOTE_PUBLISH_KEY = "mr-calligraphy-remote-publish-v1";
 const PROJECT_RESTORE_AUDIT_KEY = "mr-calligraphy-project-archive-audit-v1";
 const PROJECT_ARCHIVE_EXPORT_AUDIT_KEY = "mr-calligraphy-project-archive-export-audit-v1";
@@ -50,16 +49,14 @@ function withArtworkRepositoryPackageDigest(packageRecord) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(({ keys, accessSessionKey }) => {
+  await page.addInitScript(({ keys }) => {
     const markerKey = "__mr_calligraphy_e2e_storage_cleared__";
     if (window.sessionStorage.getItem(markerKey) === "1") {
       return;
     }
     keys.forEach((key) => window.localStorage.removeItem(key));
-    window.sessionStorage.removeItem(accessSessionKey);
     window.sessionStorage.setItem(markerKey, "1");
   }, {
-    accessSessionKey: ADMIN_ACCESS_SESSION_KEY,
     keys: [
       LEARNING_KEY,
       MAIN_LAYOUT_KEY,
@@ -84,27 +81,11 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function unlockMainAdmin(page) {
-  const accessStatus = page.locator("#mainAdminAccessStatus");
-  await expect(accessStatus).toBeVisible();
-  if ((await accessStatus.textContent())?.includes("已解锁")) {
-    return;
-  }
-  await expect(accessStatus).toContainText("已锁定");
-  await page.locator("#mainAdminAccessCode").fill("local-admin");
-  await page.locator("#mainAdminAccessUnlock").click();
-  await expect(accessStatus).toContainText("已解锁");
+  await expect(page.locator("#mainAdminOperatorPanel")).toBeVisible();
 }
 
 async function unlockRealisticAdmin(page) {
-  const accessStatus = page.locator("#realisticAdminAccessStatus");
-  await expect(accessStatus).toBeVisible();
-  if ((await accessStatus.textContent())?.includes("已解锁")) {
-    return;
-  }
-  await expect(accessStatus).toContainText("已锁定");
-  await page.locator("#realisticAdminAccessCode").fill("local-admin");
-  await page.locator("#realisticAdminAccessUnlock").click();
-  await expect(accessStatus).toContainText("已解锁");
+  await expect(page.locator("#realisticAdminOperatorPanel")).toBeVisible();
 }
 
 async function clickWorkflow(page, name) {
@@ -176,8 +157,6 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
-  await expect(page.locator("#mainAdminAccessStatus")).toContainText("已锁定");
-  await expect(page.locator("#mainObjectX")).toBeDisabled();
   await unlockMainAdmin(page);
   await expect(page.locator("#mainObjectX")).toBeEnabled();
 
@@ -248,8 +227,6 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
   await page.goto("/realistic-admin.html", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#designObjectSelect")).toBeVisible();
   await expectCanvasHasVisiblePixels(page, "#realisticCanvas");
-  await expect(page.locator("#realisticAdminAccessStatus")).toContainText("已锁定");
-  await expect(page.locator("#designX")).toBeDisabled();
   await unlockRealisticAdmin(page);
   await expect(page.locator("#designX")).toBeEnabled();
 
