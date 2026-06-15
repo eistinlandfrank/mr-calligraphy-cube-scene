@@ -231,6 +231,15 @@ main-admin.html
 - 保留 `MR_LOADED_MODEL_COUNT`、`MR_LOADED_MODEL_VERTICES`、`MR_LOADED_TEXTURED_MODEL_COUNT` 运行时信号，便于 E2E 与调试确认真实模型加载。
 - 已验证前台进入 `front-three-admin-renderer`，从 `server-local` 读取布局并加载 19 个 GLB 模型。
 
+### 2026-06-15：前台跟随后台最新草稿并支持主面板折叠
+
+- 普通前台初始化会同时读取 `/api/main-scene/layout` 和 `/api/main-scene/published`。
+- 如果后台草稿文件更新时间晚于已发布文件，前台自动显示服务器本地草稿；如果发布版更新，则继续显示发布版。
+- 保留 `?mainScenePreview=draft` 直接预览草稿的旧入口。
+- 前台 AI 书法教练主面板新增收起/展开按钮，收起后只保留可拖动标题条，减少遮挡 3D 场景。
+- 主面板折叠状态写入浏览器本机 `localStorage`，刷新后保持用户选择。
+- 已用浏览器验证：旧发布 + 新草稿时前台来源为 `draft-fallback/server-local`，且能读取草稿里的测试物体；主面板折叠后高度约 56px。
+
 ---
 
 ## 10. 当前完成记录

@@ -446,6 +446,7 @@ const LEARNING_ACTION_FEATURES = {
 const ROOM_STORAGE_KEY = "mr-calligraphy-room-config-v3-wood";
 const MAIN_SCENE_STORAGE_KEY = "mr-calligraphy-main-scene-layout-v1";
 const MAIN_SCENE_PUBLISHED_KEY = "mr-calligraphy-main-scene-published-v1";
+const INFO_PANEL_COLLAPSED_KEY = "mr-calligraphy-info-panel-collapsed-v1";
 const MAIN_IMPORT_DB_NAME = "mr-calligraphy-main-model-store";
 const MAIN_IMPORT_DB_STORE = "models";
 const MAIN_SCENE_MAX_UNDO = 256;
@@ -794,6 +795,7 @@ const els = {
   deleteRoleButton: document.getElementById("deleteRoleButton"),
   infoPanel: document.getElementById("infoPanel"),
   infoPanelHandle: document.getElementById("infoPanelHandle"),
+  infoPanelToggle: document.getElementById("infoPanelToggle"),
   modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
   learningStateSummary: document.getElementById("learningStateSummary"),
   serviceBoundaryPanel: document.getElementById("serviceBoundaryPanel"),
@@ -1270,36 +1272,45 @@ async function hydrateMainSceneLayoutFromServer() {
 
   const params = new URLSearchParams(window.location.search);
   const isDraftPreview = params.get("mainScenePreview") === "draft";
-  const result = isDraftPreview
-    ? await store.readLayout()
-    : await store.readPublished();
+  const draftResult = await store.readLayout();
 
-  if (isDraftPreview && result?.ok && result.data) {
-    mainSceneLayout = normalizeMainSceneLayout(result.data);
+  if (isDraftPreview && draftResult?.ok && draftResult.data) {
+    mainSceneLayout = normalizeMainSceneLayout(draftResult.data);
     cacheStoredJson(MAIN_SCENE_STORAGE_KEY, mainSceneLayout);
     window.MR_MAIN_SCENE_SOURCE = "draft-preview";
     window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
     return;
   }
 
-  if (!isDraftPreview && result?.ok && result.data?.layout) {
-    mainSceneLayout = normalizeMainSceneLayout(result.data.layout);
-    cacheStoredJson(MAIN_SCENE_PUBLISHED_KEY, result.data);
-    window.MR_MAIN_SCENE_SOURCE = "published";
-    window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
-    window.MR_MAIN_SCENE_PUBLISHED_AT = result.data.publishedAt || result.updatedAt || "";
+  if (isDraftPreview) {
     return;
   }
 
-  if (!isDraftPreview) {
-    const draftResult = await store.readLayout();
-    if (draftResult?.ok && draftResult.data) {
-      mainSceneLayout = normalizeMainSceneLayout(draftResult.data);
-      cacheStoredJson(MAIN_SCENE_STORAGE_KEY, mainSceneLayout);
-      window.MR_MAIN_SCENE_SOURCE = "draft-fallback";
-      window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
-    }
+  const publishedResult = await store.readPublished();
+  const hasDraft = draftResult?.ok && draftResult.data;
+  const hasPublished = publishedResult?.ok && publishedResult.data?.layout;
+
+  if (hasDraft && (!hasPublished || isServerRecordNewer(draftResult, publishedResult))) {
+    mainSceneLayout = normalizeMainSceneLayout(draftResult.data);
+    cacheStoredJson(MAIN_SCENE_STORAGE_KEY, mainSceneLayout);
+    window.MR_MAIN_SCENE_SOURCE = "draft-fallback";
+    window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
+    return;
   }
+
+  if (hasPublished) {
+    mainSceneLayout = normalizeMainSceneLayout(publishedResult.data.layout);
+    cacheStoredJson(MAIN_SCENE_PUBLISHED_KEY, publishedResult.data);
+    window.MR_MAIN_SCENE_SOURCE = "published";
+    window.MR_MAIN_SCENE_STORAGE_SOURCE = "server-local";
+    window.MR_MAIN_SCENE_PUBLISHED_AT = publishedResult.data.publishedAt || publishedResult.updatedAt || "";
+  }
+}
+
+function isServerRecordNewer(left, right) {
+  const leftTime = Date.parse(left?.updatedAt || "");
+  const rightTime = Date.parse(right?.updatedAt || "");
+  return Number.isFinite(leftTime) && (!Number.isFinite(rightTime) || leftTime > rightTime);
 }
 
 function readStoredJson(key) {
@@ -1884,6 +1895,7 @@ async function init() {
   bindPlanControls();
   initPracticeCanvas();
   initInfoPanelDrag();
+  initInfoPanelCollapse();
   installRoomApi();
   bindSceneEditorControls();
   bindMainSceneAdminControls();
@@ -4076,12 +4088,19 @@ function degToRad(value) {
 function initInfoPanelDrag() {
   const panel = els.infoPanel;
   const handle = els.infoPanelHandle;
+  if (!panel || !handle) {
+    return;
+  }
+
   let isDragging = false;
   let offsetX = 0;
   let offsetY = 0;
 
   handle.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) {
+      return;
+    }
+    if (event.target.closest("button, a, input, select, textarea")) {
       return;
     }
 
@@ -4123,6 +4142,50 @@ function initInfoPanelDrag() {
   });
 
   window.addEventListener("resize", keepInfoPanelInView);
+}
+
+function initInfoPanelCollapse() {
+  const panel = els.infoPanel;
+  const button = els.infoPanelToggle;
+  if (!panel || !button) {
+    return;
+  }
+
+  setInfoPanelCollapsed(readInfoPanelCollapsed(), { persist: false });
+  els.infoPanelToggle.addEventListener("click", () => {
+    setInfoPanelCollapsed(!panel.classList.contains("is-collapsed"));
+    keepInfoPanelInView();
+  });
+}
+
+function readInfoPanelCollapsed() {
+  try {
+    return window.localStorage.getItem(INFO_PANEL_COLLAPSED_KEY) === "true";
+  } catch (error) {
+    return false;
+  }
+}
+
+function setInfoPanelCollapsed(collapsed, options = {}) {
+  const panel = els.infoPanel;
+  const button = els.infoPanelToggle;
+  if (!panel || !button) {
+    return;
+  }
+
+  panel.classList.toggle("is-collapsed", collapsed);
+  button.textContent = collapsed ? "+" : "−";
+  button.setAttribute("aria-label", collapsed ? "展开主面板" : "收起主面板");
+  button.setAttribute("aria-pressed", collapsed ? "true" : "false");
+  button.title = collapsed ? "展开主面板" : "收起主面板";
+
+  if (options.persist !== false) {
+    try {
+      window.localStorage.setItem(INFO_PANEL_COLLAPSED_KEY, collapsed ? "true" : "false");
+    } catch (error) {
+      console.warn("无法保存主面板折叠状态", error);
+    }
+  }
 }
 
 function moveInfoPanel(left, top) {

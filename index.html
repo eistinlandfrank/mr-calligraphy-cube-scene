@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR / VR 书法交互工作台</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=plan-repository-workspace-20260612">
+  <link rel="stylesheet" href="style.css?v=front-layout-sync-collapse-20260615">
 </head>
 <body>
   <main class="app-shell">
@@ -82,7 +82,10 @@
             <div class="panel-eyebrow">AI 书法教练</div>
             <strong id="contentTitle">AI 书法教练</strong>
           </div>
-          <span class="drag-grip" aria-hidden="true"></span>
+          <div class="panel-drag-actions">
+            <button data-feature-state="real-local" id="infoPanelToggle" class="panel-collapse-button" type="button" aria-label="收起主面板" aria-pressed="false" title="收起主面板">−</button>
+            <span class="drag-grip" aria-hidden="true"></span>
+          </div>
         </div>
 
         <div class="mode-tabs" aria-label="学习模式">
@@ -852,6 +855,6 @@
   <script src="main-scene-local-store.js?v=server-layout-20260615"></script>
   <script src="app-state.js?v=learning-action-audit-20260613"></script>
   <script src="practice-canvas.js?v=share-revoke-20260612"></script>
-  <script src="script.js?v=front-admin-renderer-20260615"></script>
+  <script src="script.js?v=front-layout-sync-collapse-20260615"></script>
 </body>
 </html>

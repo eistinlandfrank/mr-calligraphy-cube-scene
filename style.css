@@ -3006,6 +3006,35 @@ button {
   background-size: 8px 8px;
 }
 
+.panel-drag-actions {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+
+.panel-collapse-button {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(116, 255, 219, 0.28);
+  border-radius: 999px;
+  color: #dffff6;
+  background: rgba(24, 42, 39, 0.72);
+  cursor: pointer;
+  font-size: 19px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.panel-collapse-button:hover,
+.panel-collapse-button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.58);
+  outline: none;
+  background: rgba(47, 111, 104, 0.78);
+}
+
 .panel-eyebrow {
   color: var(--accent-2);
   font-size: 13px;
@@ -4267,6 +4296,45 @@ body[data-spatial-mode="mr"] .scene-copy {
   color: #ffffff;
   font-size: 18px;
   line-height: 1.15;
+}
+
+.mr-main-panel.is-collapsed {
+  width: min(292px, calc(100vw - 56px));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+.mr-main-panel.is-collapsed > :not(.panel-dragbar) {
+  display: none;
+}
+
+.mr-main-panel.is-collapsed .panel-dragbar {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border-bottom: 0;
+}
+
+.mr-main-panel.is-collapsed .panel-dragbar > div:first-child {
+  min-width: 0;
+}
+
+.mr-main-panel.is-collapsed .panel-dragbar strong {
+  max-width: 186px;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mr-main-panel.is-collapsed .panel-eyebrow {
+  font-size: 11px;
+}
+
+.mr-main-panel.is-collapsed .drag-grip {
+  width: 18px;
 }
 
 .mode-tabs {
