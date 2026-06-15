@@ -670,7 +670,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("#taskPanel")).toBeVisible();
-  await expect(page.locator("#learningPathServiceSummary")).toContainText("已完成 2 项交互任务");
+  await expect(page.locator("#learningPathServiceSummary")).toContainText("VR 菜单已记录 2 个功能舱");
   await expect(page.locator("#learningPathServiceSummary")).toContainText("数据来自本机任务");
   await expect(page.locator("#serviceBoundaryStatus")).toContainText("生产云端");
   await expect(page.locator("#serviceBoundaryList")).toContainText("本机真实");
@@ -713,7 +713,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionFeedback")).toContainText("笔画拆解已写入本机学习阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("阶段记录 ID");
-  await expect(page.locator("#actionDetail")).toContainText("目标流程");
+  await expect(page.locator("#actionDetail")).toContainText("目标功能舱");
 
   await page.locator("#actionList .action-button").filter({ hasText: /^下一个笔画$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("当前笔画已切换");
@@ -1269,7 +1269,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   for (const workflowName of ["档案", "复盘", "报告", "巩固"]) {
     await clickWorkflow(page, workflowName);
-    await expect(page.locator("#contentBody")).toContainText("路径状态");
+    await expect(page.locator("#contentBody")).toContainText("菜单状态");
     await expect(page.locator("#contentBody")).toContainText("本机证据");
   }
 
@@ -1278,7 +1278,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionFeedback")).toContainText("已读取本机学习详情");
   await expect(page.locator("#actionDetail")).toBeVisible();
   await expect(page.locator("#actionDetail")).toContainText("真实交互详情");
-  await expect(page.locator("#actionDetail")).toContainText("工作流");
+  await expect(page.locator("#actionDetail")).toContainText("功能舱");
   await expect(page.locator("#actionDetail")).toContainText("真实练习");
   await expect(page.locator("#actionDetail")).toContainText("最近报告");
   await page.locator("#actionList .action-button").filter({ hasText: /^复习巩固$/ }).click();

@@ -23,7 +23,7 @@
   const MAX_PLAN_ITEMS = 12;
   const DEFAULT_PLAN_CYCLE_DAYS = 7;
   const MAX_STAGE_RECORDS = 80;
-  const LEARNING_PATH_BOUNDARY = "交互工作流由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是旧版演示步骤、云端课程编排、教师下发任务或跨设备学习进度。";
+  const LEARNING_PATH_BOUNDARY = "VR 交互菜单由当前浏览器中的 LearningTask、PracticeSession、ArtworkRecord、ReportRecord 和 PlanRecord 推导；它不是旧版 1-10 演示步骤、云端课程编排、教师下发任务或跨设备学习进度。";
   const LEARNING_EVENT_AUDIT_KIND = "mr-calligraphy-learning-event-audit-v1";
   const LEARNING_EVENT_AUDIT_BOUNDARY = "学习动作审计来自当前浏览器本机 events 队列，记录学习模式、任务、讲解、练习、作品、报告、计划和同步动作；它不是云端行为日志、账号审计或不可篡改服务端证据链。";
   const SCORE_SERVICE_BOUNDARY = "基础评分服务使用当前浏览器的本机启发式算法和真实笔迹采样；它不是专业书法评级、云端识别模型、教师人工评分或硬件压感校准结果。";
@@ -148,7 +148,7 @@
     label: "阶段",
     glyph: "字",
     copybook: "碑帖",
-    targetStep: "目标流程",
+    targetStep: "目标功能舱",
     note: "说明",
     completedAt: "完成时间",
     score: "评分",
@@ -178,7 +178,7 @@
 
   const PLAN_REVIEW_ACTIONS = {
     practice: { label: "进入练习", targetStep: 3 },
-    task: { label: "复盘任务流程", targetStep: 2 },
+    task: { label: "打开任务舱", targetStep: 2 },
     weakness: { label: "专项补强", targetStep: 3 },
     artwork: { label: "复盘作品", targetStep: 5 },
     report: { label: "查看报告", targetStep: 8 },
@@ -7004,7 +7004,7 @@
       progressPercent,
       nextStep: nextStep ? clone(nextStep) : null,
       steps: clone(steps),
-      message: `${stats.taskTitle}：交互工作流已完成 ${doneCount} 项任务，下一项 ${nextStep?.shortName || "继续学习"}。${LEARNING_PATH_BOUNDARY}`
+      message: `${stats.taskTitle}：VR 交互菜单已记录 ${doneCount} 个功能舱，推荐入口 ${nextStep?.shortName || "继续学习"}。${LEARNING_PATH_BOUNDARY}`
     };
   }
 
@@ -7040,22 +7040,22 @@
         index: 0,
         id: "entry",
         shortName: "准备",
-        title: `${taskTitle} / 沉浸准备`,
+        title: `${taskTitle} / VR 主页 · 沉浸准备`,
         description: `当前学习任务是“${taskTitle}”，练习字为“${glyph}”，碑帖为“${copybook}”。`,
-        focus: `先确认任务重点：${taskFocus}。路径状态由本机任务和学习记录推导。`,
+        focus: `先确认任务重点：${taskFocus}。菜单状态由本机任务和学习记录推导。`,
         done: Boolean(task),
         active: !task,
         nextActionLabel: "选择日课字",
         evidence: [`任务状态：${taskProgress.statusLabel || "待开始"}`, `完成条件：${taskProgress.ruleSummary || "阶段 / 练习 / 作品 / 报告"}`],
-        activeLabel: "准备中",
-        doneLabel: "已准备",
-        pendingLabel: "待准备"
+        activeLabel: "载入中",
+        doneLabel: "已载入",
+        pendingLabel: "待进入"
       }),
       makeLearningPathStep({
         index: 1,
         id: "task",
         shortName: "任务",
-        title: `${taskTitle} / 任务确认`,
+        title: `${taskTitle} / VR 任务舱 · 目标确认`,
         description: `当前任务进度 ${taskPercent}%，级别为${stats.taskLevel || task?.level || "基础"}，重点练习“${taskFocus}”。`,
         focus: taskProgress.locked
           ? taskProgress.dependencyStatus?.reason || "请先完成前置任务。"
@@ -7065,30 +7065,30 @@
         nextActionLabel: "选择日课字",
         evidence: [`练习字：${glyph}`, `碑帖：${copybook}`, `依赖：${taskProgress.dependencyStatus?.label || "无前置"}`],
         activeLabel: "确认中",
-        doneLabel: "已选字",
-        pendingLabel: "待选字",
+        doneLabel: "已确认",
+        pendingLabel: "待进入",
         lockedLabel: "未解锁"
       }),
       makeLearningPathStep({
         index: 2,
         id: "lecture",
         shortName: "讲解",
-        title: `${taskTitle} / 本机讲解`,
+        title: `${taskTitle} / VR 讲解舱 · 本机讲解`,
         description: `讲解进度 ${lectureProgress.progressPercent || 0}%，当前段落：${lectureProgress.currentStep?.title || "待开始"}。`,
         focus: "本机讲解会记录浏览器语音或文本计时进度，不伪装成云端 AI 音频。",
         done: stats.lectureStatus === "complete",
         active: stats.lectureStatus === "playing",
         nextActionLabel: stats.lectureStatus === "complete" ? "开始临摹" : "播放讲解",
         evidence: [`段落：${lectureProgress.completedSteps || 0}/${lectureProgress.totalSteps || 0}`, `状态：${stats.lectureStatus || "idle"}`],
-        activeLabel: "讲解中",
+        activeLabel: "播放中",
         doneLabel: "已讲解",
-        pendingLabel: "待讲解"
+        pendingLabel: "可播放"
       }),
       makeLearningPathStep({
         index: 3,
         id: "practice",
         shortName: "临摹",
-        title: `${taskTitle} / 真实临摹`,
+        title: `${taskTitle} / VR 书写台 · 真实临摹`,
         description: practicedCount
           ? `当前任务已有 ${practicedCount} 次真实笔迹练习，均分 ${averageScore || 0}。`
           : "当前任务还没有真实笔迹练习，请在米字格中书写后保存采样。",
@@ -7097,37 +7097,37 @@
         active: activePracticeCount > 0,
         nextActionLabel: practicedCount > 0 ? "查看笔画分析" : "进入临摹训练",
         evidence: [`真实练习：${practicedCount}次`, `活动会话：${activePracticeCount}次`, `均分：${averageScore || "未评分"}`],
-        activeLabel: activePracticeCount > 0 ? "练习中" : "待创建",
-        doneLabel: "已练习",
-        pendingLabel: "待练习"
+        activeLabel: activePracticeCount > 0 ? "书写中" : "待落笔",
+        doneLabel: "有笔迹",
+        pendingLabel: "待进入"
       }),
       makeLearningPathStep({
         index: 4,
         id: "stroke-breakdown",
         shortName: "拆解",
-        title: `${taskTitle} / 笔画拆解`,
+        title: `${taskTitle} / VR 笔画台 · 笔画拆解`,
         description: hasStage("strokeBreakdown")
           ? `已记录 ${getStageCount("strokeBreakdown")} 次笔画拆解，当前笔画为“${state.activeStrokeIndex + 1}/${STROKES.length} ${STROKES[state.activeStrokeIndex]}”。`
           : `围绕“${glyph}”的${taskFocus}拆解笔画，阶段记录会写入本机学习档案。`,
-        focus: "笔画拆解阶段会影响当前任务完成度，不再只是静态热点说明。",
+        focus: "笔画拆解功能舱会影响当前任务完成度，不再只是静态热点说明。",
         done: hasStage("strokeBreakdown"),
         active: practicedCount > 0 && !hasStage("strokeBreakdown"),
         nextActionLabel: "进入笔画拆解",
         evidence: [`阶段记录：${getStageCount("strokeBreakdown")}次`, `当前笔画：${STROKES[state.activeStrokeIndex]}`],
-        activeLabel: "拆解中",
+        activeLabel: "定位中",
         doneLabel: "已拆解",
-        pendingLabel: "待拆解"
+        pendingLabel: "待进入"
       }),
       makeLearningPathStep({
         index: 5,
         id: "creation",
         shortName: "创作",
-        title: `${taskTitle} / 作品创作`,
+        title: `${taskTitle} / VR 创作台 · 作品创作`,
         description: artworkCount
           ? `当前任务已保存 ${artworkCount} 幅作品，最近作品为“${latestArtworkTitle}”。`
           : `用“${glyph}”完成一幅作品，保存时会关联当前任务和真实笔迹。`,
         focus: hasStage("creation")
-          ? `创作阶段已记录 ${getStageCount("creation")} 次，下一步应保存作品或进入复盘。`
+          ? `创作阶段已记录 ${getStageCount("creation")} 次，推荐保存作品或进入复盘。`
           : "创作实践阶段和作品保存都会进入任务完成条件。",
         done: artworkCount > 0,
         active: hasStage("creation") || taskProgress.savedSessionCount > 0,
@@ -7135,13 +7135,13 @@
         evidence: [`作品：${artworkCount}幅`, `创作阶段：${getStageCount("creation")}次`, `风格：${state.artworkStyle}`],
         activeLabel: "创作中",
         doneLabel: "已保存",
-        pendingLabel: "待创作"
+        pendingLabel: "待进入"
       }),
       makeLearningPathStep({
         index: 6,
         id: "history",
         shortName: "档案",
-        title: `${taskTitle} / 本机学习档案`,
+        title: `${taskTitle} / VR 档案舱 · 本机学习档案`,
         description: hasTaskRecord
           ? `当前任务已有练习、作品、报告或阶段记录，最近更新时间：${latestTime}。`
           : "当前任务还没有可复盘记录，完成练习或保存作品后会进入学习档案。",
@@ -7158,7 +7158,7 @@
         index: 7,
         id: "review-share",
         shortName: "复盘",
-        title: `${taskTitle} / 作品复盘与分享`,
+        title: `${taskTitle} / VR 复盘舱 · 作品复盘与分享`,
         description: artworkCount
           ? `可复盘最近作品“${latestArtworkTitle}”；本机分享服务有 ${shareStatus.activeCount || 0} 条有效链接。`
           : "还没有作品可复盘或分享，先完成一次真实书写并保存作品。",
@@ -7175,7 +7175,7 @@
         index: 8,
         id: "report",
         shortName: "报告",
-        title: `${taskTitle} / 学习报告`,
+        title: `${taskTitle} / VR 报告舱 · 学习报告`,
         description: reportCount
           ? `当前任务已有 ${reportCount} 份报告，最近报告会读取本机练习和作品记录。`
           : "报告尚未导出。完成练习或保存作品后，可生成本机 HTML/PDF 报告。",
@@ -7192,18 +7192,18 @@
         index: 9,
         id: "review-plan",
         shortName: "巩固",
-        title: `${taskTitle} / 复习巩固`,
+        title: `${taskTitle} / VR 巩固舱 · 复习巩固`,
         description: taskProgress.complete
           ? "当前任务已满足阶段、练习、作品和报告条件，可进入下一任务或制定下一周期计划。"
           : `当前任务完成度 ${taskPercent}%，计划进度 ${planLabel}。`,
         focus: hasPlan
           ? `计划“${latestPlan.title}”正在跟踪 ${planProgress.done}/${planProgress.total} 个任务项。`
-          : "复习巩固会读取阶段记录和学习计划，不再使用固定总结文案。",
+          : "巩固功能舱会读取阶段记录和学习计划，不再使用固定总结文案。",
         done: Boolean(taskProgress.complete || planDone),
         active: hasPlan || hasStage("review"),
         nextActionLabel: taskProgress.complete ? "选择日课字" : "制定计划",
         evidence: [`任务完成：${taskProgress.complete ? "是" : "否"}`, `复习阶段：${getStageCount("review")}次`, `计划：${planLabel}`],
-        activeLabel: hasPlan ? `计划 ${planLabel}` : "总结中",
+        activeLabel: hasPlan ? `计划 ${planLabel}` : "待生成",
         doneLabel: taskProgress.complete ? "任务完成" : "计划完成",
         pendingLabel: "待计划"
       })
@@ -7238,7 +7238,7 @@
       pendingLabel: step.pendingLabel || "待完成",
       lockedLabel: step.lockedLabel || "未解锁",
       nextActionLabel,
-      actionHint: `${statusLabel}：${step.description} 下一步：${nextActionLabel}。`,
+      actionHint: `${statusLabel}：${step.description} 推荐入口：${nextActionLabel}。`,
       evidence
     };
   }
@@ -7543,7 +7543,7 @@
         { label: "阶段记录 ID", value: record.id || "未保存" },
         { label: "任务", value: task?.taskTitle || `${record.glyph}字学习` },
         { label: "字帖", value: record.copybook },
-        { label: "目标流程", value: config.label || record.label || "当前流程" },
+        { label: "目标功能舱", value: config.label || record.label || "当前功能舱" },
         { label: "阶段进度", value: `${stageProgress.percent}%` }
       ],
       items: [
@@ -7793,7 +7793,7 @@
     const hasReport = taskProgress.reportCount > 0;
     const planItems = [
       makePlanItem("plan-practice", `完成 1 次${state.selectedGlyph}字临摹`, `使用${state.trainingMode === "compare" ? "对比" : "示范"}模式书写，并保留真实笔迹。`, { dueDays: 1, reviewAction: "practice" }),
-      makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按照任务流程完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task", dependsOn: ["plan-practice"] }),
+      makePlanItem("plan-task-focus", `复盘${currentTask.focus}`, `按任务要点完成：${currentTask.strokePlan.join("、")}。`, { dueDays: 2, reviewAction: "task", dependsOn: ["plan-practice"] }),
       makePlanItem("plan-weakness", `专项补强${weakness.label}`, weakness.advice, { dueDays: 3, reviewAction: "weakness", dependsOn: ["plan-task-focus"] }),
       makePlanItem("plan-artwork", hasArtwork ? "复盘最近作品" : "保存 1 幅作品", hasArtwork ? "回放最近作品笔迹，记录一条最需要调整的结构或笔法问题。" : "完成书写后保存作品，让复盘区生成截图和评分。", { dueDays: 4, reviewAction: "artwork", dependsOn: ["plan-weakness"] }),
       makePlanItem("plan-report", hasReport ? "对比最近学习报告" : "导出 1 份 HTML 学习报告", hasReport ? "查看最近报告中的能力结构，把最低维度作为下一次练习目标。" : "导出报告，把练习次数、作品数量和能力结构沉淀为文件。", { dueDays: 5, reviewAction: "report", dependsOn: ["plan-artwork"] })
@@ -8182,7 +8182,7 @@
       ok: true,
       plan: decoratePlan(plan),
       nextAction,
-      message: `已完成复盘：${item.title}。${nextAction?.label ? `下一步：${nextAction.label}。` : ""}`
+      message: `已完成复盘：${item.title}。${nextAction?.label ? `推荐入口：${nextAction.label}。` : ""}`
     };
   }
 
@@ -17544,7 +17544,7 @@
           <label>教师分数<input data-review-field="teacherScore" type="number" min="0" max="100" step="1" placeholder="0-100"></label>
           <label>评阅等级<select data-review-field="level"><option value="">未评定</option><option value="展示">展示</option><option value="达标">达标</option><option value="需复练">需复练</option></select></label>
           <label>评阅人<input data-review-field="reviewer" type="text" maxlength="40" placeholder="教师姓名"></label>
-          <label>课堂批注<textarea data-review-field="note" maxlength="800" placeholder="记录一条保留项和一条下一步练习建议"></textarea></label>
+          <label>课堂批注<textarea data-review-field="note" maxlength="800" placeholder="记录一条保留项和一条后续练习建议"></textarea></label>
         </div>
       </div>
     </article>`;
@@ -18749,7 +18749,7 @@
       shortLabel: "阶段",
       createdAt: record.completedAt || record.createdAt,
       score: 0,
-      meta: `${record.copybook} / ${record.label || config.label || "交互流程"}`,
+      meta: `${record.copybook} / ${record.label || config.label || "VR 功能舱"}`,
       status: record.label || config.label || "已记录",
       stage: record.stage,
       targetStep: record.targetStep
@@ -18850,9 +18850,9 @@
         stageProgress: clone(stageProgress),
         feedback: [
           `阶段记录 ID：${record.id}。`,
-          `目标流程：${record.label || config.label || "交互流程"}。`,
+          `目标功能舱：${record.label || config.label || "VR 功能舱"}。`,
           `阶段进度：${stageProgress.done}/${stageProgress.total}。`,
-          "阶段记录来自用户点击交互工作流按钮，不是静态演示条目。"
+          "阶段记录来自用户点击 VR 菜单动作，不是静态演示条目。"
         ]
       };
     }

@@ -1,9 +1,9 @@
 const SCENES = [
   {
-    title: "进入系统 / 沉浸准备",
+    title: "VR 主页 / 沉浸准备",
     image: "assets/scenes/scene-01.png",
-    description: "进入 MR 书法教练主界面，确认交互工作流、当前任务和实时反馈。",
-    focus: "系统首页把交互工作流、单字练习、实时反馈和历史记录集中在同一空间。",
+    description: "进入 MR 书法教练主界面，确认 VR 交互菜单、当前任务和实时反馈。",
+    focus: "系统首页把 VR 菜单、单字练习、实时反馈和历史记录集中在同一空间。",
     metrics: [
       ["综合评分", "未评分"],
       ["结构", "88"],
@@ -25,11 +25,11 @@ const SCENES = [
         tags: ["单字学习", "结构评分", "笔画分析"]
       },
       {
-        label: "交互工作流",
+        label: "VR 菜单",
         pitch: 0,
         yaw: -38,
-        body: "左侧路径用于组织学习阶段：碑帖讲解、笔画练习、结构训练、章法学习和创作实践。",
-        tags: ["阶段导航", "进度锁定", "任务流"]
+        body: "左侧空间菜单用于进入不同功能舱：任务、讲解、书写、拆解、创作、档案、复盘、报告和巩固。",
+        tags: ["空间菜单", "功能舱", "真实状态"]
       },
       {
         label: "实时反馈",
@@ -41,10 +41,10 @@ const SCENES = [
     ]
   },
   {
-    title: "选择碑帖 / AI讲解",
+    title: "VR 任务舱 / 目标确认",
     image: "assets/scenes/scene-02.png",
     description: "选择日课字、碑帖或练习任务，系统同步显示学习数据与成就状态。",
-    focus: "这一屏像学习入口：先确定今日练习，再进入讲解、临摹或创作。",
+    focus: "任务舱用于确定今日练习目标，然后可直接打开讲解、书写或创作功能舱。",
     metrics: [
       ["学习时长", "0分钟"],
       ["完成字数", "0个"],
@@ -53,7 +53,7 @@ const SCENES = [
     ],
     actions: [
       { label: "选择日课字", response: "已选中“永”作为今日单字，适合练习永字八法。" },
-      { label: "进入 AI 讲解", target: 2, response: "切换到碑帖讲解场景。" },
+      { label: "进入 AI 讲解", target: 2, response: "切换到 VR 讲解舱。" },
       { label: "查看成就", response: "成就徽章会在完成练习、复盘和分享后逐步解锁。" }
     ],
     points: [
@@ -65,11 +65,11 @@ const SCENES = [
         tags: ["今日任务", "永字", "目标确认"]
       },
       {
-        label: "交互工作流",
+        label: "VR 菜单",
         pitch: 2,
         yaw: -35,
-        body: "左侧列出单字学习、集字练习、结构训练、章法学习和创作实践，已完成项带有勾选状态。",
-        tags: ["路径", "勾选", "解锁"]
+        body: "左侧列出可进入的 VR 功能舱，真实记录会改变每个入口的状态。",
+        tags: ["功能舱", "本机记录", "推荐入口"]
       },
       {
         label: "学习数据",
@@ -81,10 +81,10 @@ const SCENES = [
     ]
   },
   {
-    title: "选择碑帖 / AI讲解",
+    title: "VR 讲解舱 / AI讲解",
     image: "assets/scenes/scene-03.png",
     description: "通过碑帖选择、教师讲解和 AI 要点，理解“永”字的来源与方法。",
-    focus: "画面包含碑帖列表、讲解视频、AI 讲解卡和永字八法清单。",
+    focus: "讲解舱包含碑帖列表、本机讲解、AI 要点和永字八法清单。",
     metrics: [
       ["讲解进度", "0%"],
       ["当前字", "永"],
@@ -92,7 +92,7 @@ const SCENES = [
       ["讲解模式", "AI + 教师"]
     ],
     actions: [
-      { label: "播放讲解", response: "将按讲解流程推进，并保存当前进度。" },
+      { label: "播放讲解", response: "将按讲解段落推进，并保存当前进度。" },
       { label: "切换碑帖", response: "碑帖列表可切换不同范本，当前保持“永”字讲解。" },
       { label: "开始临摹", target: 3, response: "进入空间临摹与实时引导。" }
     ],
@@ -121,10 +121,10 @@ const SCENES = [
     ]
   },
   {
-    title: "空间临摹 / 实时引导",
+    title: "VR 书写台 / 真实临摹",
     image: "assets/scenes/scene-04.png",
     description: "在临摹过程中接收笔画方向、长度和力度提醒，并实时查看评分。",
-    focus: "这一屏把范字、临摹模式、当前笔画和综合评分组合成训练工作台。",
+    focus: "书写台把范字、临摹模式、当前笔画和综合评分组合成可保存笔迹的训练空间。",
     metrics: [
       ["综合评分", "未评分"],
       ["结构", "88"],
@@ -135,7 +135,7 @@ const SCENES = [
     actions: [
       { label: "示范模式", response: "已切换为示范：先观察范字路径和笔画顺序。" },
       { label: "对比模式", response: "已切换为对比：会把你的笔迹与范字重叠观察。" },
-      { label: "进入笔画拆解", target: 4, response: "切换到笔画拆解和细节学习。" }
+      { label: "进入笔画拆解", target: 4, response: "切换到 VR 笔画台。" }
     ],
     points: [
       {
@@ -162,7 +162,7 @@ const SCENES = [
     ]
   },
   {
-    title: "笔画拆解 / 细节学习",
+    title: "VR 笔画台 / 笔画拆解",
     image: "assets/scenes/scene-05.png",
     description: "选择单个笔画，查看起笔、行笔、收笔和结构作用。",
     focus: "当前展示“竖”画拆解：它是“永”字中居中求稳的主骨。",
@@ -176,7 +176,7 @@ const SCENES = [
     actions: [
       { label: "上一个笔画", response: "已切换到上一个笔画，可继续观察笔势变化。" },
       { label: "下一个笔画", response: "已切换到下一个笔画，建议对比收笔方式。" },
-      { label: "进入创作", target: 5, response: "完成拆解后进入作品生成。" }
+      { label: "进入创作", target: 5, response: "完成拆解后进入 VR 创作台。" }
     ],
     points: [
       {
@@ -203,10 +203,10 @@ const SCENES = [
     ]
   },
   {
-    title: "创作实践 / 作品生成",
+    title: "VR 创作台 / 作品生成",
     image: "assets/scenes/scene-06.png",
     description: "选择创作工具与字体风格，生成、保存并评价个人作品。",
-    focus: "这一屏从练习转向创作：工具、风格、作品信息和学习建议都已结构化。",
+    focus: "创作台从练习转向作品生成：工具、风格、作品信息和学习建议都已结构化。",
     metrics: [
       ["作品名称", "永字创作"],
       ["风格", "楷书"],
@@ -217,7 +217,7 @@ const SCENES = [
     actions: [
       { label: "切换行书", response: "已切换到行书风格，保存作品时会写入本机作品记录。" },
       { label: "保存作品", response: "作品已加入作品集，可在复盘与分享环节调用。" },
-      { label: "查看学习记录", target: 6, response: "跳转到成长轨迹。" }
+      { label: "查看学习记录", target: 6, response: "打开 VR 档案舱。" }
     ],
     points: [
       {
@@ -239,12 +239,12 @@ const SCENES = [
         pitch: 2,
         yaw: 43,
         body: "建议聚焦重心稳定、中锋行笔、章法经营和气韵连贯，形成下一轮练习目标。",
-        tags: ["建议", "未评分", "下一步"]
+        tags: ["建议", "未评分", "推荐入口"]
       }
     ]
   },
   {
-    title: "学习记录 / 成长轨迹",
+    title: "VR 档案舱 / 成长轨迹",
     image: "assets/scenes/scene-07.png",
     description: "查看练习时长、练习字数、掌握进度和最近学习记录。",
     focus: "这是一张学习仪表盘，用数据说明长期练习如何积累。",
@@ -257,8 +257,8 @@ const SCENES = [
     ],
     actions: [
       { label: "筛选优秀记录", response: "已筛选：永 92、和 88、礼 90 适合作为复盘样本。" },
-      { label: "导出学习报告", target: 8, response: "跳转到综合评价与学习报告。" },
-      { label: "查看作品", target: 7, response: "进入复盘总结与作品分享。" }
+      { label: "导出学习报告", target: 8, response: "打开 VR 报告舱。" },
+      { label: "查看作品", target: 7, response: "打开 VR 复盘舱。" }
     ],
     points: [
       {
@@ -272,8 +272,8 @@ const SCENES = [
         label: "学习曲线",
         pitch: 6,
         yaw: 0,
-        body: "进度曲线来自本机真实评分和按日聚合记录；没有评分时保持空状态。",
-        tags: ["曲线", "进度", "趋势"]
+        body: "成长曲线来自本机真实评分和按日聚合记录；没有评分时保持空状态。",
+        tags: ["曲线", "本机评分", "趋势"]
       },
       {
         label: "最近记录",
@@ -285,10 +285,10 @@ const SCENES = [
     ]
   },
   {
-    title: "复盘总结 / 分享成果",
+    title: "VR 复盘舱 / 分享成果",
     image: "assets/scenes/scene-08.png",
     description: "复盘作品、汇总笔画得失，并生成可保存或分享的成果。",
-    focus: "复盘层把八个笔画逐条总结，同时给出成长曲线和分享入口。",
+    focus: "复盘舱把八个笔画逐条总结，同时给出成长曲线和分享入口。",
     metrics: [
       ["作品", "永字小楷练习"],
       ["创作时间", "待保存"],
@@ -296,7 +296,7 @@ const SCENES = [
       ["综合进步", "待对比"]
     ],
     actions: [
-      { label: "再写一遍", target: 3, response: "回到临摹场景，带着复盘结论再练一次。" },
+      { label: "再写一遍", target: 3, response: "回到 VR 书写台，带着复盘结论再练一次。" },
       { label: "生成视频", response: "将根据真实书写笔迹导出 WebM 回放视频。" },
       { label: "导出分享页", response: "将最近作品导出为可离线打开的 HTML 分享页。" },
       { label: "保存作品", response: "作品已保存到作品集，可继续分享或导出。" }
@@ -326,10 +326,10 @@ const SCENES = [
     ]
   },
   {
-    title: "综合评价 / 学习报告",
+    title: "VR 报告舱 / 学习报告",
     image: "assets/scenes/scene-09.png",
     description: "汇总学习数据、能力雷达和综合评分，形成学习报告。",
-    focus: "报告层把学习投入、能力结构和排名反馈组合成最终评价。",
+    focus: "报告舱把学习投入、能力结构和评分证据组合成最终评价。",
     metrics: [
       ["真实练习", "0次"],
       ["练习字数", "0字"],
@@ -338,7 +338,7 @@ const SCENES = [
       ["平均评分", "未评分"]
     ],
     actions: [
-      { label: "继续学习", target: 3, response: "回到临摹训练，继续补齐薄弱项。" },
+      { label: "继续学习", target: 3, response: "回到 VR 书写台，继续补齐薄弱项。" },
       { label: "制定计划", response: "建议下一阶段重点练结构稳定、章法呼应和创作完整度。" },
       { label: "导出报告", response: "将根据本机练习、作品和报告记录导出学习报告。" }
     ],
@@ -367,10 +367,10 @@ const SCENES = [
     ]
   },
   {
-    title: "学习总结 / 复习巩固",
+    title: "VR 巩固舱 / 复习巩固",
     image: "assets/scenes/scene-10.png",
     description: "对比学习前后作品，确认进步并进入复习巩固。",
-    focus: "这一屏展示学习前后对比、综合评分和返回首页/复习入口。",
+    focus: "巩固舱展示学习前后对比、综合评分和返回首页/复习入口。",
     metrics: [
       ["复习单字", "0个"],
       ["结构学习", "0次"],
@@ -380,7 +380,7 @@ const SCENES = [
     ],
     actions: [
       { label: "查看详情", response: "学习前后对比显示笔画更稳、结构更聚、整体完成度更高。" },
-      { label: "复习巩固", target: 4, response: "回到笔画拆解，针对薄弱笔画进行专项复习。" },
+      { label: "复习巩固", target: 4, response: "打开 VR 笔画台，针对薄弱笔画进行专项复习。" },
       { label: "返回首页", target: 0, response: "回到 MR 书法教练首页。" }
     ],
     points: [
@@ -416,17 +416,17 @@ const LEARNING_ACTION_FEATURES = {
   进入临摹训练: ["real-local", "创建或继续本机 PracticeSession。"],
   打开历史记录: ["real-local", "打开本机学习档案面板。"],
   选择日课字: ["real-local", "在本机任务库中切换当前学习任务。"],
-  "进入 AI 讲解": ["real-local", "进入本机讲解流程，讲解进度会写入浏览器本机状态。"],
+  "进入 AI 讲解": ["real-local", "进入本机讲解舱，讲解进度会写入浏览器本机状态。"],
   查看成就: ["real-local", "按本机练习、作品和报告记录计算成就概览。"],
   播放讲解: ["real-local", "调用浏览器本机语音合成逐段朗读，并写入讲解进度。"],
   切换碑帖: ["real-local", "切换当前任务对应碑帖并重置讲解上下文。"],
   开始临摹: ["real-local", "创建或继续本机 PracticeSession。"],
   示范模式: ["real-local", "切换当前练习会话的训练模式。"],
   对比模式: ["real-local", "切换当前练习会话的训练模式。"],
-  进入笔画拆解: ["real-local", "写入本机笔画拆解阶段记录，并跳转到拆解流程。"],
+  进入笔画拆解: ["real-local", "写入本机笔画拆解阶段记录，并跳转到笔画功能舱。"],
   上一个笔画: ["real-local", "切换本机当前笔画索引。"],
   下一个笔画: ["real-local", "切换本机当前笔画索引。"],
-  进入创作: ["real-local", "写入本机创作实践阶段记录，并跳转到创作流程。"],
+  进入创作: ["real-local", "写入本机创作实践阶段记录，并跳转到创作功能舱。"],
   切换行书: ["real-local", "切换作品风格，保存作品时会写入本机记录。"],
   保存作品: ["real-local", "保存真实书写轨迹和截图到本机作品记录。"],
   查看学习记录: ["real-local", "打开本机学习档案面板。"],
@@ -4219,7 +4219,7 @@ function buildStepNavigation() {
     button.type = "button";
     button.dataset.featureState = "real-local";
     button.textContent = sceneView.shortName;
-    button.setAttribute("aria-label", `切换交互任务：${sceneView.title}`);
+    button.setAttribute("aria-label", `打开 VR 功能舱：${sceneView.title}`);
     button.addEventListener("click", () => loadScene(index));
     fragment.appendChild(button);
   });
@@ -4760,7 +4760,7 @@ function renderLearningActionAudit() {
   if (!events.length) {
     const item = document.createElement("li");
     const label = document.createElement("strong");
-    label.textContent = "等待学习动作";
+    label.textContent = "等待菜单动作";
     const detail = document.createElement("span");
     detail.textContent = "点击学习按钮后，会在这里保留本机事件记录。";
     item.append(label, detail);
@@ -4991,7 +4991,7 @@ function renderTaskPanel() {
   const steps = task.strokePlan?.length ? task.strokePlan : stats.taskSteps || [];
   steps.forEach((step, index) => {
     const item = document.createElement("li");
-    item.textContent = `${index + 1}. ${step}`;
+    item.textContent = `• ${step}`;
     els.taskSteps.appendChild(item);
   });
 
@@ -11380,7 +11380,7 @@ function getHistoryDetailStats(detail) {
     return [
       ["阶段", detail.status || "-"],
       ["字", detail.glyph || "-"],
-      ["目标流程", getLearningSceneView(Number(detail.targetStep || 0))?.shortName || "当前流程"],
+        ["目标功能舱", getLearningSceneView(Number(detail.targetStep || 0))?.shortName || "当前功能舱"],
       ["进度", detail.stageProgress ? `${detail.stageProgress.done}/${detail.stageProgress.total}` : "-"]
     ];
   }
@@ -11488,7 +11488,7 @@ function renameHistoryDetail() {
     return;
   }
   if (detail.type === "stage") {
-    showNotice("阶段记录是交互工作流日志，暂不支持重命名。");
+    showNotice("阶段记录是 VR 菜单动作日志，暂不支持重命名。");
     return;
   }
 
@@ -11720,11 +11720,11 @@ function buildPathList() {
     button.type = "button";
     button.className = "path-item";
     button.dataset.featureState = "real-local";
-    button.setAttribute("aria-label", `打开交互任务：${sceneView.title}`);
+    button.setAttribute("aria-label", `打开 VR 功能舱：${sceneView.title}`);
     button.innerHTML = `
       <span class="path-item-index">${sceneView.shortName}</span>
       <span class="path-item-name">${sceneView.shortName}</span>
-      <span class="path-item-state">待学习</span>
+      <span class="path-item-state">待进入</span>
     `;
     button.addEventListener("click", () => loadScene(index));
     fragment.appendChild(button);
@@ -12057,20 +12057,20 @@ function getLearningSceneView(index) {
 function renderLearningPathServiceSummary(pathStatus = getLearningPathStatus()) {
   if (!els.learningPathServiceSummary) return;
   if (!pathStatus) {
-    els.learningPathServiceSummary.textContent = "交互工作流服务尚未初始化。";
+    els.learningPathServiceSummary.textContent = "VR 菜单服务尚未初始化。";
     els.learningPathServiceSummary.dataset.serviceTone = "active";
     return;
   }
 
   const next = pathStatus.nextStep?.shortName || "继续学习";
-  els.learningPathServiceSummary.textContent = `已完成 ${pathStatus.doneCount} 项交互任务，下一项：${next}。数据来自本机任务、练习、作品、报告和计划。`;
+  els.learningPathServiceSummary.textContent = `VR 菜单已记录 ${pathStatus.doneCount} 个功能舱，推荐入口：${next}。数据来自本机任务、练习、作品、报告和计划。`;
   els.learningPathServiceSummary.dataset.serviceTone = pathStatus.doneCount >= pathStatus.total ? "done" : "active";
 }
 
 function updateSceneText(index) {
   const sceneView = getLearningSceneView(index);
   const metrics = getLearningSceneMetrics(index);
-  els.stepLabel.textContent = sceneView.statusLabel ? `工作流 · ${sceneView.statusLabel}` : "交互工作流";
+  els.stepLabel.textContent = sceneView.statusLabel ? `VR 菜单 · ${sceneView.statusLabel}` : "VR 菜单";
   els.sceneTitle.textContent = sceneView.title;
   els.sceneDescription.textContent = sceneView.description;
   els.coachScore.textContent = metrics[0][1];
@@ -12171,10 +12171,10 @@ function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {
   const bodies = [
     sceneView.description,
     sceneView.focus,
-    `${step.statusLabel || "待完成"}。${step.actionHint || `下一步：${step.nextActionLabel || "继续学习"}。`}`
+    `${step.statusLabel || "待进入"}。${step.actionHint || `推荐入口：${step.nextActionLabel || "继续学习"}。`}`
   ];
   const tags = [
-    step.statusLabel || "路径状态",
+    step.statusLabel || "菜单状态",
     stats.glyph,
     evidence[pointIndex] || evidence[0],
     averageScore
@@ -12193,10 +12193,10 @@ function mergeLearningPathStatusIntoPoint(sceneIndex, pointIndex, pointView) {
 
   const evidence = Array.isArray(step.evidence) ? step.evidence.filter(Boolean) : [];
   const evidenceText = evidence[pointIndex] || evidence[0] || "";
-  const statusText = step.statusLabel || "路径状态";
-  const actionText = step.actionHint || (step.nextActionLabel ? `下一步：${step.nextActionLabel}` : "");
+  const statusText = step.statusLabel || "菜单状态";
+  const actionText = step.actionHint || (step.nextActionLabel ? `推荐入口：${step.nextActionLabel}` : "");
   const pathBody = [
-    `路径状态：${statusText}。`,
+    `菜单状态：${statusText}。`,
     actionText,
     evidenceText ? `本机证据：${evidenceText}。` : ""
   ].filter(Boolean).join(" ");
@@ -12735,7 +12735,7 @@ function buildCompletionDetail() {
   const planProgress = latestPlan?.progress || null;
   const scoreLabel = formatAverageScore(stats);
   const stepBadges = steps.slice(0, 10).map((step) => ({
-    label: step.shortName || step.title || "交互任务",
+    label: step.shortName || step.title || "功能舱",
     done: Boolean(step.done),
     detail: step.done
       ? step.doneLabel || "已完成"
@@ -12754,21 +12754,21 @@ function buildCompletionDetail() {
       ? `学习计划：${latestPlan.title || "未命名计划"}，进度 ${planProgress?.done || 0}/${planProgress?.total || 0}。`
       : "尚未制定计划，可根据本机评分生成下一轮练习计划。",
     nextStep
-      ? `下一项：${nextStep.title || nextStep.shortName}。${nextStep.focus || nextStep.description || "继续补齐当前交互工作流。"}`
-      : "当前交互工作流已完成，可选择新的日课字或继续巩固薄弱项。",
+      ? `推荐入口：${nextStep.title || nextStep.shortName}。${nextStep.focus || nextStep.description || "继续补齐当前 VR 菜单。"}`
+      : "当前 VR 菜单已完成，可选择新的日课字或继续巩固薄弱项。",
     "本详情只读取浏览器本机学习记录，不伪装成云端学情报告。"
   ];
 
   return {
     type: "completion",
-    eyebrow: "交互总结",
+    eyebrow: "VR 菜单总结",
     title: `${stats?.taskTitle || "当前任务"}真实交互详情`,
     status: `${doneCount}项完成`,
     summary: taskProgress.complete
       ? `当前任务已满足完成规则：${taskProgress.ruleSummary || "阶段、练习、作品和报告"}。`
       : `当前任务完成度 ${taskProgress.percent || 0}%，仍需继续完成本机练习、作品、报告或复习计划。`,
     metrics: [
-      { label: "工作流", value: `${doneCount}/${total}` },
+      { label: "功能舱", value: `${doneCount}/${total}` },
       { label: "任务完成", value: taskProgress.complete ? "是" : "否" },
       { label: "真实练习", value: `${stats?.practicedSessionCount || 0}次` },
       { label: "作品", value: `${stats?.artworkCount || 0}幅` },
@@ -12901,22 +12901,22 @@ function buildNavigationActionDetail(action = {}, result = {}) {
 
   return {
     type: "navigation",
-    eyebrow: "工作流跳转",
+    eyebrow: "VR 菜单跳转",
     title: action.label || "页面跳转",
-    status: typeof target === "number" ? getLearningSceneView(target)?.shortName || "目标流程" : "本页",
+    status: typeof target === "number" ? getLearningSceneView(target)?.shortName || "目标功能舱" : "本页",
     summary: targetScene
       ? `将打开“${targetScene.title}”。跳转后仍保留这次动作反馈，避免真实处理结果被页面刷新清空。`
-      : "已完成本次交互工作流动作。",
+      : "已完成本次 VR 菜单动作。",
     metrics: [
       { label: "当前任务", value: stats?.taskTitle || "未选择" },
       { label: "当前字", value: stats?.glyph || "未选择" },
-      { label: "路径进度", value: pathStatus ? `${pathStatus.doneCount}/${pathStatus.total}` : "未初始化" },
-      { label: "目标流程", value: targetScene?.shortName || "当前页" }
+      { label: "菜单进度", value: pathStatus ? `${pathStatus.doneCount}/${pathStatus.total}` : "未初始化" },
+      { label: "目标功能舱", value: targetScene?.shortName || "当前页" }
     ],
     items: [
-      result.message || "交互工作流动作已处理。",
+      result.message || "VR 菜单动作已处理。",
       targetScene?.focus ? `目标重点：${targetScene.focus}` : "",
-      "跳转动作只修改当前前台路径，不会伪造练习、报告或云端同步记录。"
+      "跳转动作只修改当前 VR 菜单入口，不会伪造练习、报告或云端同步记录。"
     ].filter(Boolean)
   };
 }
@@ -12948,7 +12948,7 @@ function buildTaskActionDetail(result = {}, actionLabel = "学习任务") {
     items: [
       task?.id ? `任务 ID：${task.id}。` : "",
       task?.focus || stats?.taskFocus ? `练习重点：${task?.focus || stats.taskFocus}。` : "",
-      strokePlan.length ? `流程计划：${strokePlan.slice(0, 5).join("、")}。` : "",
+      strokePlan.length ? `功能菜单计划：${strokePlan.slice(0, 5).join("、")}。` : "",
       progress?.dependencyStatus?.label ? `依赖状态：${progress.dependencyStatus.label}。` : "",
       "任务切换只使用本机任务库和完成规则，不伪造解锁状态。"
     ].filter(Boolean)
@@ -13527,7 +13527,7 @@ function updatePathPanel(index) {
     button.classList.toggle("is-active", isActive);
     button.classList.toggle("is-locked", Boolean(realState.locked));
     button.setAttribute("aria-current", isActive ? "true" : "false");
-    button.setAttribute("aria-label", `打开交互任务：${sceneView.title}`);
+    button.setAttribute("aria-label", `打开 VR 功能舱：${sceneView.title}`);
 
     if (name) {
       name.textContent = sceneView.shortName;
@@ -13559,7 +13559,7 @@ function getLearningPathState(index, stats, pathStatus = getLearningPathStatus()
   }
 
   if (!stats) {
-    return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
+    return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待进入" };
   }
 
   const taskProgress = stats.taskProgress || {};
@@ -13596,7 +13596,7 @@ function getLearningPathState(index, stats, pathStatus = getLearningPathStatus()
         };
       }
     default:
-      return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待学习" };
+      return { done: false, activeLabel: "进行中", doneLabel: "完成", pendingLabel: "待进入" };
   }
 }
 

@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MR / VR 书法交互工作台</title>
+  <title>MR / VR 书法交互菜单</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=front-layout-sync-collapse-20260615">
+  <link rel="stylesheet" href="style.css?v=vr-menu-20260615">
 </head>
 <body>
   <main class="app-shell">
@@ -46,21 +46,21 @@
         </div>
       </div>
 
-      <header class="scene-heading" aria-label="当前交互任务">
-        <span id="stepLabel" class="step-label">工作流</span>
+      <header class="scene-heading" aria-label="当前 VR 功能舱">
+        <span id="stepLabel" class="step-label">VR 菜单</span>
         <h1 id="sceneTitle">今日单字：永 / 沉浸准备</h1>
       </header>
 
-      <aside class="path-panel" aria-label="交互工作流">
+      <aside class="path-panel" aria-label="VR 交互菜单">
         <div class="path-panel-head">
-          <span>交互工作流</span>
-          <strong id="pathProgress">本机任务</strong>
+          <span>VR 交互菜单</span>
+          <strong id="pathProgress">空间入口</strong>
         </div>
         <div class="path-progress-track" aria-hidden="true">
           <div id="pathProgressBar"></div>
         </div>
         <div id="pathList" class="path-list"></div>
-        <p id="learningPathServiceSummary" class="learning-path-service-summary">交互工作流服务载入中...</p>
+        <p id="learningPathServiceSummary" class="learning-path-service-summary">VR 菜单服务载入中...</p>
       </aside>
 
       <section class="spatial-mode-panel" aria-label="AR / VR 空间模式">
@@ -113,7 +113,7 @@
           <p id="taskDescription">用“永”字串联点、横、竖、钩、撇、捺等基本笔法。</p>
           <div id="taskMeta" class="task-meta" aria-label="任务信息"></div>
           <div id="taskProgress" class="task-progress" aria-label="任务完成进度"></div>
-          <ul id="taskSteps" class="task-steps" aria-label="任务流程"></ul>
+          <ul id="taskSteps" class="task-steps" aria-label="任务要点"></ul>
           <div id="taskList" class="task-list" aria-label="同模式任务库"></div>
         </section>
 
@@ -323,7 +323,7 @@
               </label>
               <label>
                 <span>批注内容</span>
-                <textarea id="reportTeacherReviewInput" rows="3" maxlength="800" placeholder="填写结构、笔画、章法或下一步练习建议"></textarea>
+                <textarea id="reportTeacherReviewInput" rows="3" maxlength="800" placeholder="填写结构、笔画、章法或后续练习建议"></textarea>
               </label>
             </div>
             <div class="report-teacher-review-actions">
@@ -752,7 +752,7 @@
             <span>复盘动作</span>
             <select id="planItemReviewActionInput" name="reviewAction">
               <option value="practice">进入练习</option>
-              <option value="task">复盘任务流程</option>
+              <option value="task">打开任务舱</option>
               <option value="weakness">专项补强</option>
               <option value="artwork">复盘作品</option>
                 <option value="report">查看报告</option>
@@ -768,11 +768,11 @@
       <aside class="insight-stack" aria-label="实时反馈">
         <section class="insight-card">
           <div class="panel-eyebrow">场景识别</div>
-          <p id="sceneDescription">进入 MR 书法教练主界面，确认交互工作流、当前任务和实时反馈。</p>
+          <p id="sceneDescription">进入 MR 书法教练主界面，确认 VR 交互菜单、当前任务和实时反馈。</p>
         </section>
         <section class="insight-card">
           <div class="panel-eyebrow">实时反馈</div>
-          <p id="sceneFocus">系统首页把工作流、单字练习、实时反馈和历史记录集中在同一空间。</p>
+          <p id="sceneFocus">系统首页把 VR 菜单、单字练习、实时反馈和历史记录集中在同一空间。</p>
         </section>
         <section class="insight-card mini-chart">
           <div class="panel-eyebrow">历史记录</div>
@@ -832,14 +832,14 @@
       <div id="noticeState" class="notice-panel" hidden></div>
     </section>
 
-    <div class="quick-controls" aria-label="快速切换" data-flow-route="learningFlowRoute">
-      <button data-feature-state="real-local" id="quickPrev" type="button" aria-label="上一个交互任务">‹</button>
+    <div class="quick-controls" aria-label="快速切换 VR 功能舱" data-flow-route="learningFlowRoute">
+      <button data-feature-state="real-local" id="quickPrev" type="button" aria-label="切换左侧功能舱">‹</button>
       <button data-feature-state="real-local" id="quickHome" type="button" aria-label="返回首页">⌂</button>
       <button data-feature-state="real-local" id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型" data-model-view-route="modelViewRoute">模型</button>
-      <button data-feature-state="real-local" id="quickNext" type="button" aria-label="下一个交互任务">›</button>
+      <button data-feature-state="real-local" id="quickNext" type="button" aria-label="切换右侧功能舱">›</button>
     </div>
 
-    <nav id="stepNav" class="step-nav" aria-label="交互任务导航"></nav>
+    <nav id="stepNav" class="step-nav" aria-label="VR 交互菜单"></nav>
   </main>
 
   <script type="importmap">
@@ -853,8 +853,8 @@
   <script src="assets/vendor/pannellum/pannellum.js"></script>
   <script src="room-config.js?v=main-editor-20260514"></script>
   <script src="main-scene-local-store.js?v=server-layout-20260615"></script>
-  <script src="app-state.js?v=learning-action-audit-20260613"></script>
+  <script src="app-state.js?v=vr-menu-20260615"></script>
   <script src="practice-canvas.js?v=share-revoke-20260612"></script>
-  <script src="script.js?v=front-layout-sync-collapse-20260615"></script>
+  <script src="script.js?v=vr-menu-20260615"></script>
 </body>
 </html>

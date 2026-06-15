@@ -95,16 +95,16 @@ assert(migratedScoreService.lastScore === 80, "评分服务应读取最近一次
 assert(migratedScoreService.message.includes("本机基础评分"), "评分服务摘要应标明本机基础评分。");
 
 const initialLearningPath = window.MRAppState.getLearningPathStatus();
-assert(initialLearningPath.kind === "mr-calligraphy-learning-path-v1", "交互工作流服务应返回稳定 kind。");
-assert(initialLearningPath.steps.length === 10, "交互工作流服务应返回固定数量的工作流节点。");
-assert(initialLearningPath.source.includes("LearningTask"), "交互工作流服务应声明 LearningTask 数据来源。");
-assert(initialLearningPath.boundary.includes("云端课程编排"), "交互工作流服务应说明本机流程边界。");
-assert(initialLearningPath.steps[0].title.includes("今日单字：永"), "交互工作流标题应读取当前任务标题。");
+assert(initialLearningPath.kind === "mr-calligraphy-learning-path-v1", "VR 菜单服务应返回稳定 kind。");
+assert(initialLearningPath.steps.length === 10, "VR 菜单服务应返回固定数量的功能舱节点。");
+assert(initialLearningPath.source.includes("LearningTask"), "VR 菜单服务应声明 LearningTask 数据来源。");
+assert(initialLearningPath.boundary.includes("云端课程编排"), "VR 菜单服务应说明本机菜单边界。");
+assert(initialLearningPath.steps[0].title.includes("今日单字：永"), "VR 菜单标题应读取当前任务标题。");
 assert(initialLearningPath.steps[3].done, "已有真实练习记录时，临摹步骤应标记完成。");
 assert(initialLearningPath.steps[3].evidence.some((item) => item.includes("真实练习")), "临摹步骤应返回练习证据。");
 assert(initialLearningPath.steps[4].status !== "done", "尚未记录笔画拆解阶段时，不应伪造拆解完成。");
 assert(initialLearningPath.steps[8].done, "已有报告记录时，报告步骤应标记完成。");
-assert(initialLearningPath.message.includes("交互工作流已完成"), "交互工作流服务应返回可读摘要。");
+assert(initialLearningPath.message.includes("VR 交互菜单已记录"), "VR 菜单服务应返回可读摘要。");
 
 const initialLectureService = window.MRAppState.getLectureServiceStatus();
 assert(initialLectureService.status === "idle", "初始讲解服务应为待检查状态。");
@@ -1652,7 +1652,7 @@ async function runRemoteRepositoryChecks() {
   assert(batchReceiptAuditExport.html.includes("清空学习档案回收站"), "批量回执审计 HTML 应包含清空回执。");
   assert(batchReceiptAuditExport.html.includes(batchReceiptAuditExport.audit.auditDigest), "批量回执审计 HTML 应包含审计摘要。");
 
-  console.log("学习状态检查通过：交互工作流服务、基础评分服务、本机讲解服务、本机链接复制审计和本机校验、复盘导出回执审计和本机校验、学习档案详情操作回执审计和本机校验、同字作品对比、作品集检索、作品导出回执审计和本机校验、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库导出回执审计和本机校验、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告对比导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计和本机校验、学习计划日历提醒导出、计划导出回执审计和本机校验、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库导出回执审计和本机校验、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
+  console.log("学习状态检查通过：VR 菜单服务、基础评分服务、本机讲解服务、本机链接复制审计和本机校验、复盘导出回执审计和本机校验、学习档案详情操作回执审计和本机校验、同字作品对比、作品集检索、作品导出回执审计和本机校验、学习档案批量操作回执审计、学习档案同步仓库、学习档案仓库导出回执审计和本机校验、学习档案仓库回执本机校验、学习档案冲突审计和字段级合并、分享页、本机分享链接服务、远端分享 API adapter、远端分享仓库包摘要验真、分享 mock 服务、分享远端撤销和回执审计、分享回执本机校验、书写视频导出记录、封面、队列、失败重试和回执审计、报告原生 PDF、报告 PDF 能力雷达图、报告 PDF 分数趋势图、报告 PDF 作品截图嵌入、报告评分证据摘要、报告教师批注、报告教师批注审计、报告导出回执审计、报告对比导出回执审计、报告打印回执审计、报告本机验真摘要、报告仓库本机 JSON 同步包、报告仓库远端 API adapter、报告仓库签名回执、报告仓库回执本机校验、报告仓库 mock 服务、报告仓库冲突审计、报告冲突字段级合并和远端副本另存、报告对比导出、多报告趋势、评分证据、学习阶段记录、任务依赖完成规则、学习计划提醒复盘、计划提醒服务边界、计划提醒回执审计和本机校验、学习计划日历提醒导出、计划导出回执审计和本机校验、学习计划同步仓库、远端计划 API adapter、计划仓库 mock 服务、计划仓库导出回执审计和本机校验、计划仓库回执审计、计划仓库回执本机校验、学习计划自动同步队列、超时重试失败恢复、计划同步冲突检测、计划冲突另存副本、保留本机、采用远端、计划字段级合并、计划依赖图、计划周期循环和计划离线导出已生成。");
 }
 
 async function runShareRepositoryMockServerChecks(fetchApi) {
