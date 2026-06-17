@@ -410,6 +410,44 @@ const SCENES = [
 ];
 
 const WRAP_STEPS = false;
+const VR_MENU_GROUPS = [
+  {
+    id: "learn",
+    label: "准备理解",
+    shortLabel: "准备",
+    summary: "确认今日任务，先听讲解，也可以直接进入临摹。",
+    sceneIndices: [0, 1, 2],
+    options: [
+      { label: "确认任务", description: "选择日课字并更新本机任务。", actionLabel: "选择日课字", target: 1 },
+      { label: "听 AI 讲解", description: "进入讲解舱并记录讲解进度。", actionLabel: "进入 AI 讲解", target: 2 },
+      { label: "直接临摹", description: "创建练习会话并切到书写台。", actionLabel: "开始临摹", target: 3 }
+    ]
+  },
+  {
+    id: "write",
+    label: "书写训练",
+    shortLabel: "书写",
+    summary: "把核心训练压缩到临摹、拆解和创作三件事。",
+    sceneIndices: [3, 4, 5],
+    options: [
+      { label: "进入临摹", description: "打开桌面书写层并保存真实笔迹。", actionLabel: "开始临摹", target: 3 },
+      { label: "笔画拆解", description: "写入笔画拆解阶段记录。", actionLabel: "进入笔画拆解", target: 4 },
+      { label: "进入创作", description: "进入作品创作台，后续可留存成果。", actionLabel: "进入创作", target: 5 }
+    ]
+  },
+  {
+    id: "review",
+    label: "成果计划",
+    shortLabel: "成果",
+    summary: "从档案、报告和巩固计划里完成复盘闭环。",
+    sceneIndices: [6, 7, 8, 9],
+    options: [
+      { label: "档案复盘", description: "打开本机学习档案和作品记录。", target: 6 },
+      { label: "学习报告", description: "进入报告舱，再确认是否导出。", target: 8 },
+      { label: "巩固计划", description: "进入巩固舱，再制定下一轮计划。", target: 9 }
+    ]
+  }
+];
 const IS_FILE_MODE = window.location.protocol === "file:";
 const LEARNING_ACTION_FEATURES = {
   查看笔画分析: ["real-local", "读取当前书写画布笔迹并写入本机练习记录。"],
@@ -1076,6 +1114,10 @@ const els = {
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
+  primaryMenuList: document.getElementById("primaryMenuList"),
+  secondaryMenuList: document.getElementById("secondaryMenuList"),
+  secondaryMenuTitle: document.getElementById("secondaryMenuTitle"),
+  secondaryMenuHint: document.getElementById("secondaryMenuHint"),
   stepNav: document.getElementById("stepNav"),
   loadingState: document.getElementById("loadingState"),
   errorState: document.getElementById("errorState"),
@@ -1123,6 +1165,7 @@ const els = {
 
 let currentIndex = 0;
 let activePointIndex = 0;
+let activeMenuGroupId = VR_MENU_GROUPS[0]?.id || "";
 let activeActionPresentation = null;
 let cubeYaw = 0;
 let cubePitch = -7;
@@ -4239,6 +4282,7 @@ function keepInfoPanelInView() {
 }
 
 function buildStepNavigation() {
+  if (!els.stepNav) return;
   const fragment = document.createDocumentFragment();
 
   SCENES.forEach((_, index) => {
@@ -4256,10 +4300,10 @@ function buildStepNavigation() {
 }
 
 function bindQuickControls() {
-  els.quickPrev.addEventListener("click", goPrevious);
-  els.quickHome.addEventListener("click", () => loadScene(0));
-  els.quickModels.addEventListener("click", focusModelView);
-  els.quickNext.addEventListener("click", goNext);
+  els.quickPrev?.addEventListener("click", goPrevious);
+  els.quickHome?.addEventListener("click", () => loadScene(0));
+  els.quickModels?.addEventListener("click", focusModelView);
+  els.quickNext?.addEventListener("click", goNext);
 }
 
 function bindSpatialModeControls() {
@@ -11740,6 +11784,7 @@ function clearModelView(options = {}) {
 }
 
 function buildPathList() {
+  if (!els.pathList) return;
   const fragment = document.createDocumentFragment();
 
   SCENES.forEach((_, index) => {
@@ -11761,6 +11806,94 @@ function buildPathList() {
   els.pathList.appendChild(fragment);
 }
 
+function getMenuGroupForScene(sceneIndex) {
+  return VR_MENU_GROUPS.find((group) => group.sceneIndices.includes(sceneIndex)) || VR_MENU_GROUPS[0];
+}
+
+function getActiveMenuGroup(sceneIndex = currentIndex) {
+  return VR_MENU_GROUPS.find((group) => group.id === activeMenuGroupId)
+    || getMenuGroupForScene(sceneIndex)
+    || VR_MENU_GROUPS[0];
+}
+
+function setActiveMenuGroup(groupId) {
+  const group = VR_MENU_GROUPS.find((item) => item.id === groupId) || VR_MENU_GROUPS[0];
+  if (!group) return;
+  activeMenuGroupId = group.id;
+  renderDecisionMenu(currentIndex);
+  if (els.actionFeedback) {
+    els.actionFeedback.textContent = `已选择“${group.label}”。请选择下方二级动作继续。`;
+  }
+  renderActionDetail(null);
+}
+
+function renderDecisionMenu(sceneIndex = currentIndex) {
+  if (!els.primaryMenuList || !els.secondaryMenuList) return;
+  const sceneGroup = getMenuGroupForScene(sceneIndex);
+  if (!VR_MENU_GROUPS.some((group) => group.id === activeMenuGroupId)) {
+    activeMenuGroupId = sceneGroup?.id || VR_MENU_GROUPS[0]?.id || "";
+  }
+  const activeGroup = getActiveMenuGroup(sceneIndex);
+
+  els.primaryMenuList.replaceChildren();
+  VR_MENU_GROUPS.forEach((group) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "primary-menu-button";
+    button.dataset.featureState = "real-local";
+    button.dataset.menuGroup = group.id;
+    button.classList.toggle("is-active", group.id === activeGroup.id);
+    button.setAttribute("aria-pressed", group.id === activeGroup.id ? "true" : "false");
+    button.innerHTML = `<strong>${group.label}</strong><span>${group.summary}</span>`;
+    button.addEventListener("click", () => setActiveMenuGroup(group.id));
+    els.primaryMenuList.appendChild(button);
+  });
+
+  if (els.secondaryMenuTitle) {
+    els.secondaryMenuTitle.textContent = activeGroup ? `已选：${activeGroup.label}` : "请选择一级方向";
+  }
+  if (els.secondaryMenuHint) {
+    els.secondaryMenuHint.textContent = activeGroup?.summary || "确认一个方向后，下方会出现真实可执行的二级动作。";
+  }
+
+  els.secondaryMenuList.replaceChildren();
+  (activeGroup?.options || []).forEach((option) => {
+    const feature = option.actionLabel
+      ? getLearningActionFeature({ label: option.actionLabel })
+      : { state: "real-local", reason: option.description || "打开对应功能舱。" };
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-menu-button";
+    button.dataset.featureState = feature.state;
+    button.dataset.featureLabel = getFeatureStateLabel(feature.state);
+    button.title = feature.reason || option.description || getFeatureStateLabel(feature.state);
+    button.innerHTML = `<strong>${option.label}</strong><span>${option.description || ""}</span>`;
+    if (feature.state === "disabled") {
+      button.disabled = true;
+      button.setAttribute("aria-label", `${option.label}：${feature.reason}`);
+    } else {
+      button.addEventListener("click", () => runMenuOption(option));
+    }
+    els.secondaryMenuList.appendChild(button);
+  });
+}
+
+function runMenuOption(option) {
+  if (!option) return;
+  const target = typeof option.target === "number" ? option.target : option.sceneIndex;
+  if (option.actionLabel) {
+    runAction({
+      label: option.actionLabel,
+      target,
+      response: option.description || ""
+    });
+    return;
+  }
+  if (typeof target === "number") {
+    loadScene(target);
+  }
+}
+
 function loadScene(index, options = {}) {
   if (index < 0 || index >= SCENES.length) {
     return;
@@ -11770,6 +11903,7 @@ function loadScene(index, options = {}) {
     clearActionPresentation();
   }
   currentIndex = index;
+  activeMenuGroupId = getMenuGroupForScene(index)?.id || activeMenuGroupId;
   const pointIndex = clampScenePointIndex(index, Number.isInteger(options.pointIndex) ? options.pointIndex : 0);
   activePointIndex = pointIndex;
   if (index !== 6 && getHistoryDetailRouteId()) {
@@ -12101,9 +12235,13 @@ function updateSceneText(index) {
   const metrics = getLearningSceneMetrics(index);
   els.stepLabel.textContent = sceneView.statusLabel ? `VR 菜单 · ${sceneView.statusLabel}` : "VR 菜单";
   els.sceneTitle.textContent = sceneView.title;
-  els.sceneDescription.textContent = sceneView.description;
+  if (els.sceneDescription) {
+    els.sceneDescription.textContent = sceneView.description;
+  }
   els.coachScore.textContent = metrics[0][1];
-  els.insightScore.textContent = getMetricInsightValue(metrics[0][1]);
+  if (els.insightScore) {
+    els.insightScore.textContent = getMetricInsightValue(metrics[0][1]);
+  }
   renderLearningPathServiceSummary();
   renderScoreServiceSummary();
 }
@@ -12134,7 +12272,9 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   const pointView = getLearningPointView(sceneIndex, pointIndex, point);
   const metrics = getLearningSceneMetrics(sceneIndex);
 
-  els.sceneFocus.textContent = sceneView.focus;
+  if (els.sceneFocus) {
+    els.sceneFocus.textContent = sceneView.focus;
+  }
   els.contentTitle.textContent = pointView.label;
   els.contentBody.textContent = pointView.body;
   els.contentTags.innerHTML = "";
@@ -12188,6 +12328,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     }
     els.actionList.appendChild(button);
   });
+  renderDecisionMenu(sceneIndex);
 }
 
 function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {
@@ -13509,6 +13650,11 @@ function runLearningAction(action) {
 }
 
 function updateStepNavigation(index) {
+  if (!els.stepNav) {
+    updatePathPanel(index);
+    updateQuickControls(index);
+    return;
+  }
   const buttons = els.stepNav.querySelectorAll("button");
 
   buttons.forEach((button, buttonIndex) => {
@@ -13525,12 +13671,16 @@ function updateQuickControls(index) {
   const atFirst = index === 0;
   const atLast = index === SCENES.length - 1;
 
-  els.quickPrev.disabled = atFirst && !WRAP_STEPS;
-  els.quickHome.disabled = atFirst;
-  els.quickNext.disabled = atLast && !WRAP_STEPS;
+  if (els.quickPrev) els.quickPrev.disabled = atFirst && !WRAP_STEPS;
+  if (els.quickHome) els.quickHome.disabled = atFirst;
+  if (els.quickNext) els.quickNext.disabled = atLast && !WRAP_STEPS;
 }
 
 function updatePathPanel(index) {
+  if (!els.pathList || !els.pathProgress || !els.pathProgressBar) {
+    renderLearningPathServiceSummary();
+    return;
+  }
   const pathItems = els.pathList.querySelectorAll(".path-item");
   const pathStatus = getLearningPathStatus();
   const stats = window.MRAppState?.getStats?.();

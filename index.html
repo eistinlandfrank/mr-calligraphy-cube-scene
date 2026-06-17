@@ -51,7 +51,7 @@
         <h1 id="sceneTitle">今日单字：永 / 沉浸准备</h1>
       </header>
 
-      <aside class="path-panel" aria-label="VR 交互菜单">
+      <aside class="path-panel" aria-label="VR 交互菜单" hidden>
         <div class="path-panel-head">
           <span>VR 交互菜单</span>
           <strong id="pathProgress">空间入口</strong>
@@ -63,7 +63,7 @@
         <p id="learningPathServiceSummary" class="learning-path-service-summary">VR 菜单服务载入中...</p>
       </aside>
 
-      <section class="spatial-mode-panel" aria-label="AR / VR 空间模式">
+      <section class="spatial-mode-panel" aria-label="AR / VR 空间模式" hidden>
         <div class="spatial-mode-head">
           <span>Spatial Mode</span>
           <strong id="spatialModeStatus">MR 交互层</strong>
@@ -94,6 +94,18 @@
           <button data-feature-state="real-local" type="button" data-learning-mode="creation">创作</button>
         </div>
         <p id="learningStateSummary" class="learning-state-summary">本机学习记录载入中...</p>
+        <section id="vrDecisionPanel" class="vr-decision-panel" aria-label="VR 两级交互菜单">
+          <div class="vr-decision-head">
+            <div>
+              <div class="panel-eyebrow">VR 交互菜单</div>
+              <strong>先选方向，再选动作</strong>
+            </div>
+            <span id="secondaryMenuTitle">请选择一级方向</span>
+          </div>
+          <div id="primaryMenuList" class="primary-menu-list" aria-label="一级交互方向"></div>
+          <p id="secondaryMenuHint" class="secondary-menu-hint">确认一个方向后，下方会出现真实可执行的二级动作。</p>
+          <div id="secondaryMenuList" class="secondary-menu-list" aria-label="二级交互动作"></div>
+        </section>
         <section id="serviceBoundaryPanel" class="service-boundary-panel" aria-label="服务边界状态">
           <div class="service-boundary-head">
             <span>服务边界</span>
@@ -765,23 +777,7 @@
         </dialog>
       </section>
 
-      <aside class="insight-stack" aria-label="实时反馈">
-        <section class="insight-card">
-          <div class="panel-eyebrow">场景识别</div>
-          <p id="sceneDescription">进入 MR 书法教练主界面，确认 VR 交互菜单、当前任务和实时反馈。</p>
-        </section>
-        <section class="insight-card">
-          <div class="panel-eyebrow">实时反馈</div>
-          <p id="sceneFocus">系统首页把 VR 菜单、单字练习、实时反馈和历史记录集中在同一空间。</p>
-        </section>
-        <section class="insight-card mini-chart">
-          <div class="panel-eyebrow">历史记录</div>
-          <div class="chart-line" aria-hidden="true"></div>
-          <strong id="insightScore">86</strong>
-        </section>
-      </aside>
-
-      <details class="scene-api-panel">
+      <details class="scene-api-panel" hidden>
         <summary>场景编辑</summary>
         <div class="api-content">
           <div class="api-toolbar" aria-label="配置操作">
@@ -830,14 +826,14 @@
       <div id="noticeState" class="notice-panel" hidden></div>
     </section>
 
-    <div class="quick-controls" aria-label="快速切换 VR 功能舱" data-flow-route="learningFlowRoute">
+    <div class="quick-controls" aria-label="快速切换 VR 功能舱" data-flow-route="learningFlowRoute" hidden>
       <button data-feature-state="real-local" id="quickPrev" type="button" aria-label="切换左侧功能舱">‹</button>
       <button data-feature-state="real-local" id="quickHome" type="button" aria-label="返回首页">⌂</button>
       <button data-feature-state="real-local" id="quickModels" class="quick-models" type="button" aria-label="查看 3D 模型" data-model-view-route="modelViewRoute">模型</button>
       <button data-feature-state="real-local" id="quickNext" type="button" aria-label="切换右侧功能舱">›</button>
     </div>
 
-    <nav id="stepNav" class="step-nav" aria-label="VR 交互菜单"></nav>
+    <nav id="stepNav" class="step-nav" aria-label="VR 交互菜单" hidden></nav>
   </main>
 
   <script type="importmap">
@@ -853,6 +849,6 @@
   <script src="main-scene-local-store.js?v=server-layout-20260615"></script>
   <script src="app-state.js?v=vr-menu-20260615"></script>
   <script src="practice-canvas.js?v=share-revoke-20260612"></script>
-  <script src="script.js?v=writing-desk-20260617"></script>
+  <script src="script.js?v=two-level-menu-20260617"></script>
 </body>
 </html>

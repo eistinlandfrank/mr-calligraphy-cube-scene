@@ -89,7 +89,24 @@ async function unlockRealisticAdmin(page) {
 }
 
 async function clickWorkflow(page, name) {
-  await page.locator("#stepNav button").filter({ hasText: new RegExp(`^${name}$`) }).click();
+  const menuMap = {
+    准备: ["准备理解", "确认任务"],
+    任务: ["准备理解", "确认任务"],
+    讲解: ["准备理解", "听 AI 讲解"],
+    临摹: ["书写训练", "进入临摹"],
+    拆解: ["书写训练", "笔画拆解"],
+    创作: ["书写训练", "进入创作"],
+    档案: ["成果计划", "档案复盘"],
+    复盘: ["成果计划", "档案复盘"],
+    报告: ["成果计划", "学习报告"],
+    巩固: ["成果计划", "巩固计划"]
+  };
+  const [primary, secondary] = menuMap[name] || [name, ""];
+  await page.locator("#primaryMenuList button").filter({ hasText: new RegExp(`^${primary}`) }).click();
+  if (secondary) {
+    await page.locator("#secondaryMenuList button").filter({ hasText: new RegExp(`^${secondary}`) }).click();
+    await page.waitForTimeout(520);
+  }
 }
 
 test("mobile viewports keep core panels usable without overlap", async ({ page }) => {
