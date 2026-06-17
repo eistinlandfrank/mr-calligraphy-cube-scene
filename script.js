@@ -11847,7 +11847,7 @@ function setActiveMenuGroup(groupId) {
   setDecisionMenuStage("secondary");
   renderDecisionMenu(currentIndex);
   if (els.actionFeedback) {
-    els.actionFeedback.textContent = `已选：${group.label}`;
+    els.actionFeedback.textContent = "已选";
   }
   renderActionDetail(null);
 }
@@ -11887,7 +11887,7 @@ function renderDecisionMenu(sceneIndex = currentIndex) {
   });
 
   if (els.secondaryMenuTitle) {
-    els.secondaryMenuTitle.textContent = activeGroup ? `已选：${activeGroup.label}` : "先选一步";
+    els.secondaryMenuTitle.textContent = activeGroup ? activeGroup.label : "先选";
   }
   if (els.secondaryMenuHint) {
     els.secondaryMenuHint.textContent = "选下面一步。";
@@ -12449,29 +12449,44 @@ function getSeniorFeedbackMessage(message = "", detail = null, actionLabel = "")
   const text = String(message || "").trim();
   const type = detail?.type || "";
   const title = String(detail?.title || actionLabel || "").trim();
+  const detailed = shouldShowDetailedSystemMessage();
 
-  if (type === "task") return title ? `已选：${title.replace(/^今日单字：/, "")}` : "已选任务";
-  if (type === "lecture") return detail?.status === "已完成" ? "讲解完成" : "开始讲解";
-  if (type === "practice") return "开始练字";
-  if (type === "training-mode") return title || "模式已切换";
-  if (type === "stroke") return title ? `已换：${title}` : "已换笔画";
-  if (type === "stage") return title || "已记录";
-  if (type === "artwork-style") return title || "风格已切换";
-  if (type === "artwork") return "作品已保存";
-  if (type === "artwork-open") return "打开作品";
-  if (type === "history") return "打开记录";
-  if (type === "history-filter") return "已筛选";
-  if (type === "report") return "报告已生成";
-  if (type === "share") return "分享已生成";
-  if (type === "plan") return "计划已生成";
-  if (type === "completion") return "已看详情";
-  if (type === "analysis") return "已看笔画";
+  if (type === "task") return detailed && title ? `已选：${title.replace(/^今日单字：/, "")}` : "已选字";
+  if (type === "lecture") return detailed
+    ? detail?.status === "已完成" ? "讲解完成" : "开始讲解"
+    : detail?.status === "已完成" ? "听完了" : "开始听";
+  if (type === "practice") return detailed ? "开始练字" : "开始练";
+  if (type === "training-mode") {
+    if (detailed) return title || "模式已切换";
+    if (/示范|范字/.test(title)) return "看范字";
+    if (/对比|比较/.test(title)) return "比一比";
+    return "已切换";
+  }
+  if (type === "stroke") return detailed && title ? `已换：${title}` : "已换笔";
+  if (type === "stage") {
+    if (detailed) return title || "已记录";
+    if (/创作|作品/.test(title)) return "写作品";
+    if (/复习|巩固|再练/.test(title)) return "再练笔";
+    if (/笔画|拆解/.test(title)) return "看笔画";
+    return "已记录";
+  }
+  if (type === "artwork-style") return detailed ? title || "风格已切换" : "换风格";
+  if (type === "artwork") return detailed ? "作品已保存" : "已保存";
+  if (type === "artwork-open") return detailed ? "打开作品" : "看作品";
+  if (type === "history") return detailed ? "打开记录" : "看记录";
+  if (type === "history-filter") return detailed ? "已筛选" : "看好字";
+  if (type === "report") return detailed ? "报告已生成" : "已生成";
+  if (type === "share") return detailed ? "分享已生成" : "已分享";
+  if (type === "plan") return detailed ? "计划已生成" : "已计划";
+  if (type === "completion") return detailed ? "已看详情" : "看详情";
+  if (type === "analysis") return detailed ? "已看笔画" : "看笔画";
   if (type === "failure") return "请先完成";
-  if (type === "navigation") return title || "已切换";
+  if (type === "navigation") return detailed ? title || "已切换" : "已切换";
 
   if (!text) return actionLabel ? `${actionLabel}已处理` : "";
   if (text.includes("封面已保存") || text.includes("回放视频")) return "视频已生成";
   if (text.includes("不支持 Canvas 视频录制")) return "暂不支持视频";
+  if (!detailed) return getSeniorNoticeMessage(text) || "已处理";
   if (text.length <= 18) return text;
   return makeSeniorBrief(text, 18);
 }
@@ -13582,21 +13597,28 @@ function getLearningActionHint(sceneIndex) {
   }
 
   const sceneView = getLearningSceneView(sceneIndex);
+  const detailed = shouldShowDetailedSystemMessage();
   if (sceneView.step) {
     if (sceneView.step.locked) {
-      return `未解锁：${sceneView.shortName}`;
+      return detailed ? `未解锁：${sceneView.shortName}` : "未解锁";
     }
     if (sceneView.step.done) {
-      return `已完成：${sceneView.shortName}`;
+      return detailed ? `已完成：${sceneView.shortName}` : "已完成";
     }
-    return `下一步：${sceneView.step.nextActionLabel || "继续"}`;
+    return detailed
+      ? `下一步：${sceneView.step.nextActionLabel || "继续"}`
+      : getSeniorActionLabel(sceneView.step.nextActionLabel || "继续");
   }
 
   if (sceneIndex === 6 || sceneIndex === 8 || sceneIndex === 9) {
-    return `查看：${sceneView.shortName}`;
+    if (detailed) return `查看：${sceneView.shortName}`;
+    if (sceneIndex === 6) return "看记录";
+    if (sceneIndex === 8) return "看报告";
+    return "做计划";
   }
 
   if (sceneView.actionHint) {
+    if (!detailed) return getSeniorNoticeMessage(sceneView.actionHint) || "请操作";
     return makeSeniorBrief(sceneView.actionHint, 18);
   }
 

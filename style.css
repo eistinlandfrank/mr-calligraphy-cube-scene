@@ -3069,8 +3069,7 @@ body[data-learning-scene]:not([data-learning-scene="0"]) .mr-main-panel .action-
 .mr-main-panel .review-panel,
 .mr-main-panel .report-panel,
 .mr-main-panel .history-panel,
-.mr-main-panel .plan-panel,
-.mr-main-panel .action-feedback {
+.mr-main-panel .plan-panel {
   display: none !important;
 }
 
@@ -5113,9 +5112,15 @@ body[data-spatial-mode="mr"] .scene-copy {
 .mr-main-panel .action-feedback {
   display: block;
   min-height: 0;
-  padding: 10px 11px;
-  font-size: 15px;
-  line-height: 1.4;
+  width: max-content;
+  max-width: 100%;
+  margin: 10px auto 0 !important;
+  padding: 10px 16px;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.25;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .mr-main-panel .action-button::after {
