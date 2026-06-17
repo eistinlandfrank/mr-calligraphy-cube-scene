@@ -336,6 +336,15 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   let latestReportReceipt = null;
   let latestShareReceipt = null;
 
+  await page.addInitScript(() => {
+    const enableDetails = () => document.body?.classList.add("e2e-show-details");
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", enableDetails, { once: true });
+    } else {
+      enableDetails();
+    }
+  });
+
   await page.route(`**${historyEndpointPath}`, async (route) => {
     const request = route.request();
     const method = request.method();
@@ -704,7 +713,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   const reportEndpoint = await getSameOriginEndpoint(page, reportEndpointPath);
 
   await clickWorkflow(page, "讲解");
-  await page.getByRole("button", { name: "播放讲解" }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^播放$/ }).click();
   await expect(page.locator("#lectureStatusLabel")).toContainText("已完成");
   await expect(page.locator("#lectureServiceSummary")).toContainText("本机语音");
   await expect(page.locator("#actionDetail")).toHaveCount(1);
@@ -718,7 +727,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#learningActionAuditList")).toContainText("讲解");
   await expect(page.locator("#learningActionAuditExport")).toBeEnabled();
 
-  await page.locator("#actionList .action-button").filter({ hasText: /^开始临摹$/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^练字$/ }).click();
   await expect(page.locator("#sceneTitle")).toContainText("开始练字");
   await expect.poll(() => page.evaluate(() => window.MR_WRITING_DESK_VISIBLE)).toBe(true);
   await expect(page.locator("body")).toHaveClass(/is-writing-desk-mode/);
@@ -728,19 +737,19 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("会话 ID");
   await expect(page.locator("#learningActionAuditList")).toContainText("开始练习");
 
-  await page.locator("#actionList .action-button").filter({ hasText: /^对比模式$/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^对比$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("对比模式");
   await expect(page.locator("#actionDetail")).toContainText("训练模式");
   await expect(page.locator("#actionDetail")).toContainText("当前会话");
 
-  await page.locator("#actionList .action-button").filter({ hasText: /^进入笔画拆解$/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^看笔画$/ }).click();
   await expect(page.locator("#sceneTitle")).toContainText("看笔画");
   await expect(page.locator("#actionFeedback")).toContainText("笔画拆解");
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("阶段记录 ID");
   await expect(page.locator("#actionDetail")).toContainText("目标功能舱");
 
-  await page.locator("#actionList .action-button").filter({ hasText: /^下一个笔画$/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^下一笔$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("已换");
   await expect(page.locator("#actionDetail")).toContainText("本机笔画索引");
   await expect(page.locator("#actionDetail")).toContainText("当前笔画");
@@ -748,13 +757,13 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await drawPracticeStroke(page);
   await expect(page.locator("#practiceCanvasStatus")).toContainText(/1 笔|2 笔|当前评分/);
 
-  await page.locator("#actionList .action-button").filter({ hasText: /^进入创作$/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^写作品$/ }).click();
   await expect(page.locator("#sceneTitle")).toContainText("写作品");
   await expect(page.locator("#actionFeedback")).toContainText("创作实践");
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("阶段记录 ID");
 
-  await page.getByRole("button", { name: "保存作品" }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^保存$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("作品已保存");
   await expect(page.locator("#actionDetail")).toHaveCount(1);
   await expect(page.locator("#actionDetail")).toContainText("本机作品保存");
@@ -1062,7 +1071,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await clickWorkflow(page, "报告");
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "导出报告" }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^导报告$/ }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toMatch(/^mr-calligraphy-report-report-/);
   const reportHtmlPath = await download.path();
@@ -1170,7 +1179,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   expect(historyReportActionAuditHtml).toContain(learningState.historyDetailActionReceipts[0].receiptDigest);
   await clickWorkflow(page, "报告");
 
-  await page.getByRole("button", { name: "制定计划" }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^计划$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("计划已生成");
   await expect(page.locator("#actionDetail")).toHaveCount(1);
   await expect(page.locator("#actionDetail")).toContainText("本机学习计划");
@@ -1301,14 +1310,14 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   }
 
   await clickWorkflow(page, "巩固");
-  await page.getByRole("button", { name: "查看详情" }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^详情$/ }).click();
   await expect(page.locator("#actionFeedback")).toContainText("已看详情");
   await expect(page.locator("#actionDetail")).toHaveCount(1);
   await expect(page.locator("#actionDetail")).toContainText("真实交互详情");
   await expect(page.locator("#actionDetail")).toContainText("功能舱");
   await expect(page.locator("#actionDetail")).toContainText("真实练习");
   await expect(page.locator("#actionDetail")).toContainText("最近报告");
-  await page.locator("#actionList .action-button").filter({ hasText: /^复习巩固$/ }).click();
+  await page.locator("#actionList .action-button").filter({ hasText: /^巩固$/ }).click();
   await expect(page.locator("#sceneTitle")).toContainText("看笔画");
   await expect(page.locator("#actionFeedback")).toContainText("复习巩固");
   await expect(page.locator("#actionDetail")).toHaveCount(1);

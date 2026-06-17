@@ -12326,7 +12326,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "action-button";
-    button.textContent = action.label;
+    button.textContent = getSeniorActionLabel(action.label);
     button.dataset.featureState = feature.state;
     button.dataset.featureLabel = getFeatureStateLabel(feature.state);
     button.title = feature.reason || getFeatureStateLabel(feature.state);
@@ -12352,6 +12352,42 @@ function makeSeniorBrief(text = "", maxLength = 42) {
   return firstSentence.length > maxLength
     ? `${firstSentence.slice(0, maxLength)}...`
     : firstSentence;
+}
+
+function getSeniorActionLabel(label = "") {
+  const labels = {
+    查看笔画分析: "看笔画",
+    选择日课字: "选字",
+    "进入 AI 讲解": "听讲解",
+    播放讲解: "播放",
+    切换碑帖: "换帖",
+    进入临摹训练: "练字",
+    开始临摹: "练字",
+    继续学习: "继续",
+    再写一遍: "再写",
+    示范模式: "示范",
+    对比模式: "对比",
+    上一个笔画: "上一笔",
+    下一个笔画: "下一笔",
+    进入笔画拆解: "看笔画",
+    复习巩固: "巩固",
+    进入创作: "写作品",
+    切换行书: "行书",
+    保存作品: "保存",
+    查看学习记录: "记录",
+    打开历史记录: "记录",
+    筛选优秀记录: "好作品",
+    导出学习报告: "导报告",
+    导出报告: "导报告",
+    查看作品: "作品",
+    生成视频: "视频",
+    导出分享页: "分享",
+    制定计划: "计划",
+    查看成就: "成就",
+    查看详情: "详情",
+    返回首页: "首页"
+  };
+  return labels[label] || makeSeniorBrief(label, 6);
 }
 
 function getSeniorFeedbackMessage(message = "", detail = null, actionLabel = "") {

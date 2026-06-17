@@ -3007,6 +3007,11 @@ button {
   display: none;
 }
 
+.mr-main-panel {
+  display: flex;
+  flex-direction: column;
+}
+
 .mr-main-panel .learning-state-summary,
 .mr-main-panel .secondary-menu-hint,
 .mr-main-panel .service-boundary-panel,
@@ -3036,8 +3041,30 @@ body[data-learning-scene]:not([data-learning-scene="0"]) .mr-main-panel .action-
 
 .mr-main-panel .action-detail,
 .mr-main-panel .learning-action-audit,
-.mr-main-panel .score-board {
-  display: none;
+.mr-main-panel .score-board,
+.mr-main-panel .lecture-panel,
+.mr-main-panel .review-panel,
+.mr-main-panel .report-panel,
+.mr-main-panel .history-panel,
+.mr-main-panel .plan-panel,
+.mr-main-panel .action-feedback {
+  display: none !important;
+}
+
+.mr-main-panel .panel-dragbar {
+  order: 0;
+}
+
+.mr-main-panel .vr-decision-panel {
+  order: 1;
+}
+
+.mr-main-panel .action-zone {
+  order: 2;
+}
+
+.mr-main-panel .coach-workspace {
+  order: 3;
 }
 
 body.is-writing-desk-mode .mr-main-panel .coach-workspace,
@@ -3049,7 +3076,37 @@ body[data-learning-scene="5"] .mr-main-panel .coach-workspace {
 body.is-writing-desk-mode .mr-main-panel .glyph-board,
 body[data-learning-scene="4"] .mr-main-panel .glyph-board,
 body[data-learning-scene="5"] .mr-main-panel .glyph-board {
-  min-height: 150px;
+  min-height: 128px;
+}
+
+.mr-main-panel .action-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 10px;
+  margin-top: 0;
+}
+
+.mr-main-panel .action-button {
+  min-height: 54px;
+  justify-content: center;
+  padding: 12px 8px;
+  border-radius: 8px;
+  font-size: 18px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+body.e2e-show-details .mr-main-panel .lecture-panel,
+body.e2e-show-details .mr-main-panel .review-panel,
+body.e2e-show-details .mr-main-panel .report-panel,
+body.e2e-show-details .mr-main-panel .history-panel,
+body.e2e-show-details .mr-main-panel .plan-panel {
+  display: grid !important;
+}
+
+body.e2e-show-details .mr-main-panel .action-detail,
+body.e2e-show-details .mr-main-panel .learning-action-audit {
+  display: block !important;
 }
 
 .mr-main-panel .panel-dragbar {
@@ -3112,6 +3169,10 @@ body[data-learning-scene="5"] .mr-main-panel .glyph-board {
 }
 
 .primary-menu-list {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.secondary-menu-list {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
