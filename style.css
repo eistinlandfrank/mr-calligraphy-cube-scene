@@ -3012,6 +3012,18 @@ button {
   flex-direction: column;
 }
 
+.mr-main-panel .panel-eyebrow,
+.mr-main-panel .vr-decision-head,
+.mr-main-panel .secondary-menu-title {
+  display: none;
+}
+
+.mr-main-panel .panel-dragbar strong {
+  margin-top: 0;
+  font-size: 22px;
+  line-height: 1.1;
+}
+
 .mr-main-panel .learning-state-summary,
 .mr-main-panel .secondary-menu-hint,
 .mr-main-panel .service-boundary-panel,
@@ -3110,7 +3122,7 @@ body.e2e-show-details .mr-main-panel .learning-action-audit {
 }
 
 .mr-main-panel .panel-dragbar {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .scene-focus {
@@ -3123,9 +3135,9 @@ body.e2e-show-details .mr-main-panel .learning-action-audit {
 
 .vr-decision-panel {
   display: grid;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 14px;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
   border: 1px solid rgba(116, 255, 219, 0.18);
   border-radius: 8px;
   background:
@@ -4453,9 +4465,9 @@ body[data-spatial-mode="mr"] .scene-copy {
 
 .mr-main-panel .panel-dragbar strong {
   display: block;
-  margin-top: 4px;
+  margin-top: 0;
   color: #ffffff;
-  font-size: 18px;
+  font-size: 22px;
   line-height: 1.15;
 }
 
