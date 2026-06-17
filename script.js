@@ -11866,6 +11866,9 @@ function renderDecisionMenu(sceneIndex = currentIndex) {
     activeMenuGroupId = sceneGroup?.id || VR_MENU_GROUPS[0]?.id || "";
   }
   const activeGroup = getActiveMenuGroup(sceneIndex);
+  if (els.contentTitle) {
+    els.contentTitle.textContent = getSeniorPanelTitle(sceneIndex);
+  }
 
   els.primaryMenuList.replaceChildren();
   VR_MENU_GROUPS.forEach((group) => {
@@ -12284,6 +12287,7 @@ function getSeniorSceneTitle(index = currentIndex) {
   const stats = window.MRAppState?.getStats?.();
   const glyph = stats?.glyph || "永";
   const titleByIndex = {
+    1: "选字",
     2: "先听讲解",
     3: "开始练字",
     4: "看笔画",
@@ -12293,7 +12297,15 @@ function getSeniorSceneTitle(index = currentIndex) {
     8: "看报告",
     9: "练习计划"
   };
-  return index > 1 ? titleByIndex[index] || `今日：${glyph}` : `今日：${glyph}`;
+  return index > 0 ? titleByIndex[index] || `今日：${glyph}` : `今日：${glyph}`;
+}
+
+function getSeniorPanelTitle(sceneIndex = currentIndex) {
+  if (activeMenuStage === "primary") return "请选择";
+  if (activeMenuStage === "secondary") {
+    return getActiveMenuGroup(sceneIndex)?.label || "下一步";
+  }
+  return getSeniorSceneTitle(sceneIndex);
 }
 
 function renderScoreServiceSummary() {
@@ -12327,7 +12339,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
   if (els.sceneFocus) {
     els.sceneFocus.textContent = sceneView.focus;
   }
-  els.contentTitle.textContent = pointView.label;
+  els.contentTitle.textContent = getSeniorPanelTitle(sceneIndex);
   els.contentBody.textContent = makeSeniorBrief(pointView.body, 40);
   els.contentTags.innerHTML = "";
   els.metricGrid.innerHTML = "";
