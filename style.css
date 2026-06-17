@@ -3835,9 +3835,12 @@ body.is-model-view .spatial-mode-panel,
 body.is-model-view .scene-copy,
 body.is-model-view .scene-api-panel,
 body.is-model-view .step-nav {
-  opacity: 0.08;
+  opacity: 0;
   pointer-events: none;
-  transition: opacity 180ms ease;
+  visibility: hidden;
+  transition:
+    opacity 180ms ease,
+    visibility 0s linear 180ms;
 }
 
 body.is-model-view .quick-controls,
