@@ -11877,9 +11877,11 @@ function renderDecisionMenu(sceneIndex = currentIndex) {
     button.className = "primary-menu-button";
     button.dataset.featureState = "real-local";
     button.dataset.menuGroup = group.id;
-    button.classList.toggle("is-active", group.id === activeGroup.id);
-    button.setAttribute("aria-pressed", group.id === activeGroup.id ? "true" : "false");
-    button.innerHTML = `<strong>${group.label}</strong><span>${group.summary}</span>`;
+    const isActive = activeMenuStage !== "primary" && group.id === activeGroup.id;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    button.title = group.summary || group.label;
+    button.innerHTML = `<strong>${group.label}</strong>`;
     button.addEventListener("click", () => setActiveMenuGroup(group.id));
     els.primaryMenuList.appendChild(button);
   });
@@ -11902,7 +11904,7 @@ function renderDecisionMenu(sceneIndex = currentIndex) {
     button.dataset.featureState = feature.state;
     button.dataset.featureLabel = getFeatureStateLabel(feature.state);
     button.title = feature.reason || option.description || getFeatureStateLabel(feature.state);
-    button.innerHTML = `<strong>${option.label}</strong><span>${option.description || ""}</span>`;
+    button.innerHTML = `<strong>${option.label}</strong>`;
     if (feature.state === "disabled") {
       button.disabled = true;
       button.setAttribute("aria-label", `${option.label}：${feature.reason}`);
