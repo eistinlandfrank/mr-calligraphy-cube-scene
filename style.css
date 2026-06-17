@@ -3073,6 +3073,27 @@ body[data-learning-scene]:not([data-learning-scene="0"]) .mr-main-panel .action-
   display: none !important;
 }
 
+body:not(.e2e-show-details) .mr-main-panel .mode-tabs,
+body:not(.e2e-show-details) .mr-main-panel .learning-state-summary,
+body:not(.e2e-show-details) .mr-main-panel .secondary-menu-hint,
+body:not(.e2e-show-details) .mr-main-panel .service-boundary-panel,
+body:not(.e2e-show-details) .mr-main-panel .task-panel,
+body:not(.e2e-show-details) .mr-main-panel .content-card,
+body:not(.e2e-show-details) .mr-main-panel .point-list,
+body:not(.e2e-show-details) .mr-main-panel .action-detail,
+body:not(.e2e-show-details) .mr-main-panel .learning-action-audit,
+body:not(.e2e-show-details) .mr-main-panel .learning-action-audit-list,
+body:not(.e2e-show-details) .mr-main-panel .score-board,
+body:not(.e2e-show-details) .mr-main-panel .score-service-summary,
+body:not(.e2e-show-details) .mr-main-panel .lecture-panel,
+body:not(.e2e-show-details) .mr-main-panel .lecture-service-summary,
+body:not(.e2e-show-details) .mr-main-panel .review-panel,
+body:not(.e2e-show-details) .mr-main-panel .report-panel,
+body:not(.e2e-show-details) .mr-main-panel .history-panel,
+body:not(.e2e-show-details) .mr-main-panel .plan-panel {
+  display: none !important;
+}
+
 .mr-main-panel .panel-dragbar {
   order: 0;
 }
