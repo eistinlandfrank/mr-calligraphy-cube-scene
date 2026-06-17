@@ -413,38 +413,38 @@ const WRAP_STEPS = false;
 const VR_MENU_GROUPS = [
   {
     id: "learn",
-    label: "准备理解",
-    shortLabel: "准备",
-    summary: "确认今日任务，先听讲解，也可以直接进入临摹。",
+    label: "先看看",
+    shortLabel: "看",
+    summary: "先听讲解，知道怎么写。",
     sceneIndices: [0, 1, 2],
     options: [
-      { label: "确认任务", description: "选择日课字并更新本机任务。", actionLabel: "选择日课字", target: 1 },
-      { label: "听 AI 讲解", description: "进入讲解舱并记录讲解进度。", actionLabel: "进入 AI 讲解", target: 2 },
-      { label: "直接临摹", description: "创建练习会话并切到书写台。", actionLabel: "开始临摹", target: 3 }
+      { label: "选字", description: "选今天要练的字。", actionLabel: "选择日课字", target: 1 },
+      { label: "听讲解", description: "听一遍怎么写。", actionLabel: "进入 AI 讲解", target: 2 },
+      { label: "去练字", description: "打开书写台。", actionLabel: "开始临摹", target: 3 }
     ]
   },
   {
     id: "write",
-    label: "书写训练",
-    shortLabel: "书写",
-    summary: "把核心训练压缩到临摹、拆解和创作三件事。",
+    label: "开始写",
+    shortLabel: "写",
+    summary: "临摹、看笔画、写作品。",
     sceneIndices: [3, 4, 5],
     options: [
-      { label: "进入临摹", description: "打开桌面书写层并保存真实笔迹。", actionLabel: "开始临摹", target: 3 },
-      { label: "笔画拆解", description: "写入笔画拆解阶段记录。", actionLabel: "进入笔画拆解", target: 4 },
-      { label: "进入创作", description: "进入作品创作台，后续可留存成果。", actionLabel: "进入创作", target: 5 }
+      { label: "练字", description: "打开书写台。", actionLabel: "开始临摹", target: 3 },
+      { label: "看笔画", description: "看笔画顺序。", actionLabel: "进入笔画拆解", target: 4 },
+      { label: "写作品", description: "保存一幅作品。", actionLabel: "进入创作", target: 5 }
     ]
   },
   {
     id: "review",
-    label: "成果计划",
-    shortLabel: "成果",
-    summary: "从档案、报告和巩固计划里完成复盘闭环。",
+    label: "看结果",
+    shortLabel: "结果",
+    summary: "看记录、报告和下次计划。",
     sceneIndices: [6, 7, 8, 9],
     options: [
-      { label: "档案复盘", description: "打开本机学习档案和作品记录。", target: 6 },
-      { label: "学习报告", description: "进入报告舱，再确认是否导出。", target: 8 },
-      { label: "巩固计划", description: "进入巩固舱，再制定下一轮计划。", target: 9 }
+      { label: "看记录", description: "打开学习记录。", target: 6 },
+      { label: "看报告", description: "查看学习报告。", target: 8 },
+      { label: "练习计划", description: "安排下次练习。", target: 9 }
     ]
   }
 ];
@@ -4751,11 +4751,7 @@ function renderLearningStateSummary() {
   window.MRPracticeCanvas?.setGlyph?.(stats.glyph);
 
   if (els.learningStateSummary) {
-    const trainingLabel = stats.trainingMode === "compare" ? "对比" : "示范";
-    const stageLabel = stats.stageProgress?.done
-      ? `阶段${stats.stageProgress.done}/${stats.stageProgress.total}`
-      : "阶段待开始";
-    els.learningStateSummary.textContent = `${stats.modeLabel} / ${stats.taskTitle} / ${stats.copybook} / ${stats.sessionCount}次练习 / ${stats.artworkCount}幅作品 / ${stageLabel} / ${trainingLabel}模式`;
+    els.learningStateSummary.textContent = `今日：${stats.glyph}｜练习 ${stats.sessionCount} 次｜作品 ${stats.artworkCount} 幅`;
   }
   renderServiceBoundaryPanel(stats);
   renderLearningActionAudit();
@@ -4779,19 +4775,19 @@ function renderServiceBoundaryPanel(stats = window.MRAppState?.getStats?.()) {
   const receiptCount = repositories.reduce((sum, item) => sum + item.receiptCount, 0);
   const verifiedCount = repositories.reduce((sum, item) => sum + item.verifiedCount, 0);
   const localRecordCount = Number(stats.recordCount || 0);
-  const localText = `${localRecordCount} 条本机记录，含 ${Number(stats.practicedSessionCount || 0)} 次真实练习、${Number(stats.artworkCount || 0)} 幅作品、${Number(stats.reportCount || 0)} 份报告。`;
+  const localText = `已保存 ${localRecordCount} 条记录。`;
   const remoteReceiptText = receiptCount
-    ? `本机校验通过 ${verifiedCount}/${receiptCount} 条回执。`
-    : "暂无远端回执。";
+    ? `回执 ${verifiedCount}/${receiptCount} 通过。`
+    : "暂无回执。";
   const remoteText = configured.length
-    ? `已配置 ${configured.length} 个远端 adapter：${configured.map((item) => item.label).join("、")}；${remoteReceiptText}`
-    : "尚未配置远端 adapter；当前以本机 JSON、HTML、PDF、ICS 和本机分享链接留存。";
-  const cloudText = "未接入账号登录、教师端权限、生产 CDN、跨设备云同步和服务端不可篡改审计。";
+    ? `远端 Adapter ${configured.length} 个，${remoteReceiptText}`
+    : "远端 Adapter 未配置。";
+  const cloudText = "生产云端未接入。";
 
   if (els.serviceBoundaryStatus) {
     els.serviceBoundaryStatus.textContent = configured.length
-      ? `${configured.length} 个远端接口已配置，生产云端仍未接入。`
-      : "当前为本机真实闭环，生产云端未接入。";
+      ? `本机可用，生产云端未接入。`
+      : "本机可用，生产云端未接入。";
   }
 
   const rows = [
@@ -5041,16 +5037,12 @@ function renderTaskPanel() {
 
   els.taskTitle.textContent = task.taskTitle || stats.taskTitle;
   els.taskLevel.textContent = task.level || stats.taskLevel || "基础";
-  els.taskDescription.textContent = task.description || stats.taskDescription || "选择任务后显示练习目标。";
+  els.taskDescription.textContent = `练“${task.glyph || stats.glyph}”字。先慢写，再看结果。`;
 
   els.taskMeta.innerHTML = "";
   [
-    ["练习字", `${task.glyph || stats.glyph}字`],
-    ["碑帖", task.copybook || stats.copybook],
-    ["重点", task.focus || stats.taskFocus],
-    ["状态", progress.statusLabel || "待开始"],
-    ["依赖", progress.dependencyStatus?.label || "无前置"],
-    ["完成条件", progress.ruleSummary || "阶段 / 练习 / 作品 / 报告"]
+    ["字", task.glyph || stats.glyph],
+    ["状态", progress.statusLabel || "待开始"]
   ].forEach(([label, value]) => {
     const chip = document.createElement("span");
     chip.textContent = `${label}：${value}`;
@@ -5061,9 +5053,9 @@ function renderTaskPanel() {
 
   els.taskSteps.innerHTML = "";
   const steps = task.strokePlan?.length ? task.strokePlan : stats.taskSteps || [];
-  steps.forEach((step, index) => {
+  steps.slice(0, 3).forEach((step) => {
     const item = document.createElement("li");
-    item.textContent = `• ${step}`;
+    item.textContent = step;
     els.taskSteps.appendChild(item);
   });
 
@@ -5084,9 +5076,9 @@ function renderTaskPanel() {
     const title = document.createElement("strong");
     title.textContent = item.taskTitle;
     const detail = document.createElement("span");
-    detail.textContent = `${item.level} / ${item.copybook}`;
+    detail.textContent = item.glyph ? `练 ${item.glyph}` : item.level;
     const focus = document.createElement("small");
-    focus.textContent = item.focus;
+    focus.textContent = item.locked ? "先完成前一个" : "可练";
     const status = document.createElement("em");
     status.textContent = item.locked
       ? `${item.progress?.statusLabel || "未解锁"} · ${item.dependencyStatus?.label || "前置"}`
@@ -5119,11 +5111,11 @@ function renderTaskProgress(progress = {}) {
   rail.appendChild(fill);
 
   const detail = document.createElement("p");
-  detail.textContent = `${progress.stageCount || 0} 条阶段记录 / ${progress.sessionCount || 0} 次练习 / ${progress.artworkCount || 0} 幅作品 / ${progress.reportCount || 0} 份报告 / 均分 ${progress.averageScore || 0}`;
+  detail.textContent = `练习 ${progress.sessionCount || 0} 次，作品 ${progress.artworkCount || 0} 幅。`;
 
   const rule = document.createElement("p");
   rule.className = "task-progress-rule";
-  rule.textContent = `完成条件：${progress.ruleSummary || "阶段 / 练习 / 作品 / 报告"}`;
+  rule.textContent = "写完后点“看结果”。";
 
   const dependency = document.createElement("p");
   dependency.className = "task-dependency-note";
@@ -11822,7 +11814,7 @@ function setActiveMenuGroup(groupId) {
   activeMenuGroupId = group.id;
   renderDecisionMenu(currentIndex);
   if (els.actionFeedback) {
-    els.actionFeedback.textContent = `已选择“${group.label}”。请选择下方二级动作继续。`;
+    els.actionFeedback.textContent = `已选：${group.label}`;
   }
   renderActionDetail(null);
 }
@@ -11850,10 +11842,10 @@ function renderDecisionMenu(sceneIndex = currentIndex) {
   });
 
   if (els.secondaryMenuTitle) {
-    els.secondaryMenuTitle.textContent = activeGroup ? `已选：${activeGroup.label}` : "请选择一级方向";
+    els.secondaryMenuTitle.textContent = activeGroup ? `已选：${activeGroup.label}` : "先选一步";
   }
   if (els.secondaryMenuHint) {
-    els.secondaryMenuHint.textContent = activeGroup?.summary || "确认一个方向后，下方会出现真实可执行的二级动作。";
+    els.secondaryMenuHint.textContent = "选下面一步。";
   }
 
   els.secondaryMenuList.replaceChildren();
@@ -12233,8 +12225,8 @@ function renderLearningPathServiceSummary(pathStatus = getLearningPathStatus()) 
 function updateSceneText(index) {
   const sceneView = getLearningSceneView(index);
   const metrics = getLearningSceneMetrics(index);
-  els.stepLabel.textContent = sceneView.statusLabel ? `VR 菜单 · ${sceneView.statusLabel}` : "VR 菜单";
-  els.sceneTitle.textContent = sceneView.title;
+  els.stepLabel.textContent = sceneView.statusLabel || "VR 菜单";
+  els.sceneTitle.textContent = getSeniorSceneTitle(index);
   if (els.sceneDescription) {
     els.sceneDescription.textContent = sceneView.description;
   }
@@ -12246,16 +12238,34 @@ function updateSceneText(index) {
   renderScoreServiceSummary();
 }
 
+function getSeniorSceneTitle(index = currentIndex) {
+  const stats = window.MRAppState?.getStats?.();
+  const glyph = stats?.glyph || "永";
+  const titleByIndex = {
+    2: "先听讲解",
+    3: "开始练字",
+    4: "看笔画",
+    5: "写作品",
+    6: "看记录",
+    7: "看作品",
+    8: "看报告",
+    9: "练习计划"
+  };
+  return index > 1 ? titleByIndex[index] || `今日：${glyph}` : `今日：${glyph}`;
+}
+
 function renderScoreServiceSummary() {
   if (!els.scoreServiceSummary) return;
   const status = window.MRAppState?.getScoreServiceStatus?.();
   if (!status) {
-    els.scoreServiceSummary.textContent = "基础评分服务尚未初始化。";
+    els.scoreServiceSummary.textContent = "写完后看分数。";
     els.scoreServiceSummary.dataset.serviceTone = "idle";
     return;
   }
 
-  els.scoreServiceSummary.textContent = `${status.message} ${status.boundary}`;
+  els.scoreServiceSummary.textContent = status.status === "scored" || status.status === "ready"
+    ? makeSeniorBrief(status.message, 34)
+    : "先写一遍，再看分数。";
   els.scoreServiceSummary.dataset.serviceTone = status.status === "scored" || status.status === "ready"
     ? "ready"
     : status.status === "no-data"
@@ -12276,7 +12286,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     els.sceneFocus.textContent = sceneView.focus;
   }
   els.contentTitle.textContent = pointView.label;
-  els.contentBody.textContent = pointView.body;
+  els.contentBody.textContent = makeSeniorBrief(pointView.body, 40);
   els.contentTags.innerHTML = "";
   els.metricGrid.innerHTML = "";
   els.pointList.innerHTML = "";
@@ -12329,6 +12339,18 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     els.actionList.appendChild(button);
   });
   renderDecisionMenu(sceneIndex);
+}
+
+function makeSeniorBrief(text = "", maxLength = 42) {
+  const normalized = String(text || "")
+    .replace(/\s+/g, "")
+    .replace(/本机|真实|当前|系统/g, "")
+    .trim();
+  if (!normalized) return "按下面按钮继续。";
+  const firstSentence = normalized.split(/[。！？；]/).find(Boolean) || normalized;
+  return firstSentence.length > maxLength
+    ? `${firstSentence.slice(0, maxLength)}...`
+    : firstSentence;
 }
 
 function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {

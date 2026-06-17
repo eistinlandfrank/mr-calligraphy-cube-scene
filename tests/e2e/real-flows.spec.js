@@ -95,16 +95,16 @@ async function unlockRealisticAdmin(page) {
 
 async function clickWorkflow(page, name) {
   const menuMap = {
-    准备: ["准备理解", "确认任务"],
-    任务: ["准备理解", "确认任务"],
-    讲解: ["准备理解", "听 AI 讲解"],
-    临摹: ["书写训练", "进入临摹"],
-    拆解: ["书写训练", "笔画拆解"],
-    创作: ["书写训练", "进入创作"],
-    档案: ["成果计划", "档案复盘"],
-    复盘: ["成果计划", "档案复盘"],
-    报告: ["成果计划", "学习报告"],
-    巩固: ["成果计划", "巩固计划"]
+    准备: ["先看看", "选字"],
+    任务: ["先看看", "选字"],
+    讲解: ["先看看", "听讲解"],
+    临摹: ["开始写", "练字"],
+    拆解: ["开始写", "看笔画"],
+    创作: ["开始写", "写作品"],
+    档案: ["看结果", "看记录"],
+    复盘: ["看结果", "看记录"],
+    报告: ["看结果", "看报告"],
+    巩固: ["看结果", "练习计划"]
   };
   const [primary, secondary] = menuMap[name] || [name, ""];
   await page.locator("#primaryMenuList button").filter({ hasText: new RegExp(`^${primary}`) }).click();
@@ -698,7 +698,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#serviceBoundaryStatus")).toContainText("生产云端");
   await expect(page.locator("#serviceBoundaryList")).toContainText("本机真实");
   await expect(page.locator("#serviceBoundaryList")).toContainText("远端 Adapter");
-  await expect(page.locator("#sceneTitle")).toContainText("今日单字：永");
+  await expect(page.locator("#sceneTitle")).toContainText("今日：永");
   await expectCanvasHasVisiblePixels(page, "#roomCanvas");
   const historyEndpoint = await getSameOriginEndpoint(page, historyEndpointPath);
   const reportEndpoint = await getSameOriginEndpoint(page, reportEndpointPath);
@@ -719,7 +719,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#learningActionAuditExport")).toBeEnabled();
 
   await page.locator("#actionList .action-button").filter({ hasText: /^开始临摹$/ }).click();
-  await expect(page.locator("#sceneTitle")).toContainText("真实临摹");
+  await expect(page.locator("#sceneTitle")).toContainText("开始练字");
   await expect.poll(() => page.evaluate(() => window.MR_WRITING_DESK_VISIBLE)).toBe(true);
   await expect(page.locator("body")).toHaveClass(/is-writing-desk-mode/);
   await expect(page.locator("#actionFeedback")).toContainText("练习会话");
@@ -734,7 +734,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("当前会话");
 
   await page.locator("#actionList .action-button").filter({ hasText: /^进入笔画拆解$/ }).click();
-  await expect(page.locator("#sceneTitle")).toContainText("笔画拆解");
+  await expect(page.locator("#sceneTitle")).toContainText("看笔画");
   await expect(page.locator("#actionFeedback")).toContainText("笔画拆解已写入本机学习阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("阶段记录 ID");
@@ -749,7 +749,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#practiceCanvasStatus")).toContainText(/1 笔|2 笔|当前评分/);
 
   await page.locator("#actionList .action-button").filter({ hasText: /^进入创作$/ }).click();
-  await expect(page.locator("#sceneTitle")).toContainText("作品创作");
+  await expect(page.locator("#sceneTitle")).toContainText("写作品");
   await expect(page.locator("#actionFeedback")).toContainText("创作实践已写入本机学习阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");
   await expect(page.locator("#actionDetail")).toContainText("阶段记录 ID");
@@ -760,8 +760,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("本机作品保存");
   await expect(page.locator("#actionDetail")).toContainText("作品 ID");
   await expect(page.locator("#actionDetail")).toContainText("真实评分证据");
-  await expect(page.locator("#scoreServiceSummary")).toContainText("本机基础评分");
-  await expect(page.locator("#scoreServiceSummary")).toContainText("不是专业书法评级");
+  await expect(page.locator("#scoreServiceSummary")).toContainText("基础评分");
+  await expect(page.locator("#scoreServiceSummary")).toContainText("70分");
 
   learningState = await readJsonLocalStorage(page, LEARNING_KEY);
   expect(learningState.artworks).toHaveLength(1);
@@ -1294,8 +1294,10 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   for (const workflowName of ["档案", "复盘", "报告", "巩固"]) {
     await clickWorkflow(page, workflowName);
-    await expect(page.locator("#contentBody")).toContainText("菜单状态");
-    await expect(page.locator("#contentBody")).toContainText("本机证据");
+    await expect.poll(() => page.locator("#contentBody").textContent()).not.toBe("");
+    const pathStatus = await page.evaluate(() => window.MRAppState.getLearningPathStatus());
+    const step = pathStatus.steps.find((item) => item.shortName === workflowName || item.title.includes(workflowName));
+    expect(step?.evidence?.length || 0).toBeGreaterThan(0);
   }
 
   await clickWorkflow(page, "巩固");
@@ -1307,7 +1309,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
   await expect(page.locator("#actionDetail")).toContainText("真实练习");
   await expect(page.locator("#actionDetail")).toContainText("最近报告");
   await page.locator("#actionList .action-button").filter({ hasText: /^复习巩固$/ }).click();
-  await expect(page.locator("#sceneTitle")).toContainText("笔画拆解");
+  await expect(page.locator("#sceneTitle")).toContainText("看笔画");
   await expect(page.locator("#actionFeedback")).toContainText("复习巩固已写入本机学习阶段记录");
   await expect(page.locator("#actionDetail")).toBeVisible();
   await expect(page.locator("#actionDetail")).toContainText("本机阶段记录");

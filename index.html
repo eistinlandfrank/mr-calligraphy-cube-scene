@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MR / VR 书法交互菜单</title>
   <link rel="stylesheet" href="assets/vendor/pannellum/pannellum.css">
-  <link rel="stylesheet" href="style.css?v=writing-desk-20260617">
+  <link rel="stylesheet" href="style.css?v=senior-menu-20260617">
 </head>
 <body>
   <main class="app-shell">
@@ -98,17 +98,17 @@
           <div class="vr-decision-head">
             <div>
               <div class="panel-eyebrow">VR 交互菜单</div>
-              <strong>先选方向，再选动作</strong>
+              <strong>今天做什么？</strong>
             </div>
-            <span id="secondaryMenuTitle">请选择一级方向</span>
+            <span id="secondaryMenuTitle">先选一步</span>
           </div>
           <div id="primaryMenuList" class="primary-menu-list" aria-label="一级交互方向"></div>
-          <p id="secondaryMenuHint" class="secondary-menu-hint">确认一个方向后，下方会出现真实可执行的二级动作。</p>
+          <p id="secondaryMenuHint" class="secondary-menu-hint">点一个大按钮，再点下一步。</p>
           <div id="secondaryMenuList" class="secondary-menu-list" aria-label="二级交互动作"></div>
         </section>
         <section id="serviceBoundaryPanel" class="service-boundary-panel" aria-label="服务边界状态">
           <div class="service-boundary-head">
-            <span>服务边界</span>
+            <span>状态</span>
             <strong id="serviceBoundaryStatus">正在读取本机能力...</strong>
           </div>
           <ul id="serviceBoundaryList" class="service-boundary-list"></ul>
@@ -117,7 +117,7 @@
         <section id="taskPanel" class="task-panel" aria-label="当前学习任务">
           <div class="task-head">
             <div>
-              <div class="panel-eyebrow">当前任务</div>
+              <div class="panel-eyebrow">今日任务</div>
               <strong id="taskTitle">今日单字：永</strong>
             </div>
             <span id="taskLevel">基础</span>
@@ -142,7 +142,7 @@
               <button data-feature-state="real-local" id="practiceClear" type="button" title="清空练习" aria-label="清空练习">清</button>
               <button data-feature-state="real-local" id="practiceReplay" type="button" title="回放笔迹" aria-label="回放笔迹">▶</button>
             </div>
-            <p id="practiceCanvasStatus" class="practice-canvas-status">在米字格中书写，保存作品时会记录笔迹和截图。</p>
+            <p id="practiceCanvasStatus" class="practice-canvas-status">在格子里慢慢写。</p>
           </div>
 
           <section class="score-board" aria-label="关键指标">
@@ -151,12 +151,12 @@
               <strong id="coachScore">未评分</strong>
             </div>
             <div class="metric-grid" id="metricGrid"></div>
-            <p id="scoreServiceSummary" class="score-service-summary">基础评分服务等待真实书写。</p>
+            <p id="scoreServiceSummary" class="score-service-summary">写完后看分数。</p>
           </section>
         </div>
 
         <section class="content-card" aria-label="当前热点内容">
-          <p id="contentBody">中心面板显示当前单字“永”的结构评分，并拆出结构、笔画、笔法、力度、流畅度等维度。</p>
+          <p id="contentBody">先选一步，跟着练。</p>
           <div id="contentTags" class="tag-row" aria-label="关键词"></div>
         </section>
 
@@ -178,13 +178,13 @@
         </section>
 
         <section class="point-list" aria-label="内容热点列表">
-          <div class="panel-eyebrow">可点击热点</div>
+          <div class="panel-eyebrow">更多</div>
           <div id="pointList" class="chip-list" data-point-route="learningPointRoute"></div>
         </section>
 
         <section class="action-zone" aria-label="学习操作">
           <div id="actionList" class="action-list"></div>
-          <p id="actionFeedback" class="action-feedback">点击场景热点或下方按钮，可执行学习操作并写入本机记录。</p>
+          <p id="actionFeedback" class="action-feedback">按下面按钮继续。</p>
           <div id="actionDetail" class="action-detail" hidden></div>
           <div id="learningActionAudit" class="learning-action-audit" aria-label="本机学习动作审计">
             <div class="learning-action-audit-head">
