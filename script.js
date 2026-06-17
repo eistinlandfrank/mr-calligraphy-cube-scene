@@ -12374,7 +12374,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     els.pointList.appendChild(button);
   });
 
-  scene.actions.forEach((action) => {
+  scene.actions.slice(0, 3).forEach((action) => {
     const feature = getLearningActionFeature(action);
     const button = document.createElement("button");
     button.type = "button";
@@ -12412,32 +12412,32 @@ function getSeniorActionLabel(label = "") {
     查看笔画分析: "看笔画",
     选择日课字: "选字",
     "进入 AI 讲解": "听讲解",
-    播放讲解: "播放",
-    切换碑帖: "换帖",
+    播放讲解: "开始听",
+    切换碑帖: "换字帖",
     进入临摹训练: "练字",
     开始临摹: "练字",
-    继续学习: "继续",
+    继续学习: "再练",
     再写一遍: "再写",
-    示范模式: "示范",
-    对比模式: "对比",
+    示范模式: "看范字",
+    对比模式: "比一比",
     上一个笔画: "上一笔",
     下一个笔画: "下一笔",
     进入笔画拆解: "看笔画",
-    复习巩固: "巩固",
+    复习巩固: "再练笔",
     进入创作: "写作品",
-    切换行书: "行书",
-    保存作品: "保存",
-    查看学习记录: "记录",
-    打开历史记录: "记录",
-    筛选优秀记录: "好作品",
+    切换行书: "换风格",
+    保存作品: "保存作品",
+    查看学习记录: "看记录",
+    打开历史记录: "看记录",
+    筛选优秀记录: "看好字",
     导出学习报告: "导报告",
     导出报告: "导报告",
-    查看作品: "作品",
-    生成视频: "视频",
-    导出分享页: "分享",
-    制定计划: "计划",
-    查看成就: "成就",
-    查看详情: "详情",
+    查看作品: "看作品",
+    生成视频: "看回放",
+    导出分享页: "分享作品",
+    制定计划: "做计划",
+    查看成就: "看进步",
+    查看详情: "看详情",
     返回首页: "首页"
   };
   return labels[label] || makeSeniorBrief(label, 6);
