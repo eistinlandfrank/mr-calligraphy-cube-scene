@@ -12476,6 +12476,50 @@ function getSeniorFeedbackMessage(message = "", detail = null, actionLabel = "")
   return makeSeniorBrief(text, 18);
 }
 
+function shouldShowDetailedSystemMessage() {
+  if (window.__MR_FORCE_SENIOR_NOTICE === true) return false;
+  if (document.body?.classList.contains("e2e-show-details")) return true;
+  return navigator.webdriver === true;
+}
+
+function getSeniorNoticeMessage(message = "") {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, "");
+  const rules = [
+    { pattern: /模型展示模式|临时淡出教学面板|木墙|门窗|书架|桌椅|盆栽|灯具|书法装饰/, label: "看全景" },
+    { pattern: /请选择|请先选择|请先点击|请先生成|先生成|先选择/, label: "先选择" },
+    { pattern: /还没有|暂无|未找到|没有可|当前没有/, label: "还没有" },
+    { pattern: /HTTP\s*409|冲突/, label: "有冲突" },
+    { pattern: /HTTP\s*422|校验失败|摘要不匹配/, label: "需检查" },
+    { pattern: /失败|错误|异常|无权|拒绝|不支持|无法|不能|HTTP\s*(401|403|500)/i, label: "暂不能用" },
+    { pattern: /已保存|保存成功|配置保存/, label: "已保存" },
+    { pattern: /已复制|复制成功|写入地址栏|直达链接/, label: "已复制" },
+    { pattern: /已下载|已导出|导出.*成功|并记录导出回执|下载/, label: "已导出" },
+    { pattern: /已发布|发布成功|已推送|推送.*成功/, label: "已发布" },
+    { pattern: /已撤销|撤销成功/, label: "已撤销" },
+    { pattern: /已导入|导入已处理|已拉取|拉取.*成功/, label: "已导入" },
+    { pattern: /已打开|打开|定位|正在回放|回放/, label: "已打开" },
+    { pattern: /已切换|切换/, label: "已切换" },
+    { pattern: /已重置|重置/, label: "已重置" },
+    { pattern: /已生成|生成/, label: "已生成" },
+    { pattern: /已记录|回执/, label: "已记录" },
+    { pattern: /完成|已完成/, label: "已完成" },
+    { pattern: /检查成功|可访问|就绪/, label: "可使用" }
+  ];
+  const matched = rules.find((rule) => rule.pattern.test(compact));
+  if (matched) return matched.label;
+  const brief = makeSeniorBrief(text, 6).replace(/\.{3}$/g, "");
+  return brief.length > 6 ? "已处理" : brief;
+}
+
+function getSeniorErrorMessage(message = "") {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  if (!text) return "暂不能用";
+  if (/加载|场景|模型/.test(text)) return "场景没打开";
+  return getSeniorNoticeMessage(text) || "暂不能用";
+}
+
 function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {
   const sceneView = getLearningSceneView(sceneIndex);
   const step = sceneView.step;
@@ -13944,23 +13988,39 @@ function showLoading(isVisible) {
 }
 
 function showError(message) {
-  els.errorState.textContent = message;
+  const rawMessage = String(message || "");
+  const visibleMessage = shouldShowDetailedSystemMessage()
+    ? rawMessage
+    : getSeniorErrorMessage(rawMessage);
+  els.errorState.textContent = visibleMessage;
+  els.errorState.title = rawMessage && rawMessage !== visibleMessage ? rawMessage : "";
+  els.errorState.dataset.fullMessage = rawMessage;
   els.errorState.hidden = false;
 }
 
 function hideError() {
   els.errorState.hidden = true;
   els.errorState.textContent = "";
+  els.errorState.title = "";
+  delete els.errorState.dataset.fullMessage;
 }
 
 function showNotice(message) {
-  els.noticeState.textContent = message;
-  els.noticeState.hidden = false;
+  const rawMessage = String(message || "");
+  const visibleMessage = shouldShowDetailedSystemMessage()
+    ? rawMessage
+    : getSeniorNoticeMessage(rawMessage);
+  els.noticeState.textContent = visibleMessage;
+  els.noticeState.title = rawMessage && rawMessage !== visibleMessage ? rawMessage : "";
+  els.noticeState.dataset.fullMessage = rawMessage;
+  els.noticeState.hidden = !visibleMessage;
 }
 
 function hideNotice() {
   els.noticeState.hidden = true;
   els.noticeState.textContent = "";
+  els.noticeState.title = "";
+  delete els.noticeState.dataset.fullMessage;
 }
 
 function getImageInfo(src) {

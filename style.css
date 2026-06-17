@@ -3702,6 +3702,8 @@ a[data-feature-state="disabled"] {
   color: #ffffff;
   background: rgba(17, 17, 17, 0.82);
   box-shadow: var(--shadow);
+  font-size: 19px;
+  line-height: 1.45;
   text-align: center;
   transform: translate(-50%, -50%);
   backdrop-filter: blur(14px);
@@ -3714,18 +3716,22 @@ a[data-feature-state="disabled"] {
 .notice-panel {
   left: 50%;
   bottom: 88px;
-  max-width: min(520px, calc(100vw - 40px));
-  padding: 10px 14px;
+  min-width: 112px;
+  max-width: min(360px, calc(100vw - 40px));
+  min-height: 48px;
+  padding: 10px 18px;
   border: 1px solid rgba(255, 255, 255, 0.32);
   border-radius: 8px;
   color: #fff8ec;
   background: rgba(17, 17, 17, 0.72);
   box-shadow: 0 12px 38px rgba(0, 0, 0, 0.24);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.35;
   text-align: center;
   transform: translateX(-50%);
   backdrop-filter: blur(12px);
+  pointer-events: none;
 }
 
 .step-nav {
@@ -4383,7 +4389,10 @@ body[data-spatial-mode="mr"] .scene-copy {
 
   .notice-panel {
     bottom: 70px;
-    font-size: 13px;
+    max-width: min(280px, calc(100vw - 32px));
+    min-height: 46px;
+    padding: 10px 16px;
+    font-size: 20px;
   }
 }
 
