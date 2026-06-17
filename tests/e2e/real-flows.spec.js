@@ -697,6 +697,8 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 
   await page.locator("#actionList .action-button").filter({ hasText: /^开始临摹$/ }).click();
   await expect(page.locator("#sceneTitle")).toContainText("真实临摹");
+  await expect.poll(() => page.evaluate(() => window.MR_WRITING_DESK_VISIBLE)).toBe(true);
+  await expect(page.locator("body")).toHaveClass(/is-writing-desk-mode/);
   await expect(page.locator("#actionFeedback")).toContainText("练习会话");
   await expect(page.locator("#actionDetail")).toBeVisible();
   await expect(page.locator("#actionDetail")).toContainText("本机练习会话");

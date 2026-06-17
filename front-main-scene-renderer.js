@@ -55,18 +55,22 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     keyPath: "key"
   });
   const objectRoot = new THREE.Group();
+  const writingDeskRoot = new THREE.Group();
   scene.add(objectRoot);
+  scene.add(writingDeskRoot);
 
   let layout = normalizeLayout(options.layout);
   let roomTextures = { ...(options.textures || {}) };
   let lighting = normalizeLighting(layout.lighting);
   let buildToken = 0;
+  let writingDeskVisible = false;
   const roomMaterials = new Map();
   const lightRig = {};
   const materials = createMaterials();
 
   buildLights();
   buildRoom();
+  buildWritingDeskLayer();
   await rebuildObjects();
   render(options.yaw || 0, options.pitch || -5, options.scale || 1);
 
@@ -87,6 +91,14 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       await rebuildObjects();
       render();
     },
+    setWritingDeskVisible(visible) {
+      writingDeskVisible = Boolean(visible);
+      writingDeskRoot.visible = writingDeskVisible;
+      if (typeof window !== "undefined") {
+        window.MR_WRITING_DESK_VISIBLE = writingDeskVisible;
+      }
+      render();
+    },
     dispose() {
       renderer.dispose();
       pmrem.dispose();
@@ -102,7 +114,13 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       wood: new THREE.MeshStandardMaterial({ color: 0x75431f, roughness: 0.58 }),
       darkWood: new THREE.MeshStandardMaterial({ color: 0x5a2c12, roughness: 0.6 }),
       scroll: new THREE.MeshStandardMaterial({ color: 0xd2bd8c, roughness: 0.78 }),
-      clay: new THREE.MeshStandardMaterial({ color: 0x574433, roughness: 0.76 })
+      clay: new THREE.MeshStandardMaterial({ color: 0x574433, roughness: 0.76 }),
+      writingPaper: new THREE.MeshPhysicalMaterial({ map: createWritingPaperTexture(), color: 0xfff4dd, roughness: 0.92, sheen: 0.22, sheenRoughness: 0.86 }),
+      writingInk: new THREE.MeshPhysicalMaterial({ map: createWritingInkTexture(), color: 0x070504, roughness: 0.36, clearcoat: 0.18, clearcoatRoughness: 0.72 }),
+      writingStone: new THREE.MeshStandardMaterial({ color: 0x171819, roughness: 0.84, metalness: 0.04 }),
+      writingLacquer: new THREE.MeshPhysicalMaterial({ color: 0x6c251a, roughness: 0.34, clearcoat: 0.72, clearcoatRoughness: 0.24 }),
+      writingBristle: new THREE.MeshStandardMaterial({ color: 0x1c100a, roughness: 0.9 }),
+      writingGlass: new THREE.MeshPhysicalMaterial({ color: 0x98d8cc, roughness: 0.12, transparent: true, opacity: 0.2, transmission: 0.18, thickness: 0.06 })
     };
   }
 
@@ -264,6 +282,297 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     if (spec.id === "desktop-red-brush") return createBoxObject(1, 0.05, 0.065, materials.red);
     if (spec.id.includes("ceiling-beam")) return createBoxObject(16, 0.18, 0.24, materials.darkWood);
     return createBoxObject(0.5, 0.5, 0.5, materials.wood);
+  }
+
+  function buildWritingDeskLayer() {
+    writingDeskRoot.name = "front-writing-desk-layer";
+    writingDeskRoot.position.set(0, -1.37, -3.42);
+    writingDeskRoot.rotation.y = -0.03;
+    writingDeskRoot.visible = false;
+
+    createWritingPaper();
+    createWritingInkCharacter();
+    createWritingInkstone();
+    createWritingSeal();
+    createWritingGuideGlass();
+    loadWritingBrush();
+    applyEnvironmentIntensityToScene(writingDeskRoot);
+  }
+
+  function createWritingPaper() {
+    const paperRoot = new THREE.Group();
+    paperRoot.name = "writing-paper";
+    const paper = new THREE.Mesh(new THREE.PlaneGeometry(2.78, 1.7, 24, 16), materials.writingPaper);
+    paper.rotation.x = -Math.PI / 2;
+    paper.receiveShadow = true;
+    paperRoot.add(paper);
+
+    const edgeMaterial = new THREE.MeshStandardMaterial({ color: 0xf8edd7, roughness: 0.96 });
+    const leftEdge = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 1.7), edgeMaterial);
+    leftEdge.position.set(-1.39, 0.018, 0);
+    leftEdge.castShadow = true;
+    paperRoot.add(leftEdge);
+
+    const bottomEdge = new THREE.Mesh(new THREE.BoxGeometry(2.78, 0.016, 0.018), edgeMaterial);
+    bottomEdge.position.set(0, 0.017, 0.85);
+    bottomEdge.castShadow = true;
+    paperRoot.add(bottomEdge);
+
+    writingDeskRoot.add(paperRoot);
+  }
+
+  function createWritingInkCharacter() {
+    const material = new THREE.MeshPhysicalMaterial({
+      map: createCalligraphyTexture(),
+      transparent: true,
+      roughness: 0.52,
+      metalness: 0,
+      clearcoat: 0.16,
+      clearcoatRoughness: 0.72,
+      depthWrite: false
+    });
+    const inkPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.82, 1.26), material);
+    inkPlane.name = "writing-ink-character";
+    inkPlane.position.set(-0.05, 0.028, 0.02);
+    inkPlane.rotation.x = -Math.PI / 2;
+    inkPlane.renderOrder = 3;
+    writingDeskRoot.add(inkPlane);
+  }
+
+  function createWritingInkstone() {
+    const inkstoneRoot = new THREE.Group();
+    inkstoneRoot.name = "writing-inkstone";
+    inkstoneRoot.position.set(-1.68, 0.06, -0.48);
+
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.13, 56), materials.writingStone);
+    base.scale.z = 0.72;
+    base.castShadow = true;
+    base.receiveShadow = true;
+    inkstoneRoot.add(base);
+
+    const ink = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.022, 56), materials.writingInk);
+    ink.position.y = 0.078;
+    ink.scale.z = 0.64;
+    ink.castShadow = true;
+    inkstoneRoot.add(ink);
+
+    writingDeskRoot.add(inkstoneRoot);
+  }
+
+  function createWritingSeal() {
+    const seal = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.28), materials.red);
+    seal.name = "writing-seal";
+    seal.position.set(1.34, 0.18, 0.58);
+    seal.rotation.y = -0.22;
+    seal.castShadow = true;
+    seal.receiveShadow = true;
+    writingDeskRoot.add(seal);
+  }
+
+  function createWritingGuideGlass() {
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.5), materials.writingGlass);
+    panel.name = "writing-guide-glass";
+    panel.position.set(1.18, 0.76, -0.28);
+    panel.rotation.set(-0.25, -0.62, -0.04);
+    panel.castShadow = true;
+    writingDeskRoot.add(panel);
+  }
+
+  function loadWritingBrush() {
+    const brushRoot = new THREE.Group();
+    brushRoot.name = "writing-brush";
+    brushRoot.position.set(0.68, 0.17, -0.38);
+    brushRoot.rotation.set(-0.08, Math.PI * 1.05, 0.18);
+    const fallback = createWritingBrushFallback();
+    brushRoot.add(fallback);
+    writingDeskRoot.add(brushRoot);
+
+    loader.loadAsync("assets/models/brush-web.glb?v=embedded-brush-20260514")
+      .then((gltf) => {
+        const brush = gltf.scene || gltf.scenes?.[0];
+        if (!brush) return;
+        brushRoot.clear();
+        prepareWritingBrushModel(brush);
+        brushRoot.add(brush);
+        render();
+      })
+      .catch(() => {
+        // The procedural brush remains in place when the GLB is unavailable.
+      });
+  }
+
+  function prepareWritingBrushModel(brush) {
+    const bounds = new THREE.Box3().setFromObject(brush);
+    if (!bounds.isEmpty()) {
+      const center = new THREE.Vector3();
+      const size = new THREE.Vector3();
+      bounds.getCenter(center);
+      bounds.getSize(size);
+      brush.position.sub(center);
+      const targetLength = 1.46;
+      const currentLength = Math.max(size.x, size.y, size.z, 0.001);
+      brush.scale.setScalar(targetLength / currentLength);
+    }
+    brush.traverse((child) => {
+      if (!child.isMesh) return;
+      child.castShadow = true;
+      child.receiveShadow = true;
+      if (child.material) {
+        child.material.envMapIntensity = lighting.environment;
+        child.material.needsUpdate = true;
+      }
+    });
+  }
+
+  function createWritingBrushFallback() {
+    const group = new THREE.Group();
+    const handleStart = new THREE.Vector3(0.72, 0.04, -0.42);
+    const handleEnd = new THREE.Vector3(-0.72, 0.12, 0.08);
+    const ferruleStart = new THREE.Vector3(-0.68, 0.12, 0.07);
+    const ferruleEnd = new THREE.Vector3(-0.96, 0.12, 0.16);
+    const bristleBase = new THREE.Vector3(-0.98, 0.11, 0.17);
+    const tipEnd = new THREE.Vector3(-1.28, -0.05, 0.3);
+
+    group.add(createCylinderBetween(handleStart, handleEnd, 0.038, materials.writingLacquer, 48));
+    group.add(createCylinderBetween(ferruleStart, ferruleEnd, 0.062, materials.brass, 48));
+    group.add(createConeBetween(bristleBase, tipEnd, 0.1, materials.writingBristle, 48));
+    return group;
+  }
+
+  function createCylinderBetween(start, end, radius, material, segments = 32) {
+    const direction = end.clone().sub(start);
+    const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, direction.length(), segments), material);
+    mesh.position.copy(start).add(end).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    return mesh;
+  }
+
+  function createConeBetween(base, tip, radius, material, segments = 32) {
+    const direction = tip.clone().sub(base);
+    const mesh = new THREE.Mesh(new THREE.ConeGeometry(radius, direction.length(), segments, 16), material);
+    mesh.position.copy(base).add(tip).multiplyScalar(0.5);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+    mesh.castShadow = true;
+    return mesh;
+  }
+
+  function createWritingPaperTexture() {
+    const canvasTexture = document.createElement("canvas");
+    canvasTexture.width = 1024;
+    canvasTexture.height = 640;
+    const ctx = canvasTexture.getContext("2d");
+    ctx.fillStyle = "#fbf0d9";
+    ctx.fillRect(0, 0, canvasTexture.width, canvasTexture.height);
+    for (let i = 0; i < 120; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(Math.random() * canvasTexture.width, Math.random() * canvasTexture.height);
+      ctx.lineTo(Math.random() * canvasTexture.width, Math.random() * canvasTexture.height);
+      ctx.strokeStyle = "rgba(125, 96, 55, 0.075)";
+      ctx.lineWidth = Math.random() * 1.7;
+      ctx.stroke();
+    }
+    addCanvasNoise(ctx, canvasTexture.width, canvasTexture.height, 12);
+    return makeCanvasTexture(canvasTexture, 1.05, 1.05);
+  }
+
+  function createWritingInkTexture() {
+    const canvasTexture = document.createElement("canvas");
+    canvasTexture.width = 512;
+    canvasTexture.height = 512;
+    const ctx = canvasTexture.getContext("2d");
+    const gradient = ctx.createRadialGradient(256, 256, 20, 256, 256, 290);
+    gradient.addColorStop(0, "#17100c");
+    gradient.addColorStop(0.72, "#080605");
+    gradient.addColorStop(1, "#2b211b");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, 512, 512);
+    addCanvasNoise(ctx, 512, 512, 22);
+    return makeCanvasTexture(canvasTexture, 1, 1);
+  }
+
+  function createCalligraphyTexture() {
+    const canvasTexture = document.createElement("canvas");
+    canvasTexture.width = 1536;
+    canvasTexture.height = 1060;
+    const ctx = canvasTexture.getContext("2d");
+    ctx.clearRect(0, 0, canvasTexture.width, canvasTexture.height);
+    ctx.save();
+    ctx.translate(768, 565);
+    ctx.rotate(-0.045);
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = '720px "KaiTi", "STKaiti", "Kaiti SC", "SimSun", serif';
+
+    for (let i = 0; i < 16; i += 1) {
+      ctx.save();
+      ctx.globalAlpha = 0.035;
+      ctx.filter = `blur(${7 + i * 0.55}px)`;
+      ctx.fillStyle = "#130d09";
+      ctx.translate((Math.random() - 0.5) * 22, (Math.random() - 0.5) * 18);
+      ctx.scale(1 + (Math.random() - 0.5) * 0.018, 1 + (Math.random() - 0.5) * 0.014);
+      ctx.fillText("永", 0, -4);
+      ctx.restore();
+    }
+
+    ctx.filter = "none";
+    ctx.globalAlpha = 0.94;
+    const inkGradient = ctx.createLinearGradient(-300, -420, 320, 440);
+    inkGradient.addColorStop(0, "#060403");
+    inkGradient.addColorStop(0.42, "#120b07");
+    inkGradient.addColorStop(0.72, "#050302");
+    inkGradient.addColorStop(1, "#251a12");
+    ctx.fillStyle = inkGradient;
+    ctx.fillText("永", 0, -4);
+
+    ctx.globalCompositeOperation = "destination-out";
+    for (let i = 0; i < 110; i += 1) {
+      ctx.save();
+      ctx.translate(-340 + Math.random() * 680, -400 + Math.random() * 820);
+      ctx.rotate(-0.9 + Math.random() * 0.32);
+      ctx.globalAlpha = 0.05 + Math.random() * 0.12;
+      ctx.fillStyle = "#000";
+      ctx.fillRect(-2, -34 - Math.random() * 88, 3 + Math.random() * 9, 55 + Math.random() * 160);
+      ctx.restore();
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+    for (let i = 0; i < 70; i += 1) {
+      ctx.beginPath();
+      ctx.globalAlpha = 0.08 + Math.random() * 0.16;
+      ctx.fillStyle = "#090504";
+      ctx.arc(-360 + Math.random() * 720, -430 + Math.random() * 860, 1 + Math.random() * 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+
+    const texture = new THREE.CanvasTexture(canvasTexture);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return texture;
+  }
+
+  function makeCanvasTexture(canvasTexture, repeatX, repeatY) {
+    const texture = new THREE.CanvasTexture(canvasTexture);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(repeatX, repeatY);
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    return texture;
+  }
+
+  function addCanvasNoise(ctx, width, height, strength) {
+    const image = ctx.getImageData(0, 0, width, height);
+    const data = image.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const value = (Math.random() - 0.5) * strength;
+      data[i] += value;
+      data[i + 1] += value;
+      data[i + 2] += value;
+    }
+    ctx.putImageData(image, 0, 0);
   }
 
   function createCustomObject(record) {
@@ -509,8 +818,11 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
 
   function render(yaw = 0, pitch = -5, scale = 1) {
     resize();
-    const target = new THREE.Vector3(0, -0.35, -3.6);
-    const radius = clampNumber(8.4 / Math.max(scale, 0.2), 2.6, 16);
+    const target = writingDeskVisible
+      ? new THREE.Vector3(0, -1.22, -3.42)
+      : new THREE.Vector3(0, -0.35, -3.6);
+    const baseRadius = writingDeskVisible ? 4.2 : 8.4;
+    const radius = clampNumber(baseRadius / Math.max(scale, 0.2), writingDeskVisible ? 2.15 : 2.6, writingDeskVisible ? 6.2 : 16);
     const yawRad = toRadians(yaw);
     const pitchRad = toRadians(clampNumber(pitch, -45, 45, -5));
     const horizontal = Math.cos(pitchRad) * radius;

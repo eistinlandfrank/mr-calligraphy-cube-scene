@@ -1128,6 +1128,7 @@ let cubeYaw = 0;
 let cubePitch = -7;
 let cubeScale = 1;
 let roomRenderer = null;
+let writingDeskMode = false;
 let activeRoleId = null;
 let activeMainObjectId = null;
 let mainImportDbPromise = null;
@@ -1155,6 +1156,7 @@ const REPORT_DETAIL_QUERY_KEY = "report";
 const ARTWORK_DETAIL_QUERY_KEY = "artwork";
 const SHARE_LINK_QUERY_KEY = "share";
 const REPORT_DETAIL_SCENE_INDEX = 8;
+const WRITING_SCENE_INDEX = 3;
 const WORKFLOW_ROUTE_IDS = [
   "entry",
   "task",
@@ -2085,6 +2087,22 @@ function updateCubeTransform() {
   els.cubeScene.style.setProperty("--scene-scale", cubeScale.toFixed(3));
 }
 
+function setWritingDeskMode(visible, options = {}) {
+  const nextVisible = Boolean(visible);
+  const wasVisible = writingDeskMode;
+  writingDeskMode = nextVisible;
+  document.body.classList.toggle("is-writing-desk-mode", nextVisible);
+  window.MR_WRITING_DESK_VISIBLE = nextVisible;
+  roomRenderer?.setWritingDeskVisible?.(nextVisible);
+
+  if (nextVisible && (options.focus || !wasVisible)) {
+    cubeYaw = 0;
+    cubePitch = -18;
+    cubeScale = Math.max(cubeScale, 1.36);
+    updateCubeTransform();
+  }
+}
+
 function installRoomApi() {
   window.MRRoomAPI = {
     getConfig: () => cloneConfig(roomConfig),
@@ -2783,7 +2801,13 @@ function createRoomRenderer(canvas) {
     });
   }
 
-  return { render, setTextures, setRoles, setMainSceneLayout };
+  return {
+    render,
+    setTextures,
+    setRoles,
+    setMainSceneLayout,
+    setWritingDeskVisible() {}
+  };
 }
 
 function createBackendStyleRoomRenderer(canvas) {
@@ -2801,7 +2825,7 @@ function createBackendStyleRoomRenderer(canvas) {
   }
   window.MR_FRONT_RENDERER_KIND = "three-admin-loading";
 
-  import("./front-main-scene-renderer.js")
+  import("./front-main-scene-renderer.js?v=writing-desk-20260617")
     .then(({ createFrontMainSceneRenderer }) => createFrontMainSceneRenderer(canvas, {
       layout: mainSceneLayout,
       textures: roomConfig.textures,
@@ -2820,6 +2844,7 @@ function createBackendStyleRoomRenderer(canvas) {
     .then((renderer) => {
       activeRenderer = renderer;
       window.MR_FRONT_RENDERER_KIND = renderer.kind || "front-three-admin-renderer";
+      activeRenderer.setWritingDeskVisible?.(writingDeskMode);
       activeRenderer.render(lastView.yaw, lastView.pitch, lastView.scale);
     })
     .catch((error) => {
@@ -2842,6 +2867,9 @@ function createBackendStyleRoomRenderer(canvas) {
     },
     setMainSceneLayout() {
       activeRenderer?.setMainSceneLayout(mainSceneLayout);
+    },
+    setWritingDeskVisible(visible) {
+      activeRenderer?.setWritingDeskVisible?.(visible);
     },
     get failed() {
       return failed;
@@ -11770,6 +11798,7 @@ function loadScene(index, options = {}) {
   renderPlanPanel(index);
   hideError();
   hideNotice();
+  setWritingDeskMode(index === WRITING_SCENE_INDEX);
 }
 
 function selectPoint(pointIndex, options = {}) {

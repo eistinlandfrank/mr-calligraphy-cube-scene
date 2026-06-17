@@ -4108,41 +4108,6 @@ body[data-spatial-mode="mr"] .scene-copy {
   }
 }
 
-.realistic-link {
-  position: absolute;
-  z-index: 9;
-  right: 24px;
-  top: 24px;
-  display: inline-flex;
-  align-items: center;
-  min-height: 40px;
-  padding: 0 14px;
-  border: 1px solid rgba(116, 255, 219, 0.24);
-  border-radius: 8px;
-  color: #ffffff;
-  background: rgba(12, 14, 14, 0.52);
-  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
-  text-decoration: none;
-  backdrop-filter: blur(16px) saturate(1.18);
-}
-
-.realistic-link:hover,
-.realistic-link:focus-visible {
-  border-color: rgba(116, 255, 219, 0.55);
-  background: rgba(47, 111, 104, 0.72);
-  outline: none;
-}
-
-@media (max-width: 860px) {
-  .realistic-link {
-    top: 16px;
-    right: 16px;
-    min-height: 36px;
-    padding: 0 10px;
-    font-size: 13px;
-  }
-}
-
 @media (max-width: 520px) {
   .scene-heading {
     right: 16px;

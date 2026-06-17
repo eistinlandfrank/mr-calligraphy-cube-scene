@@ -1,7 +1,7 @@
 # 旧版主线恢复与 MR / VR 真实交互开发计划
 
-> 版本：v3.0
-> 日期：2026-06-14
+> 版本：v3.1
+> 日期：2026-06-17
 > 当前结论：项目主线恢复为旧版静态 3D / MR 项目。Vite / React 新项目已删除，不再作为开发方向。
 
 ---
@@ -14,7 +14,7 @@
 /
 ├── index.html              前台 MR / VR 书法交互菜单
 ├── main-admin.html         主场景后台控制页面
-├── realistic-demo.html     写实 3D 样张页面
+├── realistic-demo.html     写实 3D 样张验证页，前台入口已移除
 ├── realistic-admin.html    写实场景后台控制页面
 ├── script.js               前台 3D 场景与 VR 交互菜单
 ├── app-state.js            本机学习、作品、报告、计划状态
@@ -74,7 +74,7 @@ tests/e2e/vite-app.spec.js
 | 本机状态 | `app-state.js` |
 | 写字画布 | `practice-canvas.js` |
 | 后台控制 | `main-admin.html` / `main-admin-scene.js` |
-| 写实样张 | `realistic-demo.html` / `realistic-admin.html` |
+| 写实样张 | `realistic-demo.html` / `realistic-admin.html` 保留为验证页和写实后台；前台首页不再显示独立样张入口 |
 | 验收 | `scripts/smoke-test.js` + Playwright `real-flows.spec.js` |
 
 ---
@@ -117,12 +117,15 @@ http://192.168.193.233:41496/main-admin.html
 - 六面立方体房间。
 - 前墙展示区域。
 - 主写字桌、宣纸、毛笔、砚台。
+- 写实样张中的宣纸、墨迹、毛笔、砚台、印章和透明讲解屏整合为基础场景桌面的隐藏书写层。
 - 左右书架、窗户、卷轴、灯光、装饰物。
 - 三维角色与热点。
 - 左侧 VR 交互菜单/任务面板。
 - 右侧反馈/服务边界/操作审计面板。
 - 底部导航。
 - 主场景后台 `main-admin.html`。
+
+写实桌面内容默认隐藏，不在基础首页打断沉浸场景；当用户进入 `practice` / “临摹”书写台，前台才显示该层并切换到更近的桌面书写视角。独立 `realistic-demo.html` 仅保留作写实后台发布、回归和资产验证，不再作为首页可见入口。
 
 可以替换交互内容、任务名称和空间表现，但不能把页面变成与旧版无关的平面控制台。
 
@@ -258,6 +261,17 @@ main-admin.html
 - 后台打开后默认可编辑；仍保留本机操作者角色边界和操作审计。
 - 后台服务边界面板不再显示“本机门禁”，只说明本机编辑、发布、远端 Adapter、本机审计和生产后台缺口。
 - Playwright 权限用例改为验证角色权限本身：复核只读，编辑/负责人恢复对应能力。
+
+---
+
+### 2026-06-17：写实桌面层整合进基础书写场景
+
+- 删除前台首页右上角“写实 3D 样张”可见入口，避免学习者离开基础场景进入独立样张页。
+- 在 `front-main-scene-renderer.js` 新增隐藏的 `writingDeskRoot`，把写实样张核心内容放到基础场景桌面：宣纸、墨迹、毛笔、砚台、印章和透明讲解屏。
+- 首页和其他 VR 功能舱默认保持 `MR_WRITING_DESK_VISIBLE=false`，进入 `practice` / “临摹”书写台后自动显示桌面书写层并切换近景视角。
+- `realistic-demo.html` 与 `realistic-admin.html` 继续保留为写实后台验证和历史回归页面，不再作为前台首页入口。
+- 已更新 smoke 标记、Playwright 断言和文档，避免后续再把独立样张入口当成正式前台路径。
+- 已保存桌面和手机视口截图到 `test-results/writing-desk-check/`，并用 WebGL 像素采样确认基础场景和书写场景均非空白。
 
 ---
 
