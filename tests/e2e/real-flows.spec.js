@@ -107,10 +107,18 @@ async function clickWorkflow(page, name) {
     巩固: ["看结果", "练习计划"]
   };
   const [primary, secondary] = menuMap[name] || [name, ""];
+  await page.waitForFunction(() => window.MR_FRONT_RENDERER_KIND === "front-three-admin-renderer");
+  const stage = await page.locator("#infoPanel").getAttribute("data-menu-stage");
+  if (stage !== "primary") {
+    await page.locator("#infoPanelBack").click();
+  }
+  await expect(page.locator("#infoPanel")).toHaveAttribute("data-menu-stage", "primary");
   await page.locator("#primaryMenuList button").filter({ hasText: new RegExp(`^${primary}`) }).click();
   if (secondary) {
+    await expect(page.locator("#infoPanel")).toHaveAttribute("data-menu-stage", "secondary");
     await page.locator("#secondaryMenuList button").filter({ hasText: new RegExp(`^${secondary}`) }).click();
     await page.waitForTimeout(520);
+    await expect(page.locator("#infoPanel")).toHaveAttribute("data-menu-stage", "feature");
   }
 }
 

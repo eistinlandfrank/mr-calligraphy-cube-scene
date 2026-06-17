@@ -833,6 +833,7 @@ const els = {
   deleteRoleButton: document.getElementById("deleteRoleButton"),
   infoPanel: document.getElementById("infoPanel"),
   infoPanelHandle: document.getElementById("infoPanelHandle"),
+  infoPanelBack: document.getElementById("infoPanelBack"),
   infoPanelToggle: document.getElementById("infoPanelToggle"),
   modeButtons: Array.from(document.querySelectorAll("[data-learning-mode]")),
   learningStateSummary: document.getElementById("learningStateSummary"),
@@ -1114,6 +1115,7 @@ const els = {
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
+  vrDecisionPanel: document.getElementById("vrDecisionPanel"),
   primaryMenuList: document.getElementById("primaryMenuList"),
   secondaryMenuList: document.getElementById("secondaryMenuList"),
   secondaryMenuTitle: document.getElementById("secondaryMenuTitle"),
@@ -1166,6 +1168,7 @@ const els = {
 let currentIndex = 0;
 let activePointIndex = 0;
 let activeMenuGroupId = VR_MENU_GROUPS[0]?.id || "";
+let activeMenuStage = "primary";
 let activeActionPresentation = null;
 let cubeYaw = 0;
 let cubePitch = -7;
@@ -4222,6 +4225,7 @@ function initInfoPanelCollapse() {
     return;
   }
 
+  els.infoPanelBack?.addEventListener("click", handleDecisionBack);
   setInfoPanelCollapsed(readInfoPanelCollapsed(), { persist: false });
   els.infoPanelToggle.addEventListener("click", () => {
     setInfoPanelCollapsed(!panel.classList.contains("is-collapsed"));
@@ -11808,10 +11812,39 @@ function getActiveMenuGroup(sceneIndex = currentIndex) {
     || VR_MENU_GROUPS[0];
 }
 
+function setDecisionMenuStage(stage = "primary") {
+  const nextStage = ["primary", "secondary", "feature"].includes(stage) ? stage : "primary";
+  activeMenuStage = nextStage;
+  if (els.infoPanel) {
+    els.infoPanel.dataset.menuStage = nextStage;
+  }
+  if (els.vrDecisionPanel) {
+    els.vrDecisionPanel.hidden = nextStage === "feature";
+  }
+  if (els.infoPanelBack) {
+    const isHome = nextStage === "primary";
+    els.infoPanelBack.hidden = isHome;
+    els.infoPanelBack.textContent = nextStage === "feature" ? "⌂" : "‹";
+    const label = nextStage === "feature" ? "回到首页" : "返回上一步";
+    els.infoPanelBack.setAttribute("aria-label", label);
+    els.infoPanelBack.title = label;
+  }
+}
+
+function handleDecisionBack() {
+  if (activeMenuStage === "feature") {
+    loadScene(0, { routeMode: "push", updateStepRoute: true, menuStage: "primary" });
+    return;
+  }
+  setDecisionMenuStage("primary");
+  renderDecisionMenu(currentIndex);
+}
+
 function setActiveMenuGroup(groupId) {
   const group = VR_MENU_GROUPS.find((item) => item.id === groupId) || VR_MENU_GROUPS[0];
   if (!group) return;
   activeMenuGroupId = group.id;
+  setDecisionMenuStage("secondary");
   renderDecisionMenu(currentIndex);
   if (els.actionFeedback) {
     els.actionFeedback.textContent = `已选：${group.label}`;
@@ -11822,6 +11855,13 @@ function setActiveMenuGroup(groupId) {
 function renderDecisionMenu(sceneIndex = currentIndex) {
   if (!els.primaryMenuList || !els.secondaryMenuList) return;
   const sceneGroup = getMenuGroupForScene(sceneIndex);
+  if (sceneIndex !== 0 && activeMenuStage !== "feature") {
+    setDecisionMenuStage("feature");
+  } else if (sceneIndex === 0 && !["primary", "secondary"].includes(activeMenuStage)) {
+    setDecisionMenuStage("primary");
+  } else {
+    setDecisionMenuStage(activeMenuStage);
+  }
   if (!VR_MENU_GROUPS.some((group) => group.id === activeMenuGroupId)) {
     activeMenuGroupId = sceneGroup?.id || VR_MENU_GROUPS[0]?.id || "";
   }
@@ -11897,6 +11937,7 @@ function loadScene(index, options = {}) {
   currentIndex = index;
   document.body.dataset.learningScene = String(index);
   activeMenuGroupId = getMenuGroupForScene(index)?.id || activeMenuGroupId;
+  setDecisionMenuStage(options.menuStage || (index === 0 ? "primary" : "feature"));
   const pointIndex = clampScenePointIndex(index, Number.isInteger(options.pointIndex) ? options.pointIndex : 0);
   activePointIndex = pointIndex;
   if (index !== 6 && getHistoryDetailRouteId()) {

@@ -2964,21 +2964,32 @@ button {
   gap: 10px;
 }
 
+.panel-back-button,
 .panel-collapse-button {
   display: grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 38px;
+  height: 38px;
   border: 1px solid rgba(116, 255, 219, 0.28);
   border-radius: 999px;
   color: #dffff6;
   background: rgba(24, 42, 39, 0.72);
   cursor: pointer;
-  font-size: 19px;
+  font-size: 22px;
   font-weight: 900;
   line-height: 1;
 }
 
+.panel-back-button[hidden] {
+  display: none;
+}
+
+.panel-back-button {
+  font-size: 26px;
+}
+
+.panel-back-button:hover,
+.panel-back-button:focus-visible,
 .panel-collapse-button:hover,
 .panel-collapse-button:focus-visible {
   border-color: rgba(116, 255, 219, 0.58);
@@ -3143,6 +3154,15 @@ body.e2e-show-details .mr-main-panel .learning-action-audit {
   background:
     linear-gradient(135deg, rgba(47, 111, 104, 0.22), rgba(26, 24, 18, 0.18)),
     rgba(255, 255, 255, 0.045);
+}
+
+.mr-main-panel[data-menu-stage="feature"] .vr-decision-panel {
+  display: none;
+}
+
+.mr-main-panel[data-menu-stage="primary"] .secondary-menu-list,
+.mr-main-panel[data-menu-stage="secondary"] .primary-menu-list {
+  display: none;
 }
 
 .vr-decision-head {
@@ -4498,7 +4518,7 @@ body[data-spatial-mode="mr"] .scene-copy {
   max-width: 186px;
   margin-top: 2px;
   overflow: hidden;
-  font-size: 14px;
+  font-size: 18px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
