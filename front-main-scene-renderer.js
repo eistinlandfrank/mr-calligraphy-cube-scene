@@ -22,6 +22,12 @@ const CUSTOM_TYPE_SIZES = {
   cylinder: { radius: 0.38, height: 0.9 },
   plane: { width: 1.4, height: 0.08, depth: 0.9 }
 };
+const WRITING_DESK_PLACEHOLDER_IDS = new Set([
+  "desktop-paper",
+  "desktop-inkstone",
+  "desktop-gold-brush",
+  "desktop-red-brush"
+]);
 
 export async function createFrontMainSceneRenderer(canvas, options = {}) {
   const renderer = new THREE.WebGLRenderer({
@@ -94,6 +100,7 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     setWritingDeskVisible(visible) {
       writingDeskVisible = Boolean(visible);
       writingDeskRoot.visible = writingDeskVisible;
+      syncWritingDeskPlaceholders();
       if (typeof window !== "undefined") {
         window.MR_WRITING_DESK_VISIBLE = writingDeskVisible;
       }
@@ -233,8 +240,11 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
 
   async function createModelObject(spec, token) {
     const group = new THREE.Group();
+    group.name = spec.id;
+    group.userData.objectId = spec.id;
     group.userData.scaleFactor = getVisualScaleFactor(spec);
     applyState(group, getState(spec));
+    group.userData.baseVisible = group.visible;
     objectRoot.add(group);
 
     try {
@@ -260,8 +270,14 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
 
   function createDecorObject(spec) {
     const group = createDecorGroup(spec);
+    group.name = spec.id;
+    group.userData.objectId = spec.id;
     group.userData.scaleFactor = 1;
     applyState(group, getState(spec));
+    group.userData.baseVisible = group.visible;
+    if (WRITING_DESK_PLACEHOLDER_IDS.has(spec.id)) {
+      group.visible = writingDeskVisible ? false : group.userData.baseVisible;
+    }
     objectRoot.add(group);
   }
 
@@ -286,7 +302,7 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
 
   function buildWritingDeskLayer() {
     writingDeskRoot.name = "front-writing-desk-layer";
-    writingDeskRoot.position.set(0, -1.37, -3.42);
+    writingDeskRoot.position.set(0, -0.95, -3.42);
     writingDeskRoot.rotation.y = -0.03;
     writingDeskRoot.visible = false;
 
@@ -324,18 +340,24 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
   function createWritingInkCharacter() {
     const material = new THREE.MeshPhysicalMaterial({
       map: createCalligraphyTexture(),
+      color: 0xffffff,
       transparent: true,
+      opacity: 1,
       roughness: 0.52,
       metalness: 0,
       clearcoat: 0.16,
       clearcoatRoughness: 0.72,
-      depthWrite: false
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
     });
-    const inkPlane = new THREE.Mesh(new THREE.PlaneGeometry(1.82, 1.26), material);
+    const inkPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.24, 1.56), material);
     inkPlane.name = "writing-ink-character";
-    inkPlane.position.set(-0.05, 0.028, 0.02);
+    inkPlane.position.set(-0.08, 0.052, -0.02);
     inkPlane.rotation.x = -Math.PI / 2;
-    inkPlane.renderOrder = 3;
+    inkPlane.renderOrder = 5;
     writingDeskRoot.add(inkPlane);
   }
 
@@ -372,8 +394,8 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
   function createWritingGuideGlass() {
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.5), materials.writingGlass);
     panel.name = "writing-guide-glass";
-    panel.position.set(1.18, 0.76, -0.28);
-    panel.rotation.set(-0.25, -0.62, -0.04);
+    panel.position.set(2.36, 1.12, -1.05);
+    panel.rotation.set(-0.12, -0.82, -0.04);
     panel.castShadow = true;
     writingDeskRoot.add(panel);
   }
@@ -474,7 +496,8 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       ctx.stroke();
     }
     addCanvasNoise(ctx, canvasTexture.width, canvasTexture.height, 12);
-    return makeCanvasTexture(canvasTexture, 1.05, 1.05);
+    drawYongInkStrokes(ctx, canvasTexture.width / 2, canvasTexture.height / 2 + 30, 1);
+    return makeCanvasTexture(canvasTexture, 1, 1);
   }
 
   function createWritingInkTexture() {
@@ -494,63 +517,146 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
 
   function createCalligraphyTexture() {
     const canvasTexture = document.createElement("canvas");
-    canvasTexture.width = 1536;
-    canvasTexture.height = 1060;
+    canvasTexture.width = 1024;
+    canvasTexture.height = 720;
     const ctx = canvasTexture.getContext("2d");
     ctx.clearRect(0, 0, canvasTexture.width, canvasTexture.height);
     ctx.save();
-    ctx.translate(768, 565);
+    ctx.translate(512, 388);
     ctx.rotate(-0.045);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = '720px "KaiTi", "STKaiti", "Kaiti SC", "SimSun", serif';
+    ctx.font = '500px "KaiTi", "STKaiti", "Kaiti SC", "SimSun", serif';
 
-    for (let i = 0; i < 16; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       ctx.save();
       ctx.globalAlpha = 0.035;
-      ctx.filter = `blur(${7 + i * 0.55}px)`;
+      ctx.filter = `blur(${4 + i * 0.45}px)`;
       ctx.fillStyle = "#130d09";
-      ctx.translate((Math.random() - 0.5) * 22, (Math.random() - 0.5) * 18);
+      ctx.translate((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 12);
       ctx.scale(1 + (Math.random() - 0.5) * 0.018, 1 + (Math.random() - 0.5) * 0.014);
-      ctx.fillText("永", 0, -4);
+      ctx.fillText("永", 0, -6);
       ctx.restore();
     }
 
     ctx.filter = "none";
     ctx.globalAlpha = 0.94;
-    const inkGradient = ctx.createLinearGradient(-300, -420, 320, 440);
+    const inkGradient = ctx.createLinearGradient(-190, -260, 195, 270);
     inkGradient.addColorStop(0, "#060403");
     inkGradient.addColorStop(0.42, "#120b07");
-    inkGradient.addColorStop(0.72, "#050302");
-    inkGradient.addColorStop(1, "#251a12");
+    inkGradient.addColorStop(0.7, "#050302");
+    inkGradient.addColorStop(1, "#261a12");
     ctx.fillStyle = inkGradient;
-    ctx.fillText("永", 0, -4);
+    ctx.fillText("永", 0, -6);
 
     ctx.globalCompositeOperation = "destination-out";
-    for (let i = 0; i < 110; i += 1) {
+    for (let i = 0; i < 72; i += 1) {
+      const x = -215 + Math.random() * 430;
+      const y = -250 + Math.random() * 500;
       ctx.save();
-      ctx.translate(-340 + Math.random() * 680, -400 + Math.random() * 820);
+      ctx.translate(x, y);
       ctx.rotate(-0.9 + Math.random() * 0.32);
       ctx.globalAlpha = 0.05 + Math.random() * 0.12;
       ctx.fillStyle = "#000";
-      ctx.fillRect(-2, -34 - Math.random() * 88, 3 + Math.random() * 9, 55 + Math.random() * 160);
+      ctx.fillRect(-1, -20 - Math.random() * 60, 2 + Math.random() * 6, 35 + Math.random() * 105);
       ctx.restore();
     }
 
     ctx.globalCompositeOperation = "source-over";
-    for (let i = 0; i < 70; i += 1) {
+    for (let i = 0; i < 42; i += 1) {
+      const radius = 0.6 + Math.random() * 3.2;
       ctx.beginPath();
-      ctx.globalAlpha = 0.08 + Math.random() * 0.16;
+      ctx.globalAlpha = 0.08 + Math.random() * 0.18;
       ctx.fillStyle = "#090504";
-      ctx.arc(-360 + Math.random() * 720, -430 + Math.random() * 860, 1 + Math.random() * 5, 0, Math.PI * 2);
+      ctx.arc(-235 + Math.random() * 470, -270 + Math.random() * 530, radius, 0, Math.PI * 2);
       ctx.fill();
     }
     ctx.restore();
 
+    addInkEdge(ctx, 1024, 720);
     const texture = new THREE.CanvasTexture(canvasTexture);
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
     return texture;
+  }
+
+  function addInkEdge(ctx, width, height) {
+    const image = ctx.getImageData(0, 0, width, height);
+    const data = image.data;
+    for (let i = 0; i < data.length; i += 4) {
+      const alpha = data[i + 3];
+      if (alpha > 0) {
+        const grain = 0.86 + Math.random() * 0.2;
+        data[i] *= grain;
+        data[i + 1] *= grain;
+        data[i + 2] *= grain;
+        data[i + 3] = Math.min(255, alpha * (0.9 + Math.random() * 0.16));
+      }
+    }
+    ctx.putImageData(image, 0, 0);
+  }
+
+  function drawYongInkStrokes(ctx, centerX, centerY, scale) {
+    const strokes = [
+      { width: 30, commands: [["M", -26, -260], ["C", -10, -238, 22, -223, 42, -204]] },
+      { width: 34, commands: [["M", -158, -176], ["C", -70, -196, 78, -192, 158, -168]] },
+      { width: 42, commands: [["M", 2, -170], ["C", 10, -66, -4, 84, -18, 174], ["C", -28, 216, -58, 232, -106, 212]] },
+      { width: 32, commands: [["M", -20, -58], ["C", -70, -16, -132, 52, -190, 134]] },
+      { width: 30, commands: [["M", 42, -70], ["C", 88, -24, 132, 40, 184, 112]] },
+      { width: 34, commands: [["M", 24, 26], ["C", 74, 96, 126, 162, 180, 224]] },
+      { width: 24, commands: [["M", -128, 2], ["C", -92, 36, -64, 62, -34, 84]] }
+    ];
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.scale(scale, scale);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    strokes.forEach((stroke, index) => {
+      for (let i = 0; i < 5; i += 1) {
+        ctx.save();
+        ctx.globalAlpha = 0.04 + i * 0.012;
+        ctx.lineWidth = stroke.width + 18 + i * 3;
+        ctx.strokeStyle = "#1a1009";
+        ctx.filter = `blur(${4 + i}px)`;
+        ctx.translate((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
+        traceInkStroke(ctx, stroke.commands);
+        ctx.restore();
+      }
+
+      ctx.save();
+      ctx.globalAlpha = 0.9;
+      ctx.filter = "none";
+      ctx.lineWidth = stroke.width;
+      ctx.strokeStyle = index === 2 ? "#050302" : "#0b0604";
+      traceInkStroke(ctx, stroke.commands);
+      ctx.restore();
+
+      for (let i = 0; i < 3; i += 1) {
+        ctx.save();
+        ctx.globalAlpha = 0.14;
+        ctx.lineWidth = Math.max(4, stroke.width * (0.22 + Math.random() * 0.16));
+        ctx.strokeStyle = "#2a1a10";
+        ctx.translate((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
+        traceInkStroke(ctx, stroke.commands);
+        ctx.restore();
+      }
+    });
+
+    ctx.restore();
+  }
+
+  function traceInkStroke(ctx, commands) {
+    ctx.beginPath();
+    commands.forEach((command) => {
+      if (command[0] === "M") {
+        ctx.moveTo(command[1], command[2]);
+      } else if (command[0] === "C") {
+        ctx.bezierCurveTo(command[1], command[2], command[3], command[4], command[5], command[6]);
+      }
+    });
+    ctx.stroke();
   }
 
   function makeCanvasTexture(canvasTexture, repeatX, repeatY) {
@@ -800,6 +906,13 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     object.visible = state.deleted !== true && state.hidden !== true;
   }
 
+  function syncWritingDeskPlaceholders() {
+    objectRoot.children.forEach((child) => {
+      if (!WRITING_DESK_PLACEHOLDER_IDS.has(child.userData.objectId || child.name)) return;
+      child.visible = writingDeskVisible ? false : child.userData.baseVisible !== false;
+    });
+  }
+
   function makeDefaultState(spec) {
     const rotation = spec.rotation || [0, 0, 0];
     return {
@@ -819,7 +932,7 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
   function render(yaw = 0, pitch = -5, scale = 1) {
     resize();
     const target = writingDeskVisible
-      ? new THREE.Vector3(0, -1.22, -3.42)
+      ? new THREE.Vector3(0, -0.8, -3.42)
       : new THREE.Vector3(0, -0.35, -3.6);
     const baseRadius = writingDeskVisible ? 4.2 : 8.4;
     const radius = clampNumber(baseRadius / Math.max(scale, 0.2), writingDeskVisible ? 2.15 : 2.6, writingDeskVisible ? 6.2 : 16);

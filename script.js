@@ -2140,7 +2140,7 @@ function setWritingDeskMode(visible, options = {}) {
 
   if (nextVisible && (options.focus || !wasVisible)) {
     cubeYaw = 0;
-    cubePitch = -18;
+    cubePitch = 22;
     cubeScale = Math.max(cubeScale, 1.36);
     updateCubeTransform();
   }
@@ -2868,7 +2868,7 @@ function createBackendStyleRoomRenderer(canvas) {
   }
   window.MR_FRONT_RENDERER_KIND = "three-admin-loading";
 
-  import("./front-main-scene-renderer.js?v=writing-desk-20260617")
+  import("./front-main-scene-renderer.js?v=writing-desk-yong-20260617")
     .then(({ createFrontMainSceneRenderer }) => createFrontMainSceneRenderer(canvas, {
       layout: mainSceneLayout,
       textures: roomConfig.textures,

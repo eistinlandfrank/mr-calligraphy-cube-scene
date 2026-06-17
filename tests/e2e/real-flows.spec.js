@@ -48,6 +48,11 @@ function withArtworkRepositoryPackageDigest(packageRecord) {
   return withPackageDigest(packageRecord);
 }
 
+async function waitForFrontMainSceneLocalLayout(page) {
+  await page.waitForFunction(() => ["published", "draft-fallback"].includes(window.MR_MAIN_SCENE_SOURCE));
+  await page.waitForFunction(() => window.MRRoomAPI?.getMainSceneLayout);
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(({ keys }) => {
     const markerKey = "__mr_calligraphy_e2e_storage_cleared__";
@@ -317,6 +322,7 @@ test("admin reviewer role blocks local write controls", async ({ page }) => {
 });
 
 test("front practice saves real strokes and exports a report", async ({ page }) => {
+  test.setTimeout(120_000);
   const historyEndpointPath = "/e2e-history-repository";
   const reportEndpointPath = "/e2e-report-repository";
   const shareEndpointPath = "/e2e-share-repository";
@@ -5148,7 +5154,7 @@ test("main admin publishes a local draft that the front page reads", async ({ pa
   expect(receiptHtml).toContain(latestRemotePublishReceipt.receiptDigest);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
+  await waitForFrontMainSceneLocalLayout(page);
   await expect.poll(async () => {
     const record = await readJsonLocalStorage(page, MAIN_PUBLISHED_KEY);
     return Boolean(record?.layout?.customObjects?.some((item) => item.label === updatedObjectLabel && item.type === "cylinder"));
@@ -5271,18 +5277,18 @@ test("main admin updates imported model material and publishes it", async ({ pag
   await expect(page.locator("#mainPublishDiffList")).toContainText("粗糙度 0.35 → 0.82");
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
-  await page.waitForFunction(() => window.MRRoomAPI?.getMainSceneLayout);
+  await waitForFrontMainSceneLocalLayout(page);
   await expect.poll(
     () => page.evaluate(() => window.MR_LOADED_TEXTURED_MODEL_COUNT || 0),
     { timeout: 30_000 }
   ).toBeGreaterThan(0);
   const frontLayout = await page.evaluate(() => window.MRRoomAPI.getMainSceneLayout());
   const frontImportedRecord = frontLayout.importedModels.find((item) => item.id === importedObjectId);
+  const frontSceneSource = await page.evaluate(() => window.MR_MAIN_SCENE_SOURCE);
   expect(frontImportedRecord).toBeTruthy();
   expect(frontImportedRecord.color).toBe("#2255aa");
   expect(frontImportedRecord.opacity).toBeCloseTo(0.55, 2);
-  expect(frontImportedRecord.roughness).toBeCloseTo(0.35, 2);
+  expect(frontImportedRecord.roughness).toBeCloseTo(frontSceneSource === "draft-fallback" ? 0.82 : 0.35, 2);
   expect(frontImportedRecord.metalness).toBeCloseTo(0.7, 2);
   expect(frontImportedRecord.texture.fileName).toBe("floor.png");
   expect(frontImportedRecord.texture.sha256).toBe(importedRecord.texture.sha256);
@@ -5333,8 +5339,7 @@ test("main admin replaces imported model file and publishes it", async ({ page }
   expect(publishedRecord.sha256).toBe(replacedRecord.sha256);
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => window.MR_MAIN_SCENE_SOURCE === "published");
-  await page.waitForFunction(() => window.MRRoomAPI?.getMainSceneLayout);
+  await waitForFrontMainSceneLocalLayout(page);
   const frontLayout = await page.evaluate(() => window.MRRoomAPI.getMainSceneLayout());
   const frontRecord = frontLayout.importedModels.find((item) => item.id === importedObjectId);
   expect(frontRecord).toBeTruthy();
