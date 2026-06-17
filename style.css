@@ -2580,7 +2580,7 @@ button {
   top: 28px;
   left: 28px;
   max-width: min(520px, calc(100vw - 56px));
-  padding: 16px 18px;
+  padding: 14px 18px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel-strong);
@@ -2589,7 +2589,7 @@ button {
 }
 
 .step-label {
-  display: inline-flex;
+  display: none;
   align-items: center;
   min-height: 24px;
   padding: 2px 8px;
@@ -3088,7 +3088,7 @@ body[data-learning-scene="5"] .mr-main-panel .coach-workspace {
 body.is-writing-desk-mode .mr-main-panel .glyph-board,
 body[data-learning-scene="4"] .mr-main-panel .glyph-board,
 body[data-learning-scene="5"] .mr-main-panel .glyph-board {
-  min-height: 128px;
+  min-height: 138px;
 }
 
 .mr-main-panel .action-list {
@@ -3196,6 +3196,7 @@ body.e2e-show-details .mr-main-panel .learning-action-audit {
   color: #fffaf1;
   background: rgba(255, 255, 255, 0.075);
   cursor: pointer;
+  font-size: 18px;
   text-align: center;
 }
 
@@ -4919,22 +4920,23 @@ body[data-spatial-mode="mr"] .scene-copy {
 .practice-toolbar {
   position: absolute;
   z-index: 4;
-  right: 8px;
-  bottom: 8px;
+  right: 10px;
+  bottom: 10px;
   display: flex;
-  gap: 6px;
+  gap: 8px;
 }
 
 .practice-toolbar button {
   display: inline-grid;
   place-items: center;
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 7px;
   color: #fffaf1;
   background: rgba(30, 34, 31, 0.58);
   cursor: pointer;
+  font-size: 18px;
   font-weight: 900;
 }
 
