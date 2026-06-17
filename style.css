@@ -3007,6 +3007,51 @@ button {
   display: none;
 }
 
+.mr-main-panel .learning-state-summary,
+.mr-main-panel .secondary-menu-hint,
+.mr-main-panel .service-boundary-panel,
+.mr-main-panel .task-panel,
+.mr-main-panel .practice-canvas-status,
+.mr-main-panel .score-service-summary {
+  display: none;
+}
+
+.mr-main-panel .coach-workspace {
+  display: none;
+}
+
+body.is-writing-desk-mode .mr-main-panel .coach-workspace,
+body[data-learning-scene="4"] .mr-main-panel .coach-workspace,
+body[data-learning-scene="5"] .mr-main-panel .coach-workspace {
+  display: grid;
+}
+
+.mr-main-panel .action-zone {
+  display: none;
+}
+
+body[data-learning-scene]:not([data-learning-scene="0"]) .mr-main-panel .action-zone {
+  display: block;
+}
+
+.mr-main-panel .action-detail,
+.mr-main-panel .learning-action-audit,
+.mr-main-panel .score-board {
+  display: none;
+}
+
+body.is-writing-desk-mode .mr-main-panel .coach-workspace,
+body[data-learning-scene="4"] .mr-main-panel .coach-workspace,
+body[data-learning-scene="5"] .mr-main-panel .coach-workspace {
+  grid-template-columns: 1fr;
+}
+
+body.is-writing-desk-mode .mr-main-panel .glyph-board,
+body[data-learning-scene="4"] .mr-main-panel .glyph-board,
+body[data-learning-scene="5"] .mr-main-panel .glyph-board {
+  min-height: 150px;
+}
+
 .mr-main-panel .panel-dragbar {
   margin-bottom: 10px;
 }

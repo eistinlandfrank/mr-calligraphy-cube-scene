@@ -2549,7 +2549,7 @@ function focusRole(roleId) {
   updateCubeTransform();
   renderRoleControls();
   populateRoleEditor(role);
-  els.actionFeedback.textContent = `${role.name}：${role.description}`;
+  els.actionFeedback.textContent = makeSeniorBrief(`${role.name}：${role.description}`, 18);
 
   return cloneConfig(role);
 }
@@ -5248,7 +5248,7 @@ function advanceLecturePlayback(token) {
   updateSceneText(currentIndex);
   updatePathPanel(currentIndex);
   if (result?.message) {
-    els.actionFeedback.textContent = result.message;
+    els.actionFeedback.textContent = getSeniorFeedbackMessage(result.message, buildLectureActionDetail(result), "播放讲解");
   }
   if (result?.lecture?.status === "complete") {
     isLecturePlaybackActive = false;
@@ -7995,7 +7995,7 @@ function countVideoSourcePoints(strokes = []) {
 
 async function downloadLatestPracticeVideo() {
   if (els.actionFeedback) {
-    els.actionFeedback.textContent = "正在生成真实书写回放视频，请稍候...";
+    els.actionFeedback.textContent = "生成中...";
   }
   const result = await exportPracticeReplayVideo({ preferReview: true });
   applyActionResult(result, { label: "生成视频" });
@@ -8015,7 +8015,7 @@ async function retryPracticeVideoExport(jobId) {
     return;
   }
   if (els.actionFeedback) {
-    els.actionFeedback.textContent = "正在重试书写回放视频，请稍候...";
+    els.actionFeedback.textContent = "重试中...";
   }
   const result = await exportPracticeReplayVideo({
     source: sourceResult.source,
@@ -11895,6 +11895,7 @@ function loadScene(index, options = {}) {
     clearActionPresentation();
   }
   currentIndex = index;
+  document.body.dataset.learningScene = String(index);
   activeMenuGroupId = getMenuGroupForScene(index)?.id || activeMenuGroupId;
   const pointIndex = clampScenePointIndex(index, Number.isInteger(options.pointIndex) ? options.pointIndex : 0);
   activePointIndex = pointIndex;
@@ -12353,6 +12354,37 @@ function makeSeniorBrief(text = "", maxLength = 42) {
     : firstSentence;
 }
 
+function getSeniorFeedbackMessage(message = "", detail = null, actionLabel = "") {
+  const text = String(message || "").trim();
+  const type = detail?.type || "";
+  const title = String(detail?.title || actionLabel || "").trim();
+
+  if (type === "task") return title ? `已选：${title.replace(/^今日单字：/, "")}` : "已选任务";
+  if (type === "lecture") return detail?.status === "已完成" ? "讲解完成" : "开始讲解";
+  if (type === "practice") return "开始练字";
+  if (type === "training-mode") return title || "模式已切换";
+  if (type === "stroke") return title ? `已换：${title}` : "已换笔画";
+  if (type === "stage") return title || "已记录";
+  if (type === "artwork-style") return title || "风格已切换";
+  if (type === "artwork") return "作品已保存";
+  if (type === "artwork-open") return "打开作品";
+  if (type === "history") return "打开记录";
+  if (type === "history-filter") return "已筛选";
+  if (type === "report") return "报告已生成";
+  if (type === "share") return "分享已生成";
+  if (type === "plan") return "计划已生成";
+  if (type === "completion") return "已看详情";
+  if (type === "analysis") return "已看笔画";
+  if (type === "failure") return "请先完成";
+  if (type === "navigation") return title || "已切换";
+
+  if (!text) return actionLabel ? `${actionLabel}已处理` : "";
+  if (text.includes("封面已保存") || text.includes("回放视频")) return "视频已生成";
+  if (text.includes("不支持 Canvas 视频录制")) return "暂不支持视频";
+  if (text.length <= 18) return text;
+  return makeSeniorBrief(text, 18);
+}
+
 function getLearningPathPointView(sceneIndex, pointIndex, point, stats) {
   const sceneView = getLearningSceneView(sceneIndex);
   const step = sceneView.step;
@@ -12518,7 +12550,7 @@ function getLearningPointView(sceneIndex, pointIndex, point) {
 function runAction(action) {
   const result = runLearningAction(action);
   if (result && typeof result.then === "function") {
-    els.actionFeedback.textContent = "正在生成真实书写回放视频，请稍候...";
+    els.actionFeedback.textContent = "生成中...";
     result
       .then((resolved) => applyActionResult(resolved, action))
       .catch((error) => applyActionResult({
@@ -12532,9 +12564,11 @@ function runAction(action) {
 }
 
 function applyActionResult(result = {}, action = {}) {
-  els.actionFeedback.textContent = result.message || (action.label ? "操作已处理，但没有返回详细结果。" : "");
+  const rawMessage = result.message || (action.label ? "操作已处理，但没有返回详细结果。" : "");
+  const visibleMessage = getSeniorFeedbackMessage(rawMessage, result.detail || null, action.label || "");
+  els.actionFeedback.textContent = visibleMessage;
   renderActionDetail(result.detail || null);
-  setActionPresentation(els.actionFeedback.textContent, result.detail || null);
+  setActionPresentation(visibleMessage, result.detail || null);
   if (result.plan?.id) {
     activePlanId = result.plan.id;
   }
@@ -12546,11 +12580,10 @@ function applyActionResult(result = {}, action = {}) {
     const feedbackMessage = result.message || "已打开最近保存的作品。";
     const detail = result.detail || null;
     openArtworkDetailRoute(result.openArtworkId);
-    if (feedbackMessage) {
-      els.actionFeedback.textContent = feedbackMessage;
-    }
+    const visibleOpenMessage = getSeniorFeedbackMessage(feedbackMessage, detail, action.label || "");
+    els.actionFeedback.textContent = visibleOpenMessage;
     renderActionDetail(detail);
-    setActionPresentation(feedbackMessage, detail);
+    setActionPresentation(visibleOpenMessage, detail);
     return;
   }
   renderLearningStateSummary();
@@ -12568,13 +12601,14 @@ function applyActionResult(result = {}, action = {}) {
   if (typeof target === "number") {
     const feedbackMessage = result.message || (action.label ? `${action.label}已处理。` : "");
     const detail = result.detail || null;
+    const visibleTargetMessage = getSeniorFeedbackMessage(feedbackMessage, detail, action.label || "");
     window.setTimeout(() => {
       loadScene(target);
-      if (feedbackMessage) {
-        els.actionFeedback.textContent = feedbackMessage;
+      if (visibleTargetMessage) {
+        els.actionFeedback.textContent = visibleTargetMessage;
       }
       renderActionDetail(detail);
-      setActionPresentation(feedbackMessage, detail);
+      setActionPresentation(visibleTargetMessage, detail);
     }, 420);
     return;
   }
@@ -13409,20 +13443,29 @@ function buildActionFailureDetail(title, message, items = []) {
 
 function getLearningActionHint(sceneIndex) {
   if (!window.MRAppState) {
-    return "点击场景热点或下方按钮，可查看该模块的交互反馈。";
+    return "选一个按钮。";
   }
 
   const sceneView = getLearningSceneView(sceneIndex);
+  if (sceneView.step) {
+    if (sceneView.step.locked) {
+      return `未解锁：${sceneView.shortName}`;
+    }
+    if (sceneView.step.done) {
+      return `已完成：${sceneView.shortName}`;
+    }
+    return `下一步：${sceneView.step.nextActionLabel || "继续"}`;
+  }
+
   if (sceneIndex === 6 || sceneIndex === 8 || sceneIndex === 9) {
-    const preview = window.MRAppState.getReportPreview();
-    return sceneView.actionHint ? `${sceneView.actionHint} ${preview}` : preview;
+    return `查看：${sceneView.shortName}`;
   }
 
   if (sceneView.actionHint) {
-    return sceneView.actionHint;
+    return makeSeniorBrief(sceneView.actionHint, 18);
   }
 
-  return "点击按钮会写入本机学习记录；未接入的能力会明确禁用。";
+  return "选一个按钮。";
 }
 
 function getLearningActionFeature(action) {
