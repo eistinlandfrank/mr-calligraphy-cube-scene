@@ -44,6 +44,7 @@ async function main() {
       deviceScaleFactor: 1
     }));
     reports.push(await auditSeniorConfirm(browser, options.baseUrl));
+    reports.push(...await auditSeededLearningData(browser, options.baseUrl));
   } finally {
     await browser.close();
   }
@@ -184,6 +185,68 @@ async function auditSeniorConfirm(browser, baseUrl) {
   } finally {
     await page.close();
   }
+}
+
+async function auditSeededLearningData(browser, baseUrl) {
+  const page = await openSeniorPage(browser, baseUrl, {
+    label: "mobile-seeded-data",
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2
+  });
+  const reports = [];
+
+  try {
+    await seedRealLearningData(page);
+    await waitForStableFrontPage(page);
+    reports.push(await collectVisibleTextAudit(page, "mobile-seeded-home"));
+
+    await openResultAction(page, baseUrl, "看记录");
+    reports.push(await collectVisibleTextAudit(page, "mobile-seeded-history"));
+
+    await openResultAction(page, baseUrl, "看报告");
+    reports.push(await collectVisibleTextAudit(page, "mobile-seeded-report"));
+
+    await openResultAction(page, baseUrl, "练习计划");
+    reports.push(await collectVisibleTextAudit(page, "mobile-seeded-plan"));
+  } finally {
+    await page.close();
+  }
+
+  return reports;
+}
+
+async function seedRealLearningData(page) {
+  await page.evaluate(() => {
+    if (!window.MRAppState?.saveArtwork || !window.MRAppState?.createReport || !window.MRAppState?.createPlan) {
+      throw new Error("缺少真实学习数据 API。");
+    }
+    window.MRAppState.saveArtwork({
+      character: "永",
+      score: 88,
+      strokes: [
+        {
+          points: [{ x: 10, y: 12 }, { x: 42, y: 48 }, { x: 84, y: 92 }],
+          color: "#111111",
+          size: 7
+        },
+        {
+          points: [{ x: 80, y: 10 }, { x: 52, y: 60 }, { x: 30, y: 120 }],
+          color: "#111111",
+          size: 6
+        }
+      ],
+      imageData: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lZGj7wAAAABJRU5ErkJggg==",
+      metrics: { structure: 88, stroke: 86, technique: 83, fluency: 90, force: 84 }
+    });
+    window.MRAppState.createReport();
+    window.MRAppState.createPlan();
+  });
+}
+
+async function openResultAction(page, baseUrl, actionText) {
+  await reloadSeniorPage(page, baseUrl);
+  await clickButtonText(page, "看结果");
+  await clickButtonText(page, actionText);
 }
 
 async function openSeniorPage(browser, baseUrl, contextOptions) {

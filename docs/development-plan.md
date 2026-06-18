@@ -458,6 +458,14 @@ main-admin.html
 - 本轮验收通过：`node --check scripts/senior-visible-text-audit.js`、`node --check scripts/smoke-test.js`、`git diff --check`、`npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/`、移动端核心面板 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：真实数据页小字审计
+
+- 老人前台可见文字审计不再只检查空状态；新增真实数据种子，调用 `MRAppState.saveArtwork()`、`MRAppState.createReport()` 和 `MRAppState.createPlan()` 生成作品、报告与计划。
+- 审计新增覆盖有真实数据后的“看记录 / 看报告 / 练习计划”页面，针对用户反馈的“再下面”数据区做回归保护。
+- `scripts/senior-visible-text-audit.js` 当前覆盖 21 个普通老人模式状态、176 个可见文本节点；数据页仍满足无 18px 以下小字、无 18 字以上长句。
+- 本轮验收通过：`node --check scripts/senior-visible-text-audit.js`、`git diff --check`、`npm run senior:audit -- --base-url=http://localhost:41496/`、`npm run build`、移动端核心面板 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录
