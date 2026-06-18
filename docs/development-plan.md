@@ -408,6 +408,16 @@ main-admin.html
 - 老人进入模型/VR 环视时只看到 3D 场景和“看全景”短提示，不再看到淡淡的菜单文字浮在场景上。
 - 该修改只影响模型环视状态，不改变默认首页、书写台或诊断模式的真实交互。
 
+### 2026-06-18：底部快速栏和空间模式继续减字
+
+- 快速栏的“模型”改为“全景”，并把按钮从小号胶囊提升到 48px 大触控目标，避免底部继续出现 13px 小字。
+- 空间模式面板正常老人视图只保留 MR / AR / VR 三个大按钮；英文标题、状态行和说明句不再进入默认视野。
+- `SPATIAL_MODES` 保留完整 `label/summary` 给诊断模式，同时新增 `shortLabel/shortSummary` 给老人模式，避免运行时脚本把短词又覆盖成长句。
+- 已在桌面和移动端强制打开快速栏/空间模式做叶子节点审计：可见文本无 18px 以下字号，无 18 字以上长句。
+- 已保存复查截图：`test-results/senior-menu-check/quick-spatial-senior-desktop.png`、`test-results/senior-menu-check/quick-spatial-senior-mobile.png`。
+- 本轮验收通过：`node --check script.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E、真实书写保存与报告导出 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截，需代理认证恢复后再复跑。
+
 ---
 
 ## 10. 当前完成记录

@@ -1218,15 +1218,21 @@ const WORKFLOW_ROUTE_IDS = [
 const SPATIAL_MODES = {
   mr: {
     label: "MR 交互层",
-    summary: "MR 交互层已开启：热点、教练面板、书写证据和空间反馈同时可见。"
+    shortLabel: "MR",
+    summary: "MR 交互层已开启：热点、教练面板、书写证据和空间反馈同时可见。",
+    shortSummary: "MR"
   },
   ar: {
     label: "AR 锚点层",
-    summary: "AR 锚点层已开启：突出场景热点、路径锚点和本机任务证据。"
+    shortLabel: "AR",
+    summary: "AR 锚点层已开启：突出场景热点、路径锚点和本机任务证据。",
+    shortSummary: "AR"
   },
   vr: {
     label: "VR 环视层",
-    summary: "VR 环视层已开启：弱化面板干扰，强化旧版书房空间的沉浸浏览。"
+    shortLabel: "VR",
+    summary: "VR 环视层已开启：弱化面板干扰，强化旧版书房空间的沉浸浏览。",
+    shortSummary: "VR"
   }
 };
 const REPORT_METRIC_LABELS = [
@@ -4319,6 +4325,8 @@ function bindSpatialModeControls() {
 
 function setSpatialMode(mode, options = {}) {
   const nextMode = SPATIAL_MODES[mode] ? mode : "mr";
+  const modeConfig = SPATIAL_MODES[nextMode];
+  const detailed = shouldShowDetailedSystemMessage();
   document.body.dataset.spatialMode = nextMode;
   els.spatialModeButtons.forEach((button) => {
     const active = button.dataset.spatialMode === nextMode;
@@ -4326,13 +4334,13 @@ function setSpatialMode(mode, options = {}) {
     button.setAttribute("aria-pressed", active ? "true" : "false");
   });
   if (els.spatialModeStatus) {
-    els.spatialModeStatus.textContent = SPATIAL_MODES[nextMode].label;
+    els.spatialModeStatus.textContent = detailed ? modeConfig.label : modeConfig.shortLabel;
   }
   if (els.spatialModeSummary) {
-    els.spatialModeSummary.textContent = SPATIAL_MODES[nextMode].summary;
+    els.spatialModeSummary.textContent = detailed ? modeConfig.summary : modeConfig.shortSummary;
   }
   if (!options.silent) {
-    showNotice(SPATIAL_MODES[nextMode].summary);
+    showNotice(detailed ? modeConfig.summary : modeConfig.shortSummary);
   }
 }
 
