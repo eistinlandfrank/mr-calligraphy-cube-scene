@@ -90,6 +90,7 @@
     resize();
     bindResizeObserver();
     render();
+    updateToolbarState();
     setStatus("在米字格中书写，保存作品时会记录笔迹和截图。");
     window.addEventListener("resize", resize);
   }
@@ -145,6 +146,7 @@
       state.currentStroke = null;
     }
     render();
+    updateToolbarState();
     setStatus(`当前练习字：${state.glyph}。`);
   }
 
@@ -184,6 +186,7 @@
       state.canvas.releasePointerCapture(event.pointerId);
     }
     render();
+    updateToolbarState();
   }
 
   function cancelStroke(event) {
@@ -328,6 +331,7 @@
     }
     state.strokes.pop();
     render();
+    updateToolbarState();
     setStatus(`已撤销上一笔，剩余 ${state.strokes.length} 笔。`);
   }
 
@@ -336,6 +340,7 @@
     state.strokes = [];
     state.currentStroke = null;
     render();
+    updateToolbarState();
     setStatus("已清空练习格，可以重新书写。");
   }
 
@@ -1245,12 +1250,30 @@
       : [];
     state.currentStroke = null;
     render();
+    updateToolbarState();
   }
 
   function setStatus(message) {
     if (state.statusEl) {
       state.statusEl.textContent = message;
     }
+  }
+
+  function updateToolbarState() {
+    const hasStrokes = state.strokes.length > 0;
+    const toolbar = state.undoButton?.parentElement || state.clearButton?.parentElement || state.replayButton?.parentElement || null;
+    if (toolbar) {
+      toolbar.hidden = !hasStrokes;
+    }
+    [state.undoButton, state.clearButton, state.replayButton].forEach((button) => {
+      if (!button) return;
+      button.hidden = !hasStrokes;
+      button.disabled = !hasStrokes;
+      button.setAttribute("aria-disabled", hasStrokes ? "false" : "true");
+    });
+    window.dispatchEvent(new CustomEvent("mr-practice-strokes-change", {
+      detail: { strokeCount: state.strokes.length, hasStrokes }
+    }));
   }
 
   function distance(a, b) {

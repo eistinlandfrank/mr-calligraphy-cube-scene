@@ -661,6 +661,7 @@ async function handleImportModel(event) {
       type,
       label,
       existingRecords: layout.importedModels,
+      allowDuplicateFileName: true,
       duplicateMessage: (duplicate) => `已存在导入模型“${duplicate.label}”，请先删除旧模型或修改名称。`
     });
 
@@ -4857,6 +4858,7 @@ async function replaceSelectedImportedModelFile(event) {
       type,
       label: entry.label,
       existingRecords: layout.importedModels.filter((record) => record.id !== entry.id),
+      allowDuplicateFileName: true,
       duplicateMessage: (duplicate) => `已存在导入模型“${duplicate.label}”，请先删除旧模型或选择其他文件。`
     });
 

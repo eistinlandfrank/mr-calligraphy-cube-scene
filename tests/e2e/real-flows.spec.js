@@ -85,6 +85,26 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+async function showE2EDetails(page) {
+  await page.addInitScript(() => {
+    const enableDetails = () => document.body?.classList.add("e2e-show-details");
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", enableDetails, { once: true });
+    } else {
+      enableDetails();
+    }
+  });
+  await page.evaluate(() => document.body?.classList.add("e2e-show-details")).catch(() => {});
+}
+
+async function waitForFrontAppState(page) {
+  await page.waitForFunction(() => Boolean(
+    window.MRAppState?.getStats &&
+    window.MRAppState?.saveArtwork &&
+    window.MRAppState?.createPlan
+  ));
+}
+
 async function unlockMainAdmin(page) {
   await expect(page.locator("#mainAdminOperatorPanel")).toBeVisible();
 }
@@ -1976,6 +1996,7 @@ test("front practice saves real strokes and exports a report", async ({ page }) 
 });
 
 test("front report repository imports a local JSON package", async ({ page }) => {
+  await showE2EDetails(page);
   const now = new Date().toISOString();
   const importPackage = {
     kind: "mr-calligraphy-report-repository-v1",
@@ -2059,6 +2080,7 @@ test("front report repository imports a local JSON package", async ({ page }) =>
 });
 
 test("front artwork repository exports and imports local artwork package", async ({ page }) => {
+  await showE2EDetails(page);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   const seed = await page.evaluate(() => {
     const first = window.MRAppState.saveArtwork({
@@ -2398,6 +2420,7 @@ test("front artwork repository exports and imports local artwork package", async
 });
 
 test("front share repository shows retryable remote failure recovery", async ({ page }) => {
+  await showE2EDetails(page);
   const requests = [];
   const networkPushPath = "/e2e-share-repository-network-push";
   const recoveryPushPath = "/e2e-share-repository-recovery-push";
@@ -2616,7 +2639,7 @@ test("front share repository shows retryable remote failure recovery", async ({ 
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const seed = await page.evaluate(() => {
     const artwork = window.MRAppState.saveArtwork({
       strokes: [
@@ -2804,6 +2827,7 @@ test("front share repository shows retryable remote failure recovery", async ({ 
 });
 
 test("front report repository shows retryable remote failure recovery", async ({ page }) => {
+  await showE2EDetails(page);
   const requests = [];
   const networkPushPath = "/e2e-report-repository-network-push";
   const recoveryPushPath = "/e2e-report-repository-recovery-push";
@@ -2945,7 +2969,7 @@ test("front report repository shows retryable remote failure recovery", async ({
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const reportDownloadPromise = page.waitForEvent("download");
   const seed = await page.evaluate(() => {
     const artwork = window.MRAppState.saveArtwork({
@@ -3119,6 +3143,7 @@ test("front report repository shows retryable remote failure recovery", async ({
 });
 
 test("front history repository shows real remote failure feedback", async ({ page }) => {
+  await showE2EDetails(page);
   const requests = [];
   const networkPushPath = "/e2e-history-repository-network-push";
   const recoveryPushPath = "/e2e-history-repository-recovery-push";
@@ -3256,7 +3281,7 @@ test("front history repository shows real remote failure feedback", async ({ pag
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const seed = await page.evaluate(() => {
     const result = window.MRAppState.saveArtwork({
       strokes: [
@@ -3419,6 +3444,7 @@ test("front history repository shows real remote failure feedback", async ({ pag
 });
 
 test("front history repository handles network, paged pull, and id conflicts", async ({ page }) => {
+  await showE2EDetails(page);
   const networkPath = "/e2e-history-repository-network";
   const pagedPath = "/e2e-history-repository-paged-conflict";
   const requests = [];
@@ -3475,7 +3501,7 @@ test("front history repository handles network, paged pull, and id conflicts", a
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const seed = await page.evaluate(() => {
     const result = window.MRAppState.saveArtwork({
       strokes: [
@@ -3623,6 +3649,7 @@ test("front history repository handles network, paged pull, and id conflicts", a
 });
 
 test("front plan repository detects remote conflicts and saves a remote copy", async ({ page }) => {
+  await showE2EDetails(page);
   const planEndpointPath = "/e2e-plan-repository";
   const planRequests = [];
   let remotePlanPackage = null;
@@ -3696,7 +3723,7 @@ test("front plan repository detects remote conflicts and saves a remote copy", a
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const planEndpoint = await getSameOriginEndpoint(page, planEndpointPath);
   const seedPlan = await page.evaluate(() => {
     const created = window.MRAppState.createPlan();
@@ -3968,6 +3995,7 @@ test("front plan repository merges selected conflict fields", async ({ page }) =
 });
 
 test("front plan repository shows real remote failure feedback", async ({ page }) => {
+  await showE2EDetails(page);
   const requests = [];
   const routes = [
     {
@@ -4022,7 +4050,7 @@ test("front plan repository shows real remote failure feedback", async ({ page }
   }
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   await page.evaluate(() => window.MRAppState.createPlan());
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator("#planPanel")).toBeVisible();
@@ -4070,6 +4098,7 @@ test("front plan repository shows real remote failure feedback", async ({ page }
 });
 
 test("front plan repository keeps pending queue on push failures", async ({ page }) => {
+  await showE2EDetails(page);
   const rejectedPath = "/e2e-plan-repository-rejected-push";
   const networkPath = "/e2e-plan-repository-network-push";
   const recoveryPath = "/e2e-plan-repository-recovery-push";
@@ -4151,7 +4180,7 @@ test("front plan repository keeps pending queue on push failures", async ({ page
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const seedPlan = await page.evaluate(() => {
     const created = window.MRAppState.createPlan();
     return {
@@ -6249,6 +6278,7 @@ async function configureShareRemoteInUi(page, endpoint, token = "", workspaceId 
 }
 
 async function setupPlanRepositoryConflict(page, options = {}) {
+  await showE2EDetails(page);
   const endpointPath = options.endpointPath || "/e2e-plan-repository-conflict";
   const token = options.token || "plan-token";
   const planRequests = [];
@@ -6299,7 +6329,7 @@ async function setupPlanRepositoryConflict(page, options = {}) {
   });
 
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("#taskPanel")).toBeVisible();
+  await waitForFrontAppState(page);
   const planEndpoint = await getSameOriginEndpoint(page, endpointPath);
   const seedPlan = await page.evaluate(() => {
     const created = window.MRAppState.createPlan();

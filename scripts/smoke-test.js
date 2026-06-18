@@ -25,6 +25,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/learning-state-check.js", parser: "script" },
   { file: "scripts/learning-action-coverage-check.js", parser: "script" },
   { file: "scripts/senior-visible-text-audit.js", parser: "script" },
+  { file: "scripts/senior-button-action-audit.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
@@ -130,6 +131,7 @@ async function main() {
   runCommandChecks(failures);
   await runPageChecks(baseUrl, failures);
   await runSeniorVisibleTextAudit(baseUrl, failures);
+  await runSeniorButtonActionAudit(baseUrl, failures);
 
   if (staticServer) {
     await closeServer(staticServer.server);
@@ -272,6 +274,36 @@ function runSeniorVisibleTextAudit(baseUrl, failures) {
       }
 
       console.log(`✓ ${output || "老人前台可见文字审计"}`);
+      resolve();
+    });
+  });
+}
+
+function runSeniorButtonActionAudit(baseUrl, failures) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ["scripts/senior-button-action-audit.js", "--base-url", baseUrl], {
+      cwd: ROOT,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const stdout = [];
+    const stderr = [];
+
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.on("error", (error) => {
+      failures.push(`老人前台按钮真实可用审计失败：${error.message}`);
+      resolve();
+    });
+    child.on("close", (status) => {
+      const output = Buffer.concat(stdout).toString("utf8").trim();
+      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
+      if (status !== 0) {
+        failures.push(`老人前台按钮真实可用审计失败：${errorOutput || output}`);
+        resolve();
+        return;
+      }
+
+      console.log(`✓ ${output || "老人前台按钮真实可用审计"}`);
       resolve();
     });
   });

@@ -9,6 +9,7 @@
     "smoke": "node scripts/smoke-test.js",
     "smoke:running": "node scripts/smoke-test.js --base-url=http://localhost:41496/",
     "senior:audit": "node scripts/senior-visible-text-audit.js",
+    "senior:buttons": "node scripts/senior-button-action-audit.js",
     "test:e2e": "playwright test",
     "test:e2e:headed": "playwright test --headed",
     "test": "npm run smoke && npm run test:e2e"

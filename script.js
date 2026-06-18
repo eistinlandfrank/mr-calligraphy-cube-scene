@@ -4400,6 +4400,16 @@ function initPracticeCanvas() {
   if (stats?.latestSession?.status === "active" && stats.latestSession.strokes?.length) {
     window.MRPracticeCanvas?.loadStrokes?.(stats.latestSession.strokes);
   }
+
+  window.addEventListener("mr-practice-strokes-change", handlePracticeStrokesChange);
+}
+
+function handlePracticeStrokesChange() {
+  if (currentIndex !== 3 && currentIndex !== 5 && currentIndex !== 7) {
+    return;
+  }
+  updateInteractionPanel(currentIndex, activePointIndex);
+  renderScoreServiceSummary();
 }
 
 function bindReviewControls() {
@@ -12483,7 +12493,7 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     els.pointList.appendChild(button);
   });
 
-  scene.actions.slice(0, 3).forEach((action) => {
+  getVisibleLearningActions(scene.actions).slice(0, 3).forEach((action) => {
     const feature = getLearningActionFeature(action);
     const button = document.createElement("button");
     button.type = "button";
@@ -12502,6 +12512,34 @@ function updateInteractionPanel(sceneIndex, pointIndex) {
     els.actionList.appendChild(button);
   });
   renderDecisionMenu(sceneIndex);
+}
+
+function getVisibleLearningActions(actions = []) {
+  return actions.filter((action) => shouldShowLearningAction(action));
+}
+
+function shouldShowLearningAction(action = {}) {
+  const stats = window.MRAppState?.getStats?.();
+  const label = action.label || "";
+  const hasLiveStrokes = Boolean(window.MRPracticeCanvas?.hasStrokes?.());
+  const hasArtwork = Number(stats?.artworkCount || 0) > 0;
+  const hasReusableStrokes = hasLiveStrokes
+    || Boolean(stats?.latestSession?.strokes?.length)
+    || Boolean(stats?.latestArtwork?.strokes?.length);
+
+  if (label === "保存作品") {
+    return hasLiveStrokes;
+  }
+  if (label === "查看作品" || label === "导出分享页") {
+    return hasArtwork;
+  }
+  if (label === "筛选优秀记录") {
+    return hasArtwork;
+  }
+  if (label === "生成视频") {
+    return hasReusableStrokes;
+  }
+  return true;
 }
 
 function makeSeniorBrief(text = "", maxLength = 42) {

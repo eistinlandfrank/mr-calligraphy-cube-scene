@@ -772,6 +772,34 @@
 - 本轮 `node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build` 和移动端核心面板 E2E 均通过；运行截图保存为 `/tmp/mr-calligraphy-single-yong-fixed.png`。
 - `npm audit` 仍因代理 `407 Proxy Authentication Required` 未完成。
 
+## S37 前台按钮真实可用治理
+
+- [x] **S37-01：空白练习格隐藏无效工具**
+  验收：没有笔迹时，老人前台不显示撤销、清空、回放按钮；写出笔迹后按钮出现并操作真实画布状态。
+
+- [x] **S37-02：创作保存按真实笔迹显示**
+  验收：没有笔迹时不显示“保存作品”；有笔迹后显示，点击会写入 `MRAppState.saveArtwork()` 并增加作品数。
+
+- [x] **S37-03：无作品时隐藏作品类动作**
+  验收：没有作品时不显示“查看作品 / 导出分享页 / 筛选优秀记录”；没有可复用笔迹时不显示“生成视频”。
+
+- [x] **S37-04：核心可见按钮逐项审计**
+  验收：`scripts/senior-button-action-audit.js` 在手机老人模式点击首页、二级菜单、练字、创作、记录、报告和计划的核心可见按钮，按钮必须带来场景、反馈、统计或画布状态变化。
+
+- [x] **S37-05：接入构建门禁**
+  验收：`npm run build` 自动执行按钮真实可用审计；单独命令 `npm run senior:buttons` 可复查按钮条件显示和点击结果。
+
+完成记录（2026-06-18）：
+
+- 已把前台核心动作从“固定展示按钮”改为按真实数据条件展示。
+- 已新增 `getVisibleLearningActions()` 与 `shouldShowLearningAction()`，对保存、查看作品、导出分享页、筛选优秀记录和生成视频做状态门禁。
+- 已让 `practice-canvas.js` 在笔迹变化时更新工具栏，并向前台派发 `mr-practice-strokes-change` 事件，确保菜单随书写状态刷新。
+- 已新增 `npm run senior:buttons` 并接入 `scripts/smoke-test.js`，后续按钮无反馈或空状态按钮提前显示会导致构建失败。
+- 已调整 E2E 详细流程：仓库、远端、审计类旧面板只在 `e2e-show-details` 下显式验证，普通老人默认前台继续隐藏。
+- 已放宽主后台导入模型校验：同名物件仍拦截，同一 GLB / OBJ 文件允许重复导入为不同物件。
+- 本轮 `npm run build`、`npm run senior:audit -- --base-url=http://127.0.0.1:41496/`、`npm run senior:buttons -- --base-url=http://127.0.0.1:41496/`、干净临时数据目录下完整 Playwright 24 个真实流程和 `git diff --check` 均通过。
+- `npm audit --audit-level=high` 仍因代理 `407 Proxy Authentication Required` 未完成。
+
 ---
 
 ## 当前验收命令
@@ -779,6 +807,7 @@
 ```bash
 npm run build
 npm run senior:audit
+npm run senior:buttons
 PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js
 git diff --check
 npm audit --audit-level=high

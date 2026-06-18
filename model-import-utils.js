@@ -91,9 +91,11 @@ export function validateImportFile(file, options = {}) {
     throw new Error(`模型文件不能超过 ${formatBytes(maxBytes)}。`);
   }
 
+  const allowDuplicateFileName = options.allowDuplicateFileName === true;
   const duplicate = existingRecords.find((record) => {
-    return String(record.fileName || "").toLowerCase() === String(file.name || "").toLowerCase() ||
-      String(record.label || "").toLowerCase() === label;
+    const sameLabel = String(record.label || "").toLowerCase() === label;
+    const sameFileName = String(record.fileName || "").toLowerCase() === String(file.name || "").toLowerCase();
+    return sameLabel || (!allowDuplicateFileName && sameFileName);
   });
 
   if (duplicate) {

@@ -494,6 +494,19 @@ main-admin.html
 - 前台书写台现在只显示独立的 `writing-ink-character` 永字墨迹；该物件继续在后台“写字场景 / 永字墨迹”里统一控制，并随服务器本地布局保存发布。
 - 本轮验收通过：`node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E；`npm audit --audit-level=high` 仍被代理 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：前台按钮真实可用治理
+
+- 老人前台不再把暂时不能执行的按钮提前展示；按钮原则改为“有条件才显示，显示就必须能产生真实反馈”。
+- 空白练习格会隐藏撤销、清空和回放按钮；写出笔迹后才显示这些书写工具，并继续调用真实笔迹状态。
+- 无笔迹时创作台不显示“保存作品”；有笔迹后显示并保存到 `MRAppState.saveArtwork()`，作品数会真实增加。
+- 无作品时不显示“查看作品 / 导出分享页 / 筛选优秀记录”；没有可复用笔迹时不显示“生成视频”，避免老人点到空操作。
+- 新增 `scripts/senior-button-action-audit.js`，用手机老人模式逐一点击核心可见按钮，并断言场景、反馈、统计或画布状态发生真实变化。
+- `npm run build` 已接入按钮真实可用审计；单独命令 `npm run senior:buttons -- --base-url=http://localhost:41496/` 可在已启动服务上复查。
+- Playwright 详细仓库/远端流程改为显式进入 `e2e-show-details`，普通老人默认前台继续隐藏密集详情面板。
+- 主后台导入模型保留同名拦截，但允许同一个 GLB / OBJ 文件作为不同物件重复导入，符合真实布景复用需求。
+- 本轮验收通过：`npm run build`、`npm run senior:audit -- --base-url=http://127.0.0.1:41496/`、`npm run senior:buttons -- --base-url=http://127.0.0.1:41496/`、干净临时数据目录下完整 Playwright 24 个真实流程。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录
