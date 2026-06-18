@@ -428,6 +428,17 @@ main-admin.html
 - 本轮验收通过：`git diff --check`、`npm run build`、移动端核心面板 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：表单弹窗适老化大字化
+
+- 强制打开 `historyRenameDialog`、`artworkTagsDialog`、`planItemDialog` 后确认仍有 11-16px 小字：弹窗标题、取消按钮、字段标签和保存按钮都偏小。
+- 已把前台记录重命名、作品标签、计划项编辑弹窗统一升级为 22px 标题、18px 字段标签、48px 输入/选择控件和 48px 保存按钮。
+- 弹窗反馈条提升到 18px，并为弹窗本体增加 `overflow:auto`，防止手机视口下计划项表单被裁切。
+- 作品标签输入 placeholder 从“用空格、逗号或顿号分隔”缩短为“标签”，减少空表单里的说明文字。
+- 已在手机视口复查 3 个弹窗：可见文本无 18px 以下字号或 18 字以上长句，计划项弹窗高度 732px，未超出 844px 视口。
+- 已保存复查截图：`test-results/senior-menu-check/dialog-*-mobile.png`。
+- 本轮验收通过：`git diff --check`、`npm run build`、移动端核心面板 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录
