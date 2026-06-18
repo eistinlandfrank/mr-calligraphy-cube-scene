@@ -295,7 +295,7 @@ main-admin.html
 - 前台基础场景的隐藏写实书写层恢复旧版样张里的宣纸“永”字墨迹。
 - `front-main-scene-renderer.js` 的书写墨迹贴图恢复旧版墨迹质感，但改为轻量 Canvas 叠加，避免拖慢前台真实流程。
 - 墨迹平面放大并略微抬高，启用双面材质和 polygon offset，避免与白色宣纸深度冲突导致看起来消失。
-- 宣纸纹理中补入矢量笔触“永”字，作为纸面主视觉，避免浏览器缺少楷体字体或透明贴图失败时纸面变空白。
+- 当前实现已经取消宣纸纹理里的内嵌矢量“永”字，避免纸面和独立墨迹叠出两个字；主视觉只由 `writing-ink-character` 提供，后台可单独控制。
 - 进入书写台时会隐藏旧版桌面占位纸、砚台和毛笔，只保留写实书写层，避免旧占位纸盖住新宣纸。
 - 书写台默认视角改为桌面上方俯视近景，避免从桌下看时横梁遮挡宣纸。
 - 保持默认隐藏逻辑不变，只有进入“开始写 / 练字”后才显示写实桌面层。
@@ -485,6 +485,14 @@ main-admin.html
 - 验证通过：白底画布截图 `/tmp/mr-calligraphy-practice-white-paper-fixed.png`，后台多场景物件截图 `/tmp/mr-calligraphy-admin-scene-objects-fixed.png`；Playwright 保存验证确认 `layout.objects["writing-paper"].x = 0.42` 可写入。
 - 本轮验收通过：`node --check practice-canvas.js`、`node --check script.js`、`node --input-type=module --check < main-admin-scene.js`、`node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
+### 2026-06-18：移除宣纸内嵌永字
+
+- 用户截图中“永”字下方的淡灰字来自 `createWritingPaperTexture()`，它曾被直接画进宣纸材质贴图。
+- 该淡灰字不是 `layout.objects` 里的场景物件，也没有注册到后台 `TransformControls`，所以后台无法选中、移动或隐藏。
+- 已删除宣纸材质内嵌笔触，宣纸只保留纸色、纤维和噪声。
+- 前台书写台现在只显示独立的 `writing-ink-character` 永字墨迹；该物件继续在后台“写字场景 / 永字墨迹”里统一控制，并随服务器本地布局保存发布。
+- 本轮验收通过：`node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E；`npm audit --audit-level=high` 仍被代理 `407 Proxy Authentication Required` 拦截。
 
 ---
 

@@ -541,7 +541,8 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       ctx.stroke();
     }
     addCanvasNoise(ctx, canvasTexture.width, canvasTexture.height, 12);
-    drawYongInkStrokes(ctx, canvasTexture.width / 2, canvasTexture.height / 2 + 30, 1);
+    // Keep the paper texture blank; the visible glyph is the backend-controllable
+    // writing-ink-character object above the paper.
     return makeCanvasTexture(canvasTexture, 1, 1);
   }
 
@@ -639,69 +640,6 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       }
     }
     ctx.putImageData(image, 0, 0);
-  }
-
-  function drawYongInkStrokes(ctx, centerX, centerY, scale) {
-    const strokes = [
-      { width: 30, commands: [["M", -26, -260], ["C", -10, -238, 22, -223, 42, -204]] },
-      { width: 34, commands: [["M", -158, -176], ["C", -70, -196, 78, -192, 158, -168]] },
-      { width: 42, commands: [["M", 2, -170], ["C", 10, -66, -4, 84, -18, 174], ["C", -28, 216, -58, 232, -106, 212]] },
-      { width: 32, commands: [["M", -20, -58], ["C", -70, -16, -132, 52, -190, 134]] },
-      { width: 30, commands: [["M", 42, -70], ["C", 88, -24, 132, 40, 184, 112]] },
-      { width: 34, commands: [["M", 24, 26], ["C", 74, 96, 126, 162, 180, 224]] },
-      { width: 24, commands: [["M", -128, 2], ["C", -92, 36, -64, 62, -34, 84]] }
-    ];
-
-    ctx.save();
-    ctx.translate(centerX, centerY);
-    ctx.scale(scale, scale);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    strokes.forEach((stroke, index) => {
-      for (let i = 0; i < 5; i += 1) {
-        ctx.save();
-        ctx.globalAlpha = 0.04 + i * 0.012;
-        ctx.lineWidth = stroke.width + 18 + i * 3;
-        ctx.strokeStyle = "#1a1009";
-        ctx.filter = `blur(${4 + i}px)`;
-        ctx.translate((Math.random() - 0.5) * 5, (Math.random() - 0.5) * 5);
-        traceInkStroke(ctx, stroke.commands);
-        ctx.restore();
-      }
-
-      ctx.save();
-      ctx.globalAlpha = 0.9;
-      ctx.filter = "none";
-      ctx.lineWidth = stroke.width;
-      ctx.strokeStyle = index === 2 ? "#050302" : "#0b0604";
-      traceInkStroke(ctx, stroke.commands);
-      ctx.restore();
-
-      for (let i = 0; i < 3; i += 1) {
-        ctx.save();
-        ctx.globalAlpha = 0.14;
-        ctx.lineWidth = Math.max(4, stroke.width * (0.22 + Math.random() * 0.16));
-        ctx.strokeStyle = "#2a1a10";
-        ctx.translate((Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12);
-        traceInkStroke(ctx, stroke.commands);
-        ctx.restore();
-      }
-    });
-
-    ctx.restore();
-  }
-
-  function traceInkStroke(ctx, commands) {
-    ctx.beginPath();
-    commands.forEach((command) => {
-      if (command[0] === "M") {
-        ctx.moveTo(command[1], command[2]);
-      } else if (command[0] === "C") {
-        ctx.bezierCurveTo(command[1], command[2], command[3], command[4], command[5], command[6]);
-      }
-    });
-    ctx.stroke();
   }
 
   function makeCanvasTexture(canvasTexture, repeatX, repeatY) {

@@ -277,7 +277,7 @@
 ## S13 恢复书写台宣纸永字
 
 - [x] **S13-01：恢复旧版永字墨迹贴图**
-  验收：`front-main-scene-renderer.js` 的 `createCalligraphyTexture()` 使用轻量墨迹叠加保留旧版质感，宣纸纹理自身绘制矢量笔触“永”字作为稳定主视觉。
+  验收：`front-main-scene-renderer.js` 的 `createCalligraphyTexture()` 使用轻量墨迹叠加保留旧版质感，永字作为独立 `writing-ink-character` 物件显示。
 
 - [x] **S13-02：避免墨迹与宣纸深度冲突**
   验收：`writing-ink-character` 使用双面透明材质、polygon offset，并略微抬高到宣纸上方。
@@ -752,6 +752,25 @@
 - 已更新 smoke 标记和移动端 E2E，验证后台能切到“写字场景”并选中“写字宣纸”。
 - 本轮 `node --check practice-canvas.js`、`node --check script.js`、`node --input-type=module --check < main-admin-scene.js`、`node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build` 和移动端核心面板 E2E 均通过。
 - `npm audit` 仍因代理 407 未完成。
+
+## S36 移除宣纸内嵌永字
+
+- [x] **S36-01：宣纸材质不再画永字**
+  验收：`createWritingPaperTexture()` 只生成纸色、纤维和噪声，不再把矢量笔触“永”烘进贴图。
+
+- [x] **S36-02：永字只保留后台可控物件**
+  验收：前台书写台只显示 `writing-ink-character` 一个永字；后台可在“写字场景 / 永字墨迹”里移动、缩放或隐藏。
+
+- [x] **S36-03：记录后台不可控原因**
+  验收：开发文档明确说明旧的淡灰字来自宣纸贴图，不属于布局对象，因此后台无法单独选择或修改。
+
+完成记录（2026-06-18）：
+
+- 已删除前台宣纸纹理中内嵌的矢量永字，避免纸面和独立墨迹对象叠出两个字。
+- 已保留 `writing-ink-character` 作为唯一可见永字来源，继续使用后台多场景物件控制和服务器本地布局保存。
+- 已修正 S13 文档，避免后续误以为宣纸贴图仍应自带第二个字。
+- 本轮 `node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build` 和移动端核心面板 E2E 均通过；运行截图保存为 `/tmp/mr-calligraphy-single-yong-fixed.png`。
+- `npm audit` 仍因代理 `407 Proxy Authentication Required` 未完成。
 
 ---
 
