@@ -448,6 +448,16 @@ main-admin.html
 - 本轮验收通过：`node --check script.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E、真实书写保存与报告导出 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：老人前台小字回归门
+
+- 新增 `scripts/senior-visible-text-audit.js`，用 Chromium 打开普通老人模式并审计真实可见文本节点。
+- 审计覆盖手机首页、手机一级/二级全部菜单、桌面首页、强制误开的旧路径/前台编辑/审计面板，以及大字危险确认框。
+- 审计规则固定为可见文字不得低于 18px、单个可见文本不得超过 18 字；诊断模式和隐藏 DOM 不计入老人默认视野。
+- `npm run build` 的 smoke 流程已接入该审计，构建输出从 29 个脚本增加为 30 个脚本，后续小字或长句回流会直接导致构建失败。
+- 新增 `npm run senior:audit` 方便在已启动 `http://localhost:41496/` 时单独复查老人前台。
+- 本轮验收通过：`node --check scripts/senior-visible-text-audit.js`、`node --check scripts/smoke-test.js`、`git diff --check`、`npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/`、移动端核心面板 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录

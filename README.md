@@ -171,6 +171,7 @@ MRRoomAPI.focusRole("teacher-2");
 - 前台重命名、作品标签和计划项编辑弹窗也使用大标题、大字段名和 48px 触控控件，避免操作后再次出现小字表单。
 - 删除计划、档案和回收站等危险操作在老人普通模式使用大字短句确认框，避免浏览器原生小字弹窗挡住 VR/MR 视线。
 - 老人普通模式会硬隐藏旧路径清单、底部旧步骤导航和前台场景编辑面板，避免误打开后出现密集小字；主场景编辑继续在 `main-admin.html` 完成。
+- `npm run build` 内置老人前台可见文字审计，会自动打开手机/桌面、两级菜单、强制误开面板和确认框，阻止 18px 以下小字或 18 字以上长句回流。
 - 模型展示 / VR 环视状态会清掉标题和主面板文字层，只保留 3D 场景与“看全景”短提示。
 - MR / AR / VR 三种空间表现模式，老人默认视图只显示三个大按钮，诊断模式保留完整说明。
 - 可拖拽旋转视角、滚轮缩放、键盘切换 VR 功能舱。
@@ -184,10 +185,11 @@ MRRoomAPI.focusRole("teacher-2");
 
 ```bash
 npm run build
+npm run senior:audit
 PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js
 ```
 
-`npm run build` 当前等价于静态项目冒烟检查，会校验核心脚本、入口页面、后台页面和本机服务边界标记。
+`npm run build` 当前等价于静态项目冒烟检查，会校验核心脚本、入口页面、后台页面、本机服务边界标记和老人前台可见文字审计。`npm run senior:audit` 可在已有本地服务器上单独复查普通老人模式是否出现小字或长句。
 
 ## 开发文档
 

@@ -4,7 +4,7 @@ const fs = require("fs");
 const http = require("http");
 const https = require("https");
 const path = require("path");
-const { spawnSync } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 
 const ROOT = path.resolve(__dirname, "..");
 const TIMEOUT_MS = 5000;
@@ -24,6 +24,7 @@ const SCRIPT_CHECKS = [
   { file: "scripts/local-server.js", parser: "script" },
   { file: "scripts/learning-state-check.js", parser: "script" },
   { file: "scripts/learning-action-coverage-check.js", parser: "script" },
+  { file: "scripts/senior-visible-text-audit.js", parser: "script" },
   { file: "scripts/smoke-test.js", parser: "script" },
   { file: "tests/e2e/real-flows.spec.js", parser: "script" },
   { file: "app-state.js", parser: "script" },
@@ -128,6 +129,7 @@ async function main() {
   runScriptChecks(failures);
   runCommandChecks(failures);
   await runPageChecks(baseUrl, failures);
+  await runSeniorVisibleTextAudit(baseUrl, failures);
 
   if (staticServer) {
     await closeServer(staticServer.server);
@@ -243,6 +245,36 @@ async function runPageChecks(baseUrl, failures) {
       failures.push(`${page.label} ${page.path} 请求失败：${error.message}`);
     }
   }
+}
+
+function runSeniorVisibleTextAudit(baseUrl, failures) {
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ["scripts/senior-visible-text-audit.js", "--base-url", baseUrl], {
+      cwd: ROOT,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const stdout = [];
+    const stderr = [];
+
+    child.stdout.on("data", (chunk) => stdout.push(chunk));
+    child.stderr.on("data", (chunk) => stderr.push(chunk));
+    child.on("error", (error) => {
+      failures.push(`老人前台可见文字审计失败：${error.message}`);
+      resolve();
+    });
+    child.on("close", (status) => {
+      const output = Buffer.concat(stdout).toString("utf8").trim();
+      const errorOutput = Buffer.concat(stderr).toString("utf8").trim();
+      if (status !== 0) {
+        failures.push(`老人前台可见文字审计失败：${errorOutput || output}`);
+        resolve();
+        return;
+      }
+
+      console.log(`✓ ${output || "老人前台可见文字审计"}`);
+      resolve();
+    });
+  });
 }
 
 function requestPage(baseUrl, route) {

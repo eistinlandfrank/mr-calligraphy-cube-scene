@@ -665,12 +665,34 @@
 - 已把 5 处危险操作改成 `confirmSeniorDangerAction()`，真实删除逻辑不变，只替换确认层。
 - 本轮 `node --check script.js`、`npm run build`、移动端核心面板 E2E 和真实书写保存与报告导出 E2E 均通过；`npm audit` 仍因代理 407 未完成。
 
+## S32 老人前台小字回归门
+
+- [x] **S32-01：新增独立可见文字审计脚本**
+  验收：`scripts/senior-visible-text-audit.js` 能打开普通老人模式并检查真实可见文本节点。
+
+- [x] **S32-02：覆盖主交互状态**
+  验收：审计覆盖手机首页、一级菜单、全部二级动作、桌面首页、强制误开面板和危险确认框。
+
+- [x] **S32-03：固定适老化阈值**
+  验收：可见文本字号小于 18px 或单段超过 18 字时脚本退出失败，并输出选择器、字号、字数和文本。
+
+- [x] **S32-04：接入构建门禁**
+  验收：`npm run build` 自动执行老人前台可见文字审计；单独命令 `npm run senior:audit` 可在已有服务器上复查。
+
+完成记录（2026-06-18）：
+
+- 已把老人前台可见文字审计接入 `scripts/smoke-test.js`，并改用异步子进程避免阻塞临时静态服务器。
+- 审计脚本会屏蔽图片和模型资源以保持构建速度，仍保留真实 DOM、菜单和弹窗审计。
+- 本轮 `npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/` 和移动端核心面板 E2E 均通过；构建包含 30 个脚本、4 个页面、17 个普通老人模式状态和 145 个可见文本节点审计。
+- `npm audit` 仍因代理 407 未完成。
+
 ---
 
 ## 当前验收命令
 
 ```bash
 npm run build
+npm run senior:audit
 PLAYWRIGHT_BASE_URL=http://localhost:41496/ npx playwright test tests/e2e/real-flows.spec.js
 git diff --check
 npm audit --audit-level=high
