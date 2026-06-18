@@ -418,6 +418,16 @@ main-admin.html
 - 本轮验收通过：`node --check script.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E、真实书写保存与报告导出 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截，需代理认证恢复后再复跑。
 
+### 2026-06-18：旧导航和编辑面板防误打开
+
+- 对普通老人模式新增硬闸门：`.path-panel`、`.step-nav`、`.scene-api-panel` 在 `body:not(.e2e-show-details)` 下始终 `display:none`。
+- 该闸门针对“默认隐藏但误打开后会出现小字堆”的旧路径清单、底部步骤导航和前台场景编辑折叠框，防止后续开发把 11-15px 的密集文本带回前台。
+- 诊断模式 `body.e2e-show-details` 仍保留展开能力，方便 E2E 或开发人员检查完整流程、旧导航和本机编辑能力。
+- 已强制关闭这些面板的 `hidden` 并打开 `details` 复查：普通老人模式下旧路径、底部步骤、前台编辑仍无可见盒子，小字审计结果为 0。
+- 已保存复查截图：`test-results/senior-menu-check/forced-hidden-panels-after.png`。
+- 本轮验收通过：`git diff --check`、`npm run build`、移动端核心面板 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录

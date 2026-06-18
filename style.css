@@ -2890,6 +2890,12 @@ body:not(.e2e-show-details) .spatial-mode-head {
   display: none !important;
 }
 
+body:not(.e2e-show-details) .path-panel,
+body:not(.e2e-show-details) .scene-api-panel,
+body:not(.e2e-show-details) .step-nav {
+  display: none !important;
+}
+
 .scene-copy {
   top: 45%;
   left: clamp(320px, calc(50% + 80px), calc(100vw - 470px));
