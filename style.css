@@ -10327,6 +10327,70 @@ body[data-spatial-mode="mr"] .scene-copy {
   background: rgba(47, 111, 104, 0.5);
 }
 
+.senior-confirm-dialog {
+  width: min(360px, calc(100vw - 28px));
+  padding: 0;
+  border: 1px solid rgba(247, 215, 139, 0.4);
+  border-radius: 8px;
+  color: #fffaf1;
+  background: rgba(19, 22, 21, 0.98);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, 0.48);
+}
+
+.senior-confirm-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.62);
+}
+
+.senior-confirm-form {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.senior-confirm-form strong {
+  color: #fff4df;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1.22;
+}
+
+.senior-confirm-form p {
+  margin: 0;
+  color: #fffaf1;
+  font-size: 24px;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.senior-confirm-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.senior-confirm-actions button {
+  min-height: 54px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 7px;
+  color: #fffaf1;
+  background: rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.senior-confirm-actions button:last-child {
+  border-color: rgba(255, 123, 123, 0.38);
+  background: rgba(135, 47, 47, 0.36);
+}
+
+.senior-confirm-actions button:hover,
+.senior-confirm-actions button:focus-visible {
+  outline: none;
+  border-color: rgba(247, 215, 139, 0.62);
+  box-shadow: 0 0 0 2px rgba(247, 215, 139, 0.14);
+}
+
 @media (max-width: 1180px) {
   .mr-main-panel {
     left: min(58%, calc(100vw - 250px));

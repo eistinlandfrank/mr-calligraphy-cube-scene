@@ -439,6 +439,15 @@ main-admin.html
 - 本轮验收通过：`git diff --check`、`npm run build`、移动端核心面板 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：危险操作确认框适老化
+
+- 删除计划项、删除所选档案、永久删除回收站记录、清空回收站和删除当前档案不再在普通老人模式使用浏览器原生小字确认框。
+- 普通老人模式统一显示项目内大字确认弹窗，只保留“删除这项？/ 删除所选？/ 永久删除？/ 清空回收站？”等短句和 54px 操作按钮。
+- 完整确认文案保存在 `title` 与 `data-full-message`，诊断模式和 Playwright 自动化继续使用原生 `window.confirm()`，确保现有真实流程测试不受影响。
+- 已在手机视口强制打开确认框复查：可见文本无 18px 以下字号或 18 字以上长句。
+- 本轮验收通过：`node --check script.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E、真实书写保存与报告导出 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录

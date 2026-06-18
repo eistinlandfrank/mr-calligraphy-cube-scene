@@ -1112,6 +1112,11 @@ const els = {
   planItemRemindInput: document.getElementById("planItemRemindInput"),
   planItemReviewActionInput: document.getElementById("planItemReviewActionInput"),
   planItemDialogFeedback: document.getElementById("planItemDialogFeedback"),
+  seniorConfirmDialog: document.getElementById("seniorConfirmDialog"),
+  seniorConfirmTitle: document.getElementById("seniorConfirmTitle"),
+  seniorConfirmMessage: document.getElementById("seniorConfirmMessage"),
+  seniorConfirmCancel: document.getElementById("seniorConfirmCancel"),
+  seniorConfirmOk: document.getElementById("seniorConfirmOk"),
   stepLabel: document.getElementById("stepLabel"),
   sceneTitle: document.getElementById("sceneTitle"),
   sceneDescription: document.getElementById("sceneDescription"),
@@ -1272,6 +1277,7 @@ const REPORT_METRIC_GUIDES = {
 };
 let activePlanId = null;
 let activePlanItemEditor = null;
+let seniorConfirmResolver = null;
 let activeArtworkShareId = null;
 let isReplayVideoExporting = false;
 let isLecturePlaybackActive = false;
@@ -1947,6 +1953,7 @@ async function init() {
   bindReportControls();
   bindHistoryControls();
   bindPlanControls();
+  bindSeniorConfirmDialog();
   initPracticeCanvas();
   initInfoPanelDrag();
   initInfoPanelCollapse();
@@ -4703,6 +4710,82 @@ function bindPlanControls() {
   });
 
   els.planItemList?.addEventListener("click", handlePlanItemAction);
+}
+
+function bindSeniorConfirmDialog() {
+  els.seniorConfirmCancel?.addEventListener("click", () => {
+    resolveSeniorConfirmDialog(false);
+  });
+  els.seniorConfirmOk?.addEventListener("click", () => {
+    resolveSeniorConfirmDialog(true);
+  });
+  els.seniorConfirmDialog?.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    resolveSeniorConfirmDialog(false);
+  });
+  els.seniorConfirmDialog?.addEventListener("click", (event) => {
+    if (event.target === els.seniorConfirmDialog) {
+      resolveSeniorConfirmDialog(false);
+    }
+  });
+}
+
+function confirmSeniorDangerAction(message, options = {}) {
+  if (shouldShowDetailedSystemMessage() || !els.seniorConfirmDialog) {
+    return window.confirm(message);
+  }
+  return showSeniorConfirmDialog(message, options);
+}
+
+function showSeniorConfirmDialog(message, options = {}) {
+  const fullMessage = String(message || "确定继续吗？").replace(/\s+/g, " ").trim() || "确定继续吗？";
+  const visibleMessage = getSeniorConfirmMessage(options.shortMessage || fullMessage);
+
+  return new Promise((resolve) => {
+    if (seniorConfirmResolver) {
+      resolveSeniorConfirmDialog(false);
+    }
+    seniorConfirmResolver = resolve;
+
+    if (els.seniorConfirmTitle) {
+      els.seniorConfirmTitle.textContent = options.title || "请确认";
+    }
+    if (els.seniorConfirmMessage) {
+      els.seniorConfirmMessage.textContent = visibleMessage;
+      els.seniorConfirmMessage.title = fullMessage;
+      els.seniorConfirmMessage.dataset.fullMessage = fullMessage;
+    }
+    if (els.seniorConfirmCancel) {
+      els.seniorConfirmCancel.textContent = options.cancelLabel || "取消";
+    }
+    if (els.seniorConfirmOk) {
+      els.seniorConfirmOk.textContent = options.confirmLabel || "确定";
+    }
+
+    if (els.seniorConfirmDialog.showModal) {
+      els.seniorConfirmDialog.showModal();
+    } else {
+      els.seniorConfirmDialog.hidden = false;
+      els.seniorConfirmDialog.setAttribute("open", "");
+    }
+    els.seniorConfirmCancel?.focus();
+  });
+}
+
+function resolveSeniorConfirmDialog(value) {
+  const resolver = seniorConfirmResolver;
+  seniorConfirmResolver = null;
+
+  if (els.seniorConfirmDialog?.open && els.seniorConfirmDialog.close) {
+    els.seniorConfirmDialog.close(value ? "ok" : "cancel");
+  } else if (els.seniorConfirmDialog) {
+    els.seniorConfirmDialog.removeAttribute("open");
+    els.seniorConfirmDialog.hidden = true;
+  }
+
+  if (resolver) {
+    resolver(Boolean(value));
+  }
 }
 
 function renderLearningState() {
@@ -9269,7 +9352,7 @@ function renderPlanHistorySelect(planHistory, activeId) {
   els.planHistorySelect.value = activeId || planHistory[0]?.id || "";
 }
 
-function handlePlanItemAction(event) {
+async function handlePlanItemAction(event) {
   const button = event.target.closest("[data-plan-action]");
   if (!button) return;
 
@@ -9282,7 +9365,7 @@ function handlePlanItemAction(event) {
     openPlanItemDialog("edit", planId, itemId);
     return;
   } else if (action === "delete") {
-    result = deletePlanItem(planId, itemId);
+    result = await deletePlanItem(planId, itemId);
   } else if (action === "up" || action === "down") {
     result = window.MRAppState?.movePlanItem?.(planId, itemId, action);
   } else if (action === "snooze") {
@@ -9353,13 +9436,16 @@ function openPlanItemDialog(mode, planId, itemId = null) {
   els.planItemTitleInput?.focus();
 }
 
-function deletePlanItem(planId, itemId) {
+async function deletePlanItem(planId, itemId) {
   const plan = window.MRAppState?.getPlan?.(planId);
   const item = plan?.items?.find((entry) => entry.id === itemId);
   if (!item) {
     return { ok: false, message: "未找到计划任务。" };
   }
-  if (!window.confirm(`确定删除计划项“${item.title}”吗？`)) {
+  const confirmed = await confirmSeniorDangerAction(`确定删除计划项“${item.title}”吗？`, {
+    shortMessage: "删除这项？"
+  });
+  if (!confirmed) {
     return null;
   }
   return window.MRAppState?.deletePlanItem?.(planId, itemId);
@@ -11038,14 +11124,16 @@ function exportHistoryBatchReceiptAudit() {
   renderHistoryPanel(currentIndex);
 }
 
-function deleteSelectedHistoryRecords() {
+async function deleteSelectedHistoryRecords() {
   const count = selectedHistoryIds.size;
   if (!count) {
     showNotice("请先选择要删除的学习档案。");
     return;
   }
 
-  const confirmed = window.confirm(`确定将已选择的 ${count} 条学习档案移入回收站吗？之后可恢复最近删除。`);
+  const confirmed = await confirmSeniorDangerAction(`确定将已选择的 ${count} 条学习档案移入回收站吗？之后可恢复最近删除。`, {
+    shortMessage: "删除所选？"
+  });
   if (!confirmed) {
     return;
   }
@@ -11081,7 +11169,7 @@ function restoreLatestHistoryTrash() {
   showNotice(result?.message || "恢复失败。");
 }
 
-function handleHistoryTrashAction(event) {
+async function handleHistoryTrashAction(event) {
   const button = event.target.closest("[data-trash-action]");
   if (!button) {
     return;
@@ -11104,7 +11192,10 @@ function handleHistoryTrashAction(event) {
     const trash = window.MRAppState?.getHistoryTrash?.();
     const entry = (trash?.entries || []).find((item) => item.id === trashId);
     const label = entry ? `“${entry.title}”中的 ${entry.recordCount} 条学习档案` : "这条回收站记录";
-    if (!window.confirm(`确定永久删除${label}吗？此操作不能恢复。`)) {
+    const confirmed = await confirmSeniorDangerAction(`确定永久删除${label}吗？此操作不能恢复。`, {
+      shortMessage: "永久删除？"
+    });
+    if (!confirmed) {
       return;
     }
     const result = window.MRAppState?.deleteHistoryTrashEntry?.(trashId);
@@ -11329,13 +11420,16 @@ function submitArtworkTagsForm(event) {
   setHistoryEditFeedback(els.artworkTagsFeedback, result?.message || "作品标签更新失败。", "danger");
 }
 
-function clearHistoryTrash() {
+async function clearHistoryTrash() {
   const trash = window.MRAppState?.getHistoryTrash?.();
   if (!trash?.total) {
     showNotice("回收站已经是空的。");
     return;
   }
-  if (!window.confirm(`确定清空回收站中的 ${trash.recordCount} 条学习档案吗？清空后将不能恢复。`)) {
+  const confirmed = await confirmSeniorDangerAction(`确定清空回收站中的 ${trash.recordCount} 条学习档案吗？清空后将不能恢复。`, {
+    shortMessage: "清空回收站？"
+  });
+  if (!confirmed) {
     return;
   }
 
@@ -11630,14 +11724,16 @@ function setHistoryEditFeedback(target, message, tone = "idle") {
   target.hidden = !message;
 }
 
-function deleteHistoryDetail() {
+async function deleteHistoryDetail() {
   const detail = getActiveHistoryDetail();
   if (!detail) {
     showNotice("请选择一条记录。");
     return;
   }
 
-  const confirmed = window.confirm(`确定将“${detail.title}”移入回收站吗？之后可恢复最近删除。`);
+  const confirmed = await confirmSeniorDangerAction(`确定将“${detail.title}”移入回收站吗？之后可恢复最近删除。`, {
+    shortMessage: "删除这条？"
+  });
   if (!confirmed) {
     return;
   }
@@ -12503,6 +12599,23 @@ function shouldShowDetailedSystemMessage() {
   if (window.__MR_FORCE_SENIOR_NOTICE === true) return false;
   if (document.body?.classList.contains("e2e-show-details")) return true;
   return navigator.webdriver === true;
+}
+
+function getSeniorConfirmMessage(message = "") {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  if (!text) return "确定继续？";
+  const compact = text.replace(/\s+/g, "");
+  const rules = [
+    { pattern: /永久删除/, label: "永久删除？" },
+    { pattern: /清空回收站/, label: "清空回收站？" },
+    { pattern: /所选|已选择|批量/, label: "删除所选？" },
+    { pattern: /计划项|计划任务/, label: "删除这项？" },
+    { pattern: /学习档案|记录|作品/, label: "删除这条？" }
+  ];
+  const matched = rules.find((rule) => rule.pattern.test(compact));
+  if (matched) return matched.label;
+  if (compact.length <= 8) return compact;
+  return makeSeniorBrief(compact, 8);
 }
 
 function getSeniorNoticeMessage(message = "") {

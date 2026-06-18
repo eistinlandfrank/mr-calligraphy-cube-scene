@@ -776,6 +776,17 @@
             <button data-feature-state="real-local" id="planItemSave" type="submit">保存计划项</button>
           </form>
         </dialog>
+
+        <dialog id="seniorConfirmDialog" class="senior-confirm-dialog" aria-labelledby="seniorConfirmTitle">
+          <form class="senior-confirm-form" method="dialog">
+            <strong id="seniorConfirmTitle">请确认</strong>
+            <p id="seniorConfirmMessage">确定继续吗？</p>
+            <div class="senior-confirm-actions">
+              <button data-feature-state="real-local" id="seniorConfirmCancel" type="button">取消</button>
+              <button data-feature-state="real-local" id="seniorConfirmOk" type="button">确定</button>
+            </div>
+          </form>
+        </dialog>
       </section>
 
       <details class="scene-api-panel" hidden>
