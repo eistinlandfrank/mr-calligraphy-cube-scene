@@ -727,6 +727,32 @@
 - 本轮 `node --check script.js`、`node --check scripts/senior-visible-text-audit.js`、`git diff --check`、`npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/` 和移动端核心面板 E2E 均通过。
 - `npm audit` 仍因代理 407 未完成。
 
+## S35 白底书写画布与后台多场景物件
+
+- [x] **S35-01：书写画布改为白底宣纸**
+  验收：进入写字场景后，练习格显示白底宣纸、浅色“永”字底稿和米字格，不再显示红色透明遮罩。
+
+- [x] **S35-02：修复隐藏初始化 1×1 画布**
+  验收：切入写字模式后会主动刷新画布尺寸，`practiceCanvas.width/height` 与可见尺寸一致，不再拉伸单像素导致变黑或变色。
+
+- [x] **S35-03：后台左侧改为多场景物件控制**
+  验收：`main-admin.html` 左侧显示“多场景物件”，可切换基础场景、写字场景、展示场景和新增/导入，不再把本机静态后台说明作为默认左侧面板。
+
+- [x] **S35-04：写字场景额外物件可真实控制**
+  验收：选择“写字场景”时，左侧优先显示写字宣纸、永字墨迹、写字砚台、写字毛笔、写字印章和透明讲解屏；点击后右侧坐标控件显示“场景额外物件”。
+
+- [x] **S35-05：前后台读取同一套位置**
+  验收：后台保存 `writing-*` 物件会写入主场景 `layout.objects`，前台写字层读取这些坐标并转换到隐藏写字层内部坐标。
+
+完成记录（2026-06-18）：
+
+- 已将书写画布改成自绘白底，并增加 `ResizeObserver` 与写字模式主动刷新。
+- 已把后台左侧替换为多场景物件控制，操作者审计移动到右侧工具区。
+- 已新增写字场景 6 个额外物件，并纳入图层、坐标、保存、快照和发布数据结构。
+- 已更新 smoke 标记和移动端 E2E，验证后台能切到“写字场景”并选中“写字宣纸”。
+- 本轮 `node --check practice-canvas.js`、`node --check script.js`、`node --input-type=module --check < main-admin-scene.js`、`node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build` 和移动端核心面板 E2E 均通过。
+- `npm audit` 仍因代理 407 未完成。
+
 ---
 
 ## 当前验收命令

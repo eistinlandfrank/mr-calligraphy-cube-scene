@@ -2153,6 +2153,9 @@ function setWritingDeskMode(visible, options = {}) {
   document.body.classList.toggle("is-writing-desk-mode", nextVisible);
   window.MR_WRITING_DESK_VISIBLE = nextVisible;
   roomRenderer?.setWritingDeskVisible?.(nextVisible);
+  if (nextVisible) {
+    requestAnimationFrame(() => window.MRPracticeCanvas?.resize?.());
+  }
 
   if (nextVisible && (options.focus || !wasVisible)) {
     cubeYaw = 0;

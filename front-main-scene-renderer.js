@@ -28,6 +28,14 @@ const WRITING_DESK_PLACEHOLDER_IDS = new Set([
   "desktop-gold-brush",
   "desktop-red-brush"
 ]);
+const WRITING_DESK_OBJECT_SPECS = {
+  "writing-paper": { id: "writing-paper", position: [0, -0.95, -3.42], rotation: [0, -1.7, 0], scale: 1 },
+  "writing-ink-character": { id: "writing-ink-character", position: [-0.08, -0.91, -3.44], rotation: [0, -1.7, 0], scale: 1 },
+  "writing-inkstone": { id: "writing-inkstone", position: [-1.68, -0.89, -3.9], rotation: [0, -1.7, 0], scale: 1 },
+  "writing-brush": { id: "writing-brush", position: [0.68, -0.78, -3.78], rotation: [-4.6, 189, 10.3], scale: 1 },
+  "writing-seal": { id: "writing-seal", position: [1.34, -0.77, -2.84], rotation: [0, -14.3, 0], scale: 1 },
+  "writing-guide-glass": { id: "writing-guide-glass", position: [2.36, 0.17, -4.47], rotation: [-6.9, -48.7, -2.3], scale: 1 }
+};
 
 export async function createFrontMainSceneRenderer(canvas, options = {}) {
   const renderer = new THREE.WebGLRenderer({
@@ -95,6 +103,7 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       lighting = normalizeLighting(layout.lighting);
       applyLighting();
       await rebuildObjects();
+      applyWritingDeskLayout();
       render();
     },
     setWritingDeskVisible(visible) {
@@ -312,6 +321,7 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     createWritingSeal();
     createWritingGuideGlass();
     loadWritingBrush();
+    applyWritingDeskLayout();
     applyEnvironmentIntensityToScene(writingDeskRoot);
   }
 
@@ -334,10 +344,12 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     bottomEdge.castShadow = true;
     paperRoot.add(bottomEdge);
 
+    registerWritingDeskObject(paperRoot, "writing-paper");
     writingDeskRoot.add(paperRoot);
   }
 
   function createWritingInkCharacter() {
+    const inkRoot = new THREE.Group();
     const material = new THREE.MeshPhysicalMaterial({
       map: createCalligraphyTexture(),
       color: 0xffffff,
@@ -354,11 +366,11 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       polygonOffsetUnits: -2
     });
     const inkPlane = new THREE.Mesh(new THREE.PlaneGeometry(2.24, 1.56), material);
-    inkPlane.name = "writing-ink-character";
-    inkPlane.position.set(-0.08, 0.052, -0.02);
     inkPlane.rotation.x = -Math.PI / 2;
     inkPlane.renderOrder = 5;
-    writingDeskRoot.add(inkPlane);
+    inkRoot.add(inkPlane);
+    registerWritingDeskObject(inkRoot, "writing-ink-character");
+    writingDeskRoot.add(inkRoot);
   }
 
   function createWritingInkstone() {
@@ -378,26 +390,27 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     ink.castShadow = true;
     inkstoneRoot.add(ink);
 
+    registerWritingDeskObject(inkstoneRoot, "writing-inkstone");
     writingDeskRoot.add(inkstoneRoot);
   }
 
   function createWritingSeal() {
+    const sealRoot = new THREE.Group();
     const seal = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.34, 0.28), materials.red);
-    seal.name = "writing-seal";
-    seal.position.set(1.34, 0.18, 0.58);
-    seal.rotation.y = -0.22;
     seal.castShadow = true;
     seal.receiveShadow = true;
-    writingDeskRoot.add(seal);
+    sealRoot.add(seal);
+    registerWritingDeskObject(sealRoot, "writing-seal");
+    writingDeskRoot.add(sealRoot);
   }
 
   function createWritingGuideGlass() {
+    const panelRoot = new THREE.Group();
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.5), materials.writingGlass);
-    panel.name = "writing-guide-glass";
-    panel.position.set(2.36, 1.12, -1.05);
-    panel.rotation.set(-0.12, -0.82, -0.04);
     panel.castShadow = true;
-    writingDeskRoot.add(panel);
+    panelRoot.add(panel);
+    registerWritingDeskObject(panelRoot, "writing-guide-glass");
+    writingDeskRoot.add(panelRoot);
   }
 
   function loadWritingBrush() {
@@ -407,6 +420,7 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
     brushRoot.rotation.set(-0.08, Math.PI * 1.05, 0.18);
     const fallback = createWritingBrushFallback();
     brushRoot.add(fallback);
+    registerWritingDeskObject(brushRoot, "writing-brush");
     writingDeskRoot.add(brushRoot);
 
     loader.loadAsync("assets/models/brush-web.glb?v=embedded-brush-20260514")
@@ -421,6 +435,37 @@ export async function createFrontMainSceneRenderer(canvas, options = {}) {
       .catch(() => {
         // The procedural brush remains in place when the GLB is unavailable.
       });
+  }
+
+  function registerWritingDeskObject(object, id) {
+    object.name = id;
+    object.userData.objectId = id;
+    object.userData.scaleFactor = 1;
+    applyWritingDeskObjectState(object, WRITING_DESK_OBJECT_SPECS[id]);
+  }
+
+  function applyWritingDeskLayout() {
+    writingDeskRoot.updateMatrixWorld(true);
+    writingDeskRoot.children.forEach((child) => {
+      const id = child.userData.objectId || child.name;
+      if (!WRITING_DESK_OBJECT_SPECS[id]) return;
+      applyWritingDeskObjectState(child, WRITING_DESK_OBJECT_SPECS[id]);
+    });
+  }
+
+  function applyWritingDeskObjectState(object, spec) {
+    if (!object || !spec) return;
+    const state = getState(spec);
+    writingDeskRoot.updateMatrixWorld(true);
+    const localPosition = writingDeskRoot.worldToLocal(new THREE.Vector3(state.x, state.y, state.z));
+    object.position.copy(localPosition);
+    object.rotation.set(
+      toRadians(state.rx) - writingDeskRoot.rotation.x,
+      toRadians(state.ry) - writingDeskRoot.rotation.y,
+      toRadians(state.rz) - writingDeskRoot.rotation.z
+    );
+    object.scale.setScalar(state.scale || 1);
+    object.visible = state.deleted !== true && state.hidden !== true;
   }
 
   function prepareWritingBrushModel(brush) {

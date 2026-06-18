@@ -475,6 +475,17 @@ main-admin.html
 - 本轮验收通过：`node --check script.js`、`node --check scripts/senior-visible-text-audit.js`、`git diff --check`、`npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/`、移动端核心面板 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：白底书写画布与后台多场景物件控制
+
+- 书写练习画布不再依赖红色透明框叠在 3D 背景上；`practice-canvas.js` 每次渲染都会先绘制白底宣纸、浅色“永”字底稿和米字格，再绘制用户笔迹。
+- 新增 `ResizeObserver` 和切入写字模式后的主动 `resize()`，修复练字面板隐藏初始化时 canvas 只有 1×1、进入后被拉伸变色的问题。
+- `main-admin.html` 左侧从本机静态后台说明改为“多场景物件”面板，可切换基础场景、写字场景、展示场景和新增/导入。
+- 主后台新增写字场景额外物件：写字宣纸、永字墨迹、写字砚台、写字毛笔、写字印章、透明讲解屏；这些物件注册到同一套 `TransformControls`、对象图层、保存和发布流程。
+- 前台 `front-main-scene-renderer.js` 会读取 `layout.objects` 中的 `writing-*` 坐标，并转换到隐藏写字层内部坐标，确保后台保存后前台切入写字场景能读取同一套位置。
+- 验证通过：白底画布截图 `/tmp/mr-calligraphy-practice-white-paper-fixed.png`，后台多场景物件截图 `/tmp/mr-calligraphy-admin-scene-objects-fixed.png`；Playwright 保存验证确认 `layout.objects["writing-paper"].x = 0.42` 可写入。
+- 本轮验收通过：`node --check practice-canvas.js`、`node --check script.js`、`node --input-type=module --check < main-admin-scene.js`、`node --input-type=module --check < front-main-scene-renderer.js`、`git diff --check`、`npm run build`、移动端核心面板 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录

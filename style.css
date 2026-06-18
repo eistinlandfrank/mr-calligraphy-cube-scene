@@ -433,6 +433,148 @@ button {
     rgba(16, 16, 16, 0.72);
 }
 
+.admin-scene-object-panel {
+  position: absolute;
+  z-index: 12;
+  left: 24px;
+  top: 96px;
+  display: grid;
+  gap: 12px;
+  width: min(420px, calc(100vw - 460px));
+  min-width: 320px;
+  max-height: calc(100vh - 120px);
+  padding: 14px;
+  overflow: auto;
+  border: 1px solid rgba(116, 255, 219, 0.22);
+  border-radius: 8px;
+  color: #f6fffb;
+  background:
+    linear-gradient(180deg, rgba(28, 92, 82, 0.86), rgba(12, 30, 28, 0.9)),
+    rgba(16, 16, 16, 0.74);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(16px);
+}
+
+.admin-scene-object-head {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-scene-object-head span,
+.admin-scene-object-field span {
+  color: rgba(232, 255, 249, 0.66);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-scene-object-head strong {
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.admin-scene-object-field {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-scene-object-field select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  font: inherit;
+  font-weight: 800;
+}
+
+.admin-scene-object-summary {
+  margin: 0;
+  padding: 10px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: rgba(245, 255, 251, 0.82);
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 13px;
+  font-weight: 760;
+  line-height: 1.45;
+}
+
+.admin-scene-object-list {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-scene-object-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-height: 42px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 7px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.075);
+  cursor: pointer;
+  text-align: left;
+}
+
+.admin-scene-object-item:hover,
+.admin-scene-object-item:focus-visible,
+.admin-scene-object-item.is-active {
+  border-color: rgba(116, 255, 219, 0.48);
+  outline: none;
+  background: rgba(116, 255, 219, 0.16);
+}
+
+.admin-scene-object-item strong,
+.admin-scene-object-item span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-scene-object-item strong {
+  font-size: 14px;
+}
+
+.admin-scene-object-item span {
+  color: rgba(245, 255, 251, 0.68);
+  font-size: 12px;
+  font-weight: 780;
+}
+
+.admin-scene-object-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.admin-scene-object-actions button {
+  min-height: 40px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 7px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.admin-scene-object-actions button:hover,
+.admin-scene-object-actions button:focus-visible {
+  border-color: rgba(116, 255, 219, 0.5);
+  outline: none;
+  background: rgba(47, 111, 104, 0.56);
+}
+
 .admin-boundary-panel {
   grid-column: 1 / -1;
   display: grid;
@@ -514,6 +656,11 @@ button {
   border: 1px solid rgba(116, 255, 219, 0.18);
   border-radius: 8px;
   background: rgba(7, 18, 18, 0.28);
+}
+
+.main-admin-operator-compact .admin-audit-list {
+  max-height: 126px;
+  overflow: auto;
 }
 
 .admin-operator-head {
@@ -4957,11 +5104,14 @@ body[data-spatial-mode="mr"] .scene-copy {
   place-items: center;
   min-height: 180px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(174, 92, 56, 0.46);
   border-radius: 8px;
   background:
-    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.18), transparent 38%),
-    rgba(248, 237, 214, 0.28);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(250, 238, 213, 0.94)),
+    #fffdf7;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+    0 10px 28px rgba(33, 18, 8, 0.16);
 }
 
 .glyph-board span {
@@ -4982,6 +5132,7 @@ body[data-spatial-mode="mr"] .scene-copy {
   z-index: 2;
   width: 100%;
   height: 100%;
+  background: #fffdf7;
   cursor: crosshair;
   touch-action: none;
 }
@@ -5000,13 +5151,14 @@ body[data-spatial-mode="mr"] .scene-copy {
   place-items: center;
   width: 46px;
   height: 46px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(78, 49, 31, 0.24);
   border-radius: 7px;
   color: #fffaf1;
-  background: rgba(30, 34, 31, 0.58);
+  background: rgba(42, 34, 28, 0.84);
   cursor: pointer;
   font-size: 20px;
   font-weight: 900;
+  box-shadow: 0 8px 18px rgba(33, 18, 8, 0.18);
 }
 
 .practice-toolbar button:hover,
@@ -5026,8 +5178,8 @@ body[data-spatial-mode="mr"] .scene-copy {
   min-height: 30px;
   padding: 6px 8px;
   border-radius: 7px;
-  color: rgba(255, 250, 241, 0.82);
-  background: rgba(30, 34, 31, 0.48);
+  color: rgba(54, 36, 24, 0.86);
+  background: rgba(255, 253, 247, 0.78);
   font-size: 11px;
   line-height: 1.35;
   pointer-events: none;
@@ -10411,6 +10563,14 @@ body[data-spatial-mode="mr"] .scene-copy {
     overflow-y: auto;
     min-width: 0;
     grid-template-columns: 1fr;
+  }
+
+  .admin-scene-object-panel {
+    left: 12px;
+    top: 72px;
+    width: calc(100vw - 24px);
+    max-height: 248px;
+    min-width: 0;
   }
 
   .admin-operator-fields {

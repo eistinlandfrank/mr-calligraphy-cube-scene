@@ -143,6 +143,13 @@ test("mobile viewports keep core panels usable without overlap", async ({ page }
   await page.goto("/main-admin.html", { waitUntil: "domcontentloaded" });
   await expectCanvasHasVisiblePixels(page, "#mainAdminCanvas");
   await expect(page.locator("#mainObjectSelect")).toBeVisible();
+  await expect(page.locator("#mainSceneScopeSelect")).toBeVisible();
+  await page.locator("#mainSceneScopeSelect").selectOption("practice");
+  await expect(page.locator("#mainSceneScopeSummary")).toContainText("写字场景");
+  await expect(page.locator("#mainSceneScopeQuickList")).toContainText("写字宣纸");
+  await expect(page.locator("#mainObjectSelect")).toContainText("写字宣纸");
+  await page.locator('[data-scene-object-select="writing-paper"]').click();
+  await expect(page.locator("#mainObjectType")).toContainText("场景额外物件");
   await expectNoHorizontalOverflow(page);
   await expectBoxInsideViewport(page, ".main-admin-header");
   await expectBoxInsideViewport(page, "#mainAdminRiskBanner");

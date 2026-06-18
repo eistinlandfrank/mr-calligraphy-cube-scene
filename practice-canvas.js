@@ -61,6 +61,7 @@
     undoButton: null,
     clearButton: null,
     replayButton: null,
+    resizeObserver: null,
     glyph: "永",
     strokes: [],
     currentStroke: null,
@@ -87,9 +88,20 @@
     bindCanvas();
     bindToolbar();
     resize();
+    bindResizeObserver();
     render();
     setStatus("在米字格中书写，保存作品时会记录笔迹和截图。");
     window.addEventListener("resize", resize);
+  }
+
+  function bindResizeObserver() {
+    if (typeof ResizeObserver !== "function" || !state.canvas) return;
+    state.resizeObserver?.disconnect?.();
+    state.resizeObserver = new ResizeObserver(() => resize());
+    state.resizeObserver.observe(state.canvas);
+    if (state.canvas.parentElement) {
+      state.resizeObserver.observe(state.canvas.parentElement);
+    }
   }
 
   function bindCanvas() {
@@ -223,7 +235,9 @@
 
     const ctx = state.ctx;
     ctx.clearRect(0, 0, state.width, state.height);
+    drawPaperBase(ctx, state.width, state.height);
     drawGuides(ctx, state.width, state.height);
+    drawGuideGlyph(ctx, state.width, state.height);
     drawStrokes(ctx, strokes, "rgba(9, 8, 7, 0.88)", 5.2);
 
     if (currentStroke && currentStroke.length > 1) {
@@ -231,20 +245,46 @@
     }
   }
 
+  function drawPaperBase(ctx, width, height) {
+    ctx.save();
+    ctx.fillStyle = "#fffdf7";
+    ctx.fillRect(0, 0, width, height);
+
+    const gradient = ctx.createRadialGradient(width * 0.5, height * 0.42, 8, width * 0.5, height * 0.45, Math.max(width, height) * 0.7);
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0.92)");
+    gradient.addColorStop(1, "rgba(239, 220, 184, 0.24)");
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+    ctx.restore();
+  }
+
   function drawGuides(ctx, width, height) {
     ctx.save();
-    ctx.strokeStyle = "rgba(125, 42, 32, 0.22)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(138, 58, 38, 0.28)";
+    ctx.lineWidth = 1.25;
     ctx.setLineDash([5, 6]);
     drawLine(ctx, width * 0.5, 0, width * 0.5, height);
     drawLine(ctx, 0, height * 0.5, width, height * 0.5);
     drawLine(ctx, 0, 0, width, height);
     drawLine(ctx, width, 0, 0, height);
     ctx.setLineDash([]);
-    ctx.strokeStyle = "rgba(125, 42, 32, 0.32)";
+    ctx.strokeStyle = "rgba(138, 58, 38, 0.5)";
+    ctx.lineWidth = 2;
     ctx.strokeRect(width * 0.08, height * 0.08, width * 0.84, height * 0.84);
     ctx.restore();
   }
+
+  function drawGuideGlyph(ctx, width, height) {
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = "#2a1c13";
+    ctx.font = `600 ${Math.round(Math.min(width, height) * 0.62)}px KaiTi, STKaiti, SimSun, serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(state.glyph || "永", width / 2, height / 2 + height * 0.035);
+    ctx.restore();
+  }
+
 
   function drawLine(ctx, x1, y1, x2, y2) {
     ctx.beginPath();
@@ -1227,6 +1267,7 @@
     clear,
     undo,
     replay,
+    resize,
     exportReplayVideo,
     exportReplayCover,
     getResult,

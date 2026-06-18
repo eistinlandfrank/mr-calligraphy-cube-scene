@@ -97,6 +97,11 @@ const layerBatchUnlockButton = document.getElementById("mainLayerBatchUnlock");
 const layerBatchClearButton = document.getElementById("mainLayerBatchClear");
 const layerSummary = document.getElementById("mainLayerSummary");
 const layerList = document.getElementById("mainLayerList");
+const sceneScopeSelect = document.getElementById("mainSceneScopeSelect");
+const sceneScopeSummary = document.getElementById("mainSceneScopeSummary");
+const sceneScopeQuickList = document.getElementById("mainSceneScopeQuickList");
+const sceneScopeShowButton = document.getElementById("mainSceneScopeShow");
+const sceneScopeFocusButton = document.getElementById("mainSceneScopeFocus");
 const snapshotCreateButton = document.getElementById("mainSnapshotCreate");
 const snapshotRefreshButton = document.getElementById("mainSnapshotRefresh");
 const historyStatus = document.getElementById("mainHistoryStatus");
@@ -237,6 +242,46 @@ const DECOR_SPECS = [
   { id: "ceiling-beam-back", label: "后侧横梁", position: [0, 5.02, 3.2], scale: 1, create: () => createBoxObject(16, 0.18, 0.24, materials.darkWood) }
 ];
 
+const SCENE_EXTRA_SPECS = [
+  { id: "writing-paper", label: "写字宣纸", scope: "practice", position: [0, -0.95, -3.42], rotation: [0, -1.7, 0], scale: 1, create: createSceneWritingPaper },
+  { id: "writing-ink-character", label: "永字墨迹", scope: "practice", position: [-0.08, -0.91, -3.44], rotation: [0, -1.7, 0], scale: 1, create: createSceneInkCharacter },
+  { id: "writing-inkstone", label: "写字砚台", scope: "practice", position: [-1.68, -0.89, -3.9], rotation: [0, -1.7, 0], scale: 1, create: createSceneInkstone },
+  { id: "writing-brush", label: "写字毛笔", scope: "practice", position: [0.68, -0.78, -3.78], rotation: [-4.6, 189, 10.3], scale: 1, create: createSceneBrush },
+  { id: "writing-seal", label: "写字印章", scope: "practice", position: [1.34, -0.77, -2.84], rotation: [0, -14.3, 0], scale: 1, create: createSceneSeal },
+  { id: "writing-guide-glass", label: "透明讲解屏", scope: "practice", position: [2.36, 0.17, -4.47], rotation: [-6.9, -48.7, -2.3], scale: 1, create: createSceneGuideGlass }
+];
+const PRACTICE_SCOPE_BASE_IDS = new Set([
+  "main-writing-table",
+  "desktop-paper",
+  "desktop-inkstone",
+  "desktop-gold-brush",
+  "desktop-red-brush",
+  "brush-rack",
+  "ink-set",
+  ...SCENE_EXTRA_SPECS.map((spec) => spec.id)
+]);
+const DISPLAY_SCOPE_BASE_IDS = new Set([
+  "front-left-scroll",
+  "front-right-scroll",
+  "back-left-scroll",
+  "back-right-scroll",
+  "left-wall-scroll",
+  "right-wall-scroll",
+  "low-display-stand",
+  "desktop-ceramic-jar",
+  "floor-ceramic-jar",
+  "front-left-potted-plant",
+  "right-corner-potted-plant",
+  "desk-small-plant",
+  "tea-corner-round-rug"
+]);
+const SCENE_SCOPE_LABELS = {
+  base: "基础场景",
+  practice: "写字场景",
+  display: "展示场景",
+  custom: "新增 / 导入"
+};
+
 const layout = loadLayout(serverDraftLayout);
 let layoutHistory = loadLayoutHistory();
 let importTextureCleanupRefreshToken = 0;
@@ -289,6 +334,7 @@ const undoStack = [];
 const lightRig = {};
 const selectedLayerIds = new Set();
 let selectedEntry = null;
+let activeSceneScopeId = "base";
 let dragStart = null;
 let draggedLayerId = null;
 let inputStart = null;
@@ -473,10 +519,12 @@ function buildRoom() {
 function buildObjects() {
   MODEL_SPECS.forEach(createModelObject);
   DECOR_SPECS.forEach(createDecorObject);
+  SCENE_EXTRA_SPECS.forEach(createSceneExtraObject);
   layout.customObjects.forEach(createCustomObject);
   loadImportedModels();
+  applySceneScopePreview();
   populateObjectSelect();
-  selectObject("main-writing-table");
+  selectFirstSceneScopeObject("main-writing-table");
   showNotice("已进入 Three.js 管理页：点击模型可选中，拖动红绿蓝操作轴调整。");
 }
 
@@ -515,6 +563,18 @@ function createDecorObject(spec) {
   group.userData.scaleFactor = 1;
   applyState(group, state);
   registerObject(spec, "装饰", group);
+}
+
+function createSceneExtraObject(spec) {
+  const group = spec.create();
+  const state = getState(spec);
+
+  scene.add(group);
+  group.userData.scaleFactor = 1;
+  group.userData.isSceneExtra = true;
+  group.userData.sceneScope = spec.scope || "practice";
+  applyState(group, state);
+  registerObject(spec, "场景物件", group);
 }
 
 function createCustomObject(spec) {
@@ -576,6 +636,7 @@ async function loadImportedModels() {
     }
   }
 
+  applySceneScopePreview();
   populateObjectSelect();
   if (selectedEntry) {
     objectSelect.value = selectedEntry.id;
@@ -631,6 +692,8 @@ async function handleImportModel(event) {
     saveEntry(entry);
     saveLayout();
     pushUndo({ kind: "import-add", id: entry.id });
+    activeSceneScopeId = "custom";
+    applySceneScopePreview();
     populateObjectSelect();
     selectObject(entry.id);
     importModelNameInput.value = "";
@@ -845,6 +908,147 @@ function createBoxObject(width, height, depth, material, position = [0, 0, 0]) {
   mesh.position.set(position[0], position[1], position[2]);
   group.add(mesh);
   return group;
+}
+
+function createSceneWritingPaper() {
+  const group = new THREE.Group();
+  const material = new THREE.MeshStandardMaterial({
+    map: createScenePaperTexture(),
+    color: 0xfff9ec,
+    roughness: 0.94,
+    side: THREE.DoubleSide
+  });
+  const paper = new THREE.Mesh(new THREE.BoxGeometry(2.78, 0.04, 1.7), material);
+  paper.receiveShadow = true;
+  group.add(paper);
+  return group;
+}
+
+function createSceneInkCharacter() {
+  const group = new THREE.Group();
+  const material = new THREE.MeshPhysicalMaterial({
+    map: createSceneYongTexture(),
+    color: 0xffffff,
+    transparent: true,
+    opacity: 1,
+    roughness: 0.48,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2
+  });
+  const ink = new THREE.Mesh(new THREE.PlaneGeometry(2.24, 1.56), material);
+  ink.rotation.x = -Math.PI / 2;
+  ink.renderOrder = 5;
+  group.add(ink);
+  return group;
+}
+
+function createSceneInkstone() {
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.13, 56), materials.ink);
+  base.scale.z = 0.72;
+  group.add(base);
+  const ink = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.25, 0.022, 56), materials.writingInk || materials.ink);
+  ink.position.y = 0.078;
+  ink.scale.z = 0.64;
+  group.add(ink);
+  return group;
+}
+
+function createSceneBrush() {
+  const group = new THREE.Group();
+  const handleStart = new THREE.Vector3(0.72, 0.04, -0.42);
+  const handleEnd = new THREE.Vector3(-0.72, 0.12, 0.08);
+  const ferruleStart = new THREE.Vector3(-0.68, 0.12, 0.07);
+  const ferruleEnd = new THREE.Vector3(-0.96, 0.12, 0.16);
+  const bristleBase = new THREE.Vector3(-0.98, 0.11, 0.17);
+  const tipEnd = new THREE.Vector3(-1.28, -0.05, 0.3);
+  group.add(createCylinderBetween(handleStart, handleEnd, 0.038, materials.red, 48));
+  group.add(createCylinderBetween(ferruleStart, ferruleEnd, 0.062, materials.brass, 48));
+  group.add(createConeBetween(bristleBase, tipEnd, 0.1, materials.ink, 48));
+  return group;
+}
+
+function createSceneSeal() {
+  return createBoxObject(0.28, 0.34, 0.28, materials.red);
+}
+
+function createSceneGuideGlass() {
+  const group = new THREE.Group();
+  const material = new THREE.MeshPhysicalMaterial({
+    color: 0x98d8cc,
+    roughness: 0.12,
+    transparent: true,
+    opacity: 0.24,
+    transmission: 0.16,
+    thickness: 0.06,
+    side: THREE.DoubleSide
+  });
+  group.add(new THREE.Mesh(new THREE.PlaneGeometry(0.96, 0.5), material));
+  return group;
+}
+
+function createCylinderBetween(start, end, radius, material, segments = 32) {
+  const direction = end.clone().sub(start);
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, direction.length(), segments), material);
+  mesh.position.copy(start).add(end).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
+}
+
+function createConeBetween(base, tip, radius, material, segments = 32) {
+  const direction = tip.clone().sub(base);
+  const mesh = new THREE.Mesh(new THREE.ConeGeometry(radius, direction.length(), segments, 16), material);
+  mesh.position.copy(base).add(tip).multiplyScalar(0.5);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.normalize());
+  return mesh;
+}
+
+function createScenePaperTexture() {
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = 768;
+  textureCanvas.height = 480;
+  const ctx = textureCanvas.getContext("2d");
+  ctx.fillStyle = "#fff9ed";
+  ctx.fillRect(0, 0, textureCanvas.width, textureCanvas.height);
+  ctx.strokeStyle = "rgba(139, 98, 52, 0.11)";
+  for (let index = 0; index < 42; index += 1) {
+    ctx.beginPath();
+    const y = Math.random() * textureCanvas.height;
+    ctx.moveTo(0, y);
+    ctx.lineTo(textureCanvas.width, y + (Math.random() - 0.5) * 18);
+    ctx.lineWidth = 0.6 + Math.random() * 1.1;
+    ctx.stroke();
+  }
+  return createSceneCanvasTexture(textureCanvas);
+}
+
+function createSceneYongTexture() {
+  const textureCanvas = document.createElement("canvas");
+  textureCanvas.width = 768;
+  textureCanvas.height = 536;
+  const ctx = textureCanvas.getContext("2d");
+  ctx.clearRect(0, 0, textureCanvas.width, textureCanvas.height);
+  ctx.save();
+  ctx.translate(textureCanvas.width / 2, textureCanvas.height / 2 + 10);
+  ctx.rotate(-0.045);
+  ctx.font = '390px "KaiTi", "STKaiti", "Kaiti SC", "SimSun", serif';
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.globalAlpha = 0.94;
+  ctx.fillStyle = "#060403";
+  ctx.fillText("永", 0, -6);
+  ctx.restore();
+  return createSceneCanvasTexture(textureCanvas);
+}
+
+function createSceneCanvasTexture(textureCanvas) {
+  const texture = new THREE.CanvasTexture(textureCanvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  return texture;
 }
 
 function createWallScroll(width, height) {
@@ -1114,7 +1318,9 @@ function applyState(object, state) {
 }
 
 function applyObjectVisibility(object) {
-  object.visible = object.userData.deleted !== true && object.userData.hidden !== true;
+  object.visible = object.userData.deleted !== true
+    && object.userData.hidden !== true
+    && object.userData.scopePreviewHidden !== true;
 }
 
 function isEntryHidden(entry) {
@@ -1126,7 +1332,7 @@ function isEntryLocked(entry) {
 }
 
 function canTransformEntry(entry) {
-  return entry && !isEntryHidden(entry) && !isEntryLocked(entry);
+  return entry && !isEntryHidden(entry) && !isEntryLocked(entry) && entry.object.userData.scopePreviewHidden !== true;
 }
 
 function loadLayout(serverLayout = null) {
@@ -3237,12 +3443,20 @@ function isImportedModelReferencedByHistory(record) {
 
 function populateObjectSelect() {
   objectSelect.innerHTML = "";
-  objects.forEach((entry) => {
+  getSceneScopeEntries().forEach((entry) => {
     const option = document.createElement("option");
     option.value = entry.id;
     option.textContent = `${entry.type} / ${entry.label}${getEntryStatusSuffix(entry)}`;
     objectSelect.appendChild(option);
   });
+  if (selectedEntry && !isEntryInSceneScope(selectedEntry, activeSceneScopeId)) {
+    selectedEntry = null;
+    transformControls.detach();
+  }
+  if (selectedEntry && objectSelect.querySelector(`option[value="${selectedEntry.id}"]`)) {
+    objectSelect.value = selectedEntry.id;
+  }
+  renderSceneScopePanel();
   renderLayerPanel();
 }
 
@@ -3271,7 +3485,7 @@ function renderLayerPanel() {
     return;
   }
 
-  const entries = sortLayerEntries([...objects.values()]);
+  const entries = sortLayerEntries(getSceneScopeEntries());
   const query = String(layerSearchInput?.value || "").trim().toLowerCase();
   const visibleCount = entries.filter((entry) => !isEntryHidden(entry)).length;
   const hiddenCount = entries.length - visibleCount;
@@ -3299,6 +3513,7 @@ function renderLayerPanel() {
     empty.textContent = query ? "没有匹配的对象。" : "暂无可管理对象。";
     layerList.appendChild(empty);
     renderLayerBatchControls(filteredEntries);
+    renderSceneScopePanel();
     return;
   }
 
@@ -3327,6 +3542,166 @@ function renderLayerPanel() {
 
   layerList.appendChild(fragment);
   renderLayerBatchControls(filteredEntries);
+  renderSceneScopePanel();
+}
+
+function getSceneScopeEntries(scopeId = activeSceneScopeId) {
+  return [...objects.values()].filter((entry) => isEntryInSceneScope(entry, scopeId));
+}
+
+function isEntryInSceneScope(entry, scopeId = activeSceneScopeId) {
+  if (!entry) return false;
+  if (scopeId === "practice") {
+    return entry.object.userData.sceneScope === "practice" || PRACTICE_SCOPE_BASE_IDS.has(entry.id);
+  }
+  if (scopeId === "display") {
+    return DISPLAY_SCOPE_BASE_IDS.has(entry.id);
+  }
+  if (scopeId === "custom") {
+    return entry.object.userData.isCustom === true || entry.object.userData.isImported === true;
+  }
+  return entry.object.userData.isSceneExtra !== true
+    && entry.object.userData.isCustom !== true
+    && entry.object.userData.isImported !== true;
+}
+
+function applySceneScopePreview() {
+  objects.forEach((entry) => {
+    entry.object.userData.scopePreviewHidden = entry.object.userData.isSceneExtra === true
+      && !isEntryInSceneScope(entry, activeSceneScopeId);
+    applyObjectVisibility(entry.object);
+  });
+}
+
+function renderSceneScopePanel() {
+  if (sceneScopeSelect && sceneScopeSelect.value !== activeSceneScopeId) {
+    sceneScopeSelect.value = activeSceneScopeId;
+  }
+
+  const entries = sortLayerEntries(getSceneScopeEntries());
+  const visibleCount = entries.filter((entry) => !isEntryHidden(entry)).length;
+  const scopeLabel = SCENE_SCOPE_LABELS[activeSceneScopeId] || "当前场景";
+  if (sceneScopeSummary) {
+    sceneScopeSummary.textContent = `${scopeLabel}：${entries.length} 个物件，${visibleCount} 个显示。保存后前台会读取同一套位置。`;
+  }
+
+  if (!sceneScopeQuickList) return;
+  sceneScopeQuickList.innerHTML = "";
+  if (!entries.length) {
+    const empty = document.createElement("p");
+    empty.className = "main-layer-empty";
+    empty.textContent = "这个场景还没有可控制物件。";
+    sceneScopeQuickList.appendChild(empty);
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  sortSceneScopeQuickEntries(entries).slice(0, 8).forEach((entry) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "admin-scene-object-item";
+    button.classList.toggle("is-active", selectedEntry?.id === entry.id);
+    button.dataset.featureState = "real-local";
+    button.dataset.sceneObjectSelect = entry.id;
+    const name = document.createElement("strong");
+    const state = document.createElement("span");
+    name.textContent = entry.label;
+    state.textContent = `${entry.type}${getEntryStatusSuffix(entry)}`;
+    button.append(name, state);
+    fragment.appendChild(button);
+  });
+  sceneScopeQuickList.appendChild(fragment);
+}
+
+function setSceneScope(scopeId) {
+  const nextScope = SCENE_SCOPE_LABELS[scopeId] ? scopeId : "base";
+  if (activeSceneScopeId === nextScope) {
+    renderSceneScopePanel();
+    return;
+  }
+  activeSceneScopeId = nextScope;
+  selectedLayerIds.clear();
+  applySceneScopePreview();
+  populateObjectSelect();
+  selectFirstSceneScopeObject();
+}
+
+function selectFirstSceneScopeObject(preferredId = "") {
+  const entries = getSceneScopeEntries();
+  const entry = preferredId && isEntryInSceneScope(objects.get(preferredId), activeSceneScopeId)
+    ? objects.get(preferredId)
+    : getPrimarySceneScopeEntry(entries);
+  if (entry) {
+    selectObject(entry.id);
+  } else {
+    transformControls.detach();
+    updateUiState();
+  }
+}
+
+function sortSceneScopeQuickEntries(entries) {
+  if (activeSceneScopeId !== "practice") {
+    return entries;
+  }
+  return [...entries].sort((left, right) => {
+    const leftExtra = left.object.userData.isSceneExtra === true ? 0 : 1;
+    const rightExtra = right.object.userData.isSceneExtra === true ? 0 : 1;
+    return leftExtra - rightExtra;
+  });
+}
+
+function getPrimarySceneScopeEntry(entries) {
+  const visibleEntries = entries.filter((item) => !isEntryHidden(item));
+  if (activeSceneScopeId === "practice") {
+    return visibleEntries.find((item) => item.object.userData.isSceneExtra === true)
+      || visibleEntries[0]
+      || entries.find((item) => item.object.userData.isSceneExtra === true)
+      || entries[0]
+      || null;
+  }
+  return visibleEntries[0] || entries[0] || null;
+}
+
+function handleSceneScopeQuickListClick(event) {
+  const button = event.target.closest("[data-scene-object-select]");
+  if (!button) return;
+  selectObject(button.dataset.sceneObjectSelect);
+}
+
+function showActiveSceneScopeObjects() {
+  if (!ensureAdminPermission("edit", "显示场景物件")) {
+    return;
+  }
+  const entries = getSceneScopeEntries();
+  const beforeSnapshots = entries.map(snapshot);
+  let changed = 0;
+  entries.forEach((entry) => {
+    if (entry.object.userData.hidden === true || entry.object.userData.deleted === true) {
+      entry.object.userData.hidden = false;
+      entry.object.userData.deleted = false;
+      applyObjectVisibility(entry.object);
+      saveEntry(entry);
+      changed += 1;
+    }
+  });
+  if (changed) {
+    pushUndo({ kind: "layer-batch", snapshots: beforeSnapshots, label: "显示场景物件" });
+  }
+  populateObjectSelect();
+  selectFirstSceneScopeObject(selectedEntry?.id);
+  showNotice(changed ? `已显示 ${SCENE_SCOPE_LABELS[activeSceneScopeId]} 物件。` : `${SCENE_SCOPE_LABELS[activeSceneScopeId]} 物件已显示。`);
+}
+
+function focusSceneScopeObject() {
+  const entry = selectedEntry && isEntryInSceneScope(selectedEntry, activeSceneScopeId)
+    ? selectedEntry
+    : getSceneScopeEntries().find((item) => !isEntryHidden(item));
+  if (!entry) {
+    showNotice("当前场景没有可聚焦物件。");
+    return;
+  }
+  selectObject(entry.id);
+  focusSelected();
 }
 
 function pruneSelectedLayers(entries = [...objects.values()]) {
@@ -3375,6 +3750,9 @@ function groupLayerEntries(entries) {
 }
 
 function getLayerGroupLabel(entry) {
+  if (entry.object.userData.isSceneExtra === true) {
+    return "场景物件";
+  }
   if (entry.object.userData.isImported === true || entry.type === "Imported") {
     return "导入模型";
   }
@@ -3749,6 +4127,11 @@ function selectObject(id) {
   const entry = objects.get(id);
   if (!entry) return;
 
+  if (!isEntryInSceneScope(entry, activeSceneScopeId)) {
+    activeSceneScopeId = getPreferredSceneScopeForEntry(entry);
+    applySceneScopePreview();
+    populateObjectSelect();
+  }
   selectedEntry = entry;
   objectSelect.value = id;
   if (canTransformEntry(entry)) {
@@ -3760,8 +4143,23 @@ function selectObject(id) {
   syncInputs();
   updateUiState();
   renderLayerPanel();
+  renderSceneScopePanel();
   syncCustomEditorFromSelection();
   syncImportedMaterialEditorFromSelection();
+}
+
+function getPreferredSceneScopeForEntry(entry) {
+  if (!entry) return "base";
+  if (entry.object.userData.sceneScope === "practice" || PRACTICE_SCOPE_BASE_IDS.has(entry.id)) {
+    return "practice";
+  }
+  if (entry.object.userData.isCustom === true || entry.object.userData.isImported === true) {
+    return "custom";
+  }
+  if (DISPLAY_SCOPE_BASE_IDS.has(entry.id)) {
+    return "display";
+  }
+  return "base";
 }
 
 function syncInputs() {
@@ -3783,7 +4181,11 @@ function updateUiState() {
   const locked = selectedEntry.object.userData.locked === true;
   const isCustom = selectedEntry.object.userData.isCustom === true;
   const isImported = selectedEntry.object.userData.isImported === true;
+  const isSceneExtra = selectedEntry.object.userData.isSceneExtra === true;
   objectType.textContent = selectedEntry.type === "模型" ? "Three.js GLB 模型" : "Three.js 几何装饰";
+  if (isSceneExtra) {
+    objectType.textContent = "场景额外物件";
+  }
   if (isCustom) {
     objectType.textContent = "新增基础物体";
   }
@@ -3800,6 +4202,8 @@ function updateUiState() {
       ? "导入模型会保存到本机，并同步到正常主场景。"
       : isCustom
       ? "新增物体会保存到本机，并同步到正常主场景。"
+      : isSceneExtra
+      ? "这是当前功能场景额外物件，保存后前台切入该场景会读取位置。"
       : "可直接拖动红绿蓝操作轴，也可输入精确数值。";
   [xInput, yInput, zInput, rotXInput, rotYInput, rotZInput, scaleInput].forEach((input) => {
     input.disabled = deleted || hidden || locked;
@@ -5173,6 +5577,10 @@ function bindUi() {
   layerBatchLockButton?.addEventListener("click", () => applyLayerBatchLock(true));
   layerBatchUnlockButton?.addEventListener("click", () => applyLayerBatchLock(false));
   layerBatchClearButton?.addEventListener("click", clearLayerSelection);
+  sceneScopeSelect?.addEventListener("change", () => setSceneScope(sceneScopeSelect.value));
+  sceneScopeQuickList?.addEventListener("click", handleSceneScopeQuickListClick);
+  sceneScopeShowButton?.addEventListener("click", showActiveSceneScopeObjects);
+  sceneScopeFocusButton?.addEventListener("click", focusSceneScopeObject);
 
   [xInput, yInput, zInput, rotXInput, rotYInput, rotZInput, scaleInput].forEach((input) => {
     input.addEventListener("focus", () => {

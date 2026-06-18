@@ -19,22 +19,61 @@
         </div>
       </header>
 
-      <section id="mainAdminRiskBanner" class="admin-risk-banner" aria-label="后台权限风险提示">
-        <div>
-          <span>本机静态后台</span>
-          <strong>已接入本机角色权限和操作审计</strong>
-          <p>这个页面会真实改写本机浏览器里的主场景草稿、发布版本、项目档案和导入模型；角色权限只用于本机操作边界，不等于生产账号登录。</p>
+      <section id="mainAdminRiskBanner" class="admin-scene-object-panel" aria-label="多场景物件控制">
+        <div class="admin-scene-object-head">
+          <span>Scene Objects</span>
+          <strong>多场景物件</strong>
         </div>
-        <button data-feature-state="real-local" id="mainAdminRiskAcknowledge" type="button">已了解</button>
-        <small id="mainAdminRiskStatus">尚未确认本机权限边界。</small>
-        <section id="mainAdminBoundaryPanel" class="admin-boundary-panel" aria-label="主后台服务边界状态">
-          <div class="admin-boundary-head">
-            <span>服务边界</span>
-            <strong id="mainAdminBoundaryStatus">正在读取后台能力...</strong>
-          </div>
-          <ul id="mainAdminBoundaryList" class="admin-boundary-list"></ul>
-        </section>
-        <section id="mainAdminOperatorPanel" class="admin-operator-panel" aria-label="主后台本机操作者审计">
+        <label class="admin-scene-object-field">
+          <span>切换场景</span>
+          <select id="mainSceneScopeSelect">
+            <option value="base">基础场景</option>
+            <option value="practice">写字场景</option>
+            <option value="display">展示场景</option>
+            <option value="custom">新增 / 导入</option>
+          </select>
+        </label>
+        <p id="mainSceneScopeSummary" class="admin-scene-object-summary">正在读取场景物件。</p>
+        <div id="mainSceneScopeQuickList" class="admin-scene-object-list" aria-live="polite"></div>
+        <div class="admin-scene-object-actions">
+          <button data-feature-state="real-local" id="mainSceneScopeShow" type="button">显示本场景</button>
+          <button data-feature-state="real-local" id="mainSceneScopeFocus" type="button">聚焦物件</button>
+        </div>
+        <button data-feature-state="real-local" id="mainAdminRiskAcknowledge" class="admin-hidden-support" type="button">已了解</button>
+        <small id="mainAdminRiskStatus" class="admin-hidden-support">尚未确认本机权限边界。</small>
+      </section>
+
+      <section id="mainAdminBoundaryPanel" class="admin-boundary-panel admin-hidden-support" aria-label="主后台服务边界状态">
+        <div class="admin-boundary-head">
+          <span>服务边界</span>
+          <strong id="mainAdminBoundaryStatus">正在读取后台能力...</strong>
+        </div>
+        <ul id="mainAdminBoundaryList" class="admin-boundary-list"></ul>
+      </section>
+
+      <aside class="main-object-panel" aria-label="主场景物体编辑">
+        <div class="main-object-title">
+          <span>Object Transform</span>
+          <strong>物体坐标</strong>
+        </div>
+
+        <label class="main-object-field">
+          <span>选择物体</span>
+          <select id="mainObjectSelect"></select>
+        </label>
+
+        <div class="main-object-mode" aria-label="操作轴模式">
+          <button data-feature-state="real-local" id="mainTranslateMode" class="is-active" type="button">移动轴</button>
+          <button data-feature-state="real-local" id="mainRotateMode" type="button">旋转轴</button>
+          <button data-feature-state="real-local" id="mainFocusObject" type="button">聚焦</button>
+        </div>
+
+        <div class="main-object-meta">
+          <span id="mainObjectType">-</span>
+          <small id="mainObjectStatus">点击模型或下拉选择后，拖动红绿蓝操作轴调整。</small>
+        </div>
+
+        <section id="mainAdminOperatorPanel" class="admin-operator-panel main-admin-operator-compact" aria-label="主后台本机操作者审计">
           <div class="admin-operator-head">
             <span>本机操作者</span>
             <strong id="mainAdminOperatorStatus">尚未读取操作者。</strong>
@@ -61,29 +100,6 @@
           <p id="mainAdminPermissionStatus" class="admin-permission-status">正在读取本机角色权限。</p>
           <ul id="mainAdminAuditList" class="admin-audit-list" aria-live="polite"></ul>
         </section>
-      </section>
-
-      <aside class="main-object-panel" aria-label="主场景物体编辑">
-        <div class="main-object-title">
-          <span>Object Transform</span>
-          <strong>物体坐标</strong>
-        </div>
-
-        <label class="main-object-field">
-          <span>选择物体</span>
-          <select id="mainObjectSelect"></select>
-        </label>
-
-        <div class="main-object-mode" aria-label="操作轴模式">
-          <button data-feature-state="real-local" id="mainTranslateMode" class="is-active" type="button">移动轴</button>
-          <button data-feature-state="real-local" id="mainRotateMode" type="button">旋转轴</button>
-          <button data-feature-state="real-local" id="mainFocusObject" type="button">聚焦</button>
-        </div>
-
-        <div class="main-object-meta">
-          <span id="mainObjectType">-</span>
-          <small id="mainObjectStatus">点击模型或下拉选择后，拖动红绿蓝操作轴调整。</small>
-        </div>
 
         <section class="main-layer-panel" aria-label="对象图层">
           <div class="main-light-title">
