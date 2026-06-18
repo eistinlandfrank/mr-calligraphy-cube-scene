@@ -706,6 +706,27 @@
 - 本轮 `npm run senior:audit -- --base-url=http://localhost:41496/`、`npm run build` 和移动端核心面板 E2E 均通过；21 个普通老人模式状态、176 个可见文本节点未发现 18px 以下小字或 18 字以上长句。
 - `npm audit` 仍因代理 407 未完成。
 
+## S34 真实数据结果反馈短词化
+
+- [x] **S34-01：结果页反馈读取真实统计**
+  验收：“看记录 / 看作品 / 看报告 / 练习计划”进入结果页时，普通老人模式优先读取 `MRAppState.getStats()`，不显示泛化占位反馈。
+
+- [x] **S34-02：短词表达真实结果**
+  验收：有数据时显示“已有 N 条 / 作品 N 幅 / 均分 N / 计划 N/N”一类短词；无数据时显示“还没有记录 / 先写作品 / 未生成 / 未计划”一类短句。
+
+- [x] **S34-03：诊断模式保留完整说明**
+  验收：`?details=1` 或 E2E 详情模式仍可查看完整报告、计划和档案数据，不影响开发验收。
+
+- [x] **S34-04：自动化断言真实反馈**
+  验收：真实数据种子下，`scripts/senior-visible-text-audit.js` 必须看到“已有 N 条 / 均分 N / 计划 N/N”，否则老人审计失败。
+
+完成记录（2026-06-18）：
+
+- 已将结果页的默认动作反馈改为本机统计短词，避免老人点击后只看到“已完成”。
+- 已给老人可见文字审计增加真实反馈断言，防止后续把真实结果退回成空泛提示。
+- 本轮 `node --check script.js`、`node --check scripts/senior-visible-text-audit.js`、`git diff --check`、`npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/` 和移动端核心面板 E2E 均通过。
+- `npm audit` 仍因代理 407 未完成。
+
 ---
 
 ## 当前验收命令

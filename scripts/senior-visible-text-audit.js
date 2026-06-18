@@ -201,12 +201,15 @@ async function auditSeededLearningData(browser, baseUrl) {
     reports.push(await collectVisibleTextAudit(page, "mobile-seeded-home"));
 
     await openResultAction(page, baseUrl, "看记录");
+    await expectActionFeedback(page, /^已有\d+条$/);
     reports.push(await collectVisibleTextAudit(page, "mobile-seeded-history"));
 
     await openResultAction(page, baseUrl, "看报告");
+    await expectActionFeedback(page, /^均分\d+$/);
     reports.push(await collectVisibleTextAudit(page, "mobile-seeded-report"));
 
     await openResultAction(page, baseUrl, "练习计划");
+    await expectActionFeedback(page, /^计划\d+\/\d+$/);
     reports.push(await collectVisibleTextAudit(page, "mobile-seeded-plan"));
   } finally {
     await page.close();
@@ -247,6 +250,13 @@ async function openResultAction(page, baseUrl, actionText) {
   await reloadSeniorPage(page, baseUrl);
   await clickButtonText(page, "看结果");
   await clickButtonText(page, actionText);
+}
+
+async function expectActionFeedback(page, pattern) {
+  const text = String(await page.locator("#actionFeedback").innerText()).trim();
+  if (!pattern.test(text)) {
+    throw new Error(`老人结果反馈不符合预期：${text}`);
+  }
 }
 
 async function openSeniorPage(browser, baseUrl, contextOptions) {

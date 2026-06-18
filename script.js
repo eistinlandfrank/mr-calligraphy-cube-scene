@@ -13719,6 +13719,10 @@ function getLearningActionHint(sceneIndex) {
 
   const sceneView = getLearningSceneView(sceneIndex);
   const detailed = shouldShowDetailedSystemMessage();
+  const seniorDataHint = getSeniorDataActionHint(sceneIndex);
+  if (!detailed && seniorDataHint) {
+    return seniorDataHint;
+  }
   if (sceneView.step) {
     if (sceneView.step.locked) {
       return detailed ? `未解锁：${sceneView.shortName}` : "未解锁";
@@ -13744,6 +13748,33 @@ function getLearningActionHint(sceneIndex) {
   }
 
   return "选一个按钮。";
+}
+
+function getSeniorDataActionHint(sceneIndex) {
+  const stats = window.MRAppState?.getStats?.();
+  if (!stats) return "";
+
+  if (sceneIndex === 6) {
+    const count = Number(stats.recordCount || 0);
+    return count > 0 ? `已有${count}条` : "还没有记录";
+  }
+  if (sceneIndex === 7) {
+    const count = Number(stats.artworkCount || 0);
+    return count > 0 ? `作品${count}幅` : "先写作品";
+  }
+  if (sceneIndex === 8) {
+    if (Number(stats.averageScore || 0) > 0) return `均分${Math.round(stats.averageScore)}`;
+    return Number(stats.reportCount || 0) > 0 ? `${stats.reportCount}份报告` : "未生成";
+  }
+  if (sceneIndex === 9) {
+    const progress = stats.latestPlan?.progress;
+    if (progress && Number(progress.total || 0) > 0) {
+      return `计划${progress.done || 0}/${progress.total}`;
+    }
+    return "未计划";
+  }
+
+  return "";
 }
 
 function getLearningActionFeature(action) {

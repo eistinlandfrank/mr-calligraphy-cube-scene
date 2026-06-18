@@ -466,6 +466,15 @@ main-admin.html
 - 本轮验收通过：`node --check scripts/senior-visible-text-audit.js`、`git diff --check`、`npm run senior:audit -- --base-url=http://localhost:41496/`、`npm run build`、移动端核心面板 E2E。
 - `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
 
+### 2026-06-18：真实数据结果反馈短词化
+
+- 普通老人模式下，结果类功能页不再只显示“已完成 / 做计划”等泛反馈。
+- “看记录 / 看作品 / 看报告 / 练习计划”会读取 `MRAppState.getStats()`，直接显示“已有 N 条 / 作品 N 幅 / 均分 N / 计划 N/N”等短结果。
+- 无数据时也使用“还没有记录 / 先写作品 / 未生成 / 未计划”等短句，避免老人看到空白或误以为按钮无效。
+- 审计脚本新增结果反馈断言，真实种子数据下必须显示本机统计短词，否则 `npm run senior:audit` 失败。
+- 本轮验收通过：`node --check script.js`、`node --check scripts/senior-visible-text-audit.js`、`git diff --check`、`npm run build`、`npm run senior:audit -- --base-url=http://localhost:41496/`、移动端核心面板 E2E。
+- `npm audit --audit-level=high` 仍被当前代理返回 `407 Proxy Authentication Required` 拦截。
+
 ---
 
 ## 10. 当前完成记录
